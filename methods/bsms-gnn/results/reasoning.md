@@ -1,0 +1,173 @@
+OK, let me think this through from scratch. I want a fast surrogate for one step of a mesh-based simulation: feed in the state at time t — velocities, densities, positions, node types living on the vertices of a mesh — and out comes the state at t+Δt, so I can roll it forward into a whole trajectory. On a small mesh this is basically solved: turn the mesh into a graph, run encode–process–decode, where the processor is a stack of message-passing rounds, e_ij ← f_E(e_ij, v_i, v_j) and v_i ← v_i + f_V(v_i, Σ_j e_ij) with residual LayerNorm MLPs, decode a per-node increment, integrate, done. Train it on a single-step L2 loss with a little Gaussian noise on the inputs so it learns to clean up its own rollout drift. Fine.
+
+The trouble is scale, and I want to be precise about *why*, because the why is going to tell me what to build. A PDE couples the whole domain — what happens at one boundary eventually reaches the far corner. So my surrogate has to be able to move information from any node to any other node. In a message-passing network, information travels one edge per round. So to connect two nodes that are D hops apart on the mesh, I need on the order of D rounds. And D — the graph diameter — grows as the mesh grows. So as I scale up, two things rot at once. First, cost: I'm processing N nodes, and I need ~D rounds, and both N and D climb with mesh size, so the unrolled computational graph balloons — the memory and time go up faster than linearly. The big industrial meshes I actually care about just won't train. Second, and this is subtler, the message passing itself degrades. A graph convolution is, at heart, multiplication by a normalized adjacency, and that's a low-pass filter — it pushes the node signal toward the dominant smooth eigenvector and kills off the high-frequency components geometrically with each round. So stacking lots of rounds doesn't just cost more, it actively smears out exactly the sharp features (a shock, a contact front) that the simulation needs. "Just go deeper" makes both problems worse. That's the wall: a flat, single-resolution network can't win here, and the reason it can't is structural, not a matter of tuning.
+
+So I need to decouple "reach across the domain" from "number of rounds." The obvious move, and it's the right one, is a hierarchy — a U-Net on the graph. Build coarser and coarser versions of the mesh; on a coarse level a single hop already spans a big chunk of the domain, so a handful of rounds couples everything and I never have to stack the signal into oblivion. Encode at the finest level, pool down through several levels doing a little processing at each, do a bit at the bottom, then unpool back up, adding skip connections, and decode. Cost drops because the coarse levels have few nodes; over-smoothing drops because I'm not stacking dozens of rounds. Great in principle.
+
+But now I've just relocated the entire difficulty into one operation: *how do I coarsen an arbitrary mesh?* This is the whole game. Let me write down what a coarsening has to do, because every existing approach fails at least one of these and seeing which one fails where is going to drive the design. I need pooling that (a) preserves connectivity at every coarse level — if I drop nodes and accidentally cut a connected region into pieces that can no longer talk, information can't cross and the physics is wrong; (b) never invents an edge across a geometric boundary — two points that are close in 3D space but far along the actual material must not get linked; (c) works for *any* mesh — 2D triangles, 3D tets, 3D surfaces, whatever; and (d) is automatic, no human in the loop. Four requirements. Let me walk the options I know and watch them break.
+
+Option one, learnable pooling — the graph-U-Net style. Learn a projection vector p, score each node x_i·p/‖p‖, keep the top-k. It's automatic and uses only graph information, so it dodges the boundary problem (b) — it never reaches into space to draw edges. But it fails (a), and I need to feel exactly how. When you keep an arbitrary top-k subset of nodes, the survivors can disconnect: a kept node might have had only dropped neighbors, so after pooling it's floating. The standard patch is adjacency enhancement — replace A with a power A^K. Read A^K(i,j) as a boolean: it's 1 exactly when j is reachable from i within K hops. So squaring the adjacency reconnects survivors that are two hops apart through a dropped node. Graph U-Nets use A^2 for exactly this. But here's the rub: a *learned* top-k score gives me no guarantee that A^2 is enough. For some graphs the scorer drops a whole neighborhood and even after squaring the coarse graph is carved into partitions that can't exchange information. No guarantee. And worse, in practice the learned scorer generalizes badly — on a mesh it wasn't trained on, it pools unfairly, isolating nodes, because the score is a learned function of features it's now seeing out of distribution. And there's a compute wrinkle: the original thing used dense adjacency multiplies, fine for a hundred-node toy, hopeless at thousands of nodes. So learnable pooling: automatic, boundary-safe, but no connectivity guarantee and poor generalization.
+
+Option two, spatial proximity — lay down coarse nodes on a grid or by spatial clustering, connect them by Euclidean radius. Automatic, general, and it definitely keeps things connected. But it fails (b), and this one I can make concrete with a tiny diagnostic in my head. Picture one-dimensional steady-state heat conduction on two short rods laid head-to-tail with a hair of air between them — heat must not cross the gap, the two rods are physically separate. Now coarsen by spatial proximity: the two nodes facing each other across the gap are *spatially* adjacent, so proximity draws an edge straight across the gap. The surrogate now conducts heat between rods that aren't connected, and predicts the wrong temperature at the boundary. And this isn't a corner case I can hack around — think of a long thin U-shaped channel: the two parallel arms are close in space but far apart along the material, and proximity will weld them together. Spatially-near-but-geodesically-far is endemic in real geometry and in self-contact. So proximity is structurally unsafe at boundaries. It also drags in per-case knobs — grid resolution, inflation rate.
+
+Option three, draw the coarse meshes by hand in CAD software. That nails (a), (b), (c) — a human gets the geometry right. But it flunks (d) catastrophically: it's one coarse mesh per trajectory, tens of thousands of hand-drawn meshes for a dataset. Dead on arrival for deployment. Option four, Guillard-style triangle coarsening — only 2D triangles, fails (c). Or random pooling plus learned coarse kernels by matrix factorization — random pooling brings the partition risk back, and the factorization is heavy.
+
+So the scoreboard is: nobody has all four. The graph-only methods are automatic and boundary-safe but can't guarantee connectivity; the geometry methods guarantee connectivity but break boundaries; the manual one is correct but not automatic. I want the intersection. I want a pooling that uses *only graph topology* (so it's automatic and boundary-safe by construction — it literally never looks at spatial distance, so it can't draw a wrong-side edge), and that *provably* preserves connectivity at the smallest possible enhancement order.
+
+Let me make "smallest possible enhancement order" precise, because it's going to pin the target. Define an enhancement A ← A^K, with A^K(i,j) booleanized to "j within K hops of i." Given a pooling that keeps a set of indices 𝓘, call a node j a K-th-order outlier if it's not within K hops of *any* kept node — i.e. A^K(i,j)=0 for every kept i. Call the pooling K-th-order connection conservative, K-CC, if there are no such outliers: every node is reachable within K hops of some survivor, so after enhancement nothing is stranded. Now, why do I want K small? Because enhancement is not free. As K grows, the booleanized A^K fills in — in the limit it's the all-ones matrix, a fully connected graph, and then a *single* convolution averages every node into one identical vector. That's over-smoothing taken to its maximum, the very thing I'm building a hierarchy to escape. If K=1 is the only enhancement, the coarse graph keeps only the original edges between survivors; on a three-node path kept-dropped-kept, the middle node disappears and the two survivors cannot talk. K=2 is the first power that can add exactly that missing bridge across one removed node without jumping farther than necessary. The graph-U-Net people already landed on A^2 by exactly this pressure — small enough not to over-connect, big enough to help. What they *didn't* have is a pooling that's *guaranteed* 2-CC for any mesh. That's the hole. If I can find a deterministic, topology-only rule that is provably 2-CC, I've got all four properties at once.
+
+Where would such a rule come from? Let me think about when pooling is *trivially* connection-conservative. Suppose the graph were bipartite — nodes split into two parts with every edge running between the parts, none inside a part. Then keep one whole part. Any dropped node lives in the other part, and all its neighbors are in the kept part, one hop away. So every dropped node is 1 hop from a survivor, and survivors that used to communicate through a dropped node get a 2-hop bridge after enhancement. No scoring, no learning, no guarantee needed — it falls out of the partition. The useful part of that picture is not true bipartiteness; real meshes have triangles and same-layer edges. The useful part is alternating layers while making sure each removed layer is attached to the layer I keep.
+
+A real mesh isn't a DAG and isn't bipartite — it's full of cycles. But I don't need true bipartiteness; I need the *layering*. What's the analog of topological depth on a general graph? Breadth-first search. Pick a seed, run BFS, and every node gets a geodesic hop-distance to the seed. BFS has a property I can lean on hard: for any edge (i,j), depth(j) ≤ depth(i)+1 because j can be reached by going through i, and depth(i) ≤ depth(j)+1 by the same argument in reverse, so |depth(i)-depth(j)| ≤ 1. Same-depth edges are allowed, so this parity mark is not a proper graph 2-coloring; I must not pretend every neighbor of a dropped node is kept. The weaker fact is enough. If I keep the even frontiers, every dropped odd-depth node has a BFS parent at depth d-1, which is even and kept. If I keep the odd frontiers, every dropped even-depth node with d>0 has a parent at depth d-1, which is odd and kept; the only special case is the seed at depth 0, and if I drop it then its component has level-1 nodes that are kept, while a singleton component has no odd frontier and I keep the seed. So every dropped node has at least one kept material neighbor. Then A^2 restricted to the kept nodes can bridge across a removed node, and along the BFS tree each kept node connects upward to a same-parity ancestor in two hops, with level-1 odd nodes connecting through the dropped seed when I keep odds. That's 2-CC by construction, using nothing but the mesh topology, no spatial distance ever consulted, and it works on any mesh with any element type.
+
+Let me sanity-check the parity choice. I could keep evens or keep odds — either is valid as long as I handle the seed and singleton cases above. So I have a free choice, and I should use it to keep the pooling ratio near a half, which keeps the hierarchy balanced and the coarsening rate sensible. So: compute both the even set and the odd set, and keep whichever is smaller, with the even set kept if the odd set is empty. Cheap, and it keeps roughly half the nodes per level.
+
+Now the coarse graph itself. I've chosen the survivors; I need their edges at the next level, and I need them to encode "reachable in at most 2 material hops on the fine graph," because that's what reconnects survivors across one removed frontier. Let \tilde A_l be the material adjacency with the diagonal set to one. The rebuild is \tilde A_l^2, restricted to the kept rows and columns, with the diagonal cleared afterward: A_{l+1} ← clear_diag((\tilde A_l \tilde A_l)[𝓘,𝓘]). The diagonal matters. Without it, strict A_l^2 only sees two-hop pairs and can miss direct survivor-survivor material edges; with \tilde A_l=(A_l+I), the square contains the two-hop terms, the one-hop terms, and self terms, and the final diagonal clear removes only the self-loops. And notice a bonus that's going to pay off architecturally: because each dropped node is directly adjacent to at least one survivor on the *fine* graph, the pooled and unpooled sets keep direct connections before I coarsen. That means a single message-passing round at a level is enough to shuttle information between the nodes that will survive and the nodes that won't, right before I pool. I don't need several rounds per level the way the proximity hierarchies do — one MP per level. That single observation cuts the processor cost dramatically.
+
+Now I have to deal with contacts, because the meshes I care about have self-contact and collisions, and contact is the one place where I *do* legitimately want spatial-proximity edges — two surfaces touching really are interacting through space, that's physics, not a coarsening artifact. So keep contact edges in a *separate* matrix A^C, built dynamically by proximity at the finest level only, distinct from the material edges that come from the mesh. The question is how to carry contacts to coarser levels under bi-stride. A fine contact edge (i,j) should reappear at the coarse level between some survivors i' and j' where i' is either i itself or a material neighbor of i, and j' is either j itself or a material neighbor of j. That is exactly \tilde A_l A^C_l \tilde A_l: the contact hop stays in the middle, while the self-looped material adjacency on the left and right lets each endpoint either stay put if it survived or move one material hop to a survivor if it did not. Then I restrict to [𝓘,𝓘]. So a coarse contact exists when a fine contact can be lifted to nearby surviving material nodes; it is not a new arbitrary proximity edge.
+
+I should prove this actually conserves contacts, because if a contact silently vanishes at a coarse level the model goes blind to a collision. Take the graph undirected and unweighted so everything's boolean, and use \tilde A_l for the material adjacency with diagonal ones. Claim: for any fine contact edge (i,j), i.e. A^C_l[i,j]=1, there exist survivors i',j' ∈ 𝓘 with \tilde A_l[i,i']=\tilde A_l[j,j']=1 and (\tilde A_l A^C_l \tilde A_l)[i',j']=1. Bi-stride gives the structural fact I need: if an endpoint is dropped, it has at least one direct material neighbor that is kept, by the BFS-parent/seed case above; if an endpoint is kept, its self-loop in \tilde A_l plays the same role. So go case by case on whether i and j survived.
+
+Case 1, both i,j survive (i,j ∈ 𝓘). Take i'=i and j'=j. In the product, choose the middle fine endpoints themselves: (\tilde A_l A^C_l \tilde A_l)[i,j] ≥ \tilde A_l[i,i]·A^C_l[i,j]·\tilde A_l[j,j] = 1·1·1 = 1. The diagonal ones are exactly what make the already-surviving contact pass through unchanged.
+
+Case 2, only i survives (i ∈ 𝓘, j ∉ 𝓘). Since j is dropped it has a survivor neighbor j' with \tilde A_l[j,j']=1, j' ∈ 𝓘. Let i'=i. Then (\tilde A_l A^C_l \tilde A_l)[i,j'] has the term \tilde A_l[i,i]·A^C_l[i,j]·\tilde A_l[j,j'] = 1·1·1, so the coarse contact (i,j') exists.
+
+Case 3, only j survives (i ∉ 𝓘, j ∈ 𝓘). Mirror image: i is dropped, so it has a survivor neighbor i' with \tilde A_l[i',i]=1, i' ∈ 𝓘. Let j'=j. The product contains \tilde A_l[i',i]·A^C_l[i,j]·\tilde A_l[j,j] = 1·1·1, so the coarse contact (i',j) exists.
+
+Case 4, neither survives (i,j ∉ 𝓘). Pick survivor neighbors i' and j' with \tilde A_l[i',i]=1 and \tilde A_l[j,j']=1. The product contains \tilde A_l[i',i]·A^C_l[i,j]·\tilde A_l[j,j'] = 1·1·1, so (\tilde A_l A^C_l \tilde A_l)[i',j'] ≥ 1. Every case holds, so bi-stride with the self-looped \tilde A_l A^C_l \tilde A_l rule loses no contact edges across coarsening. Good — that was the thing that could have quietly broken collisions, and it doesn't.
+
+One loose end in the pooling: BFS needs a seed, and a mesh can have several disconnected components. I should seed per connected component, otherwise a BFS from one component never reaches another and I'd mishandle distances; so first split the graph into clusters (repeated BFS for connected components) and run bi-stride within each, with one seed each. Does the *choice* of seed matter for the guarantee? Different seeds give different BFS depth labelings and so different even/odd sets, but every one of them is 2-CC by the same parent/seed argument. So there is freedom, and I only want the seed balanced enough that the layers are not pathological. A sensible deterministic heuristic is the seed with the minimum average geodesic distance to the rest of its component — that's the most central node, gives a tidy concentric layering. Call it MinAve. The catch is cost: to find it I'd BFS from every node and average, which is O(N²). Fine for smaller meshes, but on the big surface meshes with tens of thousands of nodes that's too slow. So I want a linear fallback: the node closest to the *spatial centroid* of its component — CloseCenter — which is one mean and one nearest-node search, O(N). Yes, this peeks at positions, but only to pick a seed; the pooling and edge rebuild still use graph topology, so no boundary-crossing coarse edges sneak in.
+
+That's the coarsening fully nailed. Now the architecture on top, and the transitions between levels, where there's a real dead-end story to live through. Set the backbone: encode–process–decode, but unlike the flat model I only need the encoder and decoder at the *finest* level — they map nodal physical inputs into the latent and back out — because once I'm in latent space the hierarchy itself carries information across levels; per-level encoders would be redundant. The MLPs are ReLU with a configurable hidden-layer count and a latent width of 128, residual, with LayerNorm on every output except the decoder whose output is a physical quantity I don't want renormalized. One more cheap simplification on the message passing: the flat backbone keeps a persistent edge latent that it encodes and carries through all rounds. I don't need that here. The only geometry the edge update needs is the relative offset, so I just compute Δx_ij = x_i − x_j and its norm ‖Δx_ij‖ on the fly and prepend them to the stacked sender/receiver node latents as the input to the edge MLP. Translation-invariant, and no separate edge encoder or carried edge state to pay for. So an MP round at level l is: for each edge set s, e^s_{ij} ← f^s_l(Δx_ij, v_i, v_j); then v'_i ← v_i + f^V_l(v_i, Σ_j e^1_ij, …, Σ_j e^S_ij). With a single edge set this collapses to one edge-index path; the same block extends to material plus contact edge sets. One such round per level.
+
+Now the transitions — moving the latent down a level after pooling and back up after the bottom. My first instinct, since I'm basically running a graph U-Net, is to do nothing fancy: pool by just selecting the survivor rows, and unpool by scattering survivors back into their slots and zero-filling the dropped ones, the way gUnpool does. Let me think about what that no-transition scheme does. The one-step prediction comes out fine, actually — low RMSE on a single step. But unroll it, and I'd expect trouble at the unpooled nodes: after unpooling, every dropped node is a hard zero before the next MP, so the processor can't tell those nodes apart — they're all the same zero vector — and the difference between "was kept" and "was dropped" gets exaggerated as the rollout feeds on itself. I'd predict stripe or mosaic patterns in the rollout, aligned with the coarse-level edges, because the artifact is keyed to which nodes survived. That's a real failure of plain unpooling for a long rollout. So I need an actual interpolation on the way up, not zeros.
+
+Second attempt: do what regular-grid U-Nets do for interpolation — a single graph convolution (no activation) to spread the survivors' values to their neighbors, the graph analog of bilinear upsampling. Try it in my head and I hit the over-smoothing wall again, but for a specific reason this time. An *unweighted* graph convolution averages each node over its neighbors with equal weight, which is right for a regular grid where fine nodes sit neatly at cell centers and every cell is the same size. But a mesh is irregular: element sizes vary wildly, and they're deliberately *smallest* near interfaces and generators (that's where you want resolution). So an unweighted average smears the carefully-resolved fine information near, say, the cylinder, across its big and small neighbors indiscriminately, and the signal stops propagating downstream — over-smoothed and stalled. The unweighted convolution ignores the very irregularity that makes the mesh a mesh.
+
+So the fix has to *account for element size / node importance*. Carry a nodal weight w — initialize it to one at the finest level and aggregate it as I go down, so a coarse node's weight reflects how many fine nodes it stands for. Then the transition isn't a flat average; it's a *weighted* split-and-gather. Concretely, on the way down: row-normalize the sender adjacency like a standard graph convolution, Â_ij = A_ij / Σ_j A_ij; convolve the weight once, ŵ_ij = w_i Â_ij; then, for each fixed receiver j, build a contribution table C_ij = ŵ_ij / Σ_i ŵ_ij. Now Σ_i C_ij = 1, so C_ij is exactly the share of receiver j's incoming weight that came from sender i. Downsample the latent with it, v_j ← Σ_i v_i C_ij, which is exactly: each sender splits its weighted information out along its row-normalized edges, and each receiver takes a weighted average of what arrives. That respects the irregular sizes because the shares are built from the weights, not from counting edges. And the elegant part for the way up: I already have C, so the natural return is its transpose — v_i ← Σ_j v_j C_ij — distributing the coarse value back to the finer senders by the same contribution shares it was gathered with. It's precisely the U-Net pattern, a pooling and its transposed-conv inverse, but weighted by the mesh's own irregularity. An inverse-distance kernel is another possible non-parametric choice, and a fully learnable per-level transition would add extra modules at every level, which fights the lightweight goal. So: non-parametric, weighted, symmetric down/up.
+
+Let me assemble the U-Net loop and make sure the bookkeeping is right. Down pass, per level: run one MP at the current resolution; stash the post-MP features as the skip connection for this level; compute the contribution weights from the current weight field and graph; weighted-aggregate the latent and the positions down with those weights; then pool — select the survivor rows of features, positions, and weight. At the bottom, one MP. Up pass, per level in reverse: unpool (scatter the coarse features into the survivor slots of a zero tensor sized to that level's node count); weighted-return using the *same* contribution table I computed on the way down but in transpose mode; one MP; then add the skip connection I stashed. Decode at the top. The pooling indices and the per-level graphs are all precomputed once by the bi-stride preprocessing — it's deterministic and done in a single pass before training, so it costs nothing at train time.
+
+Let me write the core down to real code, tying each block back to the reasoning. First the preprocessing that builds the level hierarchy — bi-stride selection plus the A^2 rebuild:
+
+```python
+import numpy as np
+
+def bstride_selection(graph, pos, num_nodes):
+    # Pure topology: BFS depth parity -> 2-CC pooling, no spatial distance consulted.
+    adj = graph.get_sparse_adj_mat()
+    adj.setdiag(1)                                  # self-looped material adjacency: (A+I)
+    clusters = graph.clusters                       # per connected component
+    seeds = nearest_center_seed(pos, clusters)      # CloseCenter: O(N) seed; choice is free (all 2-CC)
+
+    kept = set()
+    for seed, c in zip(seeds, clusters):
+        even, odd = set(), set()
+        dist = graph.bfs_dist(seed)                 # geodesic hop distance from seed
+        for i, d in enumerate(dist):
+            if d == _INF:        continue
+            (even if d % 2 == 0 else odd).add(i)    # stride every other BFS frontier
+        keep = even if (len(even) <= len(odd) or not odd) else odd  # keep smaller -> balanced ~1/2
+        kept |= keep
+    kept = sorted(kept)
+
+    adj = adj.tocsr().astype(float)
+    adj = adj @ adj                                 # (A+I)^2: direct and two-hop survivor edges
+    adj.setdiag(0)                                  # drop self-loops introduced by the squaring
+    new_graph = pool_edge(adj, num_nodes, kept)     # restrict to [kept, kept] and reindex 0..|kept|-1
+    return kept, new_graph
+```
+
+The seed is the central node, and the parity striding is the whole 2-CC idea; the square-then-restrict is the connectivity-preserving edge rebuild. One MP block, with the offset prepended instead of a carried edge latent:
+
+```python
+import torch, torch.nn as nn
+
+class GMP(nn.Module):
+    def __init__(self, latent_dim, hidden_layer, pos_dim):
+        super().__init__()
+        self.mlp_edge = MLP(2*latent_dim + pos_dim + 1, latent_dim, latent_dim, hidden_layer)
+        self.mlp_node = MLP(2*latent_dim, latent_dim, latent_dim, hidden_layer)
+    def forward(self, x, g, pos):
+        i, j = g[0], g[1]
+        offset = pos[i] - pos[j]                                   # relative geometry only
+        fiber  = torch.cat([offset, offset.norm(dim=-1, keepdim=True)], dim=-1)
+        e = self.mlp_edge(torch.cat([fiber, x[i], x[j]], dim=-1))  # e_ij <- f(dx, v_i, v_j)
+        aggr = scatter_sum(e, j, dim=-2, dim_size=x.shape[-2])     # sum edges into receiver
+        return x + self.mlp_node(torch.cat([x, aggr], dim=-1))     # residual node update
+```
+
+The weighted, non-parametric transition — the contribution table and its transpose:
+
+```python
+class WeightedEdgeConv(nn.Module):
+    @torch.no_grad()
+    def cal_ew(self, w, g):                          # build the contribution shares C from node weights
+        i, j = g[0], g[1]
+        deg = degree(i, num_nodes=w.shape[0])
+        normed_w = w.squeeze(-1) / deg               # row-normalize: A_hat
+        w_to_send = normed_w[i]                       # w_hat_ij = w_i * A_hat_ij
+        aggr_w = scatter_sum(w_to_send, j, dim=-1, dim_size=normed_w.size(0)) + 1e-12
+        ew = w_to_send / aggr_w[j]                    # C_ij = share of receiver j's weight from i
+        return ew, aggr_w                             # aggr_w becomes the coarse node weight
+
+    def forward(self, x, g, ew, aggregating=True):
+        i, j = g[0], g[1]
+        src = x[i] if aggregating else x[j]           # down: gather from senders; up: return to senders
+        msg = src * ew.unsqueeze(-1)
+        tgt = j if aggregating else i
+        return scatter_sum(msg, tgt, dim=-2, dim_size=x.shape[-2])
+```
+
+And the U-Net loop that wires pooling, MP, transition, and skips together:
+
+```python
+class BSGMP(nn.Module):
+    def __init__(self, depth, latent_dim, hidden_layer, pos_dim):
+        super().__init__()
+        self.depth = depth
+        self.down_gmps = nn.ModuleList(GMP(latent_dim, hidden_layer, pos_dim) for _ in range(depth))
+        self.up_gmps   = nn.ModuleList(GMP(latent_dim, hidden_layer, pos_dim) for _ in range(depth))
+        self.unpools   = nn.ModuleList(Unpool() for _ in range(depth))
+        self.bottom_gmp = GMP(latent_dim, hidden_layer, pos_dim)
+        self.edge_conv  = WeightedEdgeConv()
+
+    def forward(self, h, m_ids, m_gs, pos):
+        down_outs, down_ps, cts = [], [], []
+        w = pos.new_ones((pos.shape[-2], 1))                  # nodal weight, 1 at finest level
+        for i in range(self.depth):
+            h = self.down_gmps[i](h, m_gs[i], pos)            # one MP per level
+            down_outs.append(h); down_ps.append(pos)          # stash skip
+            ew, w = self.edge_conv.cal_ew(w, m_gs[i])         # contribution table + aggregated weight
+            h   = self.edge_conv(h,   m_gs[i], ew)            # weighted downsample of features
+            pos = self.edge_conv(pos, m_gs[i], ew)            # carry positions down the same way
+            cts.append(ew)
+            h, pos, w = h[m_ids[i]], pos[m_ids[i]], w[m_ids[i]]   # pool: keep survivors (bi-stride ids)
+        h = self.bottom_gmp(h, m_gs[self.depth], pos)         # bottom MP
+        for i in range(self.depth):
+            d = self.depth - i - 1
+            h = self.unpools[i](h, down_outs[d].shape[-2], m_ids[d])   # scatter survivors, zero-fill
+            h = self.edge_conv(h, m_gs[d], cts[d], aggregating=False)  # weighted return via C^T
+            h = self.up_gmps[i](h, m_gs[d], down_ps[d])               # one MP
+            h = h + down_outs[d]                                       # add skip
+        return h
+```
+
+And the whole simulator is just encode at the top, this hierarchical processor, decode, then integrate the predicted increment into the next state, trained on single-step L2 with input noise:
+
+```python
+class BSMS_Simulator(nn.Module):
+    def __init__(self, cfg):
+        super().__init__()
+        # encoder sees the nodal fields + node type (cfg.out_dim + 1); mesh_pos is split off and fed to the MP blocks
+        self.encode  = MLP(cfg.out_dim + 1, cfg.latent_dim, cfg.latent_dim, cfg.hidden_layer, True)
+        self.process = BSGMP(cfg.unet_depth, cfg.latent_dim, cfg.hidden_layer, cfg.pos_dim)
+        self.decode  = MLP(cfg.latent_dim, cfg.latent_dim, cfg.out_dim,  cfg.hidden_layer, False)
+    def forward(self, node_feat, m_ids, m_gs, pos):
+        x = self.encode(node_feat)
+        x = self.process(x, m_ids, m_gs, pos)
+        delta = self.decode(x)
+        return node_feat[..., :delta.shape[-1]] + delta          # predict a normalized increment, then integrate
+```
+
+So the causal chain, start to end: a flat graph network can't scale because reaching across a large mesh needs ~diameter message-passing rounds, which is both quadratically costly and over-smoothing; a multi-resolution hierarchy fixes both but only if I can coarsen an arbitrary mesh while keeping connectivity, avoiding boundary-crossing edges, staying general, and staying automatic — and no prior pooling had all four; the smallest useful enhancement order for bridging across removed nodes is 2, and keeping every other BFS frontier (bi-stride) makes every dropped node sit one hop from at least one survivor, which gives 2-CC by construction using topology alone, so it's boundary-safe, general, automatic, and connected after the self-looped (A+I)^2 rebuild; contacts are carried by the self-looped material-contact-material product \tilde A A^C \tilde A and the four endpoint cases lose none; because survivors and dropped nodes stay directly connected, one message-passing round per level suffices; and because plain unpooling leaves mosaic artifacts and an unweighted graph-conv over-smooths the irregular mesh, the transition is a non-parametric weighted gather-and-return through a contribution table built from row-normalized sender weights, applied down and transposed back up like a U-Net — encode at the top, run this lightweight weighted U-Net of one-MP levels, decode the increment, integrate, train single-step with noise.
