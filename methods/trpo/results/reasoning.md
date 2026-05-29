@@ -1,0 +1,273 @@
+OK, let me think this through from scratch. The thing that bothers me is a result I can't shake: on Tetris, on hand-tuned locomotion, plain black-box search — cross-entropy method, CMA — is hard to beat, and it just rattles a search distribution over policy parameters and keeps the good samples. Meanwhile gradient methods, which on paper have far better sample-complexity (with a real gradient oracle the complexity need not even depend on dimension, whereas black-box scales like the parameter count), keep losing on the hard problems. That's backwards. And it's especially galling because supervised deep learning just showed that plain stochastic gradient descent scales to millions of parameters without drama. So why can't I take a policy that's a big neural net and just... ascend the return?
+
+Let me try the obvious thing and watch it break. The return is `η(π_θ) = E[Σ_t γ^t r(s_t)]`, and the policy-gradient identity gives me `∇_θ η = E[ ∇_θ log π_θ(a|s) · A_π(s,a) ]` — score function times advantage, estimable from sampled trajectories. So I take `θ ← θ + α ∇η`. Now: how big is α? If I make it small, I crawl, and the variance of the estimate means I'm crawling through noise — that's exactly the regime where black-box random search keeps pace. If I make it large, sometimes the policy just falls off a cliff: one update and the return collapses, and because the next batch of data is collected *under the wrecked policy*, I might never recover. So the entire game is the step size, and I have no principled handle on it.
+
+Why is there no handle? Because I'm measuring the step in the wrong space. `α ∇η` moves θ by some Euclidean amount `‖Δθ‖`. But θ are the weights of a network whose output is a *distribution* over actions. Euclidean distance in weight space has no fixed relationship to how much the distribution `π(·|s)` actually changed. Near a saturated softmax a tiny `Δθ` barely moves the probabilities; near a sensitive region the same `Δθ` flips them. So a single learning rate is being asked to mean "small move" in a geometry where "small" is wildly state- and location-dependent. No wonder it's brittle.
+
+So the real question isn't "what step size in θ" — it's "how far should the *policy* move, per update, measured in distribution space, so that the true return reliably goes up?" Let me chase *that*.
+
+To even ask whether the return goes up, I need to relate the new policy's return to the old one's. There's a clean identity for this. Write `η(π̃)` in terms of `η(π)` plus how much better `π̃` does, step by step. Claim:
+`η(π̃) = η(π) + E_{τ∼π̃}[ Σ_t γ^t A_π(s_t,a_t) ]`,
+where the advantage `A_π(s,a) = Q_π(s,a) − V_π(s)` is measured under the *old* policy but the trajectory `τ` is rolled out under the *new* one. Let me verify it, because it's load-bearing. Note `A_π(s,a) = E_{s'∼P(·|s,a)}[ r(s) + γ V_π(s') − V_π(s) ]`. Take the expectation over a `π̃`-trajectory:
+`E_{τ∼π̃}[ Σ_t γ^t A_π(s_t,a_t) ] = E_{τ∼π̃}[ Σ_t γ^t ( r(s_t) + γ V_π(s_{t+1}) − V_π(s_t) ) ]`.
+The `V` terms telescope: the partial sum through `T` is `Σ_{t=0}^T γ^t (γ V(s_{t+1}) − V(s_t)) = −V(s_0) + γ^{T+1}V(s_{T+1})`, and the tail vanishes since `γ<1` and values are bounded. So the right side is `E_{τ∼π̃}[ −V_π(s_0) + Σ_t γ^t r(s_t) ] = −η(π) + η(π̃)`. Rearrange and the identity holds. Good — that's exact, no approximation.
+
+Now collect by state instead of by timestep. Define the discounted visitation frequency `ρ_π(s) = Σ_t γ^t P(s_t = s)`. Then
+`η(π̃) = η(π) + Σ_s ρ_{π̃}(s) Σ_a π̃(a|s) A_π(s,a)`.
+Stare at this. It says: if at *every* state the new policy has nonnegative expected advantage `Σ_a π̃(a|s) A_π(s,a) ≥ 0`, the return can't decrease. That's the classic policy-iteration intuition — pick actions with positive advantage, you improve. But there's a poison pill: the weighting is `ρ_{π̃}`, the *new* policy's visitation. To know how good `π̃` is I'd have to already know where `π̃` spends its time, which depends on `π̃`, which is what I'm solving for. Circular. With function approximation and finite samples I can't enforce nonnegative advantage at literally every state anyway, so some states will go negative, and then the `ρ_{π̃}` weighting really matters and I can't evaluate it.
+
+So I do the only tractable thing: pretend the visitation doesn't change. Define
+`L_π(π̃) = η(π) + Σ_s ρ_π(s) Σ_a π̃(a|s) A_π(s,a)` —
+same expression but with the *old* visitation `ρ_π`. Is that legitimate? It's exact in value at `π̃ = π`. For the gradient, write the exact objective as `η(π_θ) = η(π_{θ0}) + Σ_s ρ_{π_θ}(s) Σ_a π_θ(a|s)A_{π_{θ0}}(s,a)`. Differentiating at `θ0` gives two terms. The derivative of `π_θ(a|s)` is the policy-gradient term. The derivative of `ρ_{π_θ}(s)` is multiplied by `Σ_a π_{θ0}(a|s)A_{π_{θ0}}(s,a)`, which is zero at every state because advantage is centered under the old policy. So the visitation-derivative term drops exactly at the expansion point, and `∇_θ L_{π_{θ0}}(π_θ)|_{θ0} = ∇_θ η(π_θ)|_{θ0}` as well as `L_{π_{θ0}}(π_{θ0}) = η(π_{θ0})`. A sufficiently small step that improves `L` improves `η`. And there it is again — "sufficiently small." I've reproduced the vanilla-PG problem at a higher level: I have a surrogate `L` I can actually optimize, and zero guidance on how far to trust it.
+
+I need a *quantitative* statement: improve `L` by some amount, move the policy by at most some amount, and the true `η` is guaranteed to improve by at least something. A lower bound on improvement. Does anything like that exist? Yes — conservative policy iteration. Kakade and Langford proved exactly such a bound, but only for a peculiar update: the new policy is a *mixture* `π_new = (1−α)π_old + α π'`, where `π'` greedily maximizes `L`. For that mixture they show
+`η(π_new) ≥ L_{π_old}(π_new) − (2εγ/(1−γ)^2) α^2`, with `ε = max_s |E_{a∼π'}[A(s,a)]|`.
+This is the shape I want: a first-order-accurate surrogate `L` minus a penalty that's *quadratic* in how far you stepped (`α`). Improve the RHS and you provably improve η. The quadratic penalty is the leash. But the leash is tied to a policy class I'd never use — who parameterizes a deep net as an explicit mixture with a mixing coefficient α? Mixtures are unwieldy; I want the bound for *arbitrary* stochastic policies, with α replaced by some honest *distance* between `π_old` and `π_new`.
+
+So can I rederive the bound with a distance in place of the mixing coefficient? The mixture had a clean meaning for α: with probability `1−α` the new policy acts like the old one. Let me generalize that notion. Say `(π, π̃)` is an α-coupled pair if I can define a joint distribution over action pairs `(a, ã)|s` whose marginals are `π` and `π̃` and for which `P(a ≠ ã | s) ≤ α` at every state. Operationally: fix a random seed, sample from each — they agree for at least a fraction `1−α` of seeds. The mixture was just one way to realize this; coupling is the general version.
+
+Why does coupling buy me a quadratic error? Because the difference between `η(π̃)` and `L_π(π̃)` is *entirely* about visitation, i.e. about the trajectories drifting apart, and they only drift once `π` and `π̃` have actually disagreed. Let me make that precise. Write both quantities in the same form. Define the per-state mean advantage `Ā(s) = E_{a∼π̃(·|s)}[A_π(s,a)]`. Then from the exact identity,
+`η(π̃) = η(π) + E_{τ∼π̃}[ Σ_t γ^t Ā(s_t) ]`, and by construction
+`L_π(π̃) = η(π) + E_{τ∼π}[ Σ_t γ^t Ā(s_t) ]`.
+The *only* difference is whether the states `s_t` are drawn under `π̃` or under `π`. So `|η(π̃) − L_π(π̃)| = | Σ_t γ^t ( E_{s_t∼π̃}[Ā(s_t)] − E_{s_t∼π}[Ā(s_t)] ) |`, and I just need to bound, per timestep, how different those two state-expectations of `Ā` can be.
+
+First, how big is `Ā(s)` itself for a coupled pair? The old policy's expected advantage is zero, `E_{a∼π}[A_π(s,a)] = 0` (advantage is centered by definition). So I can write `Ā(s) = E_{ã∼π̃}[A(s,ã)] − E_{a∼π}[A(s,a)] = E_{(a,ã)}[ A(s,ã) − A(s,a) ]` under the coupling. When `a = ã` the integrand is zero, so only the disagreement events contribute: `Ā(s) = P(a≠ã|s) · E[ A(s,ã) − A(s,a) | a≠ã ]`. Each advantage is at most `ε := max_{s,a}|A_π(s,a)|` in magnitude, so the bracket is at most `2ε`, and `P(a≠ã)≤α`. Hence `|Ā(s)| ≤ 2 α ε`. Good — disagreement is rare *and* each disagreement is bounded, so the mean advantage is `O(α)` and `O(ε)`.
+
+Now the per-timestep visitation gap. Couple the *trajectories* with a shared seed: `τ` from `π`, `τ̃` from `π̃`, same random numbers. Let `n_t` = number of disagreements before time `t`. Split each state-expectation on whether `n_t = 0`:
+`E_{s_t∼π̃}[Ā(s_t)] = P(n_t=0) E[Ā|n_t=0] + P(n_t>0) E_{π̃}[Ā|n_t>0]`, and the same for `π`. Crucially, conditioned on `n_t = 0` the two trajectories have been *identical* up to `t`, so `s_t` has the same distribution under both — those terms cancel exactly. What's left:
+`E_{s_t∼π̃}[Ā] − E_{s_t∼π}[Ā] = P(n_t>0)( E_{π̃}[Ā|n_t>0] − E_{π}[Ā|n_t>0] )`.
+Bound each piece. The policies agree each step with prob ≥ `1−α`, so `P(n_t=0) ≥ (1−α)^t`, giving `P(n_t>0) ≤ 1−(1−α)^t`. And each conditional expectation of `Ā` is at most `max_s|Ā(s)| ≤ 2αε`, so their difference is at most `4αε`. Therefore
+`| E_{s_t∼π̃}[Ā(s_t)] − E_{s_t∼π}[Ā(s_t)] | ≤ 4 ε α (1−(1−α)^t)`.
+
+Sum over time with the `γ^t` weights:
+`|η(π̃) − L_π(π̃)| ≤ Σ_t γ^t · 4εα(1−(1−α)^t) = 4εα ( Σ_t γ^t − Σ_t (γ(1−α))^t ) = 4εα ( 1/(1−γ) − 1/(1−γ(1−α)) )`.
+Combine the two fractions: numerator `(1−γ(1−α)) − (1−γ) = γα`, denominator `(1−γ)(1−γ(1−α))`, so the whole thing is `4εα · γα / [(1−γ)(1−γ(1−α))] = 4εγα^2 / [(1−γ)(1−γ(1−α))]`. Since `1−γ(1−α) ≥ 1−γ`, the denominator is at least `(1−γ)^2`, giving the clean bound
+`|η(π̃) − L_π(π̃)| ≤ 4εγ α^2 / (1−γ)^2`.
+
+The last link: I assumed an α-coupling, but I want to state this in terms of an actual distance between the policies. Total variation is exactly the right one — there's a classic correspondence (the coupling/maximal-coupling lemma): if `D_TV(p‖q) = α` then there exists a joint distribution with those marginals that agrees with probability `1−α`. So taking `α = D_TV^max(π,π̃) := max_s D_TV(π(·|s)‖π̃(·|s))` realizes a coupling, and I land on the general bound:
+`η(π̃) ≥ L_π(π̃) − (4εγ/(1−γ)^2) D_TV^max(π,π̃)^2`, `ε = max_{s,a}|A_π(s,a)|`.
+This is what I wanted — the Kakade-Langford guarantee, now for *any* stochastic policies, with the mixing coefficient replaced by a genuine distance. (There's also a slicker route to the same `α^2` term via perturbation theory: write the resolvents `G=(1−γP_π)^{-1}`, `G̃=(1−γP_{π̃})^{-1}`, expand `G̃ = G + γGΔG + γ^2 GΔGΔG̃` with `Δ = P_{π̃}−P_π`; the leading term `γ rGΔGρ0` works out to exactly `L_π(π̃)−L_π(π)`, and the second-order term is bounded using `‖G‖_1 = 1/(1−γ)` and `‖Δ‖_1 = 2α`, again giving `4γεα^2/(1−γ)^2`. Two independent derivations agreeing makes me trust the constant.)
+
+TV is awkward to work with on parameterized distributions, but I have Pinsker's inequality lying around: `D_TV(p‖q)^2 ≤ D_KL(p‖q)`. So I can upper-bound the squared TV by KL and absorb it into the penalty:
+`η(π̃) ≥ L_π(π̃) − C · D_KL^max(π,π̃)`, with `C = 4εγ/(1−γ)^2`,
+where `D_KL^max = max_s D_KL(π(·|s)‖π̃(·|s))`. Now everything is in KL, which I can actually differentiate and estimate.
+
+And this bound isn't just a one-shot guarantee — it gives me an *algorithm* with monotonic improvement. Let `M_i(π) = L_{π_i}(π) − C·D_KL^max(π_i,π)`. The bound says `η(π) ≥ M_i(π)` for all π, and at `π = π_i` it's tight: `L` and the KL penalty are both exact there, so `η(π_i) = M_i(π_i)`. So if I set `π_{i+1} = argmax M_i`, then
+`η(π_{i+1}) − η(π_i) ≥ M_i(π_{i+1}) − M_i(π_i) ≥ 0`,
+the first inequality because `η ≥ M_i` everywhere and `η = M_i` at `π_i`, the second because `π_{i+1}` maximizes `M_i`. So `η` never decreases. This is a minorize-maximize scheme: `M_i` is a surrogate that touches `η` from below at the current policy and I keep maximizing it. (It also smells like proximal gradient / mirror descent — I'm maximizing an affine approximation of the objective minus a divergence penalty; the KL is the Bregman divergence of the entropy regularizer. Nice that it fits a known mold, but I don't need that to proceed.)
+
+So in principle I'm done: repeatedly maximize `L_{θ_old}(θ) − C·D_KL^max(θ_old,θ)`. Let me try to actually run this and watch where it hurts.
+
+First wall: that constant `C = 4εγ/(1−γ)^2`. With `γ = 0.99`, `(1−γ)^2 = 10^{-4}`, so `C` is on the order of `10^4 · ε`, and `ε` is a worst-case max advantage. The penalty is enormous, which means the maximizer of `M_i` barely moves from `θ_old` — microscopic steps. The bound is honest but worst-case, and worst-case is far too pessimistic for the typical step. If I literally used the theoretical `C` I'd train forever. I want big steps when they're safe.
+
+The fix: stop treating the KL as a *penalty* with a fixed coefficient and treat it as a *constraint* with a budget I choose. Instead of `max L − C·D_KL`, solve
+`max_θ L_{θ_old}(θ)  s.t.  D_KL^max(θ_old, θ) ≤ δ`.
+This is a trust region: optimize the surrogate but only within a region where the policy is allowed to move by `δ` in KL. The penalty form has a coefficient that's hard to choose robustly (and the theory's value is uselessly conservative); the constraint form has `δ`, which is *interpretable* — it directly says "the policy may move this far per update" — and gives consistent step sizes across iterations and across problems. This is the trade I'll make: keep the theory's *shape* (improve a surrogate, bounded policy movement) but swap the unusable constant for a tunable trust-region radius.
+
+Second wall: `D_KL^max`, the max over *all* states, is one constraint per state — infinitely many in a continuous space, and a max is nasty for sample-based estimation and for the optimizer. I can't enforce a separate constraint at every state. Soften it to the *average* KL over the normalized discounted state distribution generated by the old policy:
+`D̄_KL^ρ(θ_old,θ) = E_{s∼d_{θ_old}}[ D_KL(π_{θ_old}(·|s)‖π_θ(·|s)) ] ≤ δ`.
+This is a heuristic — averaging is weaker than bounding the max — but it's one scalar constraint I can estimate from samples, and the line search can enforce this sampled constraint on the nonlinear policy after the local step is proposed.
+
+Now make the objective something I can compute from a batch of `π_old` rollouts. Expand `L`:
+`L_{θ_old}(θ) = Σ_s ρ_{θ_old}(s) Σ_a π_θ(a|s) A_{θ_old}(s,a)` (dropping the additive constant `η(θ_old)`, which doesn't affect the argmax). Three substitutions make it an expectation over samples. Let `d_{θ_old}(s) = (1−γ)ρ_{θ_old}(s)` be the normalized discounted visitation distribution, so `Σ_s ρ_{θ_old}(s)[…] = (1/(1−γ))E_{s∼d_{θ_old}}[…]`; the positive factor `1/(1−γ)` scales the objective but leaves the constrained step unchanged after the KL-normalized step length is computed. Replace the advantage `A_{θ_old}` by the Q-value `Q_{θ_old}`; they differ by `V_{θ_old}(s)`, which is constant in the action, so `Σ_a π_θ(a|s)V(s)=V(s)` is independent of θ. Replace the inner `Σ_a π_θ(a|s)(…)` by an importance-sampling expectation under a sampling distribution `q`: `Σ_a π_θ(a|s) A(s,a) = E_{a∼q}[ (π_θ(a|s)/q(a|s)) A(s,a) ]`. Putting it together, the problem becomes exactly
+`max_θ E_{s∼d_{old}, a∼q}[ (π_θ(a|s)/q(a|s)) Q_{old}(s,a) ]  s.t.  E_{s∼d_{old}}[ D_KL(π_{old}(·|s)‖π_θ(·|s)) ] ≤ δ`.
+For the simplest estimator — single-path — I roll out `π_old` itself, so `q = π_old`, the ratio at the sampled action is `π_θ/π_old`, and `Q_old` is just the discounted return along the trajectory from that state-action. (There's a lower-variance alternative, *vine*: pick a set of states, branch off `K` actions each, estimate `Q` by short rollouts, and crucially use common random numbers across the `K` rollouts so the *differences* in Q between actions — which is all that drives the gradient — have their shared noise cancel. Concretely the per-state gradient depends on `Q(s,a_1)−Q(s,a_2)`, whose variance is `σ_1^2+σ_2^2−2ρσ_1σ_2` with shared seeds versus `σ_1^2+σ_2^2` without — strictly smaller whenever the rollouts are positively correlated, which they are. The cost is many simulator resets, so vine needs a resettable simulator; single-path runs on anything.)
+
+Now the real work: how do I actually *solve*
+`max_θ L(θ)  s.t.  D̄_KL(θ_old,θ) ≤ δ`
+for a network with thousands of parameters, every iteration, cheaply? The objective and constraint are both nonlinear in θ, but δ is small, so the step stays in a neighborhood of `θ_old` — I can use local approximations. Expand both around `θ_old`. To first order the surrogate is linear: `L(θ) ≈ L(θ_old) + g^T(θ−θ_old)` with `g = ∇_θ L|_{θ_old}` (the policy gradient). The constraint: `D̄_KL` is zero at `θ_old`, and its *gradient* is also zero there (KL is minimized at the matching distribution), so the leading term is quadratic: `D̄_KL(θ_old,θ) ≈ ½(θ−θ_old)^T A (θ−θ_old)`, where `A = ∇^2_θ D̄_KL|_{θ_old}` is the Hessian of the average KL — which is precisely the (average) Fisher information matrix. So the subproblem is
+`max_x g^T x  s.t.  ½ x^T A x ≤ δ`, with `x = θ−θ_old`.
+
+This is a quadratic-constrained linear program; solve it with a Lagrangian. The optimum lies on the constraint boundary and aligns the gradient of objective and constraint: `g = λ A x`, so `x ∝ A^{-1} g`. The direction is `A^{-1} g` — and wait. `A` is the Fisher information matrix; the step direction `A^{-1} g` is exactly the *natural gradient*. I didn't set out to build the natural gradient; it fell out of "linearize the objective, quadraticize the KL constraint." So the natural policy gradient is just the special case of this trust-region update where I take a quadratic model of the KL and a fixed step. And vanilla PG is the *other* special case: if instead of the KL metric I'd used a Euclidean trust region `½‖x‖^2 ≤ δ`, the same Lagrangian gives `x ∝ I^{-1} g = g`, the raw gradient. Same machine, different metric — and the whole earlier complaint about Euclidean geometry is now a one-line consequence of which `A` I plug in. (Drop the constraint entirely and fully maximize `L` and you recover policy iteration. One update, three classical methods as limits.)
+
+For the step length, don't leave it as a free learning rate — saturate the constraint. With direction `x = A^{-1}g`, scale it: `θ = θ_old + β x`. Plug into the quadratic constraint at equality: `½(βx)^T A (βx) = ½ β^2 (x^T A x) = δ`, so
+`β = sqrt( 2δ / (x^T A x) )`.
+This is the move that distinguishes me from plain natural gradient: natural gradient picks `β` (or the penalty `1/λ`) as a fixed hyperparameter and lives with whatever KL that produces; I *solve* for the `β` that hits the KL budget `δ` exactly, every step. That's the thing I think actually matters — it's why a fixed-step natural-gradient method can take steps that are fine on an easy task and fatal on a hard one, while a fixed-δ method moves the policy a controlled distance regardless.
+
+But forming `A` is a non-starter. For `n` parameters `A` is `n×n`; with tens of thousands of parameters that's hundreds of millions of entries to build, store, and *invert*. The whole point was to scale. So I must never materialize `A`. What do I actually need? I need `x = A^{-1}g`, i.e. to solve `A x = g`. Conjugate gradient solves a linear system using *only* matrix-vector products `v ↦ A v` — no explicit matrix. A handful of CG iterations (≈10) gives a good-enough `A^{-1}g`. So the whole problem reduces to: compute Fisher-vector products `A v` cheaply.
+
+Two ways to get `A v` without forming `A`. The clean general trick: `A` is the Hessian of `D̄_KL`, so `A v = ∇_θ( (∇_θ D̄_KL)^T v )` — take the gradient of the average KL, dot it with `v` (a scalar), differentiate again. Two backward passes, no matrix. That's a Hessian-vector product and any autodiff package does it. Even better, exploit the structure: the policy maps state `x` to distribution parameters `μ_θ(x)`, and `D_KL` depends on θ only through `μ`. Differentiating twice, `A = J^T M J` where `J = ∂μ/∂θ` is the Jacobian and `M` is the Hessian of the KL with respect to the *mean-parameters* μ — the second-derivative-of-μ term drops because the first derivative of KL w.r.t. its own matching argument is zero. `M` has a closed form per distribution family (e.g. for a diagonal Gaussian it's diagonal in the natural coordinates). Then `A v = J^T (M (J v))`: multiply by `J` (a forward/Jacobian-vector op), by `M` (closed form), by `J^T` (that's just backprop). Either way the Fisher-vector product costs about one gradient evaluation.
+
+One more economy: `A` is only a *metric* — it shapes the direction, it doesn't carry the reward signal. So I can estimate it on a *subsample* of the batch (say 10%) without much harm, while the gradient `g` uses all the data. With CG at ~10 iterations and FVPs on 10% of the data, computing the natural step `A^{-1}g` costs about the same as computing `g` alone. So the trust-region step is essentially free relative to a vanilla gradient step. (Practically I also add a tiny multiple of the identity to `A` inside the FVP — `A v → (A + ηI)v` — so CG stays numerically well-behaved; it's a small damping, nothing conceptual.)
+
+Also, when I build `A`, I build it as the analytic Hessian of the KL — integrating over the action at each state — rather than as the empirical covariance of the per-sample score gradients `∇log π ∇log π^T`. They have the same expectation, but the analytic form integrates out the sampled action, so it doesn't need me to store a dense Hessian or every per-sample gradient, and it's lower-variance. Same metric, cheaper and cleaner.
+
+Now the last hole. I solved a *quadratic* model of the constraint and a *linear* model of the objective, then stepped `β` to saturate the quadratic model. But the true KL and true surrogate are nonlinear; the model is only good locally, and `β` was computed to land exactly on the model's boundary — so the true KL after the step might exceed `δ`, or the true surrogate might not actually improve (these are the catastrophic-collapse steps that wreck training). I shouldn't trust the full computed step blindly. So: backtracking line search. Start at the full step and shrink geometrically. Try `θ_old + α^j β x` for `j = 0,1,2,…` with `0<α<1`, and accept the first `j` for which the *true* (nonlinear) surrogate `L` improves over `θ_old` *and* the *true* average KL is `≤ δ`. If none qualifies (rare), take no step. Without this check the algorithm occasionally takes a huge step that collapses performance; with it, the step is both an improvement and within budget by the real measures, not just the approximate ones. This is exactly the robustness that fixed-step natural gradient lacks: it commits to `β` from the quadratic model; I verify against the truth and back off if the model lied.
+
+Let me also nail down the policy parameterization, since `M`/the KL depend on it. For continuous control: a Gaussian with mean `μ_θ(s)` from the network and a diagonal covariance whose log-standard-deviations are state-independent learned parameters — so `π_θ(a|s) = N(a; μ_θ(s), diag(exp(2·logσ)))`. The KL between two diagonal Gaussians has a closed form, hence so do its gradient and `M`. For discrete actions (Atari): a categorical/softmax over logits from the network (factored across action components if needed), with the standard categorical KL. State-independent log-σ is a deliberate simplification — it makes the policy's exploration a smooth global quantity rather than something the net can collapse pointwise, and keeps the Fisher block for the σ-parameters clean.
+
+So the loop assembles itself. Collect trajectories under `π_old`; estimate advantages (subtract a learned value-function baseline `V(s)` fit by regression to returns to cut variance — and note the importance-sampling surrogate is baseline-invariant, so a self-normalized estimator already behaves like it has a baseline). Form `g = ∇_θ L` (the surrogate's gradient, which is the policy gradient weighted by advantages). Get the search direction `x = A^{-1}g` by conjugate gradient using Fisher-vector products. Compute the step `β = sqrt(2δ/(x^T A x))`. Backtrack along `α^j β x` until true KL ≤ δ and true surrogate improves. Refit the value function. Repeat. Every piece traces back to one demand: move the policy a controlled distance in KL each step so the true return reliably goes up.
+
+```python
+import numpy as np
+import torch
+import torch.nn as nn
+from torch.distributions import Normal
+
+# --- policy: state -> Gaussian over actions; diagonal, state-independent log-std.
+#     KL between two diagonal Gaussians is closed form, so its Hessian (the Fisher
+#     metric A) has a cheap matrix-vector product. (categorical for discrete actions)
+class GaussianPolicy(nn.Module):
+    def __init__(self, obs_dim, act_dim, hidden=(64, 64)):
+        super().__init__()
+        layers, last = [], obs_dim
+        for h in hidden:
+            layers += [nn.Linear(last, h), nn.Tanh()]; last = h
+        layers += [nn.Linear(last, act_dim)]
+        self.mu_net = nn.Sequential(*layers)
+        self.log_std = nn.Parameter(-0.5 * torch.ones(act_dim))  # state-independent
+
+    def dist(self, obs):
+        return Normal(self.mu_net(obs), torch.exp(self.log_std))
+
+    def logp(self, obs, act):
+        return self.dist(obs).log_prob(act).sum(-1)
+
+class ValueNet(nn.Module):                      # learned baseline V(s)
+    def __init__(self, obs_dim, hidden=(64, 64)):
+        super().__init__()
+        layers, last = [], obs_dim
+        for h in hidden:
+            layers += [nn.Linear(last, h), nn.Tanh()]; last = h
+        layers += [nn.Linear(last, 1)]
+        self.v = nn.Sequential(*layers)
+    def forward(self, obs):
+        return self.v(obs).squeeze(-1)
+
+def flat(grads):                                 # flatten a list of tensors
+    return torch.cat([g.reshape(-1) for g in grads])
+
+def set_flat_params(model, flat_params):          # write a flat vector into the net
+    i = 0
+    for p in model.parameters():
+        n = p.numel(); p.data.copy_(flat_params[i:i + n].view_as(p)); i += n
+
+def discount_cumsum(x, discount):
+    out = np.zeros_like(x, dtype=np.float32)
+    running = 0.0
+    for t in reversed(range(len(x))):
+        running = x[t] + discount * running
+        out[t] = running
+    return out
+
+def gae(rewards, values, last_val, gamma=0.99, lam=0.97):
+    rews = np.append(rewards, last_val)
+    vals = np.append(values, last_val)
+    deltas = rews[:-1] + gamma * vals[1:] - vals[:-1]
+    adv = discount_cumsum(deltas, gamma * lam)
+    ret = discount_cumsum(rews, gamma)[:-1]
+    return adv, ret
+
+# --- surrogate L: importance-weighted advantage under old-policy samples.
+#     This is the affine model whose gradient g is the policy gradient.
+def surrogate(policy, obs, act, adv, logp_old):
+    ratio = torch.exp(policy.logp(obs, act) - logp_old)
+    return (ratio * adv).mean()
+
+# --- average KL: zero and zero-gradient at theta_old; its Hessian is the Fisher A.
+def mean_kl(policy, obs, mu_old, std_old):
+    d = policy.dist(obs)
+    d_old = Normal(mu_old, std_old)
+    return torch.distributions.kl_divergence(d_old, d).sum(-1).mean()
+
+# --- Fisher-vector product A v = grad( (grad mean_kl) . v ): no matrix formed.
+def fisher_vector_product(policy, obs, mu_old, std_old, v, damping=0.1):
+    kl = mean_kl(policy, obs, mu_old, std_old)
+    g = flat(torch.autograd.grad(kl, policy.parameters(), create_graph=True))
+    gv = (g * v).sum()
+    hv = flat(torch.autograd.grad(gv, policy.parameters(), retain_graph=True))
+    return hv + damping * v                       # damping keeps CG well-conditioned
+
+# --- conjugate gradient solves A x = g using only matrix-vector products.
+def conjugate_gradient(Avp, b, iters=10, tol=1e-10):
+    x = torch.zeros_like(b)
+    r = b.clone(); p = b.clone(); r_dot = torch.dot(r, r)
+    for _ in range(iters):
+        Ap = Avp(p)
+        alpha = r_dot / (torch.dot(p, Ap) + 1e-8)
+        x += alpha * p; r -= alpha * Ap
+        r_dot_new = torch.dot(r, r)
+        if r_dot_new < tol: break
+        p = r + (r_dot_new / r_dot) * p; r_dot = r_dot_new
+    return x
+
+def trpo_step(policy, obs, act, adv, logp_old, mu_old, std_old,
+              delta=0.01, backtrack_coeff=0.8, backtrack_iters=10):
+    # g = gradient of the surrogate = policy gradient
+    L_old = surrogate(policy, obs, act, adv, logp_old)
+    L_old_value = L_old.detach()
+    g = flat(torch.autograd.grad(L_old, policy.parameters(), retain_graph=True))
+
+    # search direction x = A^{-1} g  (natural gradient), via CG + Fisher-vector products
+    Avp = lambda v: fisher_vector_product(policy, obs, mu_old, std_old, v)
+    x = conjugate_gradient(Avp, g)
+
+    # step length that saturates the KL budget:  1/2 beta^2 x^T A x = delta
+    xAx = torch.dot(x, Avp(x))
+    beta = torch.sqrt(2 * delta / (xAx + 1e-8))
+    full_step = beta * x
+
+    # backtracking line search on the TRUE objective + TRUE KL constraint:
+    # the quadratic/linear models are only local, so verify before committing.
+    old_params = flat([p.data for p in policy.parameters()])
+    for j in range(backtrack_iters):
+        step = (backtrack_coeff ** j) * full_step
+        set_flat_params(policy, old_params + step)
+        with torch.no_grad():
+            kl = mean_kl(policy, obs, mu_old, std_old)
+            L_new = surrogate(policy, obs, act, adv, logp_old)
+        if kl <= delta and L_new > L_old_value:
+            return                                # accept first step that truly improves & obeys delta
+    set_flat_params(policy, old_params)           # nothing worked: don't move
+
+def fit_value(value_net, obs, returns, opt, iters=80):
+    for _ in range(iters):
+        opt.zero_grad()
+        loss = ((value_net(obs) - returns) ** 2).mean()
+        loss.backward(); opt.step()
+
+def reset_env(env):
+    out = env.reset()
+    return out[0] if isinstance(out, tuple) else out
+
+def step_env(env, action):
+    out = env.step(action)
+    if len(out) == 5:
+        obs, reward, terminated, truncated, info = out
+        return obs, reward, terminated or truncated, info
+    return out
+
+def train(env, policy, value_net, epochs=50, steps=4000, gamma=0.99, lam=0.97):
+    v_opt = torch.optim.Adam(value_net.parameters(), lr=1e-3)
+    for epoch in range(epochs):
+        O, Ac, Rew, LogpOld, MuOld = [], [], [], [], []
+        o, ep_rew, ep_val = reset_env(env), [], []
+        for t in range(steps):
+            ot = torch.as_tensor(o, dtype=torch.float32)
+            with torch.no_grad():
+                d = policy.dist(ot); a = d.sample()
+                logp = d.log_prob(a).sum(-1); val = value_net(ot)
+            o2, r, done, _ = step_env(env, a.numpy())
+            O.append(o); Ac.append(a.numpy()); ep_rew.append(r); ep_val.append(val.item())
+            LogpOld.append(logp.item()); MuOld.append(d.mean.numpy()); o = o2
+            if done or t == steps - 1:
+                with torch.no_grad():
+                    last_val = 0.0 if done else value_net(torch.as_tensor(o, dtype=torch.float32)).item()
+                adv, ret = gae(np.array(ep_rew), np.array(ep_val), last_val, gamma, lam)
+                Rew.append((adv, ret)); o, ep_rew, ep_val = reset_env(env), [], []
+        adv = np.concatenate([a for a, _ in Rew]); ret = np.concatenate([r for _, r in Rew])
+        adv = (adv - adv.mean()) / (adv.std() + 1e-8)
+
+        obs = torch.as_tensor(np.array(O), dtype=torch.float32)
+        act = torch.as_tensor(np.array(Ac), dtype=torch.float32)
+        adv_t = torch.as_tensor(adv, dtype=torch.float32)
+        ret_t = torch.as_tensor(ret, dtype=torch.float32)
+        logp_old = torch.as_tensor(np.array(LogpOld), dtype=torch.float32)
+        mu_old = torch.as_tensor(np.array(MuOld), dtype=torch.float32)
+        std_old = torch.exp(policy.log_std).detach().expand_as(mu_old)
+
+        trpo_step(policy, obs, act, adv_t, logp_old, mu_old, std_old, delta=0.01)
+        fit_value(value_net, obs, ret_t, v_opt, iters=80)
+```
+
+To recap the causal chain: I wanted reliable monotonic improvement, and the brittleness traced to measuring the step in Euclidean parameter space instead of distribution space. The exact return identity gave a surrogate `L` that's first-order accurate but with no step-size guidance; the coupling argument turned that into a real lower bound `η ≥ L − C·D_KL^max`, which makes maximizing the surrogate provably improving. The theoretical penalty `C` was uselessly large, so I converted it into a KL *trust-region constraint* with an interpretable radius `δ`, softened max-KL to average-KL for tractability, and made the objective a sample-based importance-weighted advantage. Solving that constrained problem by linearizing the objective and quadraticizing the KL produced the natural-gradient direction `A^{-1}g` (with vanilla PG and policy iteration as other limits), a closed-form step `β = sqrt(2δ/x^T A x)` that hits the KL budget, conjugate gradient + Fisher-vector products to scale it to big networks, and a backtracking line search against the true objective and KL to stay honest where the local models lie.
