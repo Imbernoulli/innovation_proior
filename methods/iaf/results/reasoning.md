@@ -1,0 +1,241 @@
+OK, let me think about why my variational autoencoders keep leaving performance on the table. I'm
+fitting an inference model q(z|x) to a generative model p(x, z) by maximizing the variational lower
+bound, and I can write that bound two ways. As an expectation,
+
+  log p(x) ≥ E_{q(z|x)}[ log p(x, z) − log q(z|x) ] = L(x; θ),
+
+and, rearranged, L(x; θ) = log p(x) − KL(q(z|x) ‖ p(z|x)). The second form is the one that bites: the
+gap between my bound and the true log-likelihood is exactly the KL from my approximate posterior to the
+true posterior. If q can't represent the shape of p(z|x), I pay for it directly in a loose bound. And
+what shape do I let q take? A diagonal Gaussian, q(z|x) = N(μ(x), σ²(x)), reparameterized as
+z = μ(x) + σ(x) ⊙ ε with ε ~ N(0, I). True posteriors are essentially never factorized — the latent
+dimensions are correlated — so a diagonal Gaussian is structurally wrong, and the bound is loose by
+precisely the amount the posterior fails to factorize.
+
+So why am I stuck with diagonal Gaussians? Because of what I need from q at every single optimization
+step, for every datapoint in the minibatch. I need to (1) evaluate and differentiate q's density, and
+(2) draw a sample from q — both, both cheap. And if z is high-dimensional and I'm on a GPU, I need those
+operations to be *parallel across the dimensions of z*, not a loop. The diagonal Gaussian is the lazy
+answer that satisfies all three. The question is whether I can have a q that is far more expressive and
+still cheap-to-score, cheap-to-sample, and parallel — and that keeps working when z is not a few hundred
+dimensions but thousands of spatially-organized ones.
+
+The normalizing-flow idea is the natural place to push. Start from a simple z_0 ~ q(z_0|x) and refine it
+through a chain of invertible maps z_t = f_t(z_{t-1}, x); as long as each step's Jacobian determinant is
+computable, the density of the last iterate telescopes,
+
+  log q(z_T|x) = log q(z_0|x) − Σ_{t=1}^{T} log |det(∂z_t/∂z_{t-1})|.
+
+That's exactly the machinery I want — refine a Gaussian into something flexible while tracking its
+density. But the flows on offer don't scale. The planar flow f_t(z) = z + u·h(wᵀz + b) updates z through
+a single scalar bottleneck wᵀz + b: one direction per step. To reshape a high-dimensional correlated
+posterior I'd need a chain as long as the dimensionality is wide, which is hopeless for the latent space
+of an image model. These planar and radial flows are demonstrably fine for a few hundred dimensions and
+not for thousands. I need a flow step that touches *all* the dimensions at once with a cheap
+Jacobian — and that's a strong hint, because "cheap Jacobian determinant over all dimensions at once"
+is exactly what triangular structure buys.
+
+Where do I already have flexible, triangular-Jacobian functions over high-dimensional vectors? The
+autoregressive density estimators — MADE, PixelCNN, WaveNet. Take a vector y with a chosen order and a
+network that outputs a mean and standard deviation for each coordinate, [μ(y), σ(y)], with the
+autoregressive property: ∂[μ_i, σ_i]/∂y_j = [0, 0] for j ≥ i, i.e. coordinate i's parameters depend only
+on the earlier coordinates. Sampling from this model is the recursion
+
+  y_0 = μ_0 + σ_0·ε_0,    y_i = μ_i(y_{1:i-1}) + σ_i(y_{1:i-1})·ε_i,    ε ~ N(0, I).
+
+This is flexible and high-dimensional — exactly the kind of map I want — but it's useless as a posterior
+to sample from, because the recursion is *sequential*: to get y_i I need y_{1:i-1} first, so generating
+a D-dimensional sample costs D sequential steps. That's the opposite of the parallelism I need. So I'd
+write off autoregressive functions for sampling-based inference... except let me look at the *inverse*
+of that map before I give up.
+
+Given a full vector y, recover the noise that produced it: from y_i = μ_i + σ_i·ε_i,
+
+  ε_i = (y_i − μ_i(y_{1:i-1})) / σ_i(y_{1:i-1)).
+
+Stare at this for a second. Every μ_i and σ_i is a function of y_{1:i-1}, and the *entire* y is given —
+so I can compute all the μ_i, σ_i in one pass, and then every ε_i in parallel, because ε_i depends only
+on y, not on the other ε's. The forward (sampling) direction was sequential precisely because each y_i
+fed the next conditioner; the inverse direction has all of y in hand from the start, so it parallelizes
+completely. One pass, all dimensions at once. That's the first half of what I need.
+
+The second half is the Jacobian. The map y ↦ ε is autoregressive, so ∂ε_i/∂y_j = 0 for j > i — the
+Jacobian dε/dy is lower-triangular. Its diagonal is ∂ε_i/∂y_i, and since μ_i and σ_i depend only on
+*earlier* coordinates, the only y_i-dependence on the diagonal is through the explicit division, giving
+∂ε_i/∂y_i = 1/σ_i(y). The determinant of a triangular matrix is the product of its diagonal, so
+
+  log |det(dε/dy)| = Σ_i −log σ_i(y).
+
+A sum of logs of the per-coordinate scales — trivially cheap, and over all dimensions at once. So the
+inverse autoregressive transformation is flexible, parallel, *and* has a dead-simple log-determinant.
+It's the flow step I couldn't find. The sampling direction of the autoregressive model is sequential and
+useless to me; its inverse is parallel and exactly right. So I'll build a normalizing flow out of these
+inverse autoregressive steps.
+
+Now make it concrete as a posterior. The encoder reads x and produces the parameters of an initial,
+simple Gaussian — μ_0, σ_0 — and one extra vector h, a context I'll feed into every refinement step so
+each step can condition on the datapoint without re-running the encoder. Initialize the chain by
+reparameterizing the initial Gaussian,
+
+  z_0 = μ_0 + σ_0 ⊙ ε,    ε ~ N(0, I),
+
+and then apply T refinement steps, each a *different* autoregressive network taking z_{t-1} and h and
+outputting μ_t, σ_t:
+
+  z_t = μ_t + σ_t ⊙ z_{t-1}.
+
+Each step is autoregressive with respect to z_{t-1}, so ∂z_t/∂z_{t-1} is triangular with σ_t on the
+diagonal and determinant ∏_i σ_{t,i}. (The Jacobian with respect to h is unconstrained, but that's fine
+— h is just extra context, it doesn't enter the z-to-z determinant.) Now assemble the density. The
+initial step gives log q(z_0|x) = log N(ε; 0, I) − Σ_i log σ_{0,i}, because z_0 = μ_0 + σ_0 ⊙ ε rescales
+the noise; writing out the standard Gaussian, that's −Σ_i (½ ε_i² + ½ log 2π + log σ_{0,i}). Each later
+step contributes −Σ_i log σ_{t,i} to the telescoped density. Summing over the chain,
+
+  log q(z_T|x) = − Σ_i ( ½ ε_i² + ½ log 2π + Σ_{t=0}^{T} log σ_{t,i} ).
+
+That's the exact density of my flexible posterior, computable in one forward pass per step, all
+dimensions in parallel, with the flexibility growing with the expressiveness of the autoregressive nets
+and the depth of the chain.
+
+Before I trust it I should sanity-check that the simplest version recovers something I understand. Take
+one linear autoregressive step. A linear inverse-autoregressive map of a Gaussian should give a Gaussian
+— but which one? Any full-covariance Gaussian N(m, C) can be written as an autoregressive model
+coordinate by coordinate: y_i = μ_i(y_{1:i-1}) + σ_i(y_{1:i-1})·ε_i with the conditional mean and
+variance given by the usual Gaussian-conditioning formulas, μ_i = m_i + C[i, 1:i-1]·C[1:i-1, 1:i-1]^{-1}
+(y_{1:i-1} − m_{1:i-1}) and σ_i² = C[i, i] − C[i, 1:i-1]·C[1:i-1, 1:i-1]^{-1}·C[1:i-1, i]. Inverting that
+model is linear, ε = (y − μ(y))/σ(y) = L(y − m), and L is exactly the inverse Cholesky factor of C — a
+lower-triangular matrix. So if I let my encoder output a lower-triangular L(x) (and a mean) and start
+from a factorized Gaussian y = μ(x) + σ(x) ⊙ ε, then a single linear inverse-autoregressive step z = L(x)·y
+turns that factorized Gaussian into an arbitrary *full-covariance* Gaussian posterior. Since the
+parameterization is overcomplete I can pin m = 0 and put ones on L's diagonal and still reach every
+correlation structure. The simplest IAF is "learn the inverse Cholesky," which gives full-covariance
+Gaussian posteriors — a clean, correct special case. Good; the machinery does what it should at the bottom,
+and the nonlinear autoregressive nets generalize far beyond Gaussian from there.
+
+Now a wall I'll hit in practice. The step z_t = μ_t + σ_t ⊙ z_{t-1} multiplies by a learned σ_t every
+layer, and an unconstrained σ_t can blow up or vanish across a deep chain — multiplying T learned scales
+together is numerically treacherous, and the chain has no natural starting point. I want a step that's
+bounded and that begins benign. Let the autoregressive net output two *unconstrained* vectors m_t and s_t,
+squash the scale through a sigmoid, σ_t = sigmoid(s_t) ∈ (0, 1), and write the update as a gated blend:
+
+  z_t = σ_t ⊙ z_{t-1} + (1 − σ_t) ⊙ m_t.
+
+This is just the general step with μ_t = (1 − σ_t) ⊙ m_t, so the density formula above is unchanged — the
+diagonal of the Jacobian is still σ_t and the log-det is still −Σ log σ_t. But now σ_t is bounded in (0, 1),
+so the per-step scaling can't explode; it's an LSTM-style convex combination of "keep z_{t-1}" and "write
+the new value m_t." And it hands me a free initialization: if I bias s_t so that σ_t starts near 1 — push
+s_t up by a small positive constant before the sigmoid, the LSTM forget-gate-bias trick — then z_t ≈ z_{t-1}
+at the start and the whole flow begins as the identity, so optimization starts from a clean factorized
+Gaussian and only has to *learn the deviations* from it rather than fight an arbitrary initial warp. The
+gating is for numerical stability; the bias init is for a benign starting point.
+
+One more cheap improvement. Each autoregressive step has a fixed variable order, and a fixed order means
+the late coordinates can condition on everything while the early ones condition on little. If I *reverse*
+the order of the variables between steps, the coordinates that were "early" (and barely conditioned) in one
+step become "late" (richly conditioned) in the next, so the chain mixes dependencies in both directions. A
+reversal is just a permutation — volume-preserving, determinant ±1 in magnitude — so it leaves the density
+formula exactly as it is. Free flexibility.
+
+Now, where does the flexibility actually buy me a tighter bound, and is improving q the only lever? Recall
+L = log p(x) − KL(q ‖ p(z|x)): the gap depends on how well q matches the *true* posterior, and the true
+posterior is itself a function of the generative model p. So I can also make the bound easier to close by
+making the true posterior a shape my IAF can match. Concretely, in a deep latent-variable model with
+latents z_1, …, z_L, let the *prior* be autoregressive across the layers,
+
+  p(z_{1:L}) = p(z_L) ∏_{l<L} p(z_l | z_{l+1:L}),
+
+rather than factorized. A more flexible prior makes the true posterior more flexible too, and an IAF
+posterior is well-equipped to match it — so I get a tighter bound without making the generative model
+itself any less flexible. The IAF on the q side and an autoregressive prior on the p side pull in the same
+direction: both increase flexibility where the KL gap lives.
+
+Let me write the core IAF step, the numerically-stable gated version with the forget-gate-bias init. The
+autoregressive network is a masked net (MADE-style) that takes the current z and the context h and outputs
+the two unconstrained vectors:
+
+```python
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+
+class AutoregressiveNN(nn.Module):
+    """Masked net: outputs (m, s) for every coordinate with output i depending only on z_{1:i-1};
+    a projection of the context h is added (h is unconstrained, so it doesn't affect the Jacobian)."""
+    def __init__(self, dim, hidden, context_dim):
+        super().__init__()
+        self.made = MADE(dim, hidden, n_out=2 * dim)        # degree-masked feedforward net
+        self.context = nn.Linear(context_dim, 2 * dim)
+
+    def forward(self, z, h):
+        m, s = torch.chunk(self.made(z) + self.context(h), 2, dim=1)
+        return m, s
+
+
+class IAFStep(nn.Module):
+    """One inverse-autoregressive refinement: z <- sigma*z + (1-sigma)*m, sigma = sigmoid(s+bias).
+    Contributes -sum(log sigma) to log q(z|x)."""
+    def __init__(self, dim, hidden, context_dim, forget_bias=1.5):
+        super().__init__()
+        self.net = AutoregressiveNN(dim, hidden, context_dim)
+        self.forget_bias = forget_bias
+
+    def forward(self, z, h):
+        m, s = self.net(z, h)
+        sigma = torch.sigmoid(s + self.forget_bias)         # start near 1 -> step starts as identity
+        z = sigma * z + (1.0 - sigma) * m                   # LSTM-style bounded blend
+        log_det = -torch.log(sigma + 1e-8).sum(dim=1)       # -sum_i log sigma_i
+        return z, log_det
+```
+
+the encoder emits the initial Gaussian's parameters and the context, and the posterior reparameterizes,
+then refines, accumulating the exact log-density of the chain:
+
+```python
+import math
+
+
+class IAFPosterior(nn.Module):
+    def __init__(self, x_dim, z_dim, context_dim, n_steps, hidden):
+        super().__init__()
+        self.z_dim = z_dim
+        self.encoder = Encoder(x_dim, z_dim, context_dim)   # -> (mu0, log_sigma0, h)
+        self.steps = nn.ModuleList(
+            [IAFStep(z_dim, hidden, context_dim) for _ in range(n_steps)])
+
+    def sample_and_log_prob(self, x):
+        mu0, log_sigma0, h = self.encoder(x)
+        eps = torch.randn_like(mu0)
+        z = mu0 + torch.exp(log_sigma0) * eps               # z_0 = mu_0 + sigma_0 * eps
+        # log q(z_0|x) = -sum_i ( 1/2 eps_i^2 + 1/2 log 2pi + log sigma_{0,i} )
+        log_q = -(0.5 * eps ** 2 + 0.5 * math.log(2 * math.pi) + log_sigma0).sum(dim=1)
+        for i, step in enumerate(self.steps):               # reverse variable order between steps
+            z = z.flip(dims=(1,)) if i % 2 == 1 else z
+            z, log_det = step(z, h)
+            log_q = log_q + log_det                         # accumulate -sum log sigma_t
+        return z, log_q
+```
+
+and the bound is the usual reparameterized ELBO, now with this flexible log q:
+
+```python
+def elbo(decoder, prior, x, z, log_q):
+    log_px_z = decoder.log_prob(x, z)                       # log p(x|z)
+    log_pz = prior.log_prob(z)                              # log p(z); may be an autoregressive prior
+    return (log_px_z + log_pz - log_q).mean()               # E[ log p(x,z) - log q(z|x) ]
+
+# optimize -elbo(...) with Adam
+```
+
+So the causal chain: the VAE bound is loose by KL(q ‖ true posterior), and a diagonal-Gaussian q can't
+match a correlated posterior, so I wanted a much more flexible q that is still cheap-to-score,
+cheap-to-sample, and parallel in high dimensions; planar flows squeeze everything through a scalar and
+don't scale; autoregressive networks are flexible and high-dimensional but their *sampling* is sequential
+— yet their *inverse* ε = (y − μ)/σ is parallel in one pass and has a triangular Jacobian with log-det
+−Σ log σ, exactly the flow step I needed; chaining these inverse-autoregressive steps over a
+reparameterized Gaussian gives an exact, cheap posterior density, whose simplest linear instance is just
+the inverse-Cholesky map to a full-covariance Gaussian; a sigmoid-gated LSTM-style update with a
+forget-gate-bias init keeps the deep chain numerically stable and starting from the identity; reversing
+the order between steps mixes dependencies for free; and pairing the IAF posterior with an autoregressive
+prior tightens the bound from the other side, since a more flexible prior makes the true posterior a shape
+the IAF can match.

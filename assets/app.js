@@ -139,17 +139,18 @@
           '<span class="nav-link-title">' + escapeHtml(m.title) + "</span>";
         if (m.slug === current.slug) a.setAttribute("aria-current", "page");
 
-        var ext = document.createElement("a");
-        ext.className = "nav-arxiv";
-        ext.href = "https://arxiv.org/abs/" + m.arxiv;
-        ext.target = "_blank";
-        ext.rel = "noopener";
-        ext.title = "arXiv:" + m.arxiv;
-        ext.textContent = m.arxiv;
-        ext.addEventListener("click", function (e) { e.stopPropagation(); });
-
         li.appendChild(a);
-        li.appendChild(ext);
+        if (m.arxiv) {
+          var ext = document.createElement("a");
+          ext.className = "nav-arxiv";
+          ext.href = "https://arxiv.org/abs/" + m.arxiv;
+          ext.target = "_blank";
+          ext.rel = "noopener";
+          ext.title = "arXiv:" + m.arxiv;
+          ext.textContent = m.arxiv;
+          ext.addEventListener("click", function (e) { e.stopPropagation(); });
+          li.appendChild(ext);
+        }
         ul.appendChild(li);
       });
       section.appendChild(ul);
@@ -182,8 +183,15 @@
     $("article-title").textContent = m.title;
     $("article-slug").textContent = m.slug;
     var ax = $("article-arxiv");
-    ax.href = "https://arxiv.org/abs/" + m.arxiv;
-    ax.textContent = "arXiv:" + m.arxiv + " ↗";
+    if (m.arxiv) {
+      ax.hidden = false;
+      ax.href = "https://arxiv.org/abs/" + m.arxiv;
+      ax.textContent = "arXiv:" + m.arxiv + " ↗";
+    } else {
+      ax.hidden = true;
+      ax.removeAttribute("href");
+      ax.textContent = "";
+    }
     document.title = m.title + " — Innovation Prior";
     syncTabs();
   }
