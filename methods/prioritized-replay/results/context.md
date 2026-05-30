@@ -1,0 +1,104 @@
+# Context
+
+## Research question
+
+An online value-based reinforcement learning agent interacts with an environment, observes a stream of transitions `(S_{t-1}, A_{t-1}, R_t, γ_t, S_t)`, and incrementally fits a value function. To stabilize gradient-based training of a deep value network, the agent does not learn from each transition once and discard it; instead it stores transitions in a large replay memory and revisits them many times. The question this raises is narrow but consequential: given a fixed pool of stored transitions whose contents we do not control, **which transitions should we replay, and how often, to learn as much as possible per update?**
+
+The prevailing answer is to sample uniformly at random. That choice is made for convenience — it breaks the temporal correlation between consecutive transitions and is trivial to implement — but it replays every transition at the same frequency at which it happened to be experienced, with no regard for how informative each one is. In many environments the informative transitions are rare and buried under a mass of redundant ones: a sparse final reward reached only after a long precise sequence of actions, surrounded by near-identical failure cases. Under uniform replay the network spends almost all of its updates on transitions it already predicts well. A method that could concentrate replay on the transitions that still carry learning signal would reduce the number of environment interactions needed to reach a given level of performance — and environment interaction is usually the scarce resource, far scarcer than compute or memory. The difficulty is to identify "informative" cheaply, online, from samples, with a function approximator, and without skewing what the agent ultimately converges to.
+
+## Background
+
+**Experience replay.** Lin (1992) introduced storing past transitions and reusing them for multiple learning updates rather than learning once and discarding. This serves two purposes: mixing recent and older transitions in a minibatch decorrelates the updates, restoring something closer to the i.i.d. assumption that stochastic gradient methods rely on; and rare transitions survive to be used more than once instead of being forgotten after a single update. Mnih et al. (2013, 2015) made experience replay the backbone of a deep value-based agent: a sliding-window memory of the last `N = 10^6` transitions, from which minibatches of 32 are drawn uniformly at random, with one minibatch update performed for every 4 new transitions entering the memory — so on average each transition is replayed about 8 times before it slides out.
+
+**TD error as a measure of surprise.** For a value function `Q(S, A)`, the temporal-difference error of a transition is `δ = R + γ max_a Q(S', a) − Q(S, A)`: the gap between the current estimate and its one-step bootstrap target. Incremental TD algorithms such as Q-learning (Watkins & Dayan, 1992) and SARSA already compute `δ` and move the parameters in proportion to it, `θ ← θ + η · δ · ∇_θ Q`. The magnitude `|δ|` indicates how far a transition's value is from where the bootstrap says it should be — how "surprising" it is — and is available essentially for free as a by-product of the update.
+
+**Prioritizing updates in planning.** It has long been known that the order of value backups matters. Prioritized sweeping (Moore & Atkeson, 1993; generalized by Andre, Friedman & Parr, 1998) maintains a priority queue over states in a *model-based* planner, ordering Bellman backups by the size of the value change a backup would produce, and propagating updates backward from the states whose values just changed. Van Seijen & Sutton (2013) connect the priority directly to the TD error. These methods established that prioritizing *which* update to perform yields large data- and time-efficiency gains — but they assume a model and operate over a tabular set of states, choosing states to back up rather than transitions to replay.
+
+**Non-uniform sampling with a correction, elsewhere.** TD error has been used to focus resources in other settings — deciding where to explore (White, Modayil & Sutton, 2014) or which features to add (Geramifard et al., 2011; Sun et al., 2011). In supervised learning, the standard tools for class-imbalanced data are re-sampling, under- and over-sampling, and boosting-style ensembles (Galar et al., 2012). Hinton (2007) sampled training examples non-uniformly by their error and applied an importance-sampling correction to compensate, obtaining roughly a 3× speedup on MNIST — a precedent that error-driven sampling combined with an importance correction can accelerate learning.
+
+**Why uniform replay is suspected to be wasteful.** Two qualitative observations about existing replay agents motivate the search. First, with a sliding-window memory, some fraction of stored transitions are never replayed at all before they drop out, and many more are replayed for the first time only long after they were encountered. Second, uniform sampling is implicitly biased toward stale transitions, generated by a policy that may be hundreds of thousands of updates out of date. Both suggest that the *frequency* with which a transition is replayed should not simply mirror the frequency at which it was experienced.
+
+## Baselines
+
+**DQN with uniform experience replay (Mnih et al., 2015).** A deep network represents `Q(S, A; θ)`. Transitions are stored in a sliding-window memory of `N = 10^6`. Training samples minibatches of 32 transitions uniformly at random; for each transition it forms the target `y = R + γ max_a Q(S', a; θ_target)` using a periodically-copied target network `θ_target`, and takes a gradient step on `(y − Q(S, A; θ))^2`. Rewards and TD errors are clipped to `[−1, 1]` for stability. One update per 4 new transitions. The replay mechanism is the relevant component here, and its gap is exactly the question above: every transition is sampled with probability `1/N`, independent of how much the network could still learn from it, so updates are spent largely on already-mastered transitions.
+
+**Double DQN (van Hasselt, Guez & Silver, 2016; Double Q-learning, van Hasselt, 2010).** Identical to DQN except for the target: the `max` operator that both selects and evaluates the next action causes systematic overestimation of action values, because the same noisy estimates are used twice. Double Q-learning decouples them — select the action with the online network, evaluate it with the target network: `y = R + γ Q(S', argmax_a Q(S', a; θ); θ_target)`. This reduces overestimation bias and was the state of the art on the Atari benchmark. It still samples uniformly from the replay memory — it leaves the *which-transition-to-replay* question untouched.
+
+**A greedy upper bound.** As a thought experiment one can imagine an oracle that, at each step, replays the single stored transition whose update would most reduce the agent's loss measured in hindsight after the update. This is not implementable online, but it bounds how much prioritization could possibly help and serves as a target for any practical proxy to approach.
+
+## Evaluation settings
+
+The natural yardstick is the Arcade Learning Environment (Bellemare et al., 2012): end-to-end RL from raw Atari 2600 pixels across a suite of 49–57 diverse games, exercising delayed credit assignment, partial observability, and hard function approximation. Agents use the standard convolutional DQN architecture, frame stacking, and an `ε`-greedy behavior policy, trained over roughly 200 million frames. Scores are reported per game and aggregated by normalizing each against a random agent and a human reference, `score_normalized = (score_agent − score_random) / |score_human − score_random|`, then taking median and mean across games. Two evaluation protocols exist: a "test" protocol that randomizes start states with up to 30 no-ops, and a more demanding "human starts" protocol (introduced with the Gorila agent, Nair et al. 2015) that initializes episodes from states sampled from human play traces, requiring more generalization. Learning *speed* — frames needed to reach a given normalized score — is a secondary metric. A controlled diagnostic environment for isolating the value of replay order is also available: a small chain ("Blind Cliffwalk") of `n` states with one rewarding action sequence of probability `2^{−n}`, solvable to a fixed MSE threshold, where the number of updates to convergence can be measured exactly under different replay orders. A separate sanity check on non-RL data uses a class-imbalanced variant of MNIST (LeCun et al., 1998): keep all examples of digits 5–9 but only 1% of digits 0–4, train a small LeNet-style convolutional network, and measure balanced test error.
+
+## Code framework
+
+The primitives below already exist: a sliding-window replay buffer with uniform sampling, a value network with a target copy, the Double-DQN target, and an SGD-style training loop. The contribution will occupy the sampling rule, an importance-weight return, and a priority-update hook — left as stubs.
+
+```python
+import numpy as np
+import random
+
+class ReplayBuffer:
+    """Sliding-window memory, uniform sampling. (Lin 1992 / DQN.)"""
+    def __init__(self, size):
+        self._storage = []
+        self._maxsize = size
+        self._next_idx = 0
+
+    def __len__(self):
+        return len(self._storage)
+
+    def add(self, obs_t, action, reward, obs_tp1, done):
+        data = (obs_t, action, reward, obs_tp1, done)
+        if self._next_idx >= len(self._storage):
+            self._storage.append(data)
+        else:
+            self._storage[self._next_idx] = data
+        self._next_idx = (self._next_idx + 1) % self._maxsize
+
+    def _encode_sample(self, idxes):
+        # gather (obs, act, rew, next_obs, done) batches by index
+        ...
+
+    def sample(self, batch_size):
+        idxes = [random.randint(0, len(self._storage) - 1)
+                 for _ in range(batch_size)]
+        return self._encode_sample(idxes)
+
+
+# --- the slot the method will fill: a non-uniform sampler over the buffer ---
+class WeightedReplayBuffer(ReplayBuffer):
+    def __init__(self, size, *params):
+        super().__init__(size)
+        # TODO: data structure(s) that store a per-transition scalar score and
+        #       allow O(log N) sampling proportional to it and O(log N) update
+        pass
+
+    def add(self, *args, **kwargs):
+        # TODO: insert new transition with a default (maximal) score
+        pass
+
+    def sample(self, batch_size, *params):
+        # TODO: draw indices non-uniformly from the stored scores;
+        #       also return a per-sample correction weight + the indices
+        pass
+
+    def update_scores(self, idxes, new_scores):
+        # TODO: write back updated per-transition scores after a learning step
+        pass
+
+
+def td_error(batch, online_net, target_net, gamma):
+    """Double-DQN target minus current estimate, per transition."""
+    s, a, r, s2, done = batch
+    next_a = online_net(s2).argmax(axis=1)
+    y = r + (1.0 - done) * gamma * target_net(s2)[range(len(s2)), next_a]
+    return y - online_net(s)[range(len(s)), a]
+
+
+def train_step(buffer, online_net, target_net, opt, batch_size, gamma):
+    # TODO: sample (possibly non-uniformly) -> compute td_error
+    #       -> apply per-sample correction weight to the update
+    #       -> step optimizer -> write updated scores back to the buffer
+    pass
+```

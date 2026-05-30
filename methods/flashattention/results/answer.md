@@ -62,7 +62,7 @@ block-sparsity mask) achieves Θ(Nd + N²d²s/M), where s is the fraction of non
 
 ## Working code
 
-Grounded in the fused-kernel running-statistics / accumulator-rescale pattern. The forward keeps a
+The fused-kernel running-statistics / accumulator-rescale pattern: the forward keeps a
 temporary running max and saves the final log-sum-exp statistic for the backward.
 
 ```python

@@ -48,7 +48,7 @@ Key hyperparameters: Adam $(\beta_1,\beta_2)=(0.9,0.95)$; RM lr 9e-6, batch 64 p
 
 ## Working code
 
-The code mirrors the relevant TRL conventions: `-logsigmoid(chosen - rejected)`, token reward `-kl_coef * (logp - ref_logp)`, GAE, and the negative PPO surrogate with `max()`.
+Reward-model loss `-logsigmoid(chosen - rejected)`, per-token reward `-kl_coef * (logp - ref_logp)` plus the RM score, GAE, and the negative PPO surrogate optimized with `max()`.
 
 ```python
 import torch

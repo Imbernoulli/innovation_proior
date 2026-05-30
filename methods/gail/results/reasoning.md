@@ -1,0 +1,167 @@
+OK, let me think this through from scratch. I have a batch of expert trajectories — just sequences of state-action pairs $(s_0,a_0),(s_1,a_1),\dots$ rolled out by some policy $\pi_E$. No reward signal. I can't ask the expert what to do in a new state, and I can't even watch the expert while I train. I can roll out my own policy in the environment and see where it goes, but that's it. What I want at the end isn't a number or a cost — it's a policy that acts like the expert.
+
+The dumb thing first: treat it as supervised learning. Pool all the expert's $(s,a)$ pairs and fit $\pi(a\mid s)$ by maximum likelihood. That's behavioral cloning, and it's appealing because it needs zero environment interaction. But I already know the failure mode and it's nasty. I'm fitting a single-timestep conditional under the *expert's* state distribution. At deployment my policy isn't perfect — say it has per-step error $\varepsilon$. One wrong action nudges me into a state slightly off the expert's path. But I was only ever trained on the expert's path, so off it I'm more likely to err, which pushes me further off, and so on. The errors don't average out, they compound: over a horizon $T$ the regret scales like $\varepsilon T^2$, not $\varepsilon T$. The root cause is covariate shift — train distribution is the expert's visited states, test distribution is my own, and they drift apart precisely because I act. Throwing data at it helps but only because it shrinks $\varepsilon$; the quadratic blow-up is structural.
+
+So the lesson is: don't fit single-timestep decisions on a fixed distribution. Score whole trajectories instead, so that being off-distribution is itself penalized. That's exactly what inverse RL does. Recover a cost $c$ under which the expert is optimal, then run RL on $c$ to get a policy. Because the cost ranks entire trajectories, a policy that wanders off the expert's path accumulates cost; there's no single-step covariate-shift trap. This is the route that has actually worked at scale — taxi-route prediction, footstep planning.
+
+Let me write down the maximum-causal-entropy version of IRL, which is the one I'll commit to. It fits a cost from a family $\mathcal C$ by
+$$\max_{c\in\mathcal C}\ \Big(\min_{\pi\in\Pi} -H(\pi) + \mathbb E_\pi[c]\Big) - \mathbb E_{\pi_E}[c],$$
+where $H(\pi)=\mathbb E_\pi[-\log\pi(a\mid s)]$ is the discounted causal entropy and $\mathbb E_\pi[c]=\mathbb E[\sum_t \gamma^t c(s_t,a_t)]$. Read it: the inner $\min_\pi -H(\pi)+\mathbb E_\pi[c]$ is "the best (entropy-regularized) policy can do against cost $c$" — call that procedure $\mathrm{RL}(c)$. The outer $\max_c$ pushes the cost up so that this best-anyone-can-do is still worse than the expert's cost $\mathbb E_{\pi_E}[c]$ by as much as possible. So IRL is hunting for a cost that makes the expert look maximally good relative to everyone else.
+
+But here's the thing that bugs me. To *use* IRL I run RL on the recovered cost. And IRL itself has RL ($\min_\pi$) sitting in its inner loop — every time I nudge the cost, I have to (re)solve a reinforcement-learning problem. That's the expense everyone complains about. And after all that, what do I get? A cost function. Not actions. I have to run RL *again* on it. If my true goal is just to act like the expert, why am I learning a cost at all, paying for an inner RL loop, and then paying for RL once more on the output?
+
+Let me make that question precise instead of rhetorical. Take the *whole* pipeline — run IRL, get a cost $\tilde c$, then run RL on it — and ask what policy $\mathrm{RL}(\tilde c)$ actually is, as a function of the expert. If I can characterize $\mathrm{RL}\circ\mathrm{IRL}(\pi_E)$ in closed form, maybe I can compute that policy directly and skip the nesting.
+
+To do that cleanly I want to be greedy about expressiveness: let the cost class $\mathcal C$ be *all* functions $\mathbb R^{\mathcal S\times\mathcal A}$, because a tiny linear class can't explain complex behavior anyway. With $\mathcal C$ that big I'll obviously overfit a finite dataset, so I'll attach a closed proper convex regularizer $\psi:\mathbb R^{\mathcal S\times\mathcal A}\to\overline{\mathbb R}$ to the cost. (Convexity here is on the *full* function space, not on some small parameter vector — that's barely a restriction, and as I'll see, $\psi$ is going to turn out to be the star of the show, not a nuisance.) So
+$$\mathrm{IRL}_\psi(\pi_E)=\arg\max_{c}\ -\psi(c) + \Big(\min_\pi -H(\pi)+\mathbb E_\pi[c]\Big)-\mathbb E_{\pi_E}[c].$$
+
+Now, optimizing over policies $\pi$ is awkward because $\mathbb E_\pi[c]$ is nonlinear and nonconvex in $\pi$ through the trajectory distribution. Let me change variables to something the cost is *linear* in. Define the occupancy measure
+$$\rho_\pi(s,a)=\pi(a\mid s)\sum_{t=0}^\infty \gamma^t P(s_t=s\mid\pi)=\sum_{t=0}^\infty\gamma^t P(s_t=s,a_t=a\mid\pi),$$
+the discounted distribution of state-action pairs I actually visit under $\pi$. Then $\mathbb E_\pi[c]=\sum_{s,a}\rho_\pi(s,a)\,c(s,a)$ — bilinear in $(\rho,c)$, linear in each. Good. Two facts I need about the set of valid occupancies $\mathcal D=\{\rho_\pi:\pi\in\Pi\}$.
+
+First, $\mathcal D$ is convex — in fact an affine slice of the nonnegative orthant. The discounted visitation satisfies a flow conservation: the rate of entering $s$ equals the start rate plus the discounted rate of transitioning in, $\sum_a\rho(s,a)=p_0(s)+\gamma\sum_{s',a}P(s\mid s',a)\rho(s',a)$, together with $\rho\ge 0$. Those are linear constraints, so $\mathcal D$ is a convex polytope. Optimizing over $\mathcal D$ instead of $\Pi$ turns a nasty policy problem into a convex one.
+
+Second, the map between policies and occupancies is a *bijection*. Given any $\rho\in\mathcal D$, set $\pi_\rho(a\mid s)=\rho(s,a)/\sum_{a'}\rho(s,a')$; this $\pi_\rho$ has occupancy exactly $\rho$, and it's the unique policy that does. So I can freely write $\pi_\rho$ and treat "policy" and "occupancy measure" as two views of the same object.
+
+I also need to carry the entropy through this change of variables. Define $\bar H(\rho)=-\sum_{s,a}\rho(s,a)\log\big(\rho(s,a)/\sum_{a'}\rho(s,a')\big)$. Is $H(\pi)=\bar H(\rho_\pi)$? Just substitute: $H(\pi)=\sum_{s,a}\rho_\pi(s,a)\,(-\log\pi(a\mid s))$, and $\pi(a\mid s)=\rho_\pi(s,a)/\sum_{a'}\rho_\pi(s,a')$, so yes, $H(\pi)=\bar H(\rho_\pi)$, and symmetrically $\bar H(\rho)=H(\pi_\rho)$. So entropy, expected cost — everything in the objective — transfers between the $\pi$-view and the $\rho$-view. Concretely, with $L(\pi,c)=-H(\pi)+\mathbb E_\pi[c]$ and $\bar L(\rho,c)=-\bar H(\rho)+\sum_{s,a}\rho(s,a)c(s,a)$, I have $L(\pi,c)=\bar L(\rho_\pi,c)$ and $\bar L(\rho,c)=L(\pi_\rho,c)$.
+
+One more property I'll lean on hard: is $\bar H$ strictly concave on $\mathcal D$? Take two occupancies $\rho,\rho'$ and $\lambda\in[0,1]$. Look at one $(s,a)$ term of $\bar H(\lambda\rho+(1-\lambda)\rho')$:
+$$-(\lambda\rho(s,a)+(1-\lambda)\rho'(s,a))\log\frac{\lambda\rho(s,a)+(1-\lambda)\rho'(s,a)}{\lambda\sum_{a'}\rho(s,a')+(1-\lambda)\sum_{a'}\rho'(s,a')}.$$
+The numerator and the denominator inside the log are each convex combinations of the same pieces, so by the log-sum inequality this is $\ge$
+$$-\lambda\rho(s,a)\log\frac{\lambda\rho(s,a)}{\lambda\sum_{a'}\rho(s,a')}-(1-\lambda)\rho'(s,a)\log\frac{(1-\lambda)\rho'(s,a)}{(1-\lambda)\sum_{a'}\rho'(s,a')},$$
+and the $\lambda$'s cancel inside each log, leaving $\lambda\,(\text{$\bar H$-term of }\rho)+(1-\lambda)\,(\text{$\bar H$-term of }\rho')$. Summing over $(s,a)$: $\bar H(\lambda\rho+(1-\lambda)\rho')\ge \lambda\bar H(\rho)+(1-\lambda)\bar H(\rho')$ — concave. The log-sum inequality is tight only when the conditional distributions agree, i.e. $\pi_\rho=\pi_{\rho'}$, which by the bijection means $\rho=\rho'$. So $\bar H$ is *strictly* concave. I'll need that uniqueness in a second.
+
+Now let me actually compute $\mathrm{RL}\circ\mathrm{IRL}_\psi(\pi_E)$. Start with the easiest case to build intuition: $\psi$ a *constant* (no real regularization). Then, dropping the constant, in occupancy variables
+$$\tilde c\in\mathrm{IRL}_\psi(\pi_E)=\arg\max_c \min_{\rho\in\mathcal D}\ -\bar H(\rho)+\sum_{s,a}\rho(s,a)c(s,a)-\sum_{s,a}\rho_E(s,a)c(s,a)=\arg\max_c\min_\rho \bar L(\rho,c),$$
+where I wrote $\bar L(\rho,c)=-\bar H(\rho)+\sum_{s,a}c(s,a)(\rho(s,a)-\rho_E(s,a))$. Stare at the inner problem with $c$ playing a particular role. The term $\sum_{s,a}c(s,a)(\rho(s,a)-\rho_E(s,a))$ is precisely a Lagrangian penalty with multipliers $c(s,a)$ on the constraints $\rho(s,a)=\rho_E(s,a)$. So $\min_\rho\max_c\bar L$ — or its dual $\max_c\min_\rho\bar L$ — is the Lagrangian saddle of
+$$\min_{\rho\in\mathcal D}\ -\bar H(\rho)\quad\text{subject to}\quad \rho(s,a)=\rho_E(s,a)\ \ \forall (s,a),$$
+with the costs $c(s,a)$ as the dual variables on the equality constraints. So IRL with no regularizer is literally the *dual* of "find the maximum-causal-entropy occupancy that equals the expert's." The recovered cost $\tilde c$ is the dual optimum. And $\mathcal D$ is convex, $-\bar H$ is convex (strictly, even), so strong duality holds and the primal optimum is recoverable uniquely from the dual: $\tilde\rho=\arg\min_{\rho\in\mathcal D}\bar L(\rho,\tilde c)=\rho_E$ — the last equality because the constraint forces it. And if $\tilde\pi\in\mathrm{RL}(\tilde c)$, then its occupancy is exactly that minimizer, $\rho_{\tilde\pi}=\tilde\rho=\rho_E$.
+
+So that's the punchline in miniature: with no regularization, running RL after IRL gives back the policy whose occupancy measure *equals* the expert's. IRL is the dual of occupancy matching; the cost it learns is just the price vector enforcing the match; and RL-on-the-recovered-cost is the act of reading the primal solution off the dual. The classic IRL algorithms that solve RL repeatedly in an inner loop are doing dual ascent — solve the primal (that's RL) with the duals fixed, nudge the duals — which is exactly why they're slow: their inner subroutine *is* reinforcement learning.
+
+Now generalize off the constant $\psi$ to any closed proper convex $\psi$. Claim:
+$$\mathrm{RL}\circ\mathrm{IRL}_\psi(\pi_E)=\arg\min_\pi\ -H(\pi)+\psi^*(\rho_\pi-\rho_{\pi_E}),$$
+with $\psi^*$ the convex conjugate $\psi^*(x)=\sup_y x^\top y-\psi(y)$. Let me verify it through the same saddle structure. Define on $\mathcal D\times\mathbb R^{\mathcal S\times\mathcal A}$
+$$\bar L(\rho,c)=-\bar H(\rho)-\psi(c)+\sum_{s,a}\big(\rho(s,a)-\rho_E(s,a)\big)c(s,a).$$
+Take $\tilde c\in\mathrm{IRL}_\psi(\pi_E)$, $\tilde\pi\in\mathrm{RL}(\tilde c)$ with occupancy $\tilde\rho$, and let $\pi_A$ be the proposed direct minimizer with occupancy $\rho_A$. Unfold the proposed objective: $-H(\pi)+\psi^*(\rho_\pi-\rho_E)=\max_c\big[-H(\pi)-\psi(c)+\sum_{s,a}(\rho_\pi-\rho_E)c\big]$, just by the definition of the conjugate. In occupancy variables that's $\max_c\bar L(\rho,c)$, so
+$$\rho_A\in\arg\min_{\rho\in\mathcal D}\max_c\bar L(\rho,c).$$
+And IRL$_\psi$, in occupancy variables, is exactly $\tilde c\in\arg\max_c\min_{\rho\in\mathcal D}\bar L(\rho,c)$, with $\tilde\rho\in\arg\min_{\rho\in\mathcal D}\bar L(\rho,\tilde c)$ (that's what RL on $\tilde c$ computes). Now: $\mathcal D$ is compact and convex, the cost space is convex; $\bar L(\cdot,c)$ is convex in $\rho$ (it's $-\bar H$, convex, plus a linear term) and $\bar L(\rho,\cdot)$ is concave in $c$ (it's $-\psi$, concave, plus linear). Convex-concave on convex sets — minimax duality applies:
+$$\min_{\rho\in\mathcal D}\max_c\bar L(\rho,c)=\max_c\min_{\rho\in\mathcal D}\bar L(\rho,c).$$
+That means $(\rho_A,\tilde c)$ is a saddle point of $\bar L$: $\rho_A$ achieves the outer min on the left, $\tilde c$ achieves the outer max on the right, and equality of the two values forces them to be a matched saddle pair. A saddle point's first coordinate minimizes $\bar L(\cdot,\tilde c)$, so $\rho_A\in\arg\min_{\rho}\bar L(\rho,\tilde c)$. But $\tilde\rho$ also minimizes $\bar L(\cdot,\tilde c)$ — and $\bar L(\cdot,c)$ is *strictly* convex (since $-\bar H$ is, by that log-sum argument), so the minimizer is unique: $\rho_A=\tilde\rho$. By the policy-occupancy bijection, $\pi_A=\tilde\pi$. Done.
+
+Sit with what this says: $\psi$-regularized IRL, followed by RL, is *identical* to directly solving $\min_\pi -H(\pi)+\psi^*(\rho_\pi-\rho_E)$. The whole nested pipeline collapses into one optimization whose job is to push my occupancy measure $\rho_\pi$ toward the expert's $\rho_E$, where the *shape* of the "toward" — the discrepancy I'm penalizing — is the convex conjugate $\psi^*$ of whatever cost regularizer I picked. The cost function never has to be materialized. The inner RL loop is gone. IRL was never really about the cost; it was occupancy matching wearing a dual disguise, and now I can drop the disguise.
+
+And this reframes everything. Choosing $\psi$ *is* choosing an imitation algorithm, because $\psi$ determines what distance $d_\psi(\rho_\pi,\rho_E):=\psi^*(\rho_\pi-\rho_E)$ I match occupancies in. So the design question becomes: what's a good $\psi$?
+
+The constant-$\psi$ choice gave $d_\psi=$ "match exactly everywhere," which I showed recovers $\rho_E$ — beautiful in theory, useless in practice. Why useless? Two reasons. The expert appears only as finitely many samples, so $\rho_E(s,a)=0$ on almost everything; exact matching would force my policy to *never* visit any state-action pair the expert happened not to sample, purely from lack of data. And with function approximation I'd be solving a problem with one equality constraint per point of $\mathcal S\times\mathcal A$ — intractable, and it defeats the purpose of approximating. So I need a $\psi$ whose $\psi^*$ is a *smooth, finite* penalty on the difference of occupancies, not a hard equality.
+
+Let me see what known algorithms fall out, to calibrate. Take $\psi=\delta_{\mathcal C}$, the convex indicator of a cost class $\mathcal C$ ($0$ on $\mathcal C$, $+\infty$ off it). Its conjugate at $x=\rho_\pi-\rho_E$ is $\delta_{\mathcal C}^*(x)=\sup_{c}\,x^\top c-\delta_{\mathcal C}(c)=\max_{c\in\mathcal C}\sum_{s,a}(\rho_\pi-\rho_E)c=\max_{c\in\mathcal C}\mathbb E_\pi[c]-\mathbb E_{\pi_E}[c]$. So $\min_\pi -H(\pi)+\delta_{\mathcal C}^*(\rho_\pi-\rho_E)$ is entropy-regularized *apprenticeship learning*: do at least as well as the expert across all costs in $\mathcal C$. With $\mathcal C$ the $\ell_2$-ball of linear-in-features costs this is feature-expectation matching $\|\mathbb E_\pi[f]-\mathbb E_{\pi_E}[f]\|_2$; with the simplex it's the worst-case-feature objective of the game-theoretic apprenticeship learners. And these *do* scale — Ho et al. (2016) take the gradient of the inner-maximized objective, which is just the policy gradient $\mathbb E_{\pi_\theta}[\nabla_\theta\log\pi_\theta(a\mid s)\,Q_{c^*}(s,a)]$ with the maximizing cost $c^*$, and feed it to a trust-region policy step.
+
+But now I understand *exactly* why apprenticeship learning fails to imitate: $\delta_{\mathcal C}$ forces the implicit recovered cost to lie in the small subspace $\mathcal C$. "Do at least as well as the expert on every cost in $\mathcal C$" pins down the expert only if a cost that truly explains the expert lives in $\mathcal C$. For a low-dimensional linear $\mathcal C$ it usually doesn't, so the recovered policy needn't equal $\pi_E$. The defect is the restrictiveness of $\delta_{\mathcal C}$: it allows only costs in a finite-dimensional span, and it's a fixed regularizer that can't adapt to the expert data at all.
+
+So I want a regularizer that's the best of both worlds: like the constant one, expressive enough to force *exact* occupancy matching; like $\delta_{\mathcal C}$, tractable in large environments. Reading off the two failures tells me the spec. (i) Don't confine costs to a finite-dimensional subspace — allow essentially any cost. (ii) Make $\psi$ depend on the expert data, so it adapts. (iii) Make the induced $d_\psi=\psi^*(\rho_\pi-\rho_E)$ a genuine, smooth divergence between distributions, so its minimum is at $\rho_\pi=\rho_E$ (exact matching) yet it degrades gracefully off the support instead of slamming to $+\infty$.
+
+How do I manufacture a $\psi$ whose conjugate is a real divergence? A divergence between two distributions can be read out of a *binary classification* problem: how well can a classifier tell apart samples drawn from $\rho_\pi$ versus $\rho_E$? If they're identical, the best classifier is at chance; the easier they are to separate, the further apart they are. Let me make that quantitative with a surrogate loss. For a strictly decreasing convex loss $\phi$, the minimum expected surrogate risk of classifying $(s,a)$ as "policy" vs "expert" is
+$$R_\phi(\rho_\pi,\rho_E)=\sum_{s,a}\min_{\gamma\in\mathbb R}\ \rho_\pi(s,a)\,\phi(\gamma)+\rho_E(s,a)\,\phi(-\gamma),$$
+where $\gamma=\gamma(s,a)$ is the classifier's score and the two terms are the loss on policy-labeled and expert-labeled examples. Nguyen, Wainwright & Jordan (2009) show these minimum risks are, up to sign, exactly $f$-divergences. So if I can engineer $\psi$ so that $\psi^*(\rho_\pi-\rho_E)=-R_\phi(\rho_\pi,\rho_E)$, then matching occupancies under $d_\psi$ *is* minimizing an $f$-divergence — a true distribution distance — and the classification problem is how I'll actually evaluate it.
+
+So I need to invert the conjugate: given a target $\phi$, find $\psi$ with $\psi^*(\rho_\pi-\rho_E)=-R_\phi$. Try a $\psi$ that's an expert-weighted sum of a per-coordinate function $g$:
+$$\psi_\phi(c)=\sum_{s,a}\rho_E(s,a)\,g_\phi(c(s,a))\quad\text{(and $+\infty$ if some $c(s,a)$ leaves $g$'s domain).}$$
+Its conjugate at $x=\rho_\pi-\rho_E$ separates over $(s,a)$:
+$$\psi_\phi^*(\rho_\pi-\rho_E)=\max_c\sum_{s,a}(\rho_\pi-\rho_E)c-\rho_E\,g_\phi(c)=\sum_{s,a}\max_{c}\Big[(\rho_\pi-\rho_E)c-\rho_E\,g_\phi(c)\Big].$$
+I want each coordinate's max to come out as $\max_\gamma\big[\rho_\pi(-\phi(\gamma))-\rho_E\,\phi(-\gamma)\big]$, i.e. $-\big(\rho_\pi\phi(\gamma)+\rho_E\phi(-\gamma)\big)$. Substitute $c=-\phi(\gamma)$ (legitimate since $\phi$ strictly decreasing, so this is a bijection onto $T=\mathrm{range}(-\phi)$): then I need $-\rho_E\,g_\phi(c)$ to supply $-\rho_E\,\phi(-\gamma)$ *after* the $(\rho_\pi-\rho_E)c$ term has already produced $-\rho_\pi\phi(\gamma)+\rho_E\phi(\gamma)$. So I need $-\rho_E\,g_\phi(-\phi(\gamma))=-\rho_E\phi(-\gamma)-\rho_E\phi(\gamma)$, that is $g_\phi(-\phi(\gamma))=\phi(\gamma)+\phi(-\gamma)$, i.e. writing $x=-\phi(\gamma)$ so $\gamma=-\phi^{-1}(-x)$,
+$$g_\phi(x)=-x+\phi\big(-\phi^{-1}(-x)\big)\quad\text{on }x\in T,\ +\infty\text{ otherwise.}$$
+Let me double-check the algebra runs forward: with $c=-\phi(\gamma)$,
+$(\rho_\pi-\rho_E)c-\rho_E g_\phi(c)=(\rho_\pi-\rho_E)(-\phi(\gamma))-\rho_E\big[\phi(\gamma)+\phi(-\phi^{-1}(\phi(\gamma)))\big]=-\rho_\pi\phi(\gamma)+\rho_E\phi(\gamma)-\rho_E\phi(\gamma)-\rho_E\phi(-\gamma)=-\rho_\pi\phi(\gamma)-\rho_E\phi(-\gamma)$, since $-\phi^{-1}(\phi(\gamma))=-\gamma$. Summing and maxing over $\gamma$ gives exactly $-R_\phi$. And $g_\phi$ is closed proper convex: the inner map $x\mapsto-\phi^{-1}(-x)$ is concave, and composing a convex nonincreasing $\phi$ with a concave argument is convex, so $x\mapsto\phi(-\phi^{-1}(-x))$ is convex; adding $-x$ preserves convexity. The boundary behavior of $\phi$ sends $g_\phi\to+\infty$ at the edge of $T$, so it's closed. Good — $\psi_\phi$ is a legitimate regularizer, and by the duality result above, $\mathrm{RL}\circ\mathrm{IRL}_{\psi_\phi}(\pi_E)=\arg\min_\pi -H(\pi)-R_\phi(\rho_\pi,\rho_E)$.
+
+Now I get to *pick* $\phi$. I want the resulting divergence to vanish only at exact matching, and I'd love the classification problem to be the familiar one. Take the logistic loss $\phi(x)=\log(1+e^{-x})$ — strictly decreasing, convex, the standard loss for probabilistic binary classification. Plug it into the recipe. The minimized-risk objective becomes
+$$\psi_\phi^*(\rho_\pi-\rho_E)=\sum_{s,a}\max_{\gamma}\ \rho_\pi\log\frac{1}{1+e^{-\gamma}}+\rho_E\log\frac{1}{1+e^{\gamma}}.$$
+Recognize $\sigma(\gamma)=1/(1+e^{-\gamma})$, and $1/(1+e^{\gamma})=1-\sigma(\gamma)$, so each coordinate is $\max_\gamma\rho_\pi\log\sigma(\gamma)+\rho_E\log(1-\sigma(\gamma))$, and since $\sigma$ ranges over $(0,1)$ I can rename $D=\sigma(\gamma)\in(0,1)$:
+$$\psi_\phi^*(\rho_\pi-\rho_E)=\max_{D\,:\,\mathcal S\times\mathcal A\to(0,1)}\ \sum_{s,a}\rho_\pi(s,a)\log D(s,a)+\rho_E(s,a)\log(1-D(s,a)).$$
+That is the maximized classifier log-likelihood, the negative of the minimized logistic risk, for a classifier $D$ trying to tell policy pairs from expert pairs — $D(s,a)$ is its estimate of "this came from $\pi$." And what's the spelled-out $\psi$? Run $\phi(x)=\log(1+e^{-x})$ through $g_\phi(x)=-x+\phi(-\phi^{-1}(-x))$: it simplifies to $g(x)=-x-\log(1-e^x)$ for $x<0$ (and $+\infty$ otherwise), so $\psi_{\mathrm{GA}}(c)=\mathbb E_{\pi_E}[g(c(s,a))]$ if $c<0$ everywhere, else $+\infty$. It penalizes costs that assign near-zero cost (the feasible upper bound) to expert pairs, allows *any* negative cost (not a finite subspace), and it's an average over expert data so it adapts to the dataset — exactly spec items (i) and (ii).
+
+And spec item (iii): the value of that inner max is, up to a constant shift, the Jensen-Shannon divergence between the occupancies. Quick check at the optimal classifier: pointwise the maximizer of $\rho_\pi\log D+\rho_E\log(1-D)$ is $D^*=\rho_\pi/(\rho_\pi+\rho_E)$; plugging back and writing $\log\frac{\rho_\pi}{\rho_\pi+\rho_E}=\log\frac{\rho_\pi}{(\rho_\pi+\rho_E)/2}-\log 2$ gives $\sum_{s,a}\rho_\pi\log\frac{\rho_\pi}{\rho_\pi+\rho_E}+\rho_E\log\frac{\rho_E}{\rho_\pi+\rho_E}=D_{\mathrm{KL}}(\rho_\pi\|\tfrac{\rho_\pi+\rho_E}{2})+D_{\mathrm{KL}}(\rho_E\|\tfrac{\rho_\pi+\rho_E}{2})-(\text{const})=D_{\mathrm{JS}}(\rho_\pi,\rho_E)-\text{const}$, the constant being $\log 2$ times the total mass of the two occupancies. Its square root is a metric, so this quantity is zero iff $\rho_\pi=\rho_E$ and positive otherwise. Treating $H$ as a tunable policy regularizer with weight $\lambda\ge 0$, my imitation objective is
+$$\min_\pi\ \psi_{\mathrm{GA}}^*(\rho_\pi-\rho_E)-\lambda H(\pi)=D_{\mathrm{JS}}(\rho_\pi,\rho_E)-\lambda H(\pi):$$
+find the policy whose occupancy measure has minimum Jensen-Shannon divergence to the expert's. Because that divergence vanishes only at equal occupancies, it can imitate exactly — unlike the linear apprenticeship learners — and because the divergence is evaluated by a learned classifier rather than a hard per-point constraint, it's tractable in large environments.
+
+Now the form $\max_D\mathbb E_\pi[\log D]+\mathbb E_{\pi_E}[\log(1-D)]$ is staring at me, and it's the generative-adversarial game: a discriminator $D$ tries to tell my policy's $(s,a)$ samples from the expert's, and I — the "generator" — adjust my policy to fool it. My occupancy $\rho_\pi$ is the generated distribution, the expert's $\rho_E$ is the real data, and when $D$ can no longer tell them apart, I've matched the expert. I never built a cost; the discriminator *is* the adaptive cost, supplied fresh each iteration.
+
+So I want a saddle point $(\pi,D)$ of
+$$\mathbb E_\pi[\log D(s,a)]+\mathbb E_{\pi_E}[\log(1-D(s,a))]-\lambda H(\pi).$$
+Make both parametric: a policy $\pi_\theta$ and a discriminator network $D_w:\mathcal S\times\mathcal A\to(0,1)$. Here $D_w$ means "policy-like," so I label policy samples $1$ and expert samples $0$ and take an Adam step that ascends
+$$\hat{\mathbb E}_{\tau_i}[\nabla_w\log D_w(s,a)]+\hat{\mathbb E}_{\tau_E}[\nabla_w\log(1-D_w(s,a))].$$
+Then improve $\pi_\theta$ to *lower* that objective, i.e. drive $\mathbb E_\pi[\log D]$ down — which is reinforcement learning with the per-step cost $c(s,a)=\log D_w(s,a)$, or equivalently a reward of $-\log D_w$. Since small $D_w$ means "expert-like," the reward form moves the policy toward regions the discriminator cannot separate from the expert. But I can't take a raw policy-gradient step — the gradient estimate is noisy, and an over-aggressive update would let the policy lurch into garbage and never recover, the same brittleness that motivated trust regions in policy optimization. So I take the policy step under a KL constraint: a TRPO / natural-gradient step that improves the reward surrogate while keeping $\pi_{\theta_{i+1}}$ close to $\pi_{\theta_i}$ in average KL. The cost-gradient I need to descend is
+$$\hat{\mathbb E}_{\tau_i}\big[\nabla_\theta\log\pi_\theta(a\mid s)\,Q(s,a)\big]-\lambda\nabla_\theta H(\pi_\theta),\qquad Q(\bar s,\bar a)=\hat{\mathbb E}_{\tau_i}\big[\log D_{w}(s,a)\mid s_0=\bar s,a_0=\bar a\big],$$
+and in code I pass TRPO advantages for the opposite reward $-\log D_w$ (plus the entropy bonus when I use $\lambda$), which is the same direction with the sign flipped for a reward-maximizing optimizer. In practice I fit a value baseline and use generalized advantage estimation to cut the variance of $Q$.
+
+The one loose end is the entropy-gradient term $\nabla_\theta H(\pi_\theta)=\nabla_\theta\mathbb E_{\pi_\theta}[-\log\pi_\theta(a\mid s)]$, because the distribution I'm averaging under also depends on $\theta$. Differentiate $-\sum_{s,a}\rho_{\pi_\theta}(s,a)\log\pi_\theta(a\mid s)$ by the product rule:
+$$-\sum_{s,a}(\nabla_\theta\rho_{\pi_\theta}(s,a))\log\pi_\theta(a\mid s)-\sum_{s}\rho_{\pi_\theta}(s)\sum_a\pi_\theta(a\mid s)\nabla_\theta\log\pi_\theta(a\mid s),$$
+writing $\rho_{\pi_\theta}(s)=\sum_a\rho_{\pi_\theta}(s,a)$. The second term has $\sum_a\pi_\theta\nabla_\theta\log\pi_\theta=\sum_a\nabla_\theta\pi_\theta=\nabla_\theta\sum_a\pi_\theta=\nabla_\theta 1=0$ — it vanishes. What's left, $-\sum_{s,a}(\nabla_\theta\rho_{\pi_\theta})\log\pi_\theta$, is exactly the policy gradient for RL with the per-step cost $c_{\log}(s,a)=-\log\pi_\theta(a\mid s)$. So $\nabla_\theta H(\pi_\theta)=\mathbb E_{\pi_\theta}[\nabla_\theta\log\pi_\theta(a\mid s)\,Q_{\log}(s,a)]$ with $Q_{\log}(\bar s,\bar a)=\mathbb E_{\pi_\theta}[-\log\pi_\theta(a\mid s)\mid s_0,a_0]$ — it just folds into the same policy-gradient machinery as another cost. No special difficulty.
+
+Let me also pin down one practical sign convention I'll want in code. In the derivation $D(s,a)$ is the probability "this came from $\pi$," and the policy minimizes the cost $\log D$ (it wants $D$ small on its own samples), i.e. it maximizes the reward $-\log D$. The implementation can just as well output the opposite logit: let a score $\gamma$ have $\sigma(\gamma)$ as the *expert*-probability, with expert label $1$ and policy label $0$. Then the derivation's $D$ is $1-\sigma(\gamma)$, so the direct reward is $-\log(1-\sigma(\gamma))=\operatorname{softplus}(\gamma)$. A second shaping, $\log\sigma(\gamma)\le 0$, is not the literal negative cost, but it keeps the same expert-likeness ordering while capping expert-like transitions at zero and penalizing non-expert-like transitions; it is useful when episodes terminate on successful, expert-like behavior. The direct reward is useful when episodes terminate on bad behavior, because expert-like transitions get positive reward instead of merely avoiding a penalty.
+
+Step back and trace the chain. Behavioral cloning drifts because it fits single-timestep decisions on the expert's own state distribution and compounds errors off it. IRL fixes the drift by scoring whole trajectories, but recovers a cost through an optimization with RL in its inner loop and then needs RL again. Rewriting policies as occupancy measures convexifies the problem and exposes IRL as the *dual* of occupancy matching, so $\mathrm{RL}\circ\mathrm{IRL}_\psi$ is just $\min_\pi -H(\pi)+\psi^*(\rho_\pi-\rho_E)$ — the cost never needs to exist. The regularizer $\psi$ chooses the matching distance: a constant gives intractable exact matching, a cost-class indicator gives the linear apprenticeship learners that can't imitate exactly. Building $\psi$ from a surrogate-loss / $f$-divergence correspondence, and choosing the logistic loss, makes $\psi^*(\rho_\pi-\rho_E)$ the optimal classifier loss between policy and expert state-actions — the Jensen-Shannon divergence — and turns the algorithm into a GAN whose discriminator is the adaptive cost and whose generator is the policy, trained with a trust-region step. That avoids both BC's compounding error (it matches the full occupancy, not per-step decisions) and IRL's inner RL loop (one TRPO step per iteration, cost read straight off the discriminator).
+
+```python
+import torch, torch.nn as nn, numpy as np
+import torch.nn.functional as F
+
+# The open learning-signal slot becomes a binary transition classifier.
+# score > 0 means "expert-like"; the derivation's D is 1 - sigmoid(score).
+class LearningSignal(nn.Module):
+    def __init__(self, obs_dim, act_dim, hidden=100):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(obs_dim + act_dim, hidden), nn.Tanh(),
+            nn.Linear(hidden, hidden), nn.Tanh(),
+            nn.Linear(hidden, 1))               # outputs a logit (score)
+
+    def score(self, obs, act):
+        return self.net(torch.cat([obs, act], dim=1)).squeeze(1)
+
+    def reward(self, obs, act, favor_zero_expert=False):
+        # Direct reward is -log D = -log(1 - sigmoid(score)) = softplus(score).
+        # The alternate shaping log sigmoid(score) shares the expert-like ordering
+        # and matches the branch used when successful behavior terminates episodes.
+        with torch.no_grad():
+            score = self.score(obs, act)
+            return F.logsigmoid(score) if favor_zero_expert else F.softplus(score)
+
+    def fit(self, opt, pi_obs, pi_act, ex_obs, ex_act, steps=1, ent_reg=1e-3):
+        # Minimizing this BCE on expert-probability logits is the same discriminator
+        # update as ascending E_pi[log D] + E_E[log(1-D)] with D=1-sigmoid(score).
+        obs = torch.cat([pi_obs, ex_obs]); act = torch.cat([pi_act, ex_act])
+        B, Ball = len(pi_obs), len(pi_obs) + len(ex_obs)
+        labels = torch.zeros(Ball, device=obs.device); labels[B:] = 1.0
+        weights = torch.empty(Ball, device=obs.device)
+        weights[:B] = 1.0 / B; weights[B:] = 1.0 / (Ball - B)
+        for _ in range(steps):
+            score = self.score(obs, act)
+            bce = F.binary_cross_entropy_with_logits(score, labels, reduction='none')
+            ent = F.softplus(-score) + (1.0 - torch.sigmoid(score)) * score
+            loss = ((bce - ent_reg * ent) * weights).sum()
+            opt.zero_grad(); loss.backward(); opt.step()
+        return loss.item()
+
+# Alternate the stored classifier reward and a TRPO policy step, then fit the
+# classifier on the same policy batch for the next iteration.
+def imitation_loop(env, expert_obs, expert_act, policy, value_fn,
+                   obs_dim, act_dim, iters, gamma=0.995, gae_lam=0.97,
+                   lam_ent=0.0, max_kl=0.01):
+    signal = LearningSignal(obs_dim, act_dim)
+    signal_opt = torch.optim.Adam(signal.parameters(), lr=1e-2)
+    for _ in range(iters):
+        obs, act, ep_lens = sample_trajectories(env, policy)      # roll out pi_theta
+        rew = signal.reward(obs, act)                             # direct reward -log D
+        if lam_ent:                                               # causal-entropy bonus folded in
+            rew = rew + lam_ent * (-policy.log_prob(obs, act).detach())
+        adv = gae(rew, value_fn(obs).detach(), ep_lens, gamma, gae_lam)  # variance-reduced Q via GAE
+        trpo_step(policy, obs, act, adv, max_kl=max_kl)           # KL-constrained natural-gradient step
+        idx = np.random.choice(len(expert_obs), size=len(obs))    # subsample expert to match
+        signal.fit(signal_opt, obs, act, expert_obs[idx], expert_act[idx])
+        rew_for_value = signal.reward(obs, act)                   # value fit follows the refit signal
+        if lam_ent:
+            rew_for_value = rew_for_value + lam_ent * (-policy.log_prob(obs, act).detach())
+        value_fn.fit(obs, returns_from(rew_for_value, ep_lens, gamma))
+    return policy
+```

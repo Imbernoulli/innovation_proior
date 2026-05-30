@@ -115,9 +115,8 @@ sparse, since it is written in per-coordinate gradient norms rather than `d·G_i
 
 ## Working code
 
-Faithful to the canonical PyTorch optimizer step (the per-parameter buffers `exp_avg = m`,
-`exp_avg_sq = v`, and the folded bias-correction `step_size`), filling the `step()` slot of
-the first-order harness:
+Filling the `step()` slot of the first-order harness, with per-parameter buffers
+`exp_avg = m`, `exp_avg_sq = v` and the folded bias-correction `step_size`:
 
 ```python
 import math

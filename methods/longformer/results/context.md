@@ -1,0 +1,98 @@
+# Context: scaling Transformer self-attention to long documents
+
+## Research question
+
+Transformer self-attention lets every token attend to every other token, which is why it captures context so well — but the time and memory cost of that all-pairs interaction grows with the square of the sequence length. On current accelerators this caps the usable input at roughly 512 tokens for the kind of pretrained encoders that dominate language understanding. Many natural-language problems, however, are intrinsically long: question answering where the answer is scattered across a multi-paragraph context, coreference resolution that spans a whole document, classification of long articles, and character-level language modeling over tens of thousands of characters. The precise problem is: **design a self-attention mechanism whose compute and memory scale linearly with sequence length n, yet which preserves enough long-range interaction to be competitive with full attention — and which works both for autoregressive language modeling and for the bidirectional pretrain-then-finetune paradigm, ideally as a drop-in replacement inside an already-pretrained model.** A solution would remove the need to truncate or shard long inputs and the bespoke per-task machinery built to stitch the shards back together.
+
+## Background
+
+**Self-attention and its cost.** Given an input sequence of n tokens with model dimension d, a Transformer layer projects the inputs into queries, keys, and values Q, K, V ∈ ℝ^{n×d} (per head, d_k = d/h for h heads). It computes
+
+  Attention(Q, K, V) = softmax( Q Kᵀ / √d_k ) V .
+
+The product Q Kᵀ is an n×n matrix of scores: every token scores against every token. Materializing and softmax-normalizing it costs O(n²·d_k) time and O(n²) memory. The √d_k denominator keeps the dot products from growing with dimension and saturating the softmax. This dense interaction is the source of the Transformer's power and of its quadratic bottleneck — doubling the sequence quadruples the attention cost, and the n² score matrix is what runs the GPU out of memory first.
+
+**The cost is largely wasted on local structure.** Probing studies of pretrained bidirectional encoders find that a large fraction of attention heads concentrate on a narrow local neighborhood — many heads attend predominantly to the immediately previous or next token, and local context is repeatedly found to be the most informative for building token representations (Clark et al. 2019; Kovaleva et al. 2019). In other words, most of the n² entries in the score matrix carry little signal: language structure is mostly local, with a smaller amount of genuinely long-range dependence.
+
+**The CNN analogy.** Convolutional networks confront the same tension — a single small kernel sees only a local patch — and resolve it with depth: stacking layers of small kernels grows the *receptive field*, so deep layers form features built from a large span of the input even though each individual kernel is local. Dilated (à-trous) convolutions push this further by inserting gaps into the kernel, enlarging the receptive field exponentially with depth at no extra cost — the trick behind WaveNet's long temporal context (van den Oord et al. 2016). Work relating convolution and attention (Wu et al. 2019) showed that attention restricted to a local span behaves much like a (dynamic) convolution and can match full attention on several tasks.
+
+**Pretrain-finetune as the dominant paradigm.** The state of the art in language understanding is built on masked-language-model (MLM) pretraining of a bidirectional encoder followed by task finetuning (Devlin et al. 2018, BERT; Liu et al. 2019, RoBERTa). These models reserve a special classification token ([CLS]) whose final representation aggregates the sequence for sentence-level prediction, and for QA they concatenate question and context so self-attention can compare them. Crucially they use learned *absolute* position embeddings with a maximum position of 512, and that 512 ceiling is exactly the length limit. Any long-document attention mechanism that hopes to inherit these pretrained weights must remain compatible with this architecture.
+
+**Diagnostic facts that shape the design.** Empirically, full attention's memory grows quadratically and exhausts a modern GPU well before sequences reach the tens of thousands; a sparse pattern that only computes a fixed band of the score matrix grows linearly instead. The banded multiplication needed for such a pattern (a matmul whose output is zero except on a few diagonals) is not a primitive in PyTorch or TensorFlow, so it must be implemented specially. And pretrained encoders have learned a strong *local* position bias (heads keying on previous/next token), a structure worth preserving if their weights are to be reused at longer lengths.
+
+## Baselines
+
+**Full self-attention Transformer (Vaswani et al. 2017).** The reference point. Dense softmax(QKᵀ/√d_k)V over all pairs; maximally expressive, O(n²) time and memory. Gap: infeasible for long inputs.
+
+**Left-to-right recurrence: Transformer-XL (Dai et al. 2019), Adaptive Span (Sukhbaatar et al. 2019), Compressive Transformer (Rae et al. 2019).** These process a long document in segments moving left to right, caching (and in the compressive case, summarizing) past activations so a segment can attend back into history; Adaptive Span additionally *learns* how far back each head should look. They achieve strong character-level LM. Gap: they are inherently unidirectional (a token only sees the past), which makes them ill-suited to MLM pretraining and to downstream tasks that need bidirectional context over the whole document at once.
+
+**Sparse attention patterns: Sparse Transformer (Child et al. 2019), Reformer (Kitaev et al. 2020), Routing Transformer (Roy et al. 2020).** These avoid the full n² matrix by attending only to a structured subset of positions. Sparse Transformer factorizes attention into strided/local block patterns — a form of dilated sliding window over 8×8 blocks — using specialized block-sparse GPU kernels; Reformer uses locality-sensitive hashing to bucket similar queries and keys; Routing uses learned clustering. They scale sub-quadratically and do well on autoregressive generation/LM. Gaps: the kernels are block-structured and tied to specific framework versions and are awkward to maintain; more importantly, this line was evaluated almost entirely on autoregressive language modeling and not on the bidirectional pretrain-finetune transfer setting, and the patterns lack a mechanism for task-specific tokens (a [CLS] aggregator, or question tokens that the whole document must see).
+
+**Sparse attention reaching beyond LM: BP-Transformer (Ye et al. 2019), Blockwise attention (Qiu et al. 2019).** BP-Transformer uses a binary-partition sparse pattern and evaluated on machine translation but did not explore pretrain-finetune. Blockwise pretrained with block-local attention and evaluated on QA, but only on relatively short contexts (datasets whose passages mostly fit within 512), leaving long-document effectiveness untested.
+
+**Task-specific long-document workarounds.** Independent of attention sparsity, a family of engineering solutions sidesteps the 512 limit: truncate the document (common for classification); chunk into (possibly overlapping) 512-token windows, encode each separately, and combine the activations with a task-specific model; or, for multi-hop and open-domain QA, a two-stage retrieve-then-read pipeline. Gap: all suffer information loss at chunk boundaries or cascade errors from the first stage, and each requires custom architecture per task.
+
+## Evaluation settings
+
+The natural yardsticks already exist. For autoregressive character-level language modeling: **text8** and **enwik8** (100M characters of Wikipedia, split 90M/5M/5M train/dev/test), reported in bits-per-character, with the standard protocol of evaluating on overlapping sequences and scoring only the final block of each. For long-document understanding under pretrain-finetune: multi-hop and document QA (WikiHop, TriviaQA, HotpotQA — contexts averaging thousands and up to ~17K wordpieces), coreference resolution (OntoNotes), and long-text classification (IMDB, Hyperpartisan news), with task-appropriate accuracy/F1 metrics; and for long-input sequence-to-sequence, abstractive summarization of long scientific papers (arXiv dataset, ~14.5K-token documents) scored with ROUGE. MLM pretraining quality is tracked by bits-per-character on a held-out corpus of long documents. The MLM base model to continue from is the released RoBERTa checkpoint.
+
+## Code framework
+
+The pieces that already exist: a pretrained bidirectional encoder stack (RoBERTa-style: token + learned absolute position embeddings capped at 512, a stack of Transformer layers each wrapping a self-attention sublayer and a feedforward sublayer), the standard scaled-dot-product attention primitive, an MLM head, and standard optimizers/training loop. The contribution will replace the self-attention sublayer; everything else is reused. Below is a pre-method scaffold — the surrounding harness is concrete, and the one slot the method fills is left as stubs.
+
+```python
+import math
+import torch
+from torch import nn
+import torch.nn.functional as F
+
+# --- already exists: scaled dot-product attention over ALL pairs (the O(n^2) baseline) ---
+def full_attention(q, k, v):  # q,k,v: (bsz, heads, n, d_k)
+    scores = torch.matmul(q, k.transpose(-1, -2)) / math.sqrt(q.size(-1))  # (bsz, heads, n, n)  <-- quadratic
+    probs = F.softmax(scores, dim=-1)
+    return torch.matmul(probs, v)
+
+
+# --- the slot the method will fill: a self-attention module whose cost scales with n, not n^2 ---
+class LongSequenceSelfAttention(nn.Module):
+    def __init__(self, config, layer_id):
+        super().__init__()
+        self.num_heads = config.num_attention_heads
+        self.head_dim = config.hidden_size // config.num_attention_heads
+        self.embed_dim = config.hidden_size
+        self.query = nn.Linear(config.hidden_size, self.embed_dim)
+        self.key   = nn.Linear(config.hidden_size, self.embed_dim)
+        self.value = nn.Linear(config.hidden_size, self.embed_dim)
+        # TODO: any extra parameters the efficient attention needs
+        self.layer_id = layer_id
+
+    def forward(self, hidden_states, attention_mask=None):
+        # TODO: compute attention restricted to some sub-quadratic pattern of (token, token) pairs,
+        #       while still letting the network reach long-range context.
+        pass
+
+
+# --- the banded interaction the method needs but the framework does not provide ---
+def banded_qk(q, k, w):
+    # TODO: like q @ k^T but only on a band of width ~w around the diagonal; output is NOT the full n x n matrix
+    pass
+
+def banded_pv(prob, v, w):
+    # TODO: the matching value-aggregation for the banded scores
+    pass
+
+
+# --- swap the contribution into an existing pretrained encoder; reuse the rest unchanged ---
+class LongSequenceEncoder(PretrainedEncoder):  # e.g. a RoBERTa-style stack
+    def __init__(self, config):
+        super().__init__(config)
+        for i, layer in enumerate(self.encoder.layer):
+            layer.attention.self = LongSequenceSelfAttention(config, layer_id=i)
+    # TODO: extend the (<=512) learned position embeddings to longer inputs
+
+
+def continue_pretraining(model, corpus, steps):
+    # standard MLM training loop already exists; reused as-is
+    # TODO: initialize the longer model from the pretrained checkpoint so few updates are needed
+    pass
+```

@@ -39,7 +39,7 @@ Training: an augmented-Lagrangian schedule drives `h(G^0)→0`; the latent SCM a
 
 Generalizing the grid to a continuous domain `(0,1)^K` (Spatial Factor Process), if two models induce the same observational distribution everywhere, then the latents coincide up to permutation and scaling and the factor families match, without assuming no-instantaneous-effects, sparsity, or sufficient variability. Key steps: (i) a denoising lemma removes additive noise via characteristic functions (`e^{is x̄}φ_ε = e^{is x̃}φ_ε`, with `φ_ε ≠ 0` a.e., gives `x̄ = x̃`); (ii) linear independence of the factor functions handles the linear case directly; (iii) for diffeomorphic `g_ℓ` and real-analytic factors, the `L>>D` overdetermination forces the inter-model map `h_ℓ` to be affine (its `log|det|`-Jacobian derivative is `ℓ`-constant, so `h''_ℓ ≡ 0`); under the needed no-gauge condition that a nonconstant common spatial multiplier cannot keep a full-rank tuple inside the admissible kernel family, the affine ambiguity reduces to permutation plus coordinate scaling. The causal graph over the recovered latents is then identifiable under the latent SCM's own conditions (stationarity, Markov, minimality, sufficiency, well-defined density, conditions on `f`/`g`).
 
-## Code (faithful to the implementation)
+## Code
 
 ```python
 import torch, torch.nn as nn, torch.nn.functional as F, math

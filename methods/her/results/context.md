@@ -1,0 +1,103 @@
+## Research question
+
+We want an agent that learns to accomplish a task specified by a *goal* — move an object to a target location, flip a set of bits into a target pattern, drive a system into a desired configuration — and we want to specify that task in the most honest, least labor-intensive way possible: a binary signal that says only "you are at the goal" or "you are not". Formally the reward is `r(s, a) = -[s' is not at the goal]`, i.e. `-1` on every timestep until the goal is reached and `0` there. This is the metric we actually care about (did the task get done, yes or no), and it requires no engineering.
+
+The trouble is that this reward is almost entirely uninformative for learning. In any reasonably large state space, an agent exploring more or less at random essentially never stumbles onto the goal, so it essentially never sees a reward other than `-1`. A value-based learner has nothing to bootstrap from: every transition looks equally bad, the temporal-difference target is constant, and no gradient points toward the goal. The agent cannot learn because it has never once observed success.
+
+The standing workaround is to *shape* the reward into something dense and informative (e.g. `-||s_object - g||^2`, a smooth signal that increases as the object nears the target). A solution to the underlying problem would have to do better than this: learn directly from the sparse binary signal, with no per-task reward engineering, no domain knowledge, and no privileged access to a distance metric or a hand-built curriculum — while still being sample-efficient enough to solve hard continuous-control manipulation.
+
+## Background
+
+**The reinforcement-learning setup.** An environment is `(S, A, p(s_0), r, p(s'|s,a), gamma)`. A policy `pi: S -> A` induces episodes `s_0, a_0, r_0, s_1, ...`; the return is `R_t = sum_{i>=t} gamma^{i-t} r_i`; the action-value function is `Q^pi(s,a) = E[R_t | s_t=s, a_t=a]`. The optimal `Q*` satisfies the Bellman equation `Q*(s,a) = E_{s'}[ r(s,a) + gamma max_{a'} Q*(s', a') ]`. Control reduces to learning `Q*` and acting greedily.
+
+**Why sparse reward is the hard case.** With a binary reward the only learning signal is the rare transition that lands on the goal. Diagnostically, this is *not* a failure of state coverage — generic exploration bonuses (count-based intrinsic rewards `alpha/sqrt(N)`, variational information-maximizing exploration, bootstrapped value ensembles) push the agent to visit novel states, but visiting states is not the bottleneck. The bottleneck is that even after visiting a state the agent receives no signal telling it whether that state was progress toward the goal. In a toy bit-flipping environment `S = {0,1}^n`, with each action flipping one bit and reward `-[s != g]`, a standard value learner already fails for `n > ~13` and is hopeless by `n > 40`: the chance of randomly arranging `n` bits into the exact target pattern vanishes, so the reward is never observed.
+
+**Reward shaping and its cost.** Potential-based reward shaping (Ng, Harada & Russell 1999) shows one can add a dense shaping term `gamma*Phi(s') - Phi(s)` without changing the optimal policy, and in practice people use distance-to-goal style rewards to guide optimization. But (i) constructing a good `Phi` requires domain knowledge and RL expertise; for difficult manipulation, reported shaped rewards involve five carefully weighted terms (Popov et al. 2017); (ii) shaped rewards *penalize* behavior that moves the wrong way, which can suppress useful exploration and induce degenerate policies (an agent that learns never to touch an object it cannot yet manipulate precisely); (iii) the shaped reward is a surrogate — optimizing it is a compromise on the binary success metric we truly want. A method that avoids shaping entirely would sidestep all three.
+
+**Goal-conditioned value functions.** Universal Value Function Approximators (Schaul et al. 2015a) extend value learning to the setting where there is a space of goals `G`, each goal `g` carrying its own reward `r_g: S x A -> R`. A single approximator takes both the state and the goal as input: `Q^pi(s, a, g) = E[R_t | s_t, a_t, g]`, trained by the same Bellman bootstrap, `Q*(s,a,g) = E_{s'}[ r_g(s,a) + gamma max_{a'} Q*(s',a',g) ]`. Because one network shares parameters across goals, value estimates *generalize* across goals — including to goals never explicitly trained on. This means a transition is well-defined input to the network under *any* goal we choose to pair with it, not only the goal that was being pursued when the transition was generated.
+
+**Off-policy value learning and experience replay.** Experience replay (Lin 1992) stores transitions `(s, a, r, s')` in a buffer and re-samples them for training, decorrelating updates and reusing data. Because the Bellman target uses `max_{a'} Q(s', a')` (or a separate target policy), the update is *off-policy*: it learns the value of the greedy/target policy from data generated by some other behavioral policy. This decoupling is what lets a learner reuse old transitions whose generating policy no longer matches the current one.
+
+## Baselines
+
+**DQN (Mnih et al. 2015).** Off-policy value learning for discrete actions. A network `Q(s,a)` approximates `Q*`; the behavioral policy is epsilon-greedy w.r.t. `Q`. Transitions are stored in a replay buffer and the network is trained by minibatch gradient descent on `L = E[(Q(s_t,a_t) - y_t)^2]` with `y_t = r_t + gamma max_{a'} Q(s_{t+1}, a')`, the target treated as a constant. A slowly-tracking *target network* computes `y_t` for stability. Limitation here: with sparse binary reward `y_t` is `-1` everywhere the goal is unseen, so the loss carries no directional information; DQN simply does not learn the task.
+
+**DDPG (Lillicrap et al. 2015).** Off-policy actor-critic for continuous actions. A critic `Q(s,a)` approximates the value of an actor `pi(s)`; the actor is trained to maximize the critic, `L_actor = -E_s[ Q(s, pi(s)) ]`, with gradients flowing through the critic into the actor. The critic is trained like DQN with target `y_t = r_t + gamma Q'(s_{t+1}, pi'(s_{t+1}))` using target copies of both networks. A behavioral policy adds exploration noise. Same limitation: under sparse reward the critic target is constant and the actor receives no useful gradient.
+
+**Generic exploration methods (count-based / VIME / bootstrapped ensembles).** These add intrinsic reward or posterior-sampling-style exploration to encourage visiting novel states. The gap they leave open: they address state *coverage*, but the sparse-reward difficulty is the absence of a *reward* signal once states are visited, so they make at best marginal progress on goal-reaching tasks.
+
+**Reward shaping (Ng et al. 1999).** Replace the binary reward with a dense surrogate. Solves the toy case but, as above, demands domain-specific engineering, can distort exploration, and optimizes a proxy rather than the success metric — the gap is that it is not a domain-agnostic, shaping-free solution.
+
+## Evaluation settings
+
+- **Toy diagnostic.** Bit-flipping `S = {0,1}^n`, `A = {0,...,n-1}` flipping the `i`-th bit, episode length `n`, reward `-[s != g]`, initial and target states sampled uniformly. Sweep `n` to find where a learner breaks.
+- **Continuous-control manipulation** with a 7-DOF simulated arm (MuJoCo physics): *pushing* a box to a target on a table, *sliding* a puck to an out-of-reach target, and *pick-and-place* to a target in the air. State = joint angles/velocities plus object positions, rotations, velocities. Goals `G = R^3` are target object positions; the goal predicate is `f_g(s) = [ ||g - s_object|| <= eps ]`. Reward by default binary and sparse, `r = -[ f_g(s') = 0 ]`. Initial gripper position fixed; object and target positions randomized per episode. Metric: success rate (object within tolerance of the goal at episode end — 7cm for pushing/pick-and-place, 20cm for sliding), averaged over several random seeds.
+- **Protocol.** Policies are MLPs with ReLU; optimized with Adam; trained entirely in simulation; the natural comparisons are ordinary replay, exploration bonuses, shaped rewards, sparse rewards, single-goal training, and multi-goal training.
+
+## Code framework
+
+The pieces below are enough to run goal-conditioned off-policy control once the transition sampler is supplied: a goal-conditioned actor-critic, a replay buffer that stores whole episodes, a behavioral rollout loop, and a training loop.
+
+```python
+import numpy as np
+
+# --- goal-conditioned reward predicate (task-supplied, binary & sparse) -------
+def compute_reward(achieved_goal, goal, info):
+    # r = -1 unless the achieved goal satisfies the goal predicate, else 0
+    d = np.linalg.norm(achieved_goal - goal, axis=-1)
+    return -(d > info['eps']).astype(np.float32)
+
+# --- goal-conditioned actor-critic (UVFA-style; both take state||goal) --------
+class Actor:
+    def __init__(self, obs_dim, goal_dim, act_dim): ...
+    def __call__(self, obs, goal):
+        # MLP on concat(obs, goal) -> action
+        ...
+
+class Critic:
+    def __init__(self, obs_dim, goal_dim, act_dim): ...
+    def __call__(self, obs, goal, act):
+        # MLP on concat(obs, goal, act) -> scalar Q(s,a,g)
+        ...
+
+# --- episode replay buffer: stores full trajectories -------------------------
+class ReplayBuffer:
+    """Stores full episodes.
+    Keys: 'o' and 'ag' cover T+1 states; 'g' and 'u' cover T action steps."""
+    def store_episode(self, episode_batch): ...
+    def sample(self, batch_size):
+        # draw a minibatch of transitions for training
+        return self._sample_transitions(self.buffers, batch_size)
+
+# --- transition sampler slot -------------------------------------------------
+def make_sample_transitions(reward_fun):
+    """Return a function (episode_batch, batch_size) -> transitions dict
+    {'o','g','u','r','o_2','ag_2'}."""
+    def _sample(episode_batch, batch_size):
+        # TODO: select episodes/timesteps; build transitions; assign reward.
+        raise NotImplementedError
+    return _sample
+
+# --- off-policy update (DDPG): critic Bellman target + actor max-Q -----------
+def train_step(actor, critic, actor_t, critic_t, batch, gamma):
+    # critic target y = r + gamma * Q'(o_2, g, pi'(o_2, g)), held constant
+    # critic loss = (Q(o, g, u) - clip(y))^2 ;  actor loss = -Q(o, g, pi(o, g))
+    ...
+
+# --- behavioral rollout: act with pi(obs||goal) + exploration noise ----------
+def generate_rollout(env, actor):
+    # for t in range(T): a = actor(obs, goal) + noise; step; record o, ag, g, u
+    ...
+
+# --- top-level training loop -------------------------------------------------
+def train(env, actor, critic, buffer, n_epochs):
+    for epoch in range(n_epochs):
+        for cycle in range(n_cycles):
+            for _ in range(n_rollouts):
+                buffer.store_episode(generate_rollout(env, actor))
+            for _ in range(n_batches):
+                train_step(actor, critic, actor_t, critic_t,
+                           buffer.sample(batch_size), gamma)
+            # polyak update of target networks
+            ...
+```

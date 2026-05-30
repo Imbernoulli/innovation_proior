@@ -24,7 +24,7 @@ After pre-training the decoder is thrown away; the encoder is applied to full, u
 5. Run the lightweight decoder; a final linear layer outputs `patch_size² · channels` pixel values per patch (`16² * 3 = 768` for 16x16 RGB patches).
 6. Loss = MSE between predicted and (optionally per-patch-normalized) target pixels, averaged over masked patches only.
 
-The canonical pre-training setup uses 400 epochs by default, random resized crop plus horizontal flip, AdamW with betas `(0.9, 0.95)`, weight decay `0.05`, base learning rate `blr=1e-3` with `lr = blr * effective_batch_size / 256`, cosine scheduling with 40 warmup epochs, default `mask_ratio=0.75`, and effective batch size computed as `batch_size * accum_iter * world_size`.
+The recommended pre-training setup uses 800 epochs (results scale further out to 1600; the repo's argparse default is 400), random resized crop plus horizontal flip, AdamW with betas `(0.9, 0.95)`, weight decay `0.05`, base learning rate `blr=1.5e-4` with `lr = blr * effective_batch_size / 256` (batch size 4096), cosine scheduling with 40 warmup epochs, default `mask_ratio=0.75`, and effective batch size computed as `batch_size * accum_iter * world_size`.
 
 ## Code
 

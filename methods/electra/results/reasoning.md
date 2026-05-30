@@ -1,0 +1,212 @@
+OK, let me think about this from the pain. The thing everyone's pre-training right now is a denoising encoder: take a sequence of text, hide about 15% of the tokens behind a placeholder, and train a Transformer to reconstruct the hidden tokens from the surviving context. It works — bidirectional context gives much better transfer than left-to-right language modeling — but it is brutally expensive. People pour staggering amounts of compute into pre-training, and the cost is the headline problem. I keep coming back to one number: 15%. The loss is a sum of cross-entropy terms only at the masked positions. So per example, the network reads all n tokens, pays the full forward and backward cost of attending over all n, and then learns from roughly 15% of them. The other ~85% of positions are encoded and then thrown away as far as the gradient is concerned.
+
+Let me sit with that, because it's the crux. Why is masked reconstruction stuck at 15%? It's not an arbitrary hyperparameter I can just crank to 100%. The task is "what token was hidden here?" That question is only meaningful at positions I actually hid. If I ask it at a position whose token is sitting right there in the input, the answer is trivial — the network just copies the input. So a generative reconstruction objective is structurally welded to a small corrupted subset. I can't get a loss at every position out of "predict the hidden token," because most positions aren't hidden, and the ones that aren't hidden have a give-away answer. Bump the mask rate up toward 50% and the task degrades the other way: now there's too little context left to reconstruct anything, the predictions get bad, and I'm corrupting the very signal the encoder needs. So 15% is a sweet spot for *that* task, and the task itself is what caps the loss density.
+
+So the question I actually want to answer is sharper than "make pre-training cheaper." It's: can I define a self-supervised task whose loss is well-defined and non-trivial at *every* position, not just a masked 15%? If I had a loss at all n positions, I'd get something like a 6 to 7x denser learning signal per step for essentially the same encoder compute. That's the prize.
+
+What kind of per-position label is non-trivial everywhere? The trouble with "which token is this?" is that at an unmasked position the answer is visible. I need a question whose answer isn't just sitting in the input. Let me flip it around. Instead of asking the network to *produce* the token (a 30,000-way generative guess), ask it to *judge* the token that's already there. A judgment is well-defined at every position — every token can be asked "is something off about you?" The judgment that's actually informative and not visible-by-construction: has this token been tampered with? Did the token at this position come from the real text, or was it swapped out for something else?
+
+That's promising. If I take the original sequence, swap out some tokens for different ones, and then ask the encoder, at *every* position, "original or replaced?", I get a binary label at all n positions. The loss is a sum of binary cross-entropies over t = 1 to n. No position is wasted. And the encoder can't cheat by copying the input, because the input is exactly what it's being asked to judge — it has to use context to decide whether the token fits. Let me call it replaced-token detection.
+
+But wait — I have to be careful what "replaced" means, or this collapses into something trivial. If I replace a token with a random token from the vocabulary, detection becomes a grammar/type checker: "elephant the runs quickly" — obviously "elephant" doesn't belong, you barely need context, just local n-gram plausibility. The encoder would learn to spot surface anomalies, not to understand language. For the detection task to *force* deep understanding, the replacements have to be *plausible* — tokens that genuinely could go there given the context, so that telling real from fake actually requires modeling what the sentence means. So I need a source of plausible-but-possibly-wrong tokens at the positions I corrupt.
+
+What produces a plausible token for a position given its context? That's exactly what a masked language model does — mask a position, and it gives a distribution over what could go there. So: take the model everyone already trains, the small masked LM, run it on the masked positions to get a distribution, and *sample* a token from that distribution to splice in. If I sample from the MLM's output rather than taking its argmax, sometimes I'll get the original token back, sometimes a different but contextually plausible one. Those plausible-but-different ones are precisely the hard negatives I want the detector to learn from.
+
+So now I have two networks. One is a small masked language model — call it the generator G — whose only job is to propose plausible replacements at the masked positions. The other is the encoder I actually care about — call it the discriminator D — which looks at the (partially corrupted) sequence and predicts, at every position, original or replaced. After training I throw G away and keep D; D is the representation I fine-tune downstream.
+
+Let me write the pieces down precisely, because the details matter. Start from a clean sequence x = [x_1, ..., x_n]. Pick a random masked set m = [m_1, ..., m_k], the integers uniform on {1,...,n}, with k = ceil(0.15 n) — same 15% as before, but now 15% is just how many positions I *corrupt*, not how many positions carry a loss. Replace those positions with the placeholder to form x^masked = REPLACE(x, m, [MASK]). The generator is a Transformer encoder with a vocabulary softmax head:
+
+p_G(x_t | x^masked) = exp(e(x_t)^T h_G(x^masked)_t) / sum_{x'} exp(e(x')^T h_G(x^masked)_t),
+
+with e the token embeddings and h_G the generator's hidden states. Train G exactly the way the masked LM is trained — predict the originals at the masked positions:
+
+L_MLM = E[ sum_{i in m} -log p_G(x_i | x^masked) ].
+
+Now sample a replacement at each masked position, x̂_i ~ p_G(x_i | x^masked) for i in m, and build the corrupted sequence x^corrupt = REPLACE(x, m, x̂). The discriminator reads x^corrupt and outputs, at each position, a probability that the token is real:
+
+D(x^corrupt, t) = sigmoid(w^T h_D(x^corrupt)_t).
+
+And the detection loss, the whole point, is a binary cross-entropy summed over *all* positions:
+
+L_Disc = E[ sum_{t=1}^n -1(x^corrupt_t = x_t) log D(x^corrupt, t) - 1(x^corrupt_t != x_t) log(1 - D(x^corrupt, t)) ].
+
+Let me just double-check the signs against the standard binary cross-entropy, because a flipped label here would be silently wrong. Define the label y_t = 1 if the token is original ("real"), 0 if replaced ("fake"). Standard BCE is -[y log p + (1-y) log(1-p)] with p = D = P(real). When y_t = 1 (original), the term is -log D — pushing D up toward 1. When y_t = 0 (replaced), the term is -log(1 - D) — pushing D down toward 0. That matches what I wrote: 1(x^corrupt_t = x_t) is the indicator of "original," paired with -log D, and 1(x^corrupt_t != x_t) is "replaced," paired with -log(1 - D). Good, the signs are right.
+
+One subtlety I almost missed. The generator samples, and sometimes it samples the *correct* original token at a masked position — x̂_i = x_i. What label does that position get? It would be tempting to say "the generator produced it, so it's fake." But the token genuinely matches the original data; the corrupted sequence at that position is indistinguishable from the real one. Labeling it "fake" would be asking D to flag a token that is, in fact, the true token — punishing it for a token it cannot tell apart from real. So I'll define the label by the *outcome*, not the *source*: if x^corrupt_t equals x_t it's real, regardless of whether G happened to generate it. That's why the indicator above is 1(x^corrupt_t = x_t) and not 1(t in m). This keeps the labels honest, and it should help.
+
+Now combine. I minimize, over the whole corpus X,
+
+min_{θ_G, θ_D} sum_{x in X} L_MLM(x, θ_G) + λ L_Disc(x, θ_D).
+
+A couple of things to nail down. First, the expectations in both losses I'll just approximate with a single sample per example — one masked set, one set of generator samples. That's fine; it's the usual stochastic estimate. Second, and this is important: do I back-propagate the discriminator's loss into the generator? I can't, even if I wanted to. The generator's contribution to D's input is the *sampled* token x̂, and sampling from a categorical distribution is not differentiable — there's no gradient path from D's loss back through the discrete sample to θ_G. So G is trained purely by its own MLM loss, and D is trained purely by its detection loss; the only coupling is that D's inputs are produced by G's samples. Mechanically I'll wrap the sampling in a stop-gradient to make that explicit.
+
+Let me think about λ, because the two losses are not on the same scale. L_MLM is a cross-entropy over a ~30,000-way softmax — its magnitude is naturally large. L_Disc is a *binary* cross-entropy — naturally a much smaller number. If I just add them with λ = 1, the discriminator's signal is swamped by the generator's loss in the combined objective, and effectively I'm mostly training a masked LM with a faint detection side-task. The discriminator is the thing I keep, so its loss needs real weight. So λ has to be large enough to put the binary loss on comparable footing with the 30k-way one — something like 50. (I'd want to sweep it — say 1, 10, 20, 50, 100 — but the reasoning for "big" is clear from the scale mismatch alone.)
+
+Now, this two-network picture — a generator making fakes and a discriminator telling real from fake — looks exactly like a GAN, and I should ask whether I should actually train it like one. In a GAN, the generator is trained *adversarially*: its objective is to *maximize* the discriminator's loss, i.e., to fool D, and you achieve that by back-propagating D's gradient through G's output. I just argued I can't do that here because of the discrete sample. But let me not wave it away — let me actually try to train G adversarially and see if it's worth the trouble, because "fool the detector" is intuitively a great way to manufacture maximally hard negatives.
+
+If I can't back-prop through the sample, the standard tool is reinforcement learning: treat G as a policy that takes an action (generating tokens) and gets a reward from D, and use the score-function gradient. There's a wrinkle: G is non-autoregressive, it generates all the masked tokens independently and simultaneously, so it's really one giant action whose probability factorizes across positions. The action space is enormous — vocabulary-to-the-number-of-masked-positions. To make credit assignment tractable, assume D's prediction at position t depends only on the token at t and the unreplaced context, not on the other sampled tokens. Since only a small fraction of tokens are replaced, that's not a bad approximation, and it lets the objective decompose over positions. With that, maximizing L_Disc over θ_G becomes
+
+argmax_{θ_G} E_{x, m} sum_{t in m} E_{x̂_t ~ p_G} R(x̂_t, x),
+with R(x̂_t, x) = -log D(x̂_t | x^masked) if x̂_t = x_t, else -log(1 - D(x̂_t | x^masked)).
+
+(The reward is just D's loss contribution at that position — G wants D to be wrong, so it wants this large.) I can't differentiate the argmax directly through the sample, so the REINFORCE estimator gives
+
+∇_{θ_G} L_Disc ≈ E_{x, m} sum_{t in m} E_{x̂_t ~ p_G} ∇_{θ_G} log p_G(x̂_t | x^masked) [ R(x̂_t, x) - b(x^masked, t) ],
+
+with a learned baseline b(x^masked, t) = -log sigmoid(w^T h_G(x^masked)_t) to cut variance, trained to match the reward. Single-sample estimate, gradient ascent on θ_G.
+
+So it's *doable*. The question is whether it's *better*. Two things make me skeptical before I even run it. One: REINFORCE is sample-inefficient, and here the action space is ~30,000 per position — policy gradient in an action space that size is going to learn slowly. Maximum likelihood gives the generator a dense gradient over the whole vocabulary every step; RL gives it a noisy scalar reward for one sampled token. That makes the adversarial generator a worse proposal mechanism for exactly the thing I need, which is plausible diverse negatives. Two: adversarial text generators have a well-documented tendency to collapse to low-entropy output — all the probability mass piling onto a single token — because that's a cheap way to game a discriminator. Low entropy means little diversity in the samples, which means the detector sees repeated or easy fakes instead of a rich set of plausible alternatives. So: don't make it a GAN. Train G with plain MLE. It's simpler, more stable, gives a better and more diverse proposal distribution, and sidesteps the non-differentiability entirely.
+
+That settles it, and it also tells me what this thing *is*. It is not a GAN — there's no adversarial game, G isn't trying to fool D, and I don't even feed G a noise vector (it's just a masked LM). What it actually resembles is noise-contrastive estimation: a binary classifier separating real data from samples of a noise distribution, where here the "noise" distribution is the learned generator. And it's a deep, contextual, scaled-up cousin of continuous-bag-of-words with negative sampling — predict-the-token-from-context recast as real-vs-proposal classification — except the encoder is a Transformer instead of a bag of vectors and the proposal is a learned MLM instead of fixed unigram frequencies. The negatives are hard *because* the proposal is a good language model. Good, the lineage makes sense.
+
+I can make that NCE connection more precise by asking what a perfect detector would know. Freeze a context c with one position under consideration, let p(x|c) be the true conditional probability of token x, let q(x|c) = p_G(x|c), and let p_m be the probability that this position is selected for corruption. For a candidate visible token x, the detector's expected binary loss has three cases. If the position is not selected, probability (1 - p_m)p(x|c), the token is real and contributes -log D(x,c). If the position is selected and the generator happens to sample the original x, probability p_m p(x|c)q(x|c), it is still real and again contributes -log D(x,c). If the position is selected and the original token is something else but the generator samples x, probability p_m(1 - p(x|c))q(x|c), the visible x is fake and contributes -log(1 - D(x,c)). For this fixed x and c, write
+
+L(D) = -A log D - B log(1 - D),
+
+where A = (1 - p_m)p + p_m p q and B = p_m(1 - p)q. Different x values separate, so I can minimize this scalar loss. The derivative is
+
+dL/dD = -A/D + B/(1 - D).
+
+Setting it to zero gives B D = A(1 - D), so (A + B)D = A and
+
+D*(x,c) = A / (A + B).
+
+Substitute the two coefficients:
+
+A + B = (1 - p_m)p + p_m p q + p_m(1 - p)q = (1 - p_m)p + p_m q.
+
+So
+
+D*(x,c) = p[(1 - p_m) + p_m q] / [(1 - p_m)p + p_m q].
+
+Divide numerator and denominator by p_m and set a = (1 - p_m)/p_m:
+
+D*(x,c) = p(x|c)[a + q(x|c)] / [a p(x|c) + q(x|c)].
+
+Now solve it the other way, because this is the useful part. Starting from D[a p + q] = p[a + q], move the p terms together:
+
+Dq = p[a + q - aD] = p[q + a(1 - D)].
+
+Therefore
+
+p(x|c) = D(x,c) q(x|c) / [q(x|c) + a(1 - D(x,c))].
+
+So the detector is not merely learning a heuristic "sounds wrong" score. Together with the generator distribution, an optimal detector contains enough density-ratio information to recover the underlying conditional token distribution. I do not need to use it as a generator, but this reassures me that the binary task is still tied to modeling the data distribution.
+
+Let me reconsider the generative-vs-discriminative choice once more, because I want to be sure the *discriminative* framing is what's buying me the efficiency and not just the side benefits. There are really two ideas tangled together: (a) compute the loss at all n positions instead of 15%, and (b) make the per-position task a binary judgment instead of a 30k-way generation. I should mentally separate them. Suppose I keep the loss at all n positions but make it *generative* — predict the identity of every token, where the masked ones were replaced by generator samples and the model has to recover the true token everywhere. That's an all-tokens generative model. If most of the gain is just from "loss over all tokens," that variant should recover most of the improvement. And conversely, if I take my discriminator but restrict its loss back to only the 15% masked positions — sum over i in m instead of t = 1 to n — I should fall most of the way back to the old baseline. Those are the two ablations that would isolate the cause. My bet: the all-tokens-loss is the load-bearing part, the discriminative cast adds a bit more on top and, crucially, is *cheaper and simpler* than an all-tokens generative head (no 30k-way softmax at every position, no copy mechanism needed). The 15%-restricted discriminator should crater back toward the baseline, confirming the density of the loss is what matters.
+
+While I'm at it, the secondary defect — the placeholder mismatch. The old objective trains with a [MASK] symbol the encoder never sees at fine-tuning time. My discriminator never sees [MASK] either: it reads x^corrupt, which contains only real tokens (originals and generator samples), no placeholders. So replaced-token detection fixes the mismatch as a free side effect. I'd expect this to be a smaller effect than the all-tokens one — the old 80/10/10 heuristic already partly addresses it — but it's a clean bonus.
+
+I still need to make the engineering choices that let this train well.
+
+How big should the generator be relative to the discriminator? My instinct says "make G as good as possible" — a better language model makes better, harder fakes. But push on that. If G is *too* good, its replacements become nearly perfect — so plausible that even a strong D can't tell them from real. The detection task becomes too hard, D gets a near-random signal, and it stops learning useful features. Worse, a very strong G has its own idiosyncratic distribution, and to detect *its* samples D would have to spend capacity *modeling the generator* rather than modeling the language. I don't want D to become a G-detector; I want it to become a language understander. And there's a flat compute cost: if G is the same size as D, I've roughly doubled the per-step compute, since I run two full encoders. All three pressures point the same way — make G *smaller* than D. Reducing the hidden size, the feed-forward size, and the number of heads (keeping the depth) to something like a quarter to a half of D's width should be the sweet spot: a generator good enough to make plausible fakes, weak enough that detecting them is a learnable signal about language, and cheap enough not to dominate compute. (At very large D, there's a related wrinkle: a strong generator at 15% masking gets too many positions right, so almost nothing actually gets replaced and D sees too few "fake" labels — bump the mask rate up, say to 25%, to keep enough replacements around.)
+
+Then there's joint training versus staging. The clean alternative would be: train G to completion first, then freeze it and train D against its fixed samples. But there's a chicken-and-egg risk if I do them separately — at the start of D's training, if G is already a strong language model, the fakes are immediately hard, and D, faced with a hard task and a weak start, can fail to get off the ground, collapsing to just predicting the majority class ("everything's real," since only ~15% is fake). If instead I train them *jointly*, G starts off as a terrible language model producing easy, obviously-wrong fakes, and improves over the course of training. That gives D a natural curriculum: easy negatives early, progressively harder negatives as G sharpens. The detector ramps up alongside its adversary-that-isn't-an-adversary. Joint training it is. (If I ever did want staging, I'd have to initialize D from G's weights to avoid the cold-start collapse, and that forces G and D to be the same size — another reason staging is worse.)
+
+And sharing weights between G and D. They both have token embeddings; should they share? Here's the argument for sharing the embeddings specifically. The generator has a softmax over the entire vocabulary at every masked position, so *every* embedding row receives a gradient on *every* step — G densely trains the whole embedding table. The discriminator, by contrast, only ever touches the embeddings of tokens that actually appear in its input or get sampled — a sparse subset per step. So G is a dramatically better teacher of token embeddings than D is on its own. If I tie the embedding tables, D inherits the richly-trained embeddings for free. What about tying *all* the encoder weights? That gives almost no extra benefit over tying just the embeddings, and it forces G and D to be the same size — which I just argued against. So: share the token (and positional) embeddings, nothing else. Since G is narrower than D, I make the shared embeddings D-sized and add a small linear projection inside G from embedding-width down to generator-hidden-width.
+
+The remaining implementation detail is sampling, since "sample from p_G" needs an actual differentiable-free mechanism in the graph. The Gumbel-max trick does it: add Gumbel noise to the logits and take the argmax, which is an exact categorical sample, and wrap it in stop-gradient so no gradient leaks back to G through the sample. Then scatter the sampled tokens into the masked positions to form x^corrupt, compute the per-position label by comparing to the original ids, and run D.
+
+Let me write it.
+
+```python
+import tensorflow as tf
+import collections
+
+# Two encoders: a small generator G (a masked LM) and the discriminator D
+# (the encoder we keep). Embeddings are shared; G is narrower than D.
+
+class PretrainingModel:
+    """Replaced-token-detection pre-training."""
+
+    def __init__(self, config, features, is_training):
+        bert_config = get_bert_config(config)          # the discriminator's config
+        embedding_size = config.embedding_size or bert_config.hidden_size
+
+        # 1) Corrupt the input: pick ~15% of positions and place [MASK].
+        inputs = features_to_inputs(features)
+        masked_inputs = mask(config, inputs, config.mask_prob)   # records positions + original ids
+
+        # 2) Generator = a SMALL masked LM. Narrower than D (1/4-1/2 width),
+        #    but it shares the embedding table with D (tied embeddings).
+        gen_config = get_generator_config(config, bert_config)   # shrink hidden/ffn/heads, keep depth
+        generator = build_transformer(
+            config, masked_inputs, is_training, gen_config,
+            embedding_size=embedding_size, scope="generator")
+        mlm_output = self._mlm_head(masked_inputs, generator)    # vocab softmax at masked positions
+        # L_MLM: predict the originals at the masked positions only.
+        gen_loss = mlm_output.loss
+
+        # 3) Sample plausible replacements from p_G and splice them in -> x^corrupt.
+        fake_data = self._sample_fake_data(masked_inputs, mlm_output.logits)
+
+        # 4) Discriminator reads x^corrupt and labels EVERY position real/replaced.
+        discriminator = build_transformer(
+            config, fake_data.inputs, is_training, bert_config,
+            embedding_size=embedding_size, scope="discriminator")
+        disc_output = self._rtd_head(fake_data.inputs, discriminator,
+                                     fake_data.is_fake_tokens)
+
+        # 5) Combined objective. lambda rescales the binary loss against the
+        #    ~30k-way MLM loss so the discriminator signal isn't swamped.
+        self.total_loss = config.gen_weight * gen_loss + config.disc_weight * disc_output.loss
+        # config.gen_weight = 1.0, config.disc_weight = 50.0
+
+    def _mlm_head(self, inputs, model):
+        # Cross-entropy of p_G over the vocab, summed at the masked positions.
+        reprs = gather_positions(model.get_sequence_output(), inputs.masked_lm_positions)
+        logits = token_logits(reprs, model.get_embedding_table())  # tied output embeddings
+        return softmax_ce(logits, inputs.masked_lm_ids, inputs.masked_lm_weights)
+
+    def _sample_fake_data(self, inputs, mlm_logits):
+        # Draw x_hat ~ p_G via Gumbel-max; stop_gradient: no gradient flows to G
+        # through the discrete sample (we can't and don't back-prop disc loss into G).
+        inputs = unmask(inputs)
+        sampled = tf.stop_gradient(sample_from_softmax(mlm_logits / self._config.temperature))
+        sampled_ids = tf.argmax(sampled, -1, output_type=tf.int32)
+        updated_ids, masked = scatter_update(
+            inputs.input_ids, sampled_ids, inputs.masked_lm_positions)
+        # Label = "replaced" only where the sampled token DIFFERS from the original.
+        # If G happens to resample the true token, that position is "real", not fake.
+        is_fake = masked * (1 - tf.cast(tf.equal(updated_ids, inputs.input_ids), tf.int32))
+        FakedData = collections.namedtuple("FakedData", ["inputs", "is_fake_tokens"])
+        return FakedData(inputs=get_updated_inputs(inputs, input_ids=updated_ids),
+                         is_fake_tokens=is_fake)
+
+    def _rtd_head(self, inputs, discriminator, is_fake):
+        # Binary classifier at EVERY position: this is where the all-tokens loss lives.
+        hidden = tf.layers.dense(discriminator.get_sequence_output(),
+                                 self._bert_config.hidden_size,
+                                 activation=get_activation(self._bert_config.hidden_act))
+        logits = tf.squeeze(tf.layers.dense(hidden, 1), -1)        # D(x^corrupt, t) pre-sigmoid
+        # Label y_t = 1 if ORIGINAL, 0 if REPLACED:
+        labels_real = 1.0 - tf.cast(is_fake, tf.float32)
+        weights = tf.cast(inputs.input_mask, tf.float32)           # ignore padding
+        # -[ y log sigma + (1-y) log(1-sigma) ], summed over all n real positions.
+        losses = tf.nn.sigmoid_cross_entropy_with_logits(
+            logits=logits, labels=labels_real) * weights
+        loss = tf.reduce_sum(losses) / (1e-6 + tf.reduce_sum(weights))
+        DiscOutput = collections.namedtuple("DiscOutput", ["loss"])
+        return DiscOutput(loss=loss)
+
+
+def sample_from_softmax(logits):
+    # Gumbel-max: exact categorical sample from softmax(logits).
+    u = tf.random.uniform(get_shape_list(logits), minval=0, maxval=1)
+    gumbel = -tf.log(-tf.log(u + 1e-9) + 1e-9)
+    return tf.one_hot(tf.argmax(tf.nn.softmax(logits + gumbel), -1, output_type=tf.int32),
+                      logits.shape[-1])
+
+
+def get_generator_config(config, bert_config):
+    # Generator is narrower than the discriminator: ~1/4 the hidden width.
+    gen = bert_config.copy()
+    gen.hidden_size = int(round(bert_config.hidden_size * config.generator_hidden_size))  # 0.25
+    gen.intermediate_size = 4 * gen.hidden_size
+    gen.num_attention_heads = max(1, gen.hidden_size // 64)
+    return gen
+```
+
+After pre-training I discard the generator entirely and fine-tune only the discriminator — add a linear classifier for sentence-level tasks or a span head for question answering on top of its hidden states, with the same architecture and hyperparameters as the masked-LM baseline.
+
+So the chain is: masked reconstruction wastes ~85% of positions per step because "predict the hidden token" is only non-trivial where you hid something; to get a loss at every position I switch from generating tokens to *judging* them — original or replaced — which is well-defined everywhere; for the judgment to require real understanding the replacements must be plausible, so a small masked-LM generator samples them; that makes a generator/discriminator pair that looks like a GAN but isn't — I train the generator by maximum likelihood, not adversarially, because the discrete sample blocks the gradient and the reinforcement-learning workaround is sample-inefficient and collapses to low-diversity samples; I weight the binary detection loss heavily (λ≈50) against the large-vocabulary MLM loss, share the embeddings (the generator's full-vocab softmax trains them densely), keep the generator small (a too-strong generator makes the task unlearnable and forces the detector to model the generator), and train both jointly so the generator gives the detector an easy-to-hard curriculum; then I throw the generator away and keep the detector as my pre-trained encoder.

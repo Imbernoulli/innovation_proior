@@ -73,7 +73,7 @@ around `Γ`, a giant-step moment calculation, and a weak-approximation argument.
 
 ## Working code
 
-No official repository accompanies this analysis; the code below is grounded
+The code below is grounded
 in the standard PyTorch Adam update generalized to the `(V,S)` AGM form, and in the
 diagonal-network sparse-regression-with-label-noise setup exactly as specified.
 

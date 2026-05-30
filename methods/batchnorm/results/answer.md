@@ -45,7 +45,7 @@ y = (γ/sqrt(Var[x]+ε))·x + (β − γE[x]/sqrt(Var[x]+ε)).
 
 ## Working code (NumPy)
 
-Faithful to a standard per-layer forward/backward implementation. Each function below is the body of one network layer obeying the harness's `forward`/`backward` contract: insert `batchnorm_forward` after an affine pre-activation and before its nonlinearity, with any affine bias redundant once β is present; use `spatial_batchnorm_forward` after a convolution. γ and β are trained by the same optimizer as the weights.
+Each function below is the body of one network layer obeying the harness's `forward`/`backward` contract: insert `batchnorm_forward` after an affine pre-activation and before its nonlinearity, with any affine bias redundant once β is present; use `spatial_batchnorm_forward` after a convolution. γ and β are trained by the same optimizer as the weights.
 
 ```python
 import numpy as np

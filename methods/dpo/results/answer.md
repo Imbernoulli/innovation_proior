@@ -133,7 +133,7 @@ def train_step(policy_model, reference_model, batch, beta, optimizer):
     return loss.item(), accuracy.item()
 ```
 
-The code is faithful to the canonical implementation: `get_batch_logps` and the
-log-ratio/logsigmoid loss mirror the standard DPO trainer, with the reference
-model frozen and run under `no_grad`, and the policy/reference forward passes
-batched over the chosen+rejected concatenation for efficiency.
+`get_batch_logps` sums per-token log-probs over completion tokens; the
+log-ratio/logsigmoid loss is the DPO objective; the reference model is frozen and
+run under `no_grad`; and the policy/reference forward passes are batched over the
+chosen+rejected concatenation for efficiency.

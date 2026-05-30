@@ -1,0 +1,240 @@
+Let me start from the thing that actually hurts. I keep having to solve the same PDE again and again. Designing an airfoil, I solve the flow equations for one shape, nudge the shape, solve again — thousands of times. Calibrating a subsurface model, I propose a permeability field, solve for the pressure, compare to data, propose another field, solve again. Every one of these is a finite-element or finite-difference or pseudospectral solve on a fine mesh, and each is completely independent of the last. The solver knows nothing carried over from the previous run. And the meshes have to be fine: the phenomena I care about — boundary layers, turbulence — only show up when the discretization is fine enough to resolve them, and then a single solve is slow. For the 2-D incompressible flow I have in mind, even a tuned pseudospectral solver is around two seconds per instance on a GPU. Multiply by thirty thousand for a Bayesian inversion and I'm looking at the better part of a day for one experiment.
+
+So what is the object I'm really after? Not a single solution. I want the *map*. For a parametric PDE there's a coefficient or initial condition — call it `a`, a function on a domain `D ⊂ R^d` — and a solution `u`, another function on `D`. The solver implements
+
+    G† : a ↦ u,
+
+a map between two spaces of functions, and that map is the same for the whole family. If I could learn `G†` once, then each new `a` is a single forward evaluation instead of a fresh solve. That's the prize: amortize the cost of the family across one training run.
+
+The catch is that `a` and `u` are *functions*, living in infinite-dimensional spaces — say separable Banach spaces `A = A(D; R^{d_a})` and `U = U(D; R^{d_u})`. Most of what I know how to train maps a fixed-length vector to a fixed-length vector. I could discretize `D` on a grid of `n` points, stack the samples `a(x_1),…,a(x_n)` into a vector in `R^n`, and learn a map `R^n → R^n` with a convolutional network. People do exactly this, treating the field as an image and doing image-to-image regression. And it's fast at inference and it amortizes across instances, so it solves part of my problem. But it has a defect that I can't live with: it's welded to the grid. The learned filters encode a particular grid spacing. If I train at one resolution and evaluate at another, the error doesn't stay put — it drifts, and in fact for these problems it *grows* as I refine the test grid. I've seen the pattern: a fully-convolutional surrogate on the 1-D Burgers map sits around ten percent relative error at a 256-point grid and climbs past thirty percent by 8192 points. That's backwards. Refining the grid should give the *truth* more room, not make my model worse. The model isn't approximating an operator; it's approximating one finite-dimensional slice of it and falling apart off that slice. I can't query at a point that isn't on the training grid, I can't transfer between meshes. This is the wall with finite-dimensional surrogates: they are, by definition, discretization-dependent.
+
+There's a different neural approach that's mesh-free: represent the *solution itself* as a neural network `u_θ(x)` and fit `θ` by driving down the PDE residual at sampled points — essentially replacing the finite-element basis with the space of networks. That's genuinely mesh-independent and accurate. But it models *one* instance. Hand it a new coefficient field and it has to solve a fresh optimization problem from scratch — same per-instance cost as the classical solver, just with a different inner loop. And it needs the equation written down. That's not an operator either; it's a per-instance solver wearing a neural coat.
+
+So I want the best of both: mesh-free like the residual networks, amortized like the convolutional surrogate. The non-negotiable consequence is that I must define my model as a map between *function spaces*, and only discretize at the very end to touch data. If the parameters live in function space and are consistent in the continuum, then any grid is just a way of *resolving* the same operator, rather than a new input dimension that changes the model itself.
+
+Now, how do I even parameterize a map between function spaces? Let me reason by analogy with an ordinary network, which alternates a linear map `Wv` with a pointwise nonlinearity `σ`. The nonlinearity carries over to functions trivially — apply `σ` pointwise, `σ(v)(x) = σ(v(x))`. The hard part is the linear map. In finite dimensions a linear map is a matrix-vector product, `(Wv)_i = Σ_j W_{ij} v_j`. What is the continuum analogue of summing `W_{ij} v_j` over `j`? It's integrating a kernel against the function:
+
+    (K v)(x) = ∫_D κ(x, y) v(y) dy.
+
+That's the natural infinite-dimensional linear operator — a kernel integral operator, with `κ(x,y)` playing the role of the matrix entry coupling location `x` to location `y`. And there's a beautiful reason to believe this is the *right* object and not just a formal analogy. Think about what the solution operator of a linear PDE actually is. If `L u = f` with `L` linear, the solution is built from the Green's function `G`:
+
+    u(x) = ∫_D G(x, y) f(y) dy.
+
+The Green's function is the response at `x` to a unit point source at `y`, and linearity (superposition) says the response to a general source is the integral of the responses to all the point sources. So the solution operator of a linear PDE *is* a kernel integral operator, with the Green's function as its kernel. The integral operator isn't an arbitrary choice — it's the exact form the answer takes for the linear case. That's strong evidence it's the right primitive to build on.
+
+But my operators are nonlinear (even for Darcy flow, where the equation is linear in `u`, the coefficient-to-solution map `a ↦ u` is not). Fine — that's exactly why I wrap the linear integral operator with nonlinearities, the same trick that lets ordinary networks approximate nonlinear functions out of linear pieces. So I'll build an iterative architecture. Lift the input function `a` to a higher-dimensional representation `v_0(x) = P(a(x))` with a local (pointwise-in-`x`) map `P` — a shallow network acting on the channel dimension, raising it to some width `d_v`. Then iterate updates `v_t ↦ v_{t+1}`, and at the end project back, `u(x) = Q(v_T(x))`, with another local map `Q`. Lifting first gives the per-layer linear operator a fat channel space to mix within, which is where its expressive power will come from; one scalar channel wouldn't have room.
+
+What's the update? Compose the global linear integral operator with a pointwise nonlinearity. But a pure integral operator plus nonlinearity can blur away information that should stay purely local: boundary values, local coefficients, channel-wise corrections at the same point. I want a direct path that can transform the channel vector at `x` without forcing it through an all-to-all integral. So I also add a pointwise linear map `W` acting on the channel vector at each `x`. The update is
+
+    v_{t+1}(x) = σ( W v_t(x) + (K(a) v_t)(x) ),    x ∈ D.
+
+Here `W : R^{d_v} → R^{d_v}` is an ordinary matrix applied at each point, `σ` is a pointwise nonlinearity, and `K(a)` is the kernel integral operator, which I'll let depend on the input function `a`:
+
+    (K(a) v_t)(x) = ∫_D κ(x, y, a(x), a(y)) v_t(y) dy,
+
+with `κ` a learned neural network mapping `(x, y, a(x), a(y))` to a `d_v × d_v` matrix (it has to be a matrix, because it mixes the `d_v` channels of `v_t(y)` into the `d_v` channels of the output, just like `W_{ij}` was a scalar mixing scalar entries — here each "entry" is itself a channel vector). Stack a few of these layers and I have a genuine, mesh-free, learnable operator between function spaces. The kernel `κ` is shared across all `x`, so it's a single finite set of parameters that I can evaluate on any discretization — I'm not tied to a grid. This already fixes the mesh-dependence problem in principle.
+
+Now I try to actually run it and I hit the wall. Look at the cost of one layer. To get the output at a single point `x` I integrate over all of `D`. Discretize `D` with `n` points and the integral becomes a quadrature sum over all `n` of them. I need the output at all `n` points. That's `n` outputs, each a sum over `n` inputs: `O(n²)` kernel evaluations per layer. And each kernel evaluation is a forward pass of the network `κ`, producing a `d_v × d_v` matrix. For the coarse grids it's tolerable, but the whole point was fine grids — turbulence — and there `n²` is hopeless. This is exactly why this style of operator, evaluated by summing the kernel against every pair of points (message passing over a graph on the sample points), has been accurate but slow, and on the turbulent regime it just doesn't get there. The integral operator is the right object and the wrong bill. I need the same operator computed in near-linear time.
+
+Stare at the integral. The expensive thing is that `κ(x, y, …)` depends on `x` and `y` separately, so there's no structure to exploit — every pair is its own computation. What if I throw away the dependence I don't strictly need and impose structure? Two moves. First, drop the explicit dependence on `a(x), a(y)` inside the kernel for now (I'll keep `a`'s influence through the lifting `P` and can add it back later if it helps). Second, assume the kernel is *translation invariant*:
+
+    κ(x, y) = κ(x − y).
+
+Why is this not just a convenient hack? Because that's precisely the structure the Green's function has when the differential operator has constant coefficients: the response depends only on the displacement `x − y`, not on the absolute positions. It's the same reason a physical impulse response is the same wherever you poke it. So I'm not pulling a restriction out of nowhere; I'm specializing to the translation-invariant case, which is the canonical one. With `κ(x,y) = κ(x−y)` the integral becomes
+
+    (K v)(x) = ∫_D κ(x − y) v(y) dy = (κ * v)(x),
+
+a convolution. That hasn't made it cheaper yet — a convolution done directly is still `O(n²)`. But a convolution is exactly the thing the Fourier transform simplifies.
+
+Let me write the Fourier coefficients for a function `f : D → R^{d_v}` on a periodic box, componentwise in the channel index `j`,
+
+    (F f)_j(k) = ∫_D f_j(x) e^{−2πi⟨x,k⟩} dx,    f_j(x) = Σ_{k∈Z^d} (F f)_j(k) e^{2πi⟨x,k⟩},
+
+with `i = √(−1)`. The convolution theorem says the Fourier transform turns convolution into pointwise multiplication: for each frequency `k`,
+
+    F(κ * v)(k) = F(κ)(k) · F(v)(k).
+
+Let me convince myself, because everything rides on it. Write `(κ * v)(x) = ∫ κ(x−y) v(y) dy` and Fourier transform in `x`:
+
+    F(κ*v)(k) = ∫_x [∫_y κ(x−y) v(y) dy] e^{−2πi⟨x,k⟩} dx.
+
+Substitute `z = x − y`, so `x = z + y` and `dx = dz`:
+
+    = ∫_y ∫_z κ(z) v(y) e^{−2πi⟨z+y,k⟩} dz dy
+    = (∫_z κ(z) e^{−2πi⟨z,k⟩} dz)(∫_y v(y) e^{−2πi⟨y,k⟩} dy)
+    = F(κ)(k) · F(v)(k).
+
+The exponential factors because `⟨z+y,k⟩ = ⟨z,k⟩ + ⟨y,k⟩`, and the double integral separates. So the convolution that cost `O(n²)` in physical space is, in Fourier space, a *pointwise* product across frequencies. Then
+
+    (K v)(x) = (κ * v)(x) = F⁻¹( F(κ) · F(v) )(x).
+
+I don't need to form `κ` in physical space and transform it. The only thing that enters is its Fourier transform `F(κ)`, frequency by frequency. So let me just *make that the learnable object*. Call it `R := F(κ)` and parameterize it directly in Fourier space:
+
+    (K v)(x) = F⁻¹( R · F(v) )(x).
+
+I never touch `κ(x−y)` at all. I learn a multiplier `R` that acts on the Fourier coefficients of `v`. The integral operator has turned into: Fourier transform `v`, multiply by `R` per frequency, transform back. Per frequency, `(F v)(k) ∈ C^{d_v}` is a channel vector and `R(k) ∈ C^{d_v × d_v}` is a complex matrix — exactly the channel-mixing role the matrix `κ` had, but now indexed by frequency instead of by position. So the structure I gave up (position-by-position kernel) reappears as freedom across frequencies, which is the natural place for it to live for a convolution.
+
+Now, how many frequencies? `D` is bounded, and I'm assuming `κ` is periodic on it, so it has a Fourier *series* — the frequencies are discrete, `k ∈ Z^d`. If I kept all of them I'd have as many modes as grid points, and the parameter count would track the resolution again, which defeats the whole purpose. So I truncate: keep a small rectangular block of low modes. In the implementation I will treat `m_j` as a retained-mode count on axis `j`, not as an inclusive upper bound; on a full FFT axis that means indices `0,…,m_j−1` and the wrapped negative frequencies `s_j−m_j,…,s_j−1`. Abstractly I can call the retained block `Z_m`.
+
+    Z_m ≈ ∏_j {−m_j,…,−1,0,…,m_j−1},    with |Z_m| independent of the grid resolution.
+
+Is truncation defensible or am I just throwing away signal? Two reasons it's fine, maybe better than fine. First, the data has decaying spectra — the solution fields concentrate their energy in low modes; for the flow I care about, truncating the true solution to its lowest twenty modes already captures it to a couple percent. So the low modes carry most of what matters, and dropping the tail acts as a low-pass regularizer and a finite, resolution-independent parameterization in one stroke. Second — and this is the part that initially worried me — even though each `K` layer only outputs the retained modes, the *network as a whole* is not band-limited, because `σ` sits between the layers in physical space, and a pointwise nonlinearity in physical space spreads energy across frequencies — it manufactures new high modes out of products of low ones. (This is also why `σ` must live in physical space and not in Fourier space: a pointwise nonlinearity applied to Fourier coefficients would correspond to a *convolution* in physical space, which is meaningless as an activation and can't regenerate high frequencies.) And the final projection `Q`, being nonlinear, adds more. So I can use a small fixed budget per layer — twelve retained modes per spatial axis is a reasonable 2-D starting point — and still leave the full network a path to produce sharper physical-space structure.
+
+So `R` is a complex tensor with one `d_v × d_v` channel-mixing matrix per retained frequency, and I drop the kernel notation entirely; `R` *is* the parameter. The physical representation is real-valued, so a full complex spectrum would have Hermitian symmetry. In code I do not store the full spectrum and tie every conjugate pair by hand; I store the one-sided real-FFT spectrum and let the inverse real FFT reconstruct the missing half along the last axis. On axes that the real FFT does not halve, I still need both the low positive and wrapped negative corners, and the implementation learns those corner tensors directly.
+
+Now make it concrete on a grid, because that's where I touch data. Discretize `D` with `n` points, so `v_t ∈ R^{n × d_v}` and its discrete Fourier transform `F(v_t) ∈ C^{n × d_v}`. Since I only multiply by a multiplier supported on the retained block, I just *slice off* those low modes and discard the rest. The per-frequency multiply, written in indices with `k` the frequency, `l` the output channel, `j` the input channel, is
+
+    ( R · (F v_t) )_{k,l} = Σ_{j=1}^{d_v} R_{k,l,j} (F v_t)_{k,j},    k ∈ Z_m,  l = 1,…,d_v.
+
+That's a small dense `d_v × d_v` matrix-vector product done independently at each retained frequency — a batched matrix multiply, trivial to vectorize. On a uniform grid I compute `F` with the FFT. For a uniform discretization of resolution `s_1 × … × s_d = n`, the discrete transform and inverse are
+
+    (F f)_l(k) = Σ_{x_1=0}^{s_1−1} … Σ_{x_d=0}^{s_d−1} f_l(x) e^{−2πi Σ_j x_j k_j / s_j},
+    (F⁻¹ f)_l(x) = (1/n) Σ_{k_1=0}^{s_1−1} … Σ_{k_d=0}^{s_d−1} f_l(k) e^{+2πi Σ_j x_j k_j / s_j}.
+
+where `n = s_1⋯s_d`; this is the normalization convention used by the default PyTorch FFT pair, and with another convention the constant can be absorbed into `R`.
+
+One subtlety in indexing the retained modes on the FFT grid. The FFT returns frequencies in the order `0, 1, …, s/2, …, −2, −1` wrapped around, so a negative frequency `−m` lives at index `s − m`. A retained count `m_j` on a full FFT axis therefore means the two slices `0:m_j` and `s_j−m_j:s_j`. With a real FFT, the last axis is one-sided, so I keep `0:m_d` there and let `irfft` reconstruct the missing negative last-axis modes. The retained block therefore appears as corners of the stored array: two corners in 2-D, four in 3-D.
+
+I could instead define "low modes" by an `ℓ¹` bound on the wave number — that's the more canonical notion of low frequency — but the box/corners version is what slices cleanly out of the array for a parallel matmul, so I take the box.
+
+What does this cost? The per-frequency multiply touches `|Z_m|` modes and does a `d_v × d_v` channel mix at each one, so the multiply is `O(|Z_m| d_v²)` with `|Z_m|` fixed by design. The transforms dominate: a naive DFT is `O(n²)`, but because I truncate I only ever need `|Z_m|` output modes, so even a direct transform is `O(n |Z_m|)`, and on a uniform grid the FFT does the whole transform in `O(n log n)`. That's the win I was after — the `O(n²)` integral has become quasi-linear, `O(n log n)`, for fixed width and fixed mode budget. The price is that the FFT wants a uniform grid; that's the one place I've narrowed the generality, and it's a fair trade for turbulence-scale `n`.
+
+And the discretization-invariance I demanded at the start falls out for free. The parameters are `R`, living in Fourier space, with a fixed retained block that has nothing to do with `n`. To evaluate the operator at some resolution I just resolve the Fourier basis `e^{2πi⟨x,k⟩}` on whatever grid I'm handed — those basis functions are defined everywhere on `R^d`, at any `x`. So I can train at one resolution and evaluate at a finer one without retraining and without ever having seen fine data: zero-shot super-resolution. The same `R` is a *consistent* discretization of one continuum operator, so it should not inherit the finite-dimensional convolutional surrogate's resolution-change failure mode.
+
+One more thing about `W`. The Fourier branch is periodic by construction — the inverse transform builds a periodic function. Real problems have non-periodic boundaries (the Darcy square, the time axis of the flow). The pointwise `W v_t(x)` branch, running alongside in physical space, is not constrained to be periodic, so it carries the boundary and the strictly-local content that the periodic convolution branch can't represent. So the two branches are complementary: `W` is the local/bias term keeping track of non-periodic structure, the Fourier term is the global translation-invariant operator. Adding `σ` on top makes the whole update nonlinear. This is the analogue, layer for layer, of "linear map plus activation," but the linear map is a global convolution realized as a multiply in Fourier space.
+
+Let me also reconsider whether `R` should depend on `a`, to mirror the original `κ(x,y,a(x),a(y))`. I can let `R` be a function `R(k, (F a)(k))` — a parametric map from the frequency and the input's Fourier coefficient to the multiplier. A linear dependence is possible, and a small network is possible too. But `Z^d` is a discrete, unstructured index set, so a network reading `k` directly has little smooth geometry to exploit; a linear dependence adds cost while the lifted representation `v_0 = P(a)` already carries the input into every layer. So the simplest thing — learn `R` directly per retained mode, with no explicit `a`-dependence — is the right default, and `a` enters through the lifting `P`.
+
+Now I can write the whole forward pass and it should match the architecture I reasoned to. Lift with `P`, run a few layers each of which adds the Fourier branch and the `W` branch and applies `σ` between layers, project with `Q`. Let me write the spectral layer first, in one spatial dimension to keep the indices clear. The input is real, so I use the real FFT, which returns the non-negative frequencies `0…⌊n/2⌋`; the inverse real FFT reconstructs the missing negative frequencies. I allocate a zero one-sided spectrum, fill in the first `modes` low-frequency slots with the multiplied values, and inverse-transform.
+
+```python
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+class SpectralConv1d(nn.Module):
+    """The integral operator K, realized as: rfft -> keep retained modes ->
+    per-mode complex matmul by R -> irfft.  R is learned directly in Fourier space."""
+    def __init__(self, in_channels, out_channels, modes1):
+        super().__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.modes1 = modes1  # retained low modes; rfft has at most floor(n/2)+1
+        # R as a complex tensor (in, out, modes); scale keeps the representation norm ~constant
+        self.scale = 1 / (in_channels * out_channels)
+        self.weights1 = nn.Parameter(
+            self.scale * torch.rand(in_channels, out_channels, modes1, dtype=torch.cfloat))
+
+    def compl_mul1d(self, inp, weights):
+        # per mode x: (batch,in,x),(in,out,x) -> (batch,out,x)  == the sum_j R_{k,l,j}(Fv)_{k,j}
+        return torch.einsum("bix,iox->box", inp, weights)
+
+    def forward(self, x):
+        # x: (batch, channels, n)
+        x_ft = torch.fft.rfft(x)                       # F(v): (batch, channels, n//2+1)
+        out_ft = torch.zeros(x.size(0), self.out_channels, x.size(-1)//2 + 1,
+                             device=x.device, dtype=torch.cfloat)
+        out_ft[:, :, :self.modes1] = self.compl_mul1d( # multiply only the low modes by R
+            x_ft[:, :, :self.modes1], self.weights1)   # higher modes stay zero (truncated)
+        return torch.fft.irfft(out_ft, n=x.size(-1))   # F^{-1}: back to physical space, real
+```
+
+In two dimensions there's the indexing wrinkle I noted. The real FFT halves only the *last* axis (modes `0…s2//2`), but the first axis is full, so its negative frequencies sit at the high end of the array. The retained block is therefore two corners: low-positive on the first axis crossed with the low modes of the last axis, and high (= negative) on the first axis crossed with the low modes of the last axis. Two corners means two weight tensors.
+
+```python
+class SpectralConv2d(nn.Module):
+    def __init__(self, in_channels, out_channels, modes1, modes2):
+        super().__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.modes1 = modes1
+        self.modes2 = modes2
+        self.scale = 1 / (in_channels * out_channels)
+        # one R per retained corner (the rfft halves the last axis; the first axis keeps
+        # both its low-positive and its high-negative frequencies)
+        self.weights1 = nn.Parameter(
+            self.scale * torch.rand(in_channels, out_channels, modes1, modes2, dtype=torch.cfloat))
+        self.weights2 = nn.Parameter(
+            self.scale * torch.rand(in_channels, out_channels, modes1, modes2, dtype=torch.cfloat))
+
+    def compl_mul2d(self, inp, weights):
+        # (batch,in,x,y),(in,out,x,y) -> (batch,out,x,y)
+        return torch.einsum("bixy,ioxy->boxy", inp, weights)
+
+    def forward(self, x):
+        b = x.shape[0]
+        x_ft = torch.fft.rfft2(x)  # (b, c, s1, s2//2+1)
+        out_ft = torch.zeros(b, self.out_channels, x.size(-2), x.size(-1)//2 + 1,
+                             device=x.device, dtype=torch.cfloat)
+        # low-positive corner on axis 1
+        out_ft[:, :, :self.modes1, :self.modes2] = self.compl_mul2d(
+            x_ft[:, :, :self.modes1, :self.modes2], self.weights1)
+        # high (negative) corner on axis 1
+        out_ft[:, :, -self.modes1:, :self.modes2] = self.compl_mul2d(
+            x_ft[:, :, -self.modes1:, :self.modes2], self.weights2)
+        return torch.fft.irfft2(out_ft, s=(x.size(-2), x.size(-1)))
+```
+
+And the full operator network: lift, four layers of (Fourier branch `+` pointwise `W`, then `σ` between them), project. The pointwise `W` is just a 1×1 convolution — a per-point linear map on channels. I concatenate the grid coordinates onto the input so the pointwise maps have positional information, and I can pad the domain when the boundary is non-periodic.
+
+```python
+class FNO2d(nn.Module):
+    def __init__(self, modes1, modes2, width):
+        super().__init__()
+        self.fc0 = nn.Linear(3, width)            # lift P: input is (a(x,y), x, y) -> width channels
+        self.conv0 = SpectralConv2d(width, width, modes1, modes2)
+        self.conv1 = SpectralConv2d(width, width, modes1, modes2)
+        self.conv2 = SpectralConv2d(width, width, modes1, modes2)
+        self.conv3 = SpectralConv2d(width, width, modes1, modes2)
+        self.w0 = nn.Conv2d(width, width, 1)      # pointwise-in-space linear W (the local/bias branch)
+        self.w1 = nn.Conv2d(width, width, 1)
+        self.w2 = nn.Conv2d(width, width, 1)
+        self.w3 = nn.Conv2d(width, width, 1)
+        self.fc1 = nn.Linear(width, 128)          # projection Q
+        self.fc2 = nn.Linear(128, 1)
+        self.padding = 9                          # pad if the domain is non-periodic
+
+    def forward(self, x):
+        grid = self.get_grid(x.shape, x.device)   # append coordinates as channels
+        x = torch.cat((x, grid), dim=-1)
+        x = self.fc0(x).permute(0, 3, 1, 2)       # channels-first for the conv/FFT ops
+        x = F.pad(x, [0, self.padding, 0, self.padding])
+        for conv, w in [(self.conv0, self.w0), (self.conv1, self.w1),
+                        (self.conv2, self.w2), (self.conv3, self.w3)]:
+            x1 = conv(x)                          # K v: global Fourier branch
+            x2 = w(x)                             # W v: local pointwise branch
+            x = x1 + x2
+            if conv is not self.conv3:            # nonlinearity in physical space, not after the last
+                x = F.gelu(x)
+        x = x[..., :-self.padding, :-self.padding]
+        x = x.permute(0, 2, 3, 1)
+        x = F.gelu(self.fc1(x))                   # Q
+        return self.fc2(x)
+
+    def get_grid(self, shape, device):
+        b, sx, sy = shape[0], shape[1], shape[2]
+        gx = torch.linspace(0, 1, sx, device=device).reshape(1, sx, 1, 1).repeat(b, 1, sy, 1)
+        gy = torch.linspace(0, 1, sy, device=device).reshape(1, 1, sy, 1).repeat(b, sx, 1, 1)
+        return torch.cat((gx, gy), dim=-1)
+```
+
+Training is unremarkable and that's the point — the operator is just a module. I fit it with a relative `L²` loss, which is the natural function-space error (norm of the difference over norm of the target), Adam, and a step-halving schedule.
+
+```python
+def relative_l2(pred, target):
+    diff = (pred - target).reshape(pred.size(0), -1).norm(dim=1)
+    return (diff / target.reshape(target.size(0), -1).norm(dim=1)).mean()
+
+model = FNO2d(modes1=12, modes2=12, width=32)
+opt = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-4)
+sched = torch.optim.lr_scheduler.StepLR(opt, step_size=100, gamma=0.5)
+for epoch in range(500):
+    for a, u in train_loader:
+        opt.zero_grad()
+        loss = relative_l2(model(a), u)
+        loss.backward()
+        opt.step()
+    sched.step()
+```
+
+The chain now hangs together. I wanted the solution operator of a family of PDEs, mesh-free and consistent across resolutions, because solving each instance from scratch on a fine mesh is the bottleneck. A map between function spaces needs a linear primitive that lives in the continuum; the kernel integral operator is exactly that, and it is the literal form of the solution operator for linear PDEs via the Green's function. Wrapping it with a pointwise nonlinearity and a pointwise linear map, and lifting to a channel space, gives a learnable nonlinear operator, but the integral is `O(n²)` and will not scale. Restricting the kernel to be translation invariant, `κ(x−y)`, which is what the Green's function looks like for constant-coefficient problems, turns the integral into a convolution, and the convolution theorem turns the convolution into a per-frequency multiply, `F⁻¹(R·F(v))`. Parameterizing `R` directly in Fourier space and truncating to a fixed low-mode block makes the operator a fixed-size, resolution-independent object, justified because the data's spectrum decays and because the physical-space nonlinearities between layers regenerate the high modes that truncation drops. The FFT computes the transforms in `O(n log n)`, so the whole layer is quasi-linear; and because the parameters live in Fourier space, the same operator resolves on any grid, giving discretization invariance and zero-shot super-resolution. The pointwise `W` branch carries the non-periodic and local content the periodic Fourier branch cannot, and the spectral layer drops into an ordinary training loop as just another module.
