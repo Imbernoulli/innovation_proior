@@ -81,6 +81,17 @@ def sample_prior_like(x):
     return torch.randn_like(x)
 
 
+@torch.no_grad()
+def odeint(field, x0, t0, t1, steps=100):
+    x = x0
+    dt = (t1 - t0) / steps
+    n = x0.shape[0]
+    for i in range(steps):
+        t = torch.full((n,), t0 + i * dt, device=x.device, dtype=x.dtype)
+        x = x + field(x, t) * dt
+    return x
+
+
 class TrainingPairBuilder:
     """OT Gaussian conditional path for vector-field regression.
 
@@ -93,9 +104,18 @@ class TrainingPairBuilder:
     def __init__(self, sigma_min: float = 1e-4):
         self.sigma_min = sigma_min
 
-    def sample_xt(self, x0, x1, t):
+    def compute_mu_t(self, x0, x1, t):
+        del x0
         t = pad_t_like_x(t, x1)
-        return (1 - (1 - self.sigma_min) * t) * x0 + t * x1
+        return t * x1
+
+    def compute_sigma_t(self, t):
+        return 1 - (1 - self.sigma_min) * t
+
+    def sample_xt(self, x0, x1, t):
+        mu_t = self.compute_mu_t(x0, x1, t)
+        sigma_t = pad_t_like_x(self.compute_sigma_t(t), x1)
+        return mu_t + sigma_t * x0
 
     def compute_conditional_flow(self, x0, x1, t, xt):
         # Closed-form conditional vector field at x_t = psi_t(x0).
@@ -115,21 +135,17 @@ class TrainingPairBuilder:
 def train_step(pair_builder, v_theta, opt, x1):
     """One CFM gradient step: regress v_theta(x_t, t) onto the conditional field."""
     x0 = sample_prior_like(x1)
-    t, xt, ut = pair_builder.sample_location_and_conditional_flow(x0, x1)
+    t = torch.rand(x1.shape[0], device=x1.device, dtype=x1.dtype)
+    t, xt, ut = pair_builder.sample_location_and_conditional_flow(x0, x1, t)
     loss = ((v_theta(xt, t) - ut) ** 2).mean()
     opt.zero_grad()
     loss.backward()
     opt.step()
-    return loss.item()
+    return loss
 
 
-@torch.no_grad()
 def sample(v_theta, n, shape, steps=100, device="cpu"):
     """Integrate dx/dt = v_theta(x, t) from noise (t=0) to data (t=1)."""
     x = torch.randn(n, *shape, device=device)
-    dt = 1.0 / steps
-    for i in range(steps):
-        t = torch.full((n,), i * dt, device=device)
-        x = x + v_theta(x, t) * dt  # Euler; any adaptive ODE solver (e.g. dopri5) works
-    return x
+    return odeint(lambda x, t: v_theta(x, t), x, 0.0, 1.0, steps=steps)
 ```

@@ -184,18 +184,26 @@ import torch.nn.functional as F
 import math
 
 class AttentionConfig:
-    def __init__(self, hidden_size, num_heads, attention_dropout=0.0, attention_bias=False):
+    def __init__(
+        self,
+        hidden_size,
+        num_heads,
+        num_key_value_heads=None,
+        attention_dropout=0.0,
+        attention_bias=False,
+    ):
         self.hidden_size = hidden_size
         self.num_heads = num_heads
         self.head_dim = hidden_size // num_heads
+        self.num_key_value_heads = num_key_value_heads  # TODO: choose the key/value layout.
+        self.num_key_value_groups = None  # TODO: derive the query-to-key/value mapping.
         self.attention_dropout = attention_dropout
         self.attention_bias = attention_bias
-        # TODO: choose the key/value cache layout.
 
 
-def align_key_value_heads(key_states, value_states, num_query_heads):
+def repeat_key_value_heads(hidden_states, n_rep):
     # TODO: map cached key/value tensors to the query-head layout required
-    # by the score matmul.
+    # by the score matmul, without changing what is stored in the cache.
     pass
 
 
@@ -208,6 +216,8 @@ class DecoderAttention(nn.Module):
         self.hidden_size = config.hidden_size
         self.num_heads = config.num_heads
         self.head_dim = config.head_dim
+        self.num_key_value_heads = config.num_key_value_heads
+        self.num_key_value_groups = config.num_key_value_groups
         self.attention_dropout = config.attention_dropout
         self.q_proj = nn.Linear(
             config.hidden_size, self.num_heads * self.head_dim, bias=config.attention_bias
@@ -234,9 +244,8 @@ class DecoderAttention(nn.Module):
                 key_states, value_states, self.layer_idx
             )
 
-        key_states, value_states = align_key_value_heads(
-            key_states, value_states, self.num_heads
-        )
+        key_states = repeat_key_value_heads(key_states, self.num_key_value_groups)
+        value_states = repeat_key_value_heads(value_states, self.num_key_value_groups)
 
         attn_weights = torch.matmul(
             query_states, key_states.transpose(2, 3)
@@ -259,10 +268,8 @@ def convert_attention_checkpoint(pretrained_attention, config):
     pass
 
 
-def continue_pretraining(model, steps_fraction):
-    """Adapt a converted checkpoint to its new structure with a small
-    fraction of the original pre-training budget."""
-    # TODO: run the original pre-training recipe for `steps_fraction`
-    #   of the original number of steps.
+def continue_pretraining(model, pretrain_step_fn, original_steps, alpha=0.05):
+    # TODO: run the existing pre-training recipe long enough for the edited
+    # attention structure to adapt.
     pass
 ```

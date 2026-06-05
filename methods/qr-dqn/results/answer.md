@@ -10,10 +10,11 @@ actually minimize Wasserstein and needs the support bounds $[V_{\min},V_{\max}]$
 *locations*:
 $$Z_\theta(x,a)=\frac1N\sum_{i=1}^N\delta_{\theta_i(x,a)}.$$
 The $N$ equal-mass locations are *quantiles* of the return. This removes the support bounds and the
-projection, and lets the locations be trained — via quantile regression — to minimize Wasserstein
+projection, and lets the locations be trained — via quantile regression — to hit the $W_1$ projection
 with *unbiased* gradients.
 
-**Which quantiles.** Minimizing $W_1(Y,Z_\theta)=\sum_i\int_{\tau_{i-1}}^{\tau_i}|F_Y^{-1}(\omega)-\theta_i|\,d\omega$
+**Which quantiles.** For ordered locations, minimizing
+$W_1(Y,Z_\theta)=\sum_i\int_{\tau_{i-1}}^{\tau_i}|F_Y^{-1}(\omega)-\theta_i|\,d\omega$
 ($\tau_i=i/N$) cell-by-cell: the subgradient of each cell is $2F(\theta)-(\tau_{i-1}+\tau_i)$, zero
 at $F(\theta)=\frac{\tau_{i-1}+\tau_i}{2}$. So the $W_1$-optimal locations are the **midpoint
 quantiles**
@@ -22,14 +23,17 @@ $$\hat\tau_i=\frac{2i-1}{2N},\qquad \theta_i=F_Y^{-1}(\hat\tau_i).$$
 **Quantile regression loss.** The $\tau$-quantile is the minimizer of $\mathbb{E}[\rho_\tau(\hat Z-\theta)]$
 with
 $$\rho_\tau(u)=u\,(\tau-\mathbb{1}_{u<0}),$$
-whose gradient $\tau-\mathbb{1}_{u<0}$ depends only on the sign of $u$ — unbiased from one sample.
+whose error-gradient $\tau-\mathbb{1}_{u<0}$ depends only on the sign of $u$; the corresponding
+stochastic gradient for $\theta$ is unbiased from one sample.
 The location objective $\sum_i\mathbb{E}_{\hat Z}[\rho_{\hat\tau_i}(\hat Z-\theta_i)]$ is minimized
 at the $W_1$ projection.
 
 **Quantile Huber loss.** $\rho_\tau$ is non-smooth at $0$ (constant-magnitude gradient), which
 hurts nonlinear function approximation. Huberize:
 $$\mathcal{L}_\kappa(u)=\begin{cases}\frac12u^2,&|u|\le\kappa\\ \kappa(|u|-\frac12\kappa),&|u|>\kappa\end{cases},
-\qquad \rho^\kappa_\tau(u)=\big|\tau-\mathbb{1}_{u<0}\big|\,\mathcal{L}_\kappa(u),\qquad \rho^0_\tau=\rho_\tau.$$
+\qquad \rho^\kappa_\tau(u)=\big|\tau-\mathbb{1}_{u<0}\big|\,\mathcal{L}_\kappa(u).$$
+The hard-loss setting $\kappa=0$ is implemented as the separate branch
+$\rho^0_\tau(u)=\rho_\tau(u)=|\tau-\mathbb{1}_{u<0}|\,|u|$.
 
 **QRTD (policy evaluation).** $\theta_i(x)\leftarrow\theta_i(x)+\alpha(\hat\tau_i-\mathbb{1}\{r+\gamma z'<\theta_i(x)\})$,
 $z'\sim Z_\theta(x')$; in practice average over all next-state locations.
@@ -53,9 +57,9 @@ import torch
 import torch.nn as nn
 
 N = 200
-KAPPA = 1.0     # 0 recovers the hard quantile loss
+KAPPA = 1.0
 
-class QRDQN(nn.Module):
+class DistributionalQNetwork(nn.Module):
     def __init__(self, n_actions, n=N):
         super().__init__()
         self.n_actions, self.n = n_actions, n
@@ -66,26 +70,38 @@ class QRDQN(nn.Module):
             nn.Flatten(),
             nn.Linear(3136, 512), nn.ReLU(),
             nn.Linear(512, n_actions * n))
-        self.register_buffer("tau_hat", (torch.arange(n).float() + 0.5) / n)  # midpoints (2i-1)/(2N)
+        self.register_buffer("levels", (torch.arange(n, dtype=torch.float32) + 0.5) / n)  # midpoints
 
-    def quantiles(self, x):
-        return self.net(x / 255.0).view(-1, self.n_actions, self.n)           # (B, A, N)
+    def prediction(self, x):
+        return self.net(x.float() / 255.0).view(-1, self.n_actions, self.n)   # (B, A, N)
 
     def greedy_action(self, x):
-        return self.quantiles(x).mean(dim=2).argmax(dim=1)                    # greedy on the mean
+        return self.prediction(x).mean(dim=2).argmax(dim=1)                   # greedy on the mean
 
 def bootstrap_target(target_net, rewards, next_obs, dones, gamma):
     with torch.no_grad():
-        nq = target_net.quantiles(next_obs)                                   # (B, A, N)
+        nq = target_net.prediction(next_obs)                                  # (B, A, N)
         a_star = nq.mean(dim=2).argmax(dim=1)
-        next_theta = nq[torch.arange(len(next_obs)), a_star]                  # (B, N)
-        return rewards[:, None] + gamma * (1.0 - dones[:, None]) * next_theta # (B, N); no projection
+        batch = torch.arange(next_obs.size(0), device=next_obs.device)
+        next_theta = nq[batch, a_star]                                        # (B, N)
+        not_done = 1.0 - dones.float().view(-1, 1)
+        return rewards.float().view(-1, 1) + gamma * not_done * next_theta    # (B, N); no projection
 
-def loss_fn(online_net, obs, actions, Ttheta, kappa=KAPPA):
-    theta = online_net.quantiles(obs)[torch.arange(len(obs)), actions]        # (B, N)
-    u = Ttheta.unsqueeze(1) - theta.unsqueeze(2)                              # u_ij = Ttheta_j - theta_i
-    huber = torch.where(u.abs() <= kappa, 0.5 * u.pow(2), kappa * (u.abs() - 0.5 * kappa))
-    tau = online_net.tau_hat.view(1, -1, 1)
-    rho = (tau - (u.detach() < 0).float()).abs() * huber                      # |tau_i - 1{u<0}| L_kappa
+def pairwise_distribution_loss(theta, target, levels, kappa=KAPPA):
+    u = target.unsqueeze(1) - theta.unsqueeze(2)                              # u_ij = Ttheta_j - theta_i
+    tau = levels.view(1, -1, 1)
+    weight = (tau - (u.detach() < 0).float()).abs()
+    if kappa == 0:
+        rho = weight * u.abs()
+    else:
+        abs_u = u.abs()
+        huber = torch.where(abs_u <= kappa, 0.5 * u.pow(2), kappa * (abs_u - 0.5 * kappa))
+        rho = weight * huber                                                  # |tau_i - 1{u<0}| L_kappa
     return rho.mean(dim=2).sum(dim=1).mean()                                  # sum_i E_j[rho], batch-mean
+
+def loss_fn(online_net, obs, actions, target, kappa=KAPPA):
+    pred = online_net.prediction(obs)
+    batch = torch.arange(obs.size(0), device=obs.device)
+    theta = pred[batch, actions]                                              # (B, N)
+    return pairwise_distribution_loss(theta, target, online_net.levels, kappa)
 ```

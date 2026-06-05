@@ -20,7 +20,7 @@ The hole in "train a generative machine" was: what's the downstream loss, if not
 
 Let me make the two players concrete. `G`: takes noise `z ~ p_z`, outputs `G(z)`. This implicitly defines a distribution `p_g` over `x` — the pushforward of `p_z` through `G` — but I will never need its formula, only the ability to sample by one forward pass. `D`: takes an `x`, outputs a single scalar `D(x) ∈ (0,1)`, read as the probability that `x` came from the real data rather than from `G`. Train `D` to be a good classifier — high on real, low on fake. And — the move that repairs NCE — train `G` to make `D` *wrong*, i.e. to push `D`'s output on the fakes up toward "real." As `G` improves, the classification problem gets *harder*, not easier. Counterfeiters and police: the counterfeiters improve, which forces the police to improve, which forces the counterfeiters to improve. The opponent is never a pushover because the opponent is being optimized against me.
 
-Why a *separately learned* classifier and not, say, a fixed two-sample statistic? I could imagine training `G` to minimize some fixed distance between sample sets — a kernel maximum-mean-discrepancy, say. But a fixed statistic has the same disease as NCE's fixed noise: it's a static measuring stick, and once `G` matches the data on whatever features the statistic is sensitive to, the signal flattens, even if the distributions still differ on features the statistic can't see. A *learned* `D` is an adaptive measuring stick — it actively searches for *whatever* feature currently separates fake from real, and keeps re-sharpening as `G` closes each gap. That adaptivity is the whole point, and it's why the opponent has to be trained, not fixed. And why a *classifier* rather than something that directly outputs the density ratio `p_data/p_g`? Because that raw ratio ranges over `(0, ∞)` — it's tiny in places, enormous in others, numerically miserable, you'd have to clip it. A classifier with a sigmoid output naturally produces `p_data/(p_data + p_g)`, the ratio squashed into `(0,1)` — same information, bounded and stable. The discriminator is, in effect, estimating the (transformed) density ratio between two distributions I can only sample from, neither of which I can write down. That's the trick that lets a classifier stand in for two intractable densities.
+Why a *separately learned* classifier and not, say, a fixed hand-chosen statistic between sample sets? A fixed statistic has the same disease as NCE's fixed noise: it's a static measuring stick, and once `G` matches the data on whatever features the statistic is sensitive to, the signal flattens, even if the distributions still differ on features the statistic can't see. A *learned* `D` is an adaptive measuring stick — it actively searches for *whatever* feature currently separates fake from real, and keeps re-sharpening as `G` closes each gap. That adaptivity is the whole point, and it's why the opponent has to be trained, not fixed. And why a *classifier* rather than something that directly outputs the density ratio `p_data/p_g`? Because that raw ratio ranges over `(0, ∞)` — it's tiny in places, enormous in others, numerically miserable, you'd have to clip it. A classifier with a sigmoid output naturally produces `p_data/(p_data + p_g)`, the ratio squashed into `(0,1)` — same information, bounded and stable. The discriminator is, in effect, estimating the (transformed) density ratio between two distributions I can only sample from, neither of which I can write down. That's the trick that lets a classifier stand in for two intractable densities.
 
 Now write the objective. `D` wants to assign high probability to the correct label: on real data `x ~ p_data` it wants `log D(x)` high; on a fake `G(z)` it wants `log(1 - D(G(z)))` high, since `1 - D` is "probability it's fake." So `D` maximizes
 
@@ -65,13 +65,13 @@ And now I'm smiling, because the JSD is exactly the right object and I didn't en
 
 And it matters *which* divergence fell out. The game treats `p_data` and `p_g` symmetrically — real-vs-fake is a symmetric two-class problem — so I get the symmetric JSD, not an asymmetric KL with its mode-covering-vs-mode-seeking baggage, and unlike KL the JSD is finite even where the two supports don't overlap (the mixture `m` always has support wherever either does, so the logs never blow up). That symmetry and boundedness are precisely the properties a sane training signal wants, and they came for free from the structure of the game rather than from a design choice I had to defend. Good.
 
-So far everything is conditioned on "if `D` has reached its optimum for the current `G`." Does *alternating* — nudge `D`, nudge `G`, repeat — actually converge? Let me think of it as optimization over `p_g` directly, in function space. Define `U(p_g, D) = V(G, D)` viewed as a function of `p_g`. For fixed `D`, `p_g` enters `V` only through `∫ p_g(x) log(1 - D(x)) dx`, which is *linear* in `p_g` — hence convex (linear functions are convex). Now `C(p_g) = sup_D U(p_g, D)` is a supremum of functions each convex in `p_g`, and a sup of convex functions is convex. So `C` is convex in `p_g`. Here is the subgradient fact I need: if `f(x) = sup_α f_α(x)` with each `f_α` convex, then the subgradient of the particular member `f_β` attained at the supremum is a subgradient of `f` — formally `∂f_β(x) ⊂ ∂f(x)` when `β = arg sup_α f_α(x)`. In words: to take a downhill step on `C` at the current `p_g`, I evaluate the gradient of `U(p_g, D)` at `D = D*_G`, the maximizing discriminator, and that's a valid subgradient of `C`. So computing the gradient of the value function at the *optimal* `D` and stepping `p_g` downhill is genuinely subgradient descent on `C`. And `C` is convex with a unique global optimum at `p_g = p_data` — just proved. Therefore, with small enough steps, `p_g` converges to `p_data`. That justifies the entire alternate-and-descend scheme — provided `D` is kept at or near its optimum as `G` moves.
+So far everything is conditioned on "if `D` has reached its optimum for the current `G`." Does the ideal alternating picture converge if I really solve that inner problem before moving `G`? Let me think of it as optimization over `p_g` directly, in function space. Define `U(p_g, D) = V(G, D)` viewed as a function of `p_g`. For fixed `D`, `p_g` enters `V` only through `∫ p_g(x) log(1 - D(x)) dx`, which is *linear* in `p_g` — hence convex (linear functions are convex). Now `C(p_g) = sup_D U(p_g, D)` is a supremum of functions each convex in `p_g`, and a sup of convex functions is convex. So `C` is convex in `p_g`. Here is the subgradient fact I need: if `f(x) = sup_α f_α(x)` with each `f_α` convex, then the subgradient of the particular member `f_β` attained at the supremum is a subgradient of `f` — formally `∂f_β(x) ⊂ ∂f(x)` when `β = arg sup_α f_α(x)`. In words: to take a downhill step on `C` at the current `p_g`, I evaluate the gradient of `U(p_g, D)` at `D = D*_G`, the maximizing discriminator, and that's a valid subgradient of `C`. So computing the gradient of the value function at the *optimal* `D` and stepping `p_g` downhill is genuinely subgradient descent on `C`. And `C` is convex with a unique global optimum at `p_g = p_data` — just proved. Therefore, with small enough steps, the ideal distribution-space update with exact `D*` converges to `p_data`. That proof tells me the target and the descent direction are right; it does not prove that a finite neural net with an approximate `D` is globally safe.
 
 One honest caveat I should write down so I don't fool myself. In practice I don't optimize `p_g` directly; I optimize `θ_g` through an MLP, which represents only a *limited family* of distributions, and an MLP introduces many critical points in parameter space. So the convexity argument lives in distribution space, not in parameter space — it tells me the *target* is right and the *idealized* dynamics converge, not that gradient descent on `θ_g` can't get stuck. My justification for using MLPs anyway is just the brute empirical fact that MLPs optimize beautifully in practice despite the lack of a parameter-space guarantee — the same leap of faith every deep net already rests on.
 
 Now make this actually run. Two practical problems.
 
-First problem: I cannot optimize `D` to completion in the inner loop at every step. It's computationally prohibitive, and on a finite dataset a fully-optimized `D` would just overfit — memorize which points are real — and stop giving useful gradients about the *distribution*. But the theory above wanted `D*` exactly. The patch: don't solve `D` to optimality; take `k` gradient steps on `D`, then one step on `G`, and repeat. If `G` changes slowly, then `D` stays *near* its optimum from one outer iteration to the next — I never re-burn-in from scratch, I just track. This is exactly the persistent-chain trick from training Boltzmann machines, SML/PCD: you carry the negative-phase Markov state across learning steps rather than restarting it each time, because the model moved only a little. Here the "carried state" is `D`'s parameters, kept warm across `G` updates. In practice `k = 1` — one `D` step per `G` step — already keeps `D` close enough and is the cheapest option, so that's the default. The whole convergence argument only needs `D` *near* optimal, not exactly optimal, which is what this buys.
+First problem: I cannot optimize `D` to completion in the inner loop at every step. It's computationally prohibitive, and on a finite dataset a fully-optimized `D` would just overfit — memorize which points are real — and stop giving useful gradients about the *distribution*. But the proof above wanted `D*` exactly. The practical patch: don't solve `D` to optimality; take `k` gradient steps on `D`, then one step on `G`, and repeat. If `G` changes slowly, then `D` can track the moving optimum from one outer iteration to the next — I never re-burn-in from scratch, I just keep the inner state warm. This is exactly the persistent-chain trick from training Boltzmann machines, SML/PCD: you carry the negative-phase Markov state across learning steps rather than restarting it each time, because the model moved only a little. Here the carried state is `D`'s parameters. In practice `k = 1` — one `D` step per `G` step — is the cheapest version of that tracking idea. The theorem still belongs to the exact-`D*` idealization; the schedule is the engineering approximation that tries to stay close to it.
 
 Second problem, the gradient one. The generator's term in the minimax game is `log(1 - D(G(z)))`. Early in training `G` is garbage, the fakes are obviously fake, so `D` confidently rejects them: `D(G(z)) ≈ 0`. I have to look at the gradient in the discriminator's *logit* space, not only at the derivative with respect to the already-squashed probability. Write `a` for the discriminator logit on a fake sample, so `D = σ(a)`. Then
 
@@ -83,18 +83,18 @@ How do I fix it without changing the game's equilibrium? I don't actually need `
 
     d/da[-log σ(a)] = -(1 - σ(a)) = -(1 - D).
 
-Now when `D(G(z)) ≈ 0`, the derivative is about `-1`: not infinite, not dead, just a clean strong push to increase the fake logit. It vanishes only when the fake is already being called real. This is the non-saturating loss. It is no longer the textbook minimax term; it shares the same equilibrium of the two-player game while having a healthy gradient precisely where the minimax term saturates. I'll keep the minimax form for the clean theory and use the non-saturating form to run. (When I write the code I should be honest that the algorithm box descends the minimax `log(1 - D(G(z)))` while the implementation maximizes `log D(G(z))` — same fixed point, different gradient, and the latter is what makes it learn.)
+Now when `D(G(z)) ≈ 0`, the derivative is about `-1`: not infinite, not dead, just a clean strong push to increase the fake logit. It vanishes only when the fake is already being called real. This is the non-saturating loss. It is no longer the minimax generator term; it shares the same fixed point of the two-player game while having a healthy gradient precisely where the minimax term saturates. I'll keep the minimax form for the clean theory and use the non-saturating form to run.
 
-One more failure mode I should name now so I watch for it. `D` and `G` have to stay synchronized. If I let `G` train hard against a *stale* `D`, `G` can cheat: collapse many different `z` onto the same few outputs `x` that happen to fool the current `D`. It wins the local battle — `D` is fooled — but it has thrown away diversity, so `p_g` no longer covers `p_data`; call it the collapse, the "Helvetica" failure where everything maps to one blob. The defense is the same balance the schedule already imposes from the other side: don't let `G` run away from `D`, keep `D` fresh — which is, once again, the same logic as keeping a Boltzmann machine's negative chains up to date between learning steps. So the `k`-step schedule is doing double duty: it keeps `D` near optimal for the theory *and* it keeps `G` from outrunning `D` into collapse.
+One more failure mode I should name now so I watch for it. `D` and `G` have to stay synchronized. If I let `G` train hard against a *stale* `D`, `G` can cheat: collapse many different `z` onto the same few outputs `x` that happen to fool the current `D`. It wins the local battle — `D` is fooled — but it has thrown away diversity, so `p_g` no longer covers `p_data`; call it the collapse, the "Helvetica" failure where everything maps to one blob. The defense is the same balance the schedule already imposes from the other side: don't let `G` run away from `D`, keep `D` fresh — which is, once again, the same logic as keeping a Boltzmann machine's negative chains up to date between learning steps. So the `k`-step schedule is doing double duty: it tries to keep `D` tracking the optimum the theory asks for, and it keeps `G` from outrunning `D` into collapse.
 
 Let me also account for `z` and the differentiability of `G`, because the whole gradient story depends on them. The only stochasticity in the generator is the noise `z ~ p_z`; everything after it is the deterministic map `G(·; θ_g)`. That deterministic-function-of-noise structure is exactly what lets backprop carry `D`'s gradient through `G`'s outputs and into `θ_g` — the same reparameterization logic the variational line uses. If the randomness were *inside* `G` as a stochastic unit instead of an injected input, I couldn't backprop a clean gradient through the sampling. The prior `p_z` itself is arbitrary as long as I can sample it and `G` is rich enough to reshape it — Gaussian, uniform, spherical, doesn't much matter — because `G` is doing all the work of bending `p_z` into `p_g`. And while the theory permits injecting noise at *every* layer of `G`, in practice it's enough to feed noise only at the bottom layer and let the deterministic stack do the rest. No feedback loop anywhere in generation means I can use the piecewise-linear units freely in `G`, the very thing the GSN recurrence couldn't afford.
 
 Before I commit, let me tally what I've bought and what I've paid, because this departs so far from everything else. Paid: there is no explicit `p_g(x)` — I can sample but I cannot evaluate the density, so any likelihood-style evaluation has to be indirect (fit a Gaussian Parzen window to a batch of samples, pick the bandwidth `σ` by cross-validation, report test log-likelihood under that — noisy, weak in high dimensions, but it's the available yardstick); and `D` must be kept synchronized with `G` or I get collapse. Bought: no Markov chain *anywhere*, in training or in sampling — a sample is one forward pass through `G`; no inference network during learning, unlike the variational route; the gradient is pure backprop through `D` into `G`; piecewise-linear units usable freely because there's no generation-time feedback loop. And a subtler statistical perk — `G` never touches a data example directly, it only ever sees the data *through the gradient that flows back through `D`*, so it can't trivially copy training points into its parameters; it can only "overfit" if `D` overfits, and `D`'s overfitting is the easy thing to control. It can even represent very sharp, near-degenerate distributions, which MCMC methods structurally cannot, because chains need the distribution blurry enough to mix between modes. That's a trade I'm glad to take.
 
-Now land it as actual code. In the framework I'm building on — Theano plus Pylearn2 — this fills the empty `train_step` slot from the scaffold I started with: where I had one generator and an unknown objective, I now have a custom `Cost` over a *pair* of models — a `Generator` MLP and a `Discriminator` MLP. The generator maps noise to data (rectifier-plus-sigmoid units in the setup I have in mind); the discriminator is maxout with dropout — maxout because its piecewise-linear pieces give the cleanest gradients for the classifier, dropout because `D` is a powerful net being trained on a finite dataset against a moving target and I want to keep it from overfitting the current `G`. The detail that lets me write the whole game with one loss: the discriminator's last-layer binary cross-entropy with target `1` is just `-log D(x)`, and with target `0` is just `-log(1 - D(x))`. So `d_obj` labels real as `1` and fake as `0`; and `g_obj`, non-saturating, labels the *fakes* as `1`, so that *minimizing* its BCE is the same as *maximizing* `log D(G(z))`. Then `T.grad` takes the two gradients against the two disjoint parameter sets independently — which is the one thing automatic differentiation is perfect for, and exactly the `T.grad(objective, params)` call the scaffold left blank. The skeleton:
+Now land it as actual code. In the framework I'm building on — Theano plus Pylearn2 — this fills the empty sampler, learned-signal, cost, and split-optimizer slots from the scaffold: a `Generator` wraps the noise-driven MLP, an `AdversaryPair` holds the generator and discriminator, `AdversaryCost2` produces separate scalar losses for the two parameter groups, and a small SGD variant runs discriminator updates separately from generator updates. The generator maps noise to data (rectifier-plus-sigmoid units in the setup I have in mind); the discriminator is maxout with dropout — maxout because its piecewise-linear pieces give the cleanest gradients for the classifier, dropout because `D` is a powerful net being trained on a finite dataset against a moving target and I want to keep it from overfitting the current `G`. The detail that lets me write the whole game with one loss: the discriminator's last-layer binary cross-entropy with target `1` is just `-log D(x)`, and with target `0` is just `-log(1 - D(x))`. So `d_obj` labels real as `1` and fake as `0`; and `g_obj`, non-saturating, labels the *fakes* as `1`, so that *minimizing* its BCE is the same as *maximizing* `log D(G(z))`. Then `T.grad` takes the two gradients against the two disjoint parameter sets independently — which is the one thing automatic differentiation is perfect for. The core code shape is:
 
 ```python
-# Pylearn2 Cost over an AdversaryPair(generator G, discriminator D) — this is train_step, filled in.
+# Pylearn2 Cost over an AdversaryPair(generator G, discriminator D).
 # Targets are supplied by the cost itself, not the dataset.
 def get_samples_and_objectives(self, model, data):
     g, d = model.generator, model.discriminator
@@ -102,35 +102,78 @@ def get_samples_and_objectives(self, model, data):
     m = X.shape[0]
     y1 = T.alloc(1, m, 1)                       # label "real"
     y0 = T.alloc(0, m, 1)                       # label "fake"
-    S, z, _ = g.sample_and_noise(m)            # S = G(z), z ~ p_z; one forward pass, no chain
+    S, z, _ = g.sample_and_noise(
+        m,
+        default_input_include_prob=self.generator_default_input_include_prob,
+        default_input_scale=self.generator_default_input_scale,
+        all_g_layers=False,
+    )                                          # S = G(z), z ~ p_z; one forward pass, no chain
 
-    y_hat1 = d.dropout_fprop(X)                 # D(x)      (maxout + dropout discriminator)
-    y_hat0 = d.dropout_fprop(S)                 # D(G(z))
+    y_hat1 = d.dropout_fprop(
+        X,
+        self.discriminator_default_input_include_prob,
+        self.discriminator_input_include_probs,
+        self.discriminator_default_input_scale,
+        self.discriminator_input_scales,
+    )                                          # D(x), with discriminator dropout
+    y_hat0 = d.dropout_fprop(
+        S,
+        self.discriminator_default_input_include_prob,
+        self.discriminator_input_include_probs,
+        self.discriminator_default_input_scale,
+        self.discriminator_input_scales,
+    )                                          # D(G(z)), same dropout settings
 
-    # discriminator: ascend E[log D(x)] + E[log(1 - D(G(z)))]   (real -> 1, fake -> 0)
+    # d_obj is minimized; minimizing BCE is the same as ascending
+    # E[log D(x)] + E[log(1 - D(G(z)))].
     d_obj = 0.5 * (d.layers[-1].cost(y1, y_hat1)    # cost(target=1, .) = -log D(x)
                  + d.layers[-1].cost(y0, y_hat0))   # cost(target=0, .) = -log(1 - D(G(z)))
 
-    # generator: NON-SATURATING. Label the fakes as REAL (1) so minimizing BCE
+    if self.no_drop_in_d_for_g:
+        y_hat0_for_g = d.dropout_fprop(S)
+    else:
+        y_hat0_for_g = y_hat0
+
+    # generator: non-saturating. Label fakes as real (1) so minimizing BCE
     # maximizes log D(G(z)) -> strong gradient when D(G(z)) is near 0.
-    # (The minimax algorithm box would instead descend log(1 - D(G(z))); same fixed point.)
-    g_obj = d.layers[-1].cost(y1, y_hat0)
+    g_obj = d.layers[-1].cost(y1, y_hat0_for_g)
     return S, d_obj, g_obj, 0
 
 def get_gradients(self, model, data):
     S, d_obj, g_obj, _ = self.get_samples_and_objectives(model, data)
-    d_params = model.discriminator.get_params()
     g_params = model.generator.get_params()
-    # disjoint parameter sets -> two independent gradients of one value function
+    d_params = model.discriminator.get_params()
+    for param in g_params:
+        assert param not in d_params
+    for param in d_params:
+        assert param not in g_params
+
     d_grads = T.grad(d_obj, d_params)
     g_grads = T.grad(g_obj, g_params)
-    rval = OrderedDict(zip(d_params, d_grads))
-    rval.update(OrderedDict(zip(g_params, g_grads)))
-    # a Cycler / alternate flag gates the g-update so it fires once per k d-updates (k = 1 default),
-    # keeping D near optimal and stopping G from outrunning D into collapse.
+
+    if self.scale_grads:
+        S_grad = T.grad(g_obj, S)
+        scale = T.maximum(1., self.target_scale / T.sqrt(T.sqr(S_grad).sum()))
+        g_grads = [g_grad * scale for g_grad in g_grads]
+
+    rval = OrderedDict()
+    rval.update(OrderedDict(safe_zip(
+        d_params, [self.now_train_discriminator * dg for dg in d_grads]
+    )))
+    rval.update(OrderedDict(safe_zip(
+        g_params, [self.now_train_generator * gg for gg in g_grads]
+    )))
     return rval, OrderedDict()
+
+# The SGD loop compiles separate update functions and runs k discriminator steps per generator step.
+for batch in iterator:
+    d_func(*batch)
+    i += 1
+    if i == discriminator_steps:               # default 1
+        g_func(*batch)
+        i = 0
 ```
 
-That is enough to run in the framework. The model definitions are ordinary MLPs: for MNIST-scale data, a generator with `100 -> 1200 -> 1200 -> 784`, rectified hidden layers, and a sigmoid output for `[0,1]` pixels; a discriminator with two maxout layers, dropout on its inputs/hidden activations, and a sigmoid output; and SGD with momentum around the cost. The crucial thing is not a new optimizer. It is the target assignment inside the cost, especially giving generated samples target `1` for the generator update, so minimizing the generator's binary cross-entropy is the non-saturating `-log D(G(z))` objective.
+That is enough to run in the framework. The model definitions are ordinary MLPs: for MNIST-scale data, uniform noise of dimension `100`; a generator with `100 -> 1200 -> 1200 -> 784`, rectified hidden layers, and a sigmoid output for `[0,1]` pixels; a discriminator with two maxout layers of `240` units and `5` pieces, dropout on its inputs and first hidden layer, and a sigmoid output; batch size `100`; SGD learning rate `.1`; momentum starting at `.5` and rising to `.7`. The crucial thing is not a new optimizer. It is the target assignment inside the cost, especially giving generated samples target `1` for the generator update, so minimizing the generator's binary cross-entropy is the non-saturating `-log D(G(z))` objective.
 
-So the whole causal chain. I started annoyed that deep generation lags deep discrimination, and traced the lag to one root cause: the explicit-probability tax — the intractable `Z` and MCMC mixing in the Boltzmann family, the need for an analytic unnormalized density in score matching, the variational bound plus inference net in the variational route, the reintroduced Markov chain in the generative-machine route. Two survivors from the survey pointed the way: NCE showed a *classifier can be the learning signal for a generative model* but died because its contrast was a fixed pushover, and the reparameterized differentiable generator showed how to train a sampler by pure backprop with no chain. Filling both holes with one move — make the contrast a *learned generator* and the classifier a *separate learned discriminator*, and stay implicit so there is never a density to normalize — gives a minimax value function that is just the optimal classifier's cross-entropy. Solving the inner max gives `D* = p_data/(p_data + p_g)`, the squashed density ratio; substituting it collapses the game to `-log 4 + 2·JSD(p_data ‖ p_g)`, minimized exactly and only at `p_g = p_data`; the alternating scheme is subgradient descent on a convex functional with `D` kept near optimal via a persistent-chain-style `k`-step schedule that also prevents collapse; and because the textbook `log(1 - D)` generator term has logit derivative `-D` when `G` is losing, I swap `G`'s objective to maximize `log D(G(z))`, sharing the fixed point but giving a strong early logit-space gradient. The result is a generative model trained by pure backprop, sampled by one forward pass, with no Markov chain and no inference network anywhere.
+So the whole causal chain. I started annoyed that deep generation lags deep discrimination, and traced the lag to one root cause: the explicit-probability tax — the intractable `Z` and MCMC mixing in the Boltzmann family, the need for an analytic unnormalized density in score matching, the variational bound plus inference net in the variational route, the reintroduced Markov chain in the generative-machine route. Two survivors from the survey pointed the way: NCE showed a *classifier can be the learning signal for a generative model* but died because its contrast was a fixed pushover, and the reparameterized differentiable generator showed how to train a sampler by pure backprop with no chain. Filling both holes with one move — make the contrast a *learned generator* and the classifier a *separate learned discriminator*, and stay implicit so there is never a density to normalize — gives a minimax value function that is just the optimal classifier's cross-entropy. Solving the inner max gives `D* = p_data/(p_data + p_g)`, the squashed density ratio; substituting it collapses the game to `-log 4 + 2·JSD(p_data ‖ p_g)`, minimized exactly and only at `p_g = p_data`; exact inner optimization turns the distribution-space update into subgradient descent on a convex functional, while the practical `k`-step schedule tries to track that ideal and also prevents collapse; and because the minimax `log(1 - D)` generator term has logit derivative `-D` when `G` is losing, I swap `G`'s objective to maximize `log D(G(z))`, sharing the fixed point but giving a strong early logit-space gradient. The result is a generative model trained by pure backprop, sampled by one forward pass, with no Markov chain and no inference network anywhere.

@@ -1,85 +1,189 @@
-Let me start from what I want and what's actually working right now. I want a model that takes a free-form caption and produces a photorealistic image, and ideally the same model should be able to *edit* an existing image from text — fill in a masked region with something the caption describes. The thing that's working best for image synthesis at the moment is diffusion: class-conditional diffusion models have overtaken GANs on the standard fidelity benchmarks. So the natural play is to take a diffusion model and condition it on text instead of a class label. But two questions immediately stand in the way: how do I inject something as rich as a sentence into the denoiser, and — the one that actually decides sample quality — how do I *guide* the reverse process toward the caption?
+I want a model that takes a free-form caption and produces a photorealistic image, and I want the same machinery to edit an existing image by filling a masked region from text. The strongest image generator I have in hand is no longer a GAN for the setting I care about; guided diffusion is the thing producing the best class-conditional samples. So the path is tempting: keep the diffusion backbone, replace the class label with language, and find a guidance signal that can push samples toward a sentence.
 
-Let me get the diffusion machinery straight first, because everything hangs off it. The forward process noises a clean image `x_0` step by step, `q(x_t|x_{t-1}) = N(x_t; √α_t x_{t-1}, (1−α_t)I)`. If each step adds only a little noise, the true reverse `q(x_{t-1}|x_t)` is close to a diagonal Gaussian, and if the chain adds enough total noise, `x_T` is essentially `N(0,I)`. So I learn a reverse model `p_θ(x_{t-1}|x_t) = N(μ_θ(x_t), Σ_θ(x_t))` and generate by starting from pure noise and denoising down. I won't optimize the variational bound directly; the surrogate that works is to noise `x_0` to `x_t` with a known `ε ∼ N(0,I)` and have the network predict that noise, `L_simple = E_{t,x_0,ε}[ ‖ε − ε_θ(x_t,t)‖² ]`. From `ε_θ` I can recover `μ_θ`. And there's a fact I'll lean on hard later: the noise prediction is, up to scale, the *score* of the noised data, `∇_{x_t} log p(x_t) ∝ ε_θ(x_t,t)`. I'll also let the model learn `Σ_θ` rather than fix it, because a learned variance lets me sample well with far fewer steps — which matters a lot when each step is a forward pass of a multi-billion-parameter net. So the denoiser's output is really two things per pixel: a predicted noise and a variance.
+Let me pin down the diffusion object before I touch text. The forward chain is `q(x_t|x_{t-1}) = N(x_t; √α_t x_{t-1}, (1−α_t)I)`, and by composing the steps I can write `x_t = √\bar α_t x_0 + σ_t ε`, with `σ_t = √(1-\bar α_t)` and `ε ∼ N(0,I)`. If the final accumulated noise is large enough, `x_T` is almost standard Gaussian, and if each step is small enough, the reverse posterior is close to Gaussian. I train `p_θ(x_{t-1}|x_t) = N(μ_θ(x_t), Σ_θ(x_t))` and sample by starting from noise and walking backward.
 
-Now, guidance. Why is guidance even needed — why not just sample from the conditional model `ε_θ(x_t|y)` and be done? Because, empirically, unguided conditional diffusion samples are more diverse but less sharp, and there's a knob that trades diversity for fidelity. The known way to turn that knob is **classifier guidance**: take a classifier `p_φ(y|x_t)` trained on noised images and nudge the reverse mean up the gradient of its log-probability,
+The practical loss is not the raw variational bound. I sample a timestep, add known Gaussian noise, and regress that noise:
 
-`μ̂_θ(x_t|y) = μ_θ(x_t|y) + s · Σ_θ(x_t|y) ∇_{x_t} log p_φ(y|x_t)`,
+`L_simple = E_{t,x_0,ε}[‖ε - ε_θ(x_t,t)‖²]`.
 
-with a scale `s`: bigger `s` means the sample is pushed harder toward "things the classifier is confident are class `y`," which sharpens fidelity at the cost of diversity. This is clean for a fixed label set. But my conditioning signal is *text*, an open-ended caption. Training a classifier `p_φ(caption | x_t)` over arbitrary sentences is awkward — a sentence isn't a class, and a classifier for text-given-image is exactly the kind of model I'd rather not have to build and train on noised images. So classifier guidance doesn't transplant cleanly to text. I need guidance that doesn't lean on a separate classifier.
+The sign matters here. Since `x_t = √\bar α_t x_0 + σ_t ε`, the conditional score of the Gaussian corruption is `∇_{x_t} log q(x_t|x_0) = -ε/σ_t`. So an `ε`-predictor is a score model with a known negative scale: `∇_{x_t} log p_t(x_t) ≈ -ε_θ(x_t,t)/σ_t`. If I forget that minus sign, the guidance derivation looks cleaner but the direction is wrong. I can still use the `ε` parameterization because the reverse mean `μ_θ` is recovered from it, and I should learn the variance too; learned `Σ_θ` is what lets the sampler take far fewer reverse steps without falling apart.
 
-Here's the reframe. What classifier guidance actually does is add `∇_{x_t} log p(y|x_t)` to the score. Can I get that gradient *without* a classifier? Consider an implicit classifier built straight out of the generative model itself by Bayes' rule: `p^i(y|x_t) ∝ p(x_t|y)/p(x_t)`. Take its gradient w.r.t. `x_t`:
+Guidance is the next pressure point. Sampling from the conditional denoiser alone gives diversity, but I need a knob that increases fidelity and caption match at the cost of diversity. Classifier guidance gives exactly such a knob. If a classifier trained on noised images gives `g = ∇_{x_t} log p_φ(y|x_t)`, then the local product of the reverse Gaussian with `exp(s g^T x)` is still Gaussian: completing the square shifts the mean from `μ` to `μ + sΣg`. That is where the `Σ` factor comes from:
 
-`∇_{x_t} log p^i(y|x_t) ∝ ∇_{x_t} log p(x_t|y) − ∇_{x_t} log p(x_t)`.
+`μ̂_θ(x_t|y) = μ_θ(x_t|y) + s · Σ_θ(x_t|y) ∇_{x_t} log p_φ(y|x_t)`.
 
-And I just said the score is the noise prediction — so `∇_{x_t} log p(x_t|y) ∝ ε*(x_t|y)` (conditional score) and `∇_{x_t} log p(x_t) ∝ ε*(x_t)` (unconditional score). The implicit-classifier gradient is therefore proportional to the *difference of the model's own conditional and unconditional noise predictions*, `ε*(x_t|y) − ε*(x_t)`. So I don't need any external classifier at all: if my one network can produce both a conditional `ε_θ(x_t|y)` and an unconditional `ε_θ(x_t|∅)`, then adding `s` times their difference to the prediction *is* classifier guidance with the model's own implicit classifier. Concretely the guided prediction is
+For classes, this is clean. For captions, it is awkward. A caption is not one label in a closed set, and training a classifier over arbitrary sentences at every noise level is the wrong object. I need the classifier-gradient effect without a separate classifier.
 
-`ε̂_θ(x_t|y) = ε_θ(x_t|∅) + s · ( ε_θ(x_t|y) − ε_θ(x_t|∅) )`, `s ≥ 1`,
+Bayes gives me one. If the generative model knows both `p(x_t|c)` and `p(x_t)`, then an implicit classifier is `p^i(c|x_t) ∝ p(x_t|c)/p(x_t)`. Its gradient is
 
-which says: start from the unconditional prediction and extrapolate *past* the conditional one, away from "what you'd predict with no caption" and toward "what you'd predict given the caption." This is classifier-free guidance, and the same `s` knob trades diversity for fidelity, for the same reason as before — it's amplifying the implicit-classifier gradient.
+`∇_{x_t} log p^i(c|x_t) = ∇ log p(x_t|c) - ∇ log p(x_t)`.
 
-For this to work the network has to know how to be unconditional. The trick is to train it to be both: with some fixed probability, replace the label by a null token `∅`. Then `ε_θ(·|∅)` is a genuine unconditional denoiser and `ε_θ(·|y)` the conditional one, sharing all weights. For text, `∅` is just the empty caption: sometimes during training I feed the model an empty token sequence instead of the real caption, so it learns to denoise with and without text. At sampling I run the network twice — once with the caption `c`, once with `∅` — and combine: `ε̂_θ(x_t|c) = ε_θ(x_t|∅) + s·(ε_θ(x_t|c) − ε_θ(x_t|∅))`. Two things make this attractive over classifier guidance. The model guides itself with its *own* learned knowledge rather than a separate, possibly weaker classifier; and conditioning on something hard to classify, like a sentence, becomes trivial — there's no classifier to build.
+Using the score/noise relation, this becomes
 
-There's a competing option I should take seriously, because there's a natural text-image scorer lying around: CLIP. CLIP gives me an image encoder `f(x)` and a caption encoder `g(c)` whose dot product `f(x)·g(c)` is high when image and caption match. That dot product is exactly a "how well does this image match the caption" score — so I can drop it into classifier guidance in place of the classifier's log-prob, perturbing the mean by the gradient of the similarity:
+`∇ log p^i(c|x_t) ≈ -(ε*(x_t|c) - ε*(x_t|∅))/σ_t`.
 
-`μ̂_θ(x_t|c) = μ_θ(x_t|c) + s · Σ_θ(x_t|c) ∇_{x_t} ( f(x_t) · g(c) )`.
+That minus sign is not a problem; it just tells me how the score-space guidance maps back into the `ε` output. A guided score that starts from the unconditional score and extrapolates toward the conditional one is
 
-But there's a subtlety that mirrors the classifier-guidance requirement. In classifier guidance, the classifier had to be trained on *noised* images, because during sampling it's evaluated on the noisy intermediate `x_t`, not on clean images. The same must hold for CLIP: the public CLIP was trained on clean images, so the blurry, noised `x_t` that show up all through the reverse process are out-of-distribution for it, and its gradients become unreliable — which is why people who guide with public CLIP have to bolt on data augmentations and perceptual losses to get anything recognizable. The fix is to train a **noised CLIP**: an image encoder `f(x_t, t)` that takes the noised image and timestep, trained with the same contrastive objective but on noised images with the same noise schedule as the base diffusion model. Then its similarity gradient is the right signal at every step, no augmentation tricks needed.
+`score_guided = score_uncond + w(score_cond - score_uncond)`, with `w ≥ 1`.
 
-So I now have two viable guidance routes for text — classifier-free guidance (extrapolate the model's own conditional vs. unconditional `ε`) and CLIP guidance (gradient of a noised-CLIP similarity). Both turn the same fidelity/diversity knob. Which one to use is the open question; the thing I'd want to validate is which gives more photorealistic, more caption-faithful samples under human comparison. (My expectation, from the structure: classifier-free guidance uses the model's own full knowledge rather than the narrower view of a similarity score, and avoids the extra noised-CLIP encoder.)
+Multiplying by `-σ_t` to return to the noise parameterization gives
 
-Now the architecture for getting text in. The denoiser is the ADM UNet (the class-conditional diffusion backbone). I encode the caption into a sequence of `K` tokens with a Transformer, and use its outputs in two complementary places. The final token embedding stands in for the class embedding that ADM normally adds — a single global vector summarizing the caption, injected everywhere the class embedding was. And the full sequence of `K` token feature vectors gets separately projected to the width of each attention layer and concatenated onto that layer's attention context, so every attention block in the UNet can attend over the caption tokens, not just a pooled summary. Global conditioning plus per-layer cross-attention to the token sequence. The base model runs at `64×64`; a second text-conditional diffusion model upsamples `64×64 → 256×256` (conditioning on the low-res image by channel-concatenation, the SR3 recipe).
+`ε̂_θ(x_t|c) = ε_θ(x_t|∅) + w · (ε_θ(x_t|c) - ε_θ(x_t|∅))`.
 
-For the unconditional capability, after the main training run I fine-tune the base model exactly as in pretraining except that `20%` of the time the token sequence is the empty sequence. That teaches `ε_θ(·|∅)` without erasing the conditional behavior — the model keeps generating text-conditional outputs and also gains a clean unconditional mode, which is precisely what classifier-free guidance consumes.
+So the final `ε` formula has the intuitive plus sign even though the score relation has a minus sign. I only need the network to produce both terms. The simplest way is to make the empty caption a real training condition: during a fine-tune, replace the token sequence with the empty sequence `20%` of the time. If the drop rate is too small, the unconditional branch is weak; if it is too large, I waste conditional training. A modest drop gives the same weights both behaviors, and at sampling time I run the denoiser once on a doubled batch, half captioned and half empty.
 
-Editing falls out with one more fine-tune. The training-free way to inpaint is to sample normally but overwrite the known region with a fresh `q(x_t|x_0)` noised sample of the original after each step. The problem: the model only ever sees a *noised* version of the surrounding context, so it can't condition cleanly on the real pixels around the hole, and you get edge artifacts. Better to teach it the task: during fine-tuning, erase random regions and feed the model the remaining (clean) pixels plus a mask channel as extra conditioning. Concretely I add four input channels to the UNet — a second set of RGB channels (the clean known region) and a mask channel — and initialize the new channels' input weights to zero so the model starts out behaving exactly as before and learns the inpainting use of them gradually. (For the upsampler I always give the full low-res image but only the unmasked part of the high-res.)
+CLIP is the other plausible route. It already gives an image embedding and a text embedding whose dot product is a caption-match score, so I can use `∇_{x_t}(f(x_t)·g(c))` as the mean-perturbing gradient. But the classifier-guidance lesson repeats: the guidance model is evaluated on noisy intermediate images, so a clean-image CLIP is out of distribution. If I use CLIP, I should train a noised image encoder `f(x_t,t)` with the same contrastive objective and the same noise schedule as the diffusion model. Then the CLIP route is a real analogue of classifier guidance:
 
-Now the sampling code. The clean way to do classifier-free guidance is to run the conditional and unconditional predictions in one batched forward pass: stack the same noisy latents twice, with the caption tokens on one half and the empty tokens on the other, run the UNet once, split off the `ε` channels (the first 3 of the 6), recombine by the guidance formula, and pass the guided `ε` (with the untouched variance channels) on to the sampler step.
+`μ̂_θ(x_t|c) = μ_θ(x_t|c) + s · Σ_θ(x_t|c) ∇_{x_t}(f(x_t,t)·g(c))`.
+
+I now have two text guidance mechanisms to compare: the external noised-CLIP gradient and the model's own conditional-minus-unconditional direction. Structurally I expect the second to be stronger because it uses the denoiser's full learned distribution rather than a separate similarity model, and it avoids training another noise-aware network.
+
+Text also has to enter the denoiser. A single pooled sentence vector is too lossy; it can carry global topic, but spatial image features need to bind words, attributes, and relations at many resolutions. The ADM backbone already has attention blocks where spatial features can look at context, so I encode the caption with a Transformer, use the final token embedding where the class embedding used to go, and also project the full sequence of token embeddings into each attention layer's width and concatenate those tokens to the attention context. The final token gives global conditioning everywhere; the full sequence gives each attention layer access to the words it needs.
+
+Generating directly at high resolution would make every reverse step expensive. I keep the base model at `64×64`, then use a separate text-conditional super-resolution diffusion model for `64×64 → 256×256`, conditioning on the low-resolution image by channel concatenation. This keeps semantic generation and high-frequency refinement separated.
+
+Editing needs one more adjustment. The training-free inpainting recipe overwrites the known region with a noised version of the original after each sampling step, but then the model only sees noisy context around the hole. That is exactly where seams and edge artifacts come from. I should fine-tune for the editing task itself: erase random regions, feed the clean known RGB pixels and a mask as extra channels, and train the model to denoise the completed image. Four new input channels are enough: three for the known image and one for the mask. I initialize those new input weights to zero so the fine-tune starts as the original generator and gradually learns to use the editing context. For the upsampler, I should keep the whole low-resolution image available because it carries the coarse scene, and mask only the high-resolution context. In the sampler, the projection is a simple two-case expression: where the mask is `1`, keep the known image; where it is `0`, use the model's denoised prediction.
+
+At sampling time I make the doubled batch explicit: one half carries the caption, the other carries the empty sequence. I duplicate the noisy latents, split the first three output channels as `ε`, extrapolate the conditional and unconditional halves, leave the variance channels alone, and let the diffusion sampler convert that guided `ε` into the reverse mean.
 
 ```python
 import torch as th
 
+def build_text_kwargs(model, prompt, batch_size, text_ctx, device, include_null=False):
+    tokens = model.tokenizer.encode(prompt)
+    tokens, mask = model.tokenizer.padded_tokens_and_mask(tokens, text_ctx)
+
+    if not include_null:
+        return dict(
+            tokens=th.tensor([tokens] * batch_size, device=device),
+            mask=th.tensor([mask] * batch_size, dtype=th.bool, device=device),
+        )
+
+    null_tokens, null_mask = model.tokenizer.padded_tokens_and_mask([], text_ctx)
+    return dict(
+        tokens=th.tensor(
+            [tokens] * batch_size + [null_tokens] * batch_size,
+            device=device,
+        ),
+        mask=th.tensor(
+            [mask] * batch_size + [null_mask] * batch_size,
+            dtype=th.bool,
+            device=device,
+        ),
+    )
+
 def model_fn(x_t, ts, **kwargs):
-    # batch is [conditional half ; unconditional half]; run them together
     half = x_t[: len(x_t) // 2]
     combined = th.cat([half, half], dim=0)
     model_out = model(combined, ts, **kwargs)
-    eps, rest = model_out[:, :3], model_out[:, 3:]          # 3 noise channels + variance
+    eps, rest = model_out[:, :3], model_out[:, 3:]
     cond_eps, uncond_eps = th.split(eps, len(eps) // 2, dim=0)
-    # ε̂ = ε(∅) + s·(ε(c) − ε(∅)): extrapolate away from unconditional, toward the caption
     half_eps = uncond_eps + guidance_scale * (cond_eps - uncond_eps)
     eps = th.cat([half_eps, half_eps], dim=0)
     return th.cat([eps, rest], dim=1)
-```
 
-`model_kwargs` carries the caption tokens (and attention mask) on the conditional half and the empty/uncond tokens on the unconditional half, so a single batched call gives me both predictions. Sampling is the standard reverse loop with no extra `cond_fn`, since the guidance already lives inside `model_fn`:
+full_batch_size = batch_size * 2
+model_kwargs = build_text_kwargs(
+    model, prompt, batch_size, options["text_ctx"], device, include_null=True
+)
 
-```python
+model.del_cache()
 samples = diffusion.p_sample_loop(
     model_fn,
-    (full_batch_size, 3, image_size, image_size),
+    (full_batch_size, 3, options["image_size"], options["image_size"]),
+    device=device,
     clip_denoised=True,
-    model_kwargs=model_kwargs,    # tokens for the cond half, empty tokens for the uncond half
+    progress=True,
+    model_kwargs=model_kwargs,
     cond_fn=None,
-)
+)[:batch_size]
+model.del_cache()
 ```
 
-The CLIP-guidance alternative instead supplies a `cond_fn` that perturbs the reverse mean. It differentiates the noised-CLIP similarity — image embedding of the current noisy `x_t` dotted with the text embedding `z_t` of the caption — with respect to `x_t`, and returns that gradient scaled by the guidance:
+If I choose the CLIP route instead, the sampler's existing `cond_fn` hook carries the mean perturbation. The noised CLIP model normalizes image and text embeddings, multiplies their dot product by the learned logit scale, differentiates with respect to the current noisy image, and returns the scaled gradient.
 
 ```python
-def cond_fn(x, t, grad_scale=grad_scale, **kwargs):
+with th.no_grad():
+    z_t = clip_model.text_embeddings([prompt] * batch_size)
+
+def cond_fn(x, t, grad_scale=clip_guidance_scale, **kwargs):
     with th.enable_grad():
         x_var = x.detach().requires_grad_(True)
-        z_i = self.image_embeddings(x_var, t)               # noised-CLIP image embed f(x_t, t)
-        loss = th.exp(self.logit_scale) * (z_t * z_i).sum()  # f(x_t) · g(c)
+        z_i = clip_model.image_embeddings(x_var, t)
+        loss = th.exp(clip_model.logit_scale) * (z_t * z_i).sum()
         grad = th.autograd.grad(loss, x_var)[0].detach()
     return grad * grad_scale
 
-samples = diffusion.p_sample_loop(
-    model, (batch_size, 3, image_size, image_size),
-    clip_denoised=True, model_kwargs=model_kwargs,
-    cond_fn=cond_fn,                                        # μ̂ = μ + s·Σ·∇(f·g)
+clip_guided = diffusion.p_sample_loop(
+    model,
+    (batch_size, 3, options["image_size"], options["image_size"]),
+    device=device,
+    clip_denoised=True,
+    progress=True,
+    model_kwargs=build_text_kwargs(
+        model, prompt, batch_size, options["text_ctx"], device
+    ),
+    cond_fn=cond_fn,
 )
 ```
 
-Tracing the chain back: I wanted text-to-image and text-editing, and diffusion was the strongest synthesis backbone, so I conditioned an ADM denoiser on a caption (global token embedding in place of the class embedding, plus per-attention-layer cross-attention over the token sequence) and trained it with `ε`-prediction and a learned variance. Guidance is what sets fidelity, and classifier guidance doesn't transplant to text because a sentence isn't a class — but the implicit classifier `p(x|y)/p(x)` shows that the classifier gradient equals the difference of the model's own conditional and unconditional scores, so by training the model to also denoise unconditionally (drop the caption `20%` of the time) I get classifier-free guidance for free: `ε̂ = ε(∅) + s·(ε(c) − ε(∅))`. The CLIP-guidance alternative replaces the classifier with a noised-CLIP similarity gradient (noised because the intermediate `x_t` are out-of-distribution for clean-image CLIP). A text-conditional upsampler takes `64×64` to `256×256`, and an inpainting fine-tune with extra RGB+mask channels (zero-initialized) turns the same model into a text-driven editor.
+For the high-resolution stage, I keep the generated `64×64` sample as an explicit low-resolution condition and pass it to the text-conditioned upsampler. The strided fast upsampling schedule fits the DDIM loop.
+
+```python
+def build_upsample_kwargs(model_up, prompt, low_res, batch_size, text_ctx, device):
+    tokens = model_up.tokenizer.encode(prompt)
+    tokens, mask = model_up.tokenizer.padded_tokens_and_mask(tokens, text_ctx)
+    return dict(
+        low_res=((low_res + 1) * 127.5).round() / 127.5 - 1,
+        tokens=th.tensor([tokens] * batch_size, device=device),
+        mask=th.tensor([mask] * batch_size, dtype=th.bool, device=device),
+    )
+
+upsample_kwargs = build_upsample_kwargs(
+    model_up, prompt, samples, batch_size, options_up["text_ctx"], device
+)
+up_shape = (batch_size, 3, options_up["image_size"], options_up["image_size"])
+
+model_up.del_cache()
+up_samples = diffusion_up.ddim_sample_loop(
+    model_up,
+    up_shape,
+    noise=th.randn(up_shape, device=device) * upsample_temp,
+    device=device,
+    clip_denoised=True,
+    progress=True,
+    model_kwargs=upsample_kwargs,
+    cond_fn=None,
+)[:batch_size]
+model_up.del_cache()
+```
+
+For editing, the same classifier-free base sampler gets extra conditioning channels and a projection on the predicted clean image. The mask convention is explicit in the algebra: known pixels are copied from `inpaint_image`, unknown pixels remain the sampler's prediction.
+
+```python
+model_kwargs.update(
+    inpaint_image=(source_image_64 * source_mask_64)
+    .repeat(full_batch_size, 1, 1, 1)
+    .to(device),
+    inpaint_mask=source_mask_64.repeat(full_batch_size, 1, 1, 1).to(device),
+)
+
+def denoised_fn(x_start):
+    return (
+        x_start * (1 - model_kwargs["inpaint_mask"])
+        + model_kwargs["inpaint_image"] * model_kwargs["inpaint_mask"]
+    )
+
+edited = diffusion.p_sample_loop(
+    model_fn,
+    (full_batch_size, 3, options["image_size"], options["image_size"]),
+    device=device,
+    clip_denoised=True,
+    progress=True,
+    model_kwargs=model_kwargs,
+    cond_fn=None,
+    denoised_fn=denoised_fn,
+)[:batch_size]
+```
+
+Diffusion gives a strong learned reverse process; learned variance makes it practical to sample; language enters through both a global caption embedding and token-level attention context; classifier-free guidance falls out by converting an implicit classifier's score difference back into the `ε` parameterization; noised CLIP is the comparable external-gradient alternative; the upsampler separates semantics from high-resolution detail; and the inpainting fine-tune plus the known-pixel projection turns the generator into a text-driven editor.

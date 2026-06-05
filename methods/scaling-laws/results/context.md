@@ -1,5 +1,3 @@
-# Context
-
 ## Research question
 
 Transformer language models clearly get better as they get bigger, are trained on more data, and are given more compute — but this knowledge is qualitative and anecdotal. Practitioners decide model size, dataset size, and training duration by intuition and by what fit on the available hardware. The precise problem is to replace that intuition with a *predictive quantitative theory*: write down how the test loss $L$ depends on the controllable scales — number of (non-embedding) parameters $N$, dataset size $D$, training compute $C$, number of optimization steps $S$, and batch size $B$ — accurately enough to extrapolate. If such laws exist and are simple, they answer the practical question that matters before any large run: given a fixed compute budget, how should it be divided between making the model bigger and training it longer, and how big a model and how much data should one choose? A solution must (1) define $N$ and $C$ cleanly enough that the laws come out clean, (2) establish the functional forms of $L$ versus each scale and fit their constants, (3) combine them into a joint law that captures finite-data overfitting and finite-time training, and (4) use that joint law to derive the compute-optimal allocation.
@@ -26,11 +24,11 @@ Transformer language models clearly get better as they get bigger, are trained o
 
 ## Evaluation settings
 
-The measured quantity is autoregressive cross-entropy test loss (nats/token) on a held-out split, with models trained on WebText2 and tested both there and on other text distributions to check universality. Models span over six orders of magnitude in non-embedding parameters; datasets are taken in fixed subsets down to small sizes to probe overfitting (with early stopping when test loss stops improving, and 10% dropout in the finite-data study); compute is measured in PetaFLOP-days. Context length is 1024 tokens. Training uses Adam (Adafactor for the largest models), a fixed step budget with warmup and cosine decay, and a range of batch sizes to measure $B_{\text{crit}}$. Fits are performed in log-log space; the constants are reported with the caveat that those tied to vocabulary/tokenization have no fundamental meaning.
+The measured quantity is autoregressive cross-entropy test loss (nats/token) on a held-out split, with models trained on WebText2 and tested both there and on other text distributions to check universality. Models span over six orders of magnitude in non-embedding parameters; datasets are taken in fixed subsets down to small sizes to probe overfitting (with early stopping when test loss stops improving, and 10% dropout in the finite-data study); compute is measured in PetaFLOP-days. Context length is 1024 tokens. Training uses Adam (Adafactor for the largest models), a fixed step budget with warmup and cosine decay, and a range of batch sizes to measure $B_{\text{crit}}$. Fits are performed in log-log space; fit constants tied to vocabulary/tokenization carry no fundamental meaning.
 
 ## Code framework
 
-The primitives that already exist: linear-regression / curve-fitting in log space (NumPy/SciPy), and the Transformer hyperparameter conventions. Given a set of training runs — each a tuple of scale quantities and the converged/early-stopped loss — the pieces to fill in are the parameter- and compute-counting helpers, the single-variable power-law fit, the joint loss model and its fit, and the routine that turns fitted exponents into the compute-optimal allocation.
+The primitives that already exist: linear-regression / curve-fitting in log space (NumPy/SciPy), and the Transformer hyperparameter conventions. Given a set of training runs — each a tuple of scale quantities and the converged/early-stopped loss — the pieces to fill in are the parameter- and compute-counting helpers, the single-variable power-law fit, the joint loss model and its fit, the finite-data stopping estimate, and the routine that turns fitted exponents into the compute-optimal allocation.
 
 ```python
 import numpy as np
@@ -59,6 +57,12 @@ def joint_loss(N, D, params):
 
 def fit_joint_loss(runs):
     # runs: list of (N_i, D_i, L_i). TODO: fit the joint-law parameters.
+    pass
+
+
+def early_stopping_lower_bound(N, D, params, S_c, alpha_S):
+    # TODO: estimate the earliest finite-data stopping step from the gap between
+    #       the finite-D loss and the infinite-D loss for the same model size.
     pass
 
 

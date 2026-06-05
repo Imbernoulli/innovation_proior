@@ -2,7 +2,7 @@
 
 ## Problem
 
-Deep-learning libraries implement "weight decay" as L2 regularization — they add `λ'·θ` to the gradient. For plain SGD the two are equivalent (after rescaling), so this is harmless. For adaptive gradient methods such as Adam it is *not* equivalent, and the difference is harmful: routing the decay through the gradient makes it inherit Adam's per-coordinate `1/√v̂` scaling, so weights with historically large gradients get regularized least. Adam ends up effectively under-regularized, which is a concrete cause of its worse generalization relative to SGD with momentum on tasks where regularization matters.
+Deep-learning libraries implement "weight decay" as L2 regularization — they add `λ'·θ` to the gradient. For plain SGD the two are equivalent (after rescaling), so this is harmless. For adaptive gradient methods such as Adam it is *not* equivalent, and the difference is harmful: routing the decay through the gradient makes it inherit Adam's per-coordinate `1/√v̂` scaling, so weights with large historical gradient or parameter amplitudes get regularized least. Adam ends up effectively under-regularized, which is a concrete cause of its worse generalization relative to SGD with momentum on tasks where regularization matters.
 
 ## Key idea
 
@@ -15,7 +15,7 @@ Stop folding the decay into the gradient. Apply the original multiplicative weig
 
 ## Why L2 ≠ weight decay for adaptive methods
 
-For an optimizer with preconditioner `M_t` (`M_t ≠ k·I`):
+For the simplified adaptive step that isolates the preconditioner effect, with diagonal `M_t` and `M_t ≠ k·I`:
 
 - Decoupled weight decay: `θ_{t+1} = (1 − λ)θ_t − α M_t ∇f_t`.
 - L2 with coefficient `λ'`: `θ_{t+1} = θ_t − αλ' M_t θ_t − α M_t ∇f_t`.

@@ -1,5 +1,3 @@
-# Context: scaling Transformer self-attention to long documents
-
 ## Research question
 
 Transformer self-attention lets every token attend to every other token, which is why it captures context so well — but the time and memory cost of that all-pairs interaction grows with the square of the sequence length. On current accelerators this caps the usable input at roughly 512 tokens for the kind of pretrained encoders that dominate language understanding. Many natural-language problems, however, are intrinsically long: question answering where the answer is scattered across a multi-paragraph context, coreference resolution that spans a whole document, classification of long articles, and character-level language modeling over tens of thousands of characters. The precise problem is: **design a self-attention mechanism whose compute and memory scale linearly with sequence length n, yet which preserves enough long-range interaction to be competitive with full attention — and which works both for autoregressive language modeling and for the bidirectional pretrain-then-finetune paradigm, ideally as a drop-in replacement inside an already-pretrained model.** A solution would remove the need to truncate or shard long inputs and the bespoke per-task machinery built to stitch the shards back together.
@@ -38,22 +36,47 @@ The natural yardsticks already exist. For autoregressive character-level languag
 
 ## Code framework
 
-The pieces that already exist: a pretrained bidirectional encoder stack (RoBERTa-style: token + learned absolute position embeddings capped at 512, a stack of Transformer layers each wrapping a self-attention sublayer and a feedforward sublayer), the standard scaled-dot-product attention primitive, an MLM head, and standard optimizers/training loop. The contribution will replace the self-attention sublayer; everything else is reused. Below is a pre-method scaffold — the surrounding harness is concrete, and the one slot the method fills is left as stubs.
+The pieces that already exist: a pretrained bidirectional encoder stack (RoBERTa-style: token + learned absolute position embeddings capped at 512, a stack of Transformer layers each wrapping a self-attention sublayer and a feedforward sublayer), the standard scaled-dot-product attention primitive, an MLM head, and standard optimizers/training loop. The efficient-attention slot sits where full self-attention currently lives; the surrounding embedding stack, feed-forward blocks, output heads, optimizer, and training loop stay in place.
 
 ```python
 import math
 import torch
 from torch import nn
 import torch.nn.functional as F
+from transformers.modeling_roberta import RobertaModel
 
-# --- already exists: scaled dot-product attention over ALL pairs (the O(n^2) baseline) ---
+
 def full_attention(q, k, v):  # q,k,v: (bsz, heads, n, d_k)
-    scores = torch.matmul(q, k.transpose(-1, -2)) / math.sqrt(q.size(-1))  # (bsz, heads, n, n)  <-- quadratic
+    scores = torch.matmul(q, k.transpose(-1, -2)) / math.sqrt(q.size(-1))
     probs = F.softmax(scores, dim=-1)
     return torch.matmul(probs, v)
 
 
-# --- the slot the method will fill: a self-attention module whose cost scales with n, not n^2 ---
+def _skew(x, direction, padding_value):
+    # TODO: move local diagonals into columns so they can be softmaxed per token.
+    pass
+
+
+def _skew2(x, padding_value):
+    # TODO: inverse layout transform for probability-value aggregation.
+    pass
+
+
+def _chunk(x, one_sided_window):
+    # TODO: form overlapping local blocks without copying the whole n x n matrix.
+    pass
+
+
+def banded_query_key(q, k, one_sided_window, padding_value):
+    # TODO: compute q @ k^T only for the local band around each token.
+    pass
+
+
+def banded_probability_value(prob, v, one_sided_window):
+    # TODO: multiply local attention probabilities by the matching value band.
+    pass
+
+
 class LongSequenceSelfAttention(nn.Module):
     def __init__(self, config, layer_id):
         super().__init__()
@@ -63,36 +86,32 @@ class LongSequenceSelfAttention(nn.Module):
         self.query = nn.Linear(config.hidden_size, self.embed_dim)
         self.key   = nn.Linear(config.hidden_size, self.embed_dim)
         self.value = nn.Linear(config.hidden_size, self.embed_dim)
-        # TODO: any extra parameters the efficient attention needs
+        # TODO: any extra projections or implementation choices needed by the efficient attention slot.
         self.layer_id = layer_id
+        self.one_sided_window = config.attention_window[layer_id]
 
-    def forward(self, hidden_states, attention_mask=None):
-        # TODO: compute attention restricted to some sub-quadratic pattern of (token, token) pairs,
-        #       while still letting the network reach long-range context.
+    def forward(
+        self,
+        hidden_states,
+        attention_mask=None,
+        head_mask=None,
+        encoder_hidden_states=None,
+        encoder_attention_mask=None,
+        output_attentions=False,
+    ):
+        # TODO: compute a sparse set of token-token scores, normalize them, and aggregate values.
         pass
 
 
-# --- the banded interaction the method needs but the framework does not provide ---
-def banded_qk(q, k, w):
-    # TODO: like q @ k^T but only on a band of width ~w around the diagonal; output is NOT the full n x n matrix
-    pass
-
-def banded_pv(prob, v, w):
-    # TODO: the matching value-aggregation for the banded scores
-    pass
-
-
-# --- swap the contribution into an existing pretrained encoder; reuse the rest unchanged ---
-class LongSequenceEncoder(PretrainedEncoder):  # e.g. a RoBERTa-style stack
+class LongSequenceEncoder(RobertaModel):
     def __init__(self, config):
         super().__init__(config)
         for i, layer in enumerate(self.encoder.layer):
             layer.attention.self = LongSequenceSelfAttention(config, layer_id=i)
-    # TODO: extend the (<=512) learned position embeddings to longer inputs
 
 
-def continue_pretraining(model, corpus, steps):
-    # standard MLM training loop already exists; reused as-is
-    # TODO: initialize the longer model from the pretrained checkpoint so few updates are needed
+def extend_position_embeddings(model, max_positions):
+    # TODO: extend the learned absolute position embedding table without breaking local position structure.
     pass
+
 ```

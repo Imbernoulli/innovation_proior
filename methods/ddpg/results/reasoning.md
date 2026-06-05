@@ -34,7 +34,7 @@ That is the useful recursion:
 
 `∇_θ V^μ(s) = [∇_θ μ_θ(s)] [∇_a Q^μ(s,a)]_{a=μ_θ(s)} + γ E_{s'}[∇_θ V^μ(s')]`.
 
-The derivative of how the next-state distribution changes with the current action is not missing; it is inside `∇_a Q^μ(s,a)`, because `Q^μ` is the whole action-value function. The remaining recursive term is only the later dependence of future actions on `θ`. Unroll it:
+The derivative of how the next-state distribution changes with the current action is not missing; it is inside `∇_a Q^μ(s,a)`, because `Q^μ` is the whole action-value function. The remaining recursive term is only the downstream dependence of future actions on `θ`. Unroll it:
 
 `∇_θ V^μ(s_0) = E[Σ_{t≥0} γ^t [∇_θ μ_θ(s_t)] [∇_a Q^μ(s_t,a)]_{a=μ_θ(s_t)} | s_0]`.
 
@@ -66,13 +66,13 @@ Hard-copying target parameters every so often would work in principle, but the a
 
 Equivalently, the target moves by `τ=1-ρ=0.005` of the live-target gap each update. The exact coefficient matters in code: multiplying the target by `polyak` and adding `(1-polyak)` times the live parameter implements the formula above.
 
-Exploration is separate from the deterministic target policy because learning is off-policy. During data collection I can use `β(s)=μ(s)+noise`. In heavy physical systems I might choose a temporally correlated Ornstein-Uhlenbeck perturbation; with zero mean and unit time step its discretization is `x ← x + θ_ou(-x) + σξ`, which is the sign I want because the drift pulls the noise state back toward zero. For the PyTorch implementation, I keep the behavior simpler: a long initial phase of uniform random actions, then independent Gaussian action noise, `a ← μ(s) + noise_scale * randn(act_dim)`, clipped to the symmetric action bounds. That is faithful to the off-policy argument: the noise only changes which transitions enter replay, while the critic target and actor loss remain about the clean deterministic policy.
+Exploration is separate from the deterministic target policy because learning is off-policy. During data collection I can use `β(s)=μ(s)+noise`. In heavy physical systems I might choose a temporally correlated Ornstein-Uhlenbeck perturbation; with zero mean and unit time step its discretization is `x ← x + θ_ou(-x) + σξ`, which is the sign I want because the drift pulls the noise state back toward zero. For this PyTorch learner, I keep the behavior simpler: a long initial phase of uniform random actions, then independent Gaussian action noise, `a ← μ(s) + noise_scale * randn(act_dim)`, clipped to the symmetric action bounds. That is faithful to the off-policy argument: the noise only changes which transitions enter replay, while the critic target and actor loss remain about the clean deterministic policy.
 
 The actor must output actions inside the environment bounds, so its final nonlinearity is `tanh`, scaled by `act_limit` under the usual symmetric-bound assumption; hidden layers use ReLU MLP blocks. The critic estimates a scalar for a state-action pair, so it concatenates observation and action and sends the combined vector through an MLP ending in one output, squeezed to shape `(batch,)`. The target networks are deep copies of the live actor-critic and have `requires_grad=False` because they move only by Polyak averaging. Adam updates both live networks. The code defaults are `hidden_sizes=(256,256)`, `pi_lr=q_lr=1e-3`, replay size `10^6`, minibatch size `100`, `start_steps=10000`, `update_after=1000`, `update_every=50`, `act_noise=0.1`, `gamma=0.99`, and `polyak=0.995`.
 
 I seed the RNGs, build the environment and the actor-critic, copy it into targets, and store every transition in a FIFO replay buffer. While `t <= start_steps`, I act uniformly at random so the buffer is not a narrow slice of state space. After that, I act with `μ(s)` plus Gaussian noise. Once at least `update_after` interactions exist, every `update_every` environment steps, I run `update_every` gradient steps so the environment-step to gradient-step ratio stays one. The critic step minimizes `((Q(s,a)-backup)**2).mean()` with `backup = r + γ(1-d)Q_targ(s', μ_targ(s'))` computed under `torch.no_grad()`. The actor step freezes the critic parameters for efficiency and minimizes `-Q(s, μ(s)).mean()`. Then every target parameter gets the Polyak update.
 
-The causal chain is tight: continuous actions break the cheap greedy max in value-based control; discretization explodes; a deterministic actor amortizes the argmax; the deterministic policy-gradient theorem justifies the actor step as policy-Jacobian times critic action-gradient over discounted state visitation; off-policy replay is usable because there is no action integral or action likelihood ratio, though the replay state distribution changes the weighting; Bellman regression needs the terminal mask; deep bootstrapping needs target actor and target critic copies; Polyak averaging keeps those targets slow; and the behavior policy gets explicit exploration noise while the learned policy stays deterministic. The implementation is the small PyTorch version of exactly that.
+The causal chain is tight: continuous actions break the cheap greedy max in value-based control; discretization explodes; a deterministic actor amortizes the argmax; the deterministic policy-gradient theorem justifies the actor step as policy-Jacobian times critic action-gradient over discounted state visitation; off-policy replay is usable because there is no action integral or action likelihood ratio, though the replay state distribution changes the weighting; Bellman regression needs the terminal mask; deep bootstrapping needs target actor and target critic copies; Polyak averaging keeps those targets slow; and the behavior policy gets explicit exploration noise while the learned policy stays deterministic. I can write that directly as a compact PyTorch learner.
 
 ```python
 from copy import deepcopy
@@ -106,7 +106,8 @@ class MLPQFunction(nn.Module):
         super().__init__()
         self.q = mlp([obs_dim + act_dim] + list(hidden_sizes) + [1], activation)
     def forward(self, obs, act):
-        return torch.squeeze(self.q(torch.cat([obs, act], dim=-1)), -1)
+        q = self.q(torch.cat([obs, act], dim=-1))
+        return torch.squeeze(q, -1)
 
 class MLPActorCritic(nn.Module):
     def __init__(self, observation_space, action_space,
@@ -146,11 +147,11 @@ class ReplayBuffer:
                      done=self.done_buf[idxs])
         return {k: torch.as_tensor(v, dtype=torch.float32) for k, v in batch.items()}
 
-def ddpg(env_fn, actor_critic=MLPActorCritic, ac_kwargs=dict(), seed=0,
-         steps_per_epoch=4000, epochs=100, replay_size=int(1e6), gamma=0.99,
-         polyak=0.995, pi_lr=1e-3, q_lr=1e-3, batch_size=100,
-         start_steps=10000, update_after=1000, update_every=50,
-         act_noise=0.1, max_ep_len=1000):
+def train(env_fn, actor_critic=MLPActorCritic, ac_kwargs=dict(), seed=0,
+          steps_per_epoch=4000, epochs=100, replay_size=int(1e6), gamma=0.99,
+          polyak=0.995, pi_lr=1e-3, q_lr=1e-3, batch_size=100,
+          start_steps=10000, update_after=1000, update_every=50,
+          act_noise=0.1, max_ep_len=1000):
     torch.manual_seed(seed)
     np.random.seed(seed)
     env = env_fn()
@@ -177,7 +178,8 @@ def ddpg(env_fn, actor_critic=MLPActorCritic, ac_kwargs=dict(), seed=0,
 
     def compute_loss_pi(data):
         o = data['obs']
-        return -ac.q(o, ac.pi(o)).mean()
+        q_pi = ac.q(o, ac.pi(o))
+        return -q_pi.mean()
 
     def update(data):
         q_optimizer.zero_grad()

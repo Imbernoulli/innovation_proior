@@ -59,115 +59,129 @@ covariance, so zeroing off-diagonal correlations is a tractable entropy proxy. T
 
 **Architecture / optimization.** Encoder = ResNet-50 (2048-d, classifier head removed) + projector of
 three 8192-wide linear layers (BN+ReLU after the first two, bare linear last). Per-feature batch
-normalization defines C. LARS optimizer, learning rate scaled by batch/256 with 10-epoch warmup and
-cosine decay to lr/1000, weight decay 1e-6, biases/BN excluded from LARS and weight decay, lambda =
-0.0051, batch size 2048. BYOL-style augmentations with view-dependent blur and solarization
-probabilities. In distributed training, the batch-normalization layers are converted to synchronized
-batch normalization before wrapping the model.
+normalization defines C. LARS optimizer, base factor batch_size/256, weight LR multiplier 0.2,
+bias/BN LR multiplier 0.0048, 10-epoch warmup, cosine decay to 0.001 of the base factor, weight decay
+1e-6, biases/BN excluded from LARS adaptation and weight decay, lambda = 0.0051, batch size 2048.
+BYOL-style augmentations with view-dependent blur and solarization probabilities. In distributed
+training, the batch-normalization layers are converted to synchronized batch normalization before
+wrapping the model.
 
 ## Code
 
 ```python
+import random
+
 import torch
 import torch.nn as nn
 import torchvision
-
-
-def off_diagonal(x):
-    # flattened view of the off-diagonal elements of a square (n x n) matrix
-    n, m = x.shape
-    assert n == m
-    return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
-
-
-class BarlowTwins(nn.Module):
-    def __init__(self, projector="8192-8192-8192", lambd=0.0051, batch_size=2048):
-        super().__init__()
-        self.lambd = lambd
-        self.batch_size = batch_size
-
-        self.backbone = torchvision.models.resnet50(zero_init_residual=True)
-        self.backbone.fc = nn.Identity()
-
-        # projector MLP: wide on purpose (high-dim embeddings help)
-        sizes = [2048] + list(map(int, projector.split('-')))
-        layers = []
-        for i in range(len(sizes) - 2):
-            layers.append(nn.Linear(sizes[i], sizes[i + 1], bias=False))
-            layers.append(nn.BatchNorm1d(sizes[i + 1]))
-            layers.append(nn.ReLU(inplace=True))
-        layers.append(nn.Linear(sizes[-2], sizes[-1], bias=False))
-        self.projector = nn.Sequential(*layers)
-
-        # non-affine BN = per-feature mean-center + divide by batch std (defines C)
-        self.bn = nn.BatchNorm1d(sizes[-1], affine=False)
-
-        # In distributed training, convert the module with
-        # nn.SyncBatchNorm.convert_sync_batchnorm(model) before DDP wrapping.
-
-    def forward(self, y1, y2):
-        # same network on both views; no asymmetry of any kind
-        z1 = self.projector(self.backbone(y1))
-        z2 = self.projector(self.backbone(y2))
-
-        # empirical cross-correlation matrix (D x D)
-        c = self.bn(z1).T @ self.bn(z2)
-        c.div_(self.batch_size)
-        if torch.distributed.is_available() and torch.distributed.is_initialized():
-            torch.distributed.all_reduce(c)  # sum C across GPUs
-
-        on_diag = torch.diagonal(c).add_(-1).pow_(2).sum()   # invariance: diag -> 1
-        off_diag = off_diagonal(c).pow_(2).sum()             # redundancy: off-diag -> 0
-        loss = on_diag + self.lambd * off_diag
-        return loss
-
-
-# --- two-view augmentation pipeline (BYOL-style, view-dependent blur/solarize) ---
-from PIL import ImageFilter, ImageOps
-import random
+from PIL import Image, ImageFilter, ImageOps
 from torchvision import transforms
-from PIL import Image
 
 
 class GaussianBlur:
-    def __init__(self, p): self.p = p
+    def __init__(self, p):
+        self.p = p
+
     def __call__(self, img):
         if random.random() < self.p:
-            return img.filter(ImageFilter.GaussianBlur(random.random() * 1.9 + 0.1))
+            sigma = random.random() * 1.9 + 0.1
+            return img.filter(ImageFilter.GaussianBlur(sigma))
         return img
 
 
 class Solarization:
-    def __init__(self, p): self.p = p
+    def __init__(self, p):
+        self.p = p
+
     def __call__(self, img):
-        return ImageOps.solarize(img) if random.random() < self.p else img
+        if random.random() < self.p:
+            return ImageOps.solarize(img)
+        return img
 
 
 class Transform:
     def __init__(self):
-        common = [
+        self.transform = self._pipeline(blur_p=1.0, solarize_p=0.0)
+        self.transform_prime = self._pipeline(blur_p=0.1, solarize_p=0.2)
+
+    @staticmethod
+    def _pipeline(blur_p, solarize_p):
+        return transforms.Compose([
             transforms.RandomResizedCrop(224, interpolation=Image.BICUBIC),
             transforms.RandomHorizontalFlip(p=0.5),
-            transforms.RandomApply([transforms.ColorJitter(0.4, 0.4, 0.2, 0.1)], p=0.8),
+            transforms.RandomApply(
+                [transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1)],
+                p=0.8,
+            ),
             transforms.RandomGrayscale(p=0.2),
-        ]
-        finish = [
+            GaussianBlur(p=blur_p),
+            Solarization(p=solarize_p),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ]
-        self.transform       = transforms.Compose(common + [GaussianBlur(1.0), Solarization(0.0)] + finish)
-        self.transform_prime = transforms.Compose(common + [GaussianBlur(0.1), Solarization(0.2)] + finish)
+        ])
 
     def __call__(self, x):
         return self.transform(x), self.transform_prime(x)
 
 
-# --- training step ---
+def build_projector(projector):
+    sizes = [2048] + list(map(int, projector.split("-")))
+    layers = []
+    for i in range(len(sizes) - 2):
+        layers.append(nn.Linear(sizes[i], sizes[i + 1], bias=False))
+        layers.append(nn.BatchNorm1d(sizes[i + 1]))
+        layers.append(nn.ReLU(inplace=True))
+    layers.append(nn.Linear(sizes[-2], sizes[-1], bias=False))
+    return nn.Sequential(*layers)
+
+
+def off_diagonal(x):
+    # Flattened view of the off-diagonal elements of a square matrix.
+    n, m = x.shape
+    assert n == m
+    return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
+
+
+def pairwise_feature_objective(z1, z2, normalizer, batch_size, weight):
+    # C is the D x D cross-correlation matrix, normalized along the batch dimension.
+    c = normalizer(z1).T @ normalizer(z2)
+    c.div_(batch_size)
+    if torch.distributed.is_available() and torch.distributed.is_initialized():
+        torch.distributed.all_reduce(c)
+
+    # Diagonal -> 1 for invariance; off-diagonal -> 0 for redundancy reduction.
+    on_diag = torch.diagonal(c).add_(-1).pow_(2).sum()
+    off_diag = off_diagonal(c).pow_(2).sum()
+    return on_diag + weight * off_diag
+
+
+class TwinEmbeddingModel(nn.Module):
+    def __init__(self, projector="8192-8192-8192", objective_weight=0.0051, batch_size=2048):
+        super().__init__()
+        self.objective_weight = objective_weight
+        self.batch_size = batch_size
+        self.backbone = torchvision.models.resnet50(zero_init_residual=True)
+        self.backbone.fc = nn.Identity()
+        self.projector = build_projector(projector)
+        output_dim = int(projector.split("-")[-1])
+        self.feature_normalizer = nn.BatchNorm1d(output_dim, affine=False)
+
+        # In distributed training, convert the module with
+        # nn.SyncBatchNorm.convert_sync_batchnorm(model) before DDP wrapping.
+
+    def forward(self, y1, y2):
+        z1 = self.projector(self.backbone(y1))
+        z2 = self.projector(self.backbone(y2))
+        return pairwise_feature_objective(
+            z1, z2, self.feature_normalizer, self.batch_size, self.objective_weight
+        )
+
+
 def train_step(model, optimizer, y1, y2):
-    loss = model(y1, y2)
     optimizer.zero_grad()
+    loss = model(y1, y2)
     loss.backward()
-    optimizer.step()   # LARS; lr scaled by batch/256, warmup + cosine decay
+    optimizer.step()
     return loss.item()
 ```
 

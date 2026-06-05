@@ -78,8 +78,8 @@ target to reduce maximization bias. Still mean-only.
 **Dueling architecture (Wang et al., 2016); Prioritized replay (Schaul et al., 2016).**
 Orthogonal improvements to credit assignment and sample reuse. Still mean-only.
 
-**C51 (Bellemare, Dabney & Munos, 2017).** The distributional baseline this work most directly
-reacts to. Models $Z(x,a)$ as a categorical distribution on a *fixed* comb $z_1\le\cdots\le z_N$
+**C51 (Bellemare, Dabney & Munos, 2017).** The most direct distributional baseline. It models
+$Z(x,a)$ as a categorical distribution on a *fixed* comb $z_1\le\cdots\le z_N$
 ($N=51$) uniformly spaced over a fixed $[V_{\min},V_{\max}]$, with learnable probabilities $q_i$
 (softmax logits). Applies a projection $\Phi$ that maps the shifted Bellman target
 $\mathcal{T}^\pi Z$ (whose atoms $r+\gamma z_j$ generally miss the comb) back onto the comb by
@@ -111,25 +111,22 @@ checked for actually minimizing $W_1$ to the truth.
 # Code framework
 
 The off-policy value-based deep-RL harness already has the Atari wrappers, replay buffer, DQN
-convolutional torso, an optimizer, a target network, and the $\epsilon$-greedy loop. The open
-slots: what the per-state-action prediction *is* (a scalar? a fixed-atom histogram? something
-else), the scalar used for greedy action selection, how the bootstrapped target is formed, and the
-loss that pulls prediction toward target.
+convolutional torso, an optimizer, a target network, and the $\epsilon$-greedy loop. The unresolved
+pieces are the meaning of the per-state-action outputs, the scalar used for greedy action selection,
+the bootstrapped target object, and the loss that pulls prediction toward that target.
 
 ```python
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
-N = 200  # resolution of the per-(x,a) prediction -- meaning is the open slot
+N = ...      # TODO: choose the per-action output count
+KAPPA = ...  # TODO: choose the loss smoothing parameter, if needed
 
-class QNetwork(nn.Module):
-    """DQN conv torso; the head emits N numbers per action, but what those
-    numbers parameterize is the open slot."""
+class DistributionalQNetwork(nn.Module):
     def __init__(self, n_actions, n=N):
         super().__init__()
         self.n_actions, self.n = n_actions, n
-        self.torso = nn.Sequential(
+        self.net = nn.Sequential(
             nn.Conv2d(4, 32, 8, stride=4), nn.ReLU(),
             nn.Conv2d(32, 64, 4, stride=2), nn.ReLU(),
             nn.Conv2d(64, 64, 3, stride=1), nn.ReLU(),
@@ -137,12 +134,10 @@ class QNetwork(nn.Module):
             nn.Linear(3136, 512), nn.ReLU(),
             nn.Linear(512, n_actions * n),
         )
+        self.register_buffer("levels", torch.empty(0))
 
     def prediction(self, x):
-        return self.net_out(x).view(-1, self.n_actions, self.n)  # (B, A, N)
-
-    def net_out(self, x):
-        return self.torso(x / 255.0)
+        return self.net(x.float() / 255.0).view(-1, self.n_actions, self.n)
 
     def greedy_action(self, x):
         raise NotImplementedError  # TODO: scalar score per action, then argmax
@@ -150,6 +145,9 @@ class QNetwork(nn.Module):
 def bootstrap_target(target_net, rewards, next_obs, dones, gamma):
     raise NotImplementedError  # TODO: form the per-(x,a) target object
 
-def loss_fn(online_net, obs, actions, target):
+def pairwise_distribution_loss(theta, target, levels, kappa=KAPPA):
+    raise NotImplementedError  # TODO: compare per-action prediction to target
+
+def loss_fn(online_net, obs, actions, target, kappa=KAPPA):
     raise NotImplementedError  # TODO
 ```

@@ -16,7 +16,7 @@ Now I want the drift in a form I can interpret. There's an identity for `∂²Φ
 
 with `P_ζ` the operator that keeps the projected step on `Γ`. And the drift is the negative *semi*-gradient of `μ(ζ) = ⟨∇²L(ζ), Σ̂_◇(ζ)⟩` — "semi" because if you write `μ(ζ₁,ζ₂) = ⟨∇²L(ζ₁), Σ̂_◇(ζ₂)⟩`, the drift is `−½∇_{ζ₁}μ(ζ,ζ)`, holding the covariance argument frozen. So SGD wanders on `Γ` doing semi-gradient descent on a sharpness measure made from the Hessian and the noise. Good — that's the whole SGD story, and I had to relive it because I'm about to reuse the giant-step moment lemmas and the `∂²Φ` identity verbatim.
 
-The special clean case is label noise. If at every step you add fresh `±δ` to the label of an over-parameterized `ℓ₂` regression, then on the zero-loss manifold the noise covariance is exactly proportional to the Hessian: `Σ(ζ) = E[ζ_t² ∇h∇h^T] = δ²∇²L(ζ) = α∇²L(ζ)`. Plug that into the slow SDE and the diffusion vanishes — because `Σ^{1/2}x` then points purely along normal directions, and the projection `∂Φ` annihilates normal directions — so the stochastic process collapses to a deterministic flow whose fixed points satisfy `∇_Γ tr(∇²L) = 0`. SGD under label noise minimizes `tr(H)` along `Γ`. That's the benchmark I want to beat or at least separate from.
+The special clean case is label noise. If at every step I add fresh `±δ` to the label of an over-parameterized `ℓ₂` regression, then on the zero-loss manifold the noise covariance is exactly proportional to the Hessian: `Σ(ζ) = E[ξ² ∇h∇h^T] = δ²∇²L(ζ) = α∇²L(ζ)`, with `ξ` the fresh label perturbation. Plug that into the slow SDE and the diffusion vanishes — because `Σ^{1/2}x` then points purely along normal directions, and the projection `∂Φ` annihilates normal directions — so the stochastic process collapses to a deterministic flow whose fixed points satisfy `∇_Γ tr(∇²L) = 0`. SGD under label noise has `tr(H)` as its manifold regularizer. That's the benchmark I want to separate from.
 
 Now the actual question: what changes when I replace SGD by an adaptive method? Let me write the update I care about as generically as I can so I do this once for the whole family. Momentum:
 
@@ -108,13 +108,13 @@ because `1 − β₂^{R_grp H} = cη^{1−β} + O(η^{2−2β})`, not `cη`: the
 `dζ = S∂Φ_S(ζ) S Σ^{1/2}(ζ) dW + ½ S ∂²Φ_S(ζ)[S Σ S] dt`,
 `dv = c(V(Σ(ζ)) − v) dt`.
 
-Rewriting the `∂²Φ_S` drift with the second `Φ_S` identity into the `∇³L` form and folding the projection into the `P_{ζ,S}` operator, I land on the clean statement:
+The same drift can be rewritten with the second `Φ_S` identity into the `∇³L` form. I keep the expanded SDE as the object to match against the moments, and define
 
-`dζ = P_{ζ,S(t)}( Σ_∥^{1/2}(ζ;S) dW − ½ S(t) ∇³L(ζ)[Σ_◇(ζ;S)] dt )`,
-`dv = c(V(Σ(ζ)) − v) dt`, with `c = (1−β₂)/η²`,
-`Σ_◇(ζ;S) = SΣS − Σ_∥`, `Σ_∥(ζ;S) = ∂Φ_S SΣS ∂Φ_S`.
+`Σ_∥(ζ;S) = ∂Φ_S SΣS ∂Φ_S`, `Σ_◇(ζ;S) = SΣS − Σ_∥`.
 
-Let me stare at this. It's the SGD slow SDE with three changes, each tracing to one decision I made. The projection is `P_{ζ,S(t)}` — state-dependent, because the converging direction is `−S∇L` — whereas SGD's was fixed. The covariance enters as `SΣS`, filtered through the preconditioner on both sides, instead of bare `Σ`. And there's a brand-new line: `v` is a live state relaxing toward `V(Σ(ζ))` on the same slow clock, which is the whole point of the 2-scheme. The drift is again a negative *semi-gradient*, now of `μ(ζ,v) = ⟨∇²L(ζ), Σ_◇(ζ;S)⟩`, preconditioned by `S(t)` — "adaptive semi-gradient descent on a sharpness measure." And `β₁` is nowhere in it: momentum doesn't touch the bias, exactly as the moment bounds said it wouldn't.
+With those two matrices, the deterministic part is the projected negative semi-gradient of `⟨∇²L(ζ),Σ_◇(ζ;S)⟩`; the Itô correction hidden in the expanded `½ S∂²Φ_S[SΣS]` is exactly what keeps the process on `Γ`.
+
+Let me stare at this. It's the SGD slow SDE with three changes, each tracing to one decision I made. The projection is induced by `Φ_{S(t)}` — state-dependent, because the converging direction is `−S∇L` — whereas SGD's was fixed. The covariance enters as `SΣS`, filtered through the preconditioner on both sides, instead of bare `Σ`. And there's a brand-new line: `v` is a live state relaxing toward `V(Σ(ζ))` on the same slow clock, which is the whole point of the 2-scheme. The drift is again a negative *semi-gradient*, now of `μ(ζ,v) = ⟨∇²L(ζ), Σ_◇(ζ;S)⟩`, preconditioned by `S(t)` — "adaptive semi-gradient descent on a sharpness measure." And `β₁` is nowhere in it: momentum doesn't touch the bias, exactly as the moment bounds said it wouldn't.
 
 I should make sure the SDE keeps `ζ` on `Γ`. The viability (Nagumo) condition is that the drift minus the Itô correction `½Σ_j D[A_j]A_j` lies in the tangent space, equivalently that the normal projection `P_⊥ = I − ∂Φ_S` annihilates it. Expanding `P_⊥ Σ_j D[A_j]A_j` with `A_j = S∂Φ_S S Σ^{1/2}_j` and using the second-derivative identity for `∂²Φ_S` reduces it to `−P_⊥ ∇²L^† ∂²(∇L)[S Σ_∥]`, which matches `P_⊥` of the drift term term-for-term. So they cancel and `ζ(t)` stays on `Γ`. Good.
 
@@ -134,7 +134,7 @@ There it is. The Adam fixed-point condition becomes `S P_∥ ∇ tr(Diag(H)^{1/2
 
 `∇_Γ tr(Diag(H)^{1/2}) = 0`.
 
-So Adam under label noise minimizes `tr(Diag(H)^{1/2})` along the manifold — *not* SGD's `tr(H)`. The square root is the entire difference, and it comes from the `1/√v` preconditioner: where SGD weights each diagonal Hessian entry linearly, Adam divides by `√(diag H)`, so its drift on `H_{jj}` is `H_{jj}^{−1/2}` — which integrates to `H_{jj}^{1/2}` instead of `H_{jj}`. The adaptive denominator is literally the reason for the exponent.
+So Adam under label noise has `tr(Diag(H)^{1/2})` as its manifold regularizer — *not* SGD's `tr(H)`. The square root is the entire difference, and it comes from the `1/√v` preconditioner: where SGD weights each diagonal Hessian entry linearly, Adam divides by `√(diag H)`, so its drift on `H_{jj}` is `H_{jj}^{−1/2}` — which integrates to `H_{jj}^{1/2}` instead of `H_{jj}`. The adaptive denominator is literally the reason for the exponent.
 
 This also hands me a free knob. Nothing forced the exponent to be `½` — that was just Adam's `√v`. Replace `S = Diag(1/(v^λ + ε))` for a tunable `λ ∈ [0,1)` (call it AdamE-λ; `λ=½` is Adam, `λ=0` strips the second moment and is plain momentum-SGD). Rerun the same line: `S = Diag((αH_{jj})^{−λ})`, so `∇³L[S] = Σ_j(αH_{jj})^{−λ}∇H_{jj}`, and `H_{jj}^{−λ}∇H_{jj} = (1/(1−λ))∇(H_{jj}^{1−λ})`, giving `∇³L[S] = (1/((1−λ)α^λ))∇tr(Diag(H)^{1−λ})` and the fixed point `∇_Γ tr(Diag(H)^{1−λ}) = 0`. Tuning the second-moment exponent *exactly* tunes the exponent of the implicit regularizer, continuously interpolating from SGD's `tr(H)` at `λ=0` to Adam's `tr(Diag(H)^{1/2})` at `λ=½`. The structure couldn't be cleaner.
 
@@ -148,60 +148,101 @@ One more family member worth chasing, because it tells me the limits of "explici
 
 Stepping back to write the actual approximation guarantee I've been implicitly claiming. I have the giant-step first/second/sixth moments of the projected state `X̄ = (Φ_S(θ), v)` matching a drift `b` and diffusion `σ` to high order; the standard weak-approximation machinery (one-step moment matching to `O(η_e²)` for the first two moments and a controlled sixth-moment / third-derivative remainder, summed over `T/η_e` giant steps via a telescoping `u_{l,n}` argument with `u` the solution of the backward equation) then gives, for any `C³` test function `g`, `max_k |E[g(X̄_k)] − E[g(X(kη²))]| = Õ(η^{0.25})` over `K = ⌊Tη⁻²⌋` steps — after the `O((1/η)log(1/η))` convergence steps to get onto the manifold. The `0.25` comes out of optimizing the giant-step exponent: with `β` the giant-step parameter, the two surviving one-giant-step error exponents in the effective step size `η_e=η^{1−β}` are `a₁ = (1.5−2β)/(1−β)` and `a₂ = 1/(1−β)`. After summing over `T/η_e` giant steps the exponents drop to `a₁−1=(0.5−β)/(1−β)` and `a₂−1=β/(1−β)`; balancing them gives `β=0.25`, and then `η_e^{1/3}=η^{0.25}`. The `C⁵` smoothness of `L` (and `Σ^{1/2}`) and `C⁴` of `S` are exactly what's needed: the drift/diffusion must be `C⁴` to push `C³` test functions through, and `∂²Φ_S` (which the drift uses) needs `Φ_S ∈ C⁴`, hence `∇L ∈ C⁴`, hence `L ∈ C⁵`.
 
-Now let me write it as code, grounded in the standard Adam update generalized to the `(V,S)` template, plus the diagonal-net experiment exactly as set up. The optimizer's per-step math is just the three lines; for the diagonal instances `V(g g^T) = g⊙²` and `S(v)m = m/(v^λ+ε)`, so no matrix algebra is needed and `λ` is the dial that moves the implicit regularizer's exponent.
+Now let me write the update I have actually analyzed. I leave out bias correction and weight decay because neither appears in the dynamics above; for the diagonal instances `V(g g^T) = g⊙²` and `S(v)m = m/(v^λ+ε)`, so no matrix algebra is needed and `λ` is the dial that moves the implicit regularizer's exponent.
 
 ```python
 import torch
 
-class AGM(torch.optim.Optimizer):
-    # m <- b1 m + (1-b1) g                 # momentum: provably doesn't change the bias
-    # v <- b2 v + (1-b2) V(g gᵀ)=g⊙²       # second moment; 1-b2 = Θ(η²) is the "2-scheme"
-    # θ <- θ - η S(v) m,  S(v)=Diag(1/(v^λ+ε))   # λ=1/2 is Adam; λ tunes the exponent
-    def __init__(self, params, lr=1e-3, b1=0.9, b2=0.999, eps=1e-8, lam=0.5):
-        super().__init__(params, dict(lr=lr, b1=b1, b2=b2, eps=eps, lam=lam))
+class CoordinateRescaledOptimizer(torch.optim.Optimizer):
+    def __init__(self, params, lr=1e-3, beta1=0.9, beta2=0.999,
+                 eps=1e-8, exponent=0.5):
+        if not 0 <= exponent < 1:
+            raise ValueError("exponent must lie in [0, 1)")
+        defaults = dict(lr=lr, beta1=beta1, beta2=beta2,
+                        eps=eps, exponent=exponent)
+        super().__init__(params, defaults)
 
     @torch.no_grad()
-    def step(self):
-        for grp in self.param_groups:
-            b1, b2, eps, lam, lr = (grp[k] for k in ("b1", "b2", "eps", "lam", "lr"))
-            for p in grp["params"]:
+    def step(self, closure=None):
+        loss = None
+        if closure is not None:
+            with torch.enable_grad():
+                loss = closure()
+
+        for group in self.param_groups:
+            beta1 = group["beta1"]
+            beta2 = group["beta2"]
+            eps = group["eps"]
+            exponent = group["exponent"]
+            lr = group["lr"]
+            for p in group["params"]:
                 if p.grad is None:
                     continue
-                g, st = p.grad, self.state[p]
-                if not st:
-                    st["m"], st["v"] = torch.zeros_like(p), torch.zeros_like(p)
-                m, v = st["m"], st["v"]
-                m.mul_(b1).add_(g, alpha=1 - b1)          # first moment
-                v.mul_(b2).addcmul_(g, g, value=1 - b2)   # second moment, V=diag
-                p.addcdiv_(m, v.pow(lam).add_(eps), value=-lr)   # θ -= η S(v) m
-```
+                grad = p.grad
+                state = self.state[p]
+                if not state:
+                    state["m"] = torch.zeros_like(p)
+                    state["v"] = torch.zeros_like(p)
+                m = state["m"]
+                v = state["v"]
 
-And the diagonal-net diagnostic that the label-noise reduction suggests — SGD selects `ℓ₁`, Adam selects `ℓ_{0.5}`, so I expect Adam to recover the sparse `w*` from fewer samples:
+                m.mul_(beta1).add_(grad, alpha=1 - beta1)
+                v.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)
+                denom = v.pow(exponent).add(eps)
+                p.addcdiv_(m, denom, value=-lr)
 
-```python
-def run_diagnet(opt_name, n_train, d=10000, kappa=50, delta=0.1,
-                steps=20000, lr=1e-2, lam=0.5, seed=0):
+        return loss
+
+def make_optimizer(name, params, lr, exponent=0.5):
+    if name == "sgd":
+        return torch.optim.SGD(params, lr=lr)
+    if name == "rmsprop":
+        return CoordinateRescaledOptimizer(params, lr=lr, beta1=0.0, exponent=0.5)
+    if name == "adam":
+        return CoordinateRescaledOptimizer(params, lr=lr, exponent=0.5)
+    if name == "adame":
+        return CoordinateRescaledOptimizer(params, lr=lr, exponent=exponent)
+    raise ValueError(f"unknown optimizer: {name}")
+
+def make_diagonal_net(d, kappa, seed=0):
     g = torch.Generator().manual_seed(seed)
     w_star = torch.zeros(d)
-    w_star[torch.randperm(d, generator=g)[:kappa]] = torch.randn(kappa, generator=g)
-    Z = (torch.randint(0, 2, (n_train, d), generator=g) * 2 - 1).float()  # z ∈ {±1}^d
-    y = Z @ w_star                                                        # clean labels
-    Zt = (torch.randint(0, 2, (2000, d), generator=g) * 2 - 1).float()
-    yt = Zt @ w_star
-
-    u = torch.full((d,), 0.1, requires_grad=True)   # diagonal-net params: ŵ = u² - v²
+    idx = torch.randperm(d, generator=g)[:kappa]
+    w_star[idx] = torch.randn(kappa, generator=g)
+    u = torch.full((d,), 0.1, requires_grad=True)
     v = torch.full((d,), 0.1, requires_grad=True)
-    opt = (torch.optim.SGD([u, v], lr=lr) if opt_name == "sgd"
-           else AGM([u, v], lr=lr, lam=lam))        # lam=0.5 → Adam; 0<lam<0.5 → AdamE
+
+    def predict(z):
+        return (z * (u.square() - v.square())).sum()
+
+    return [u, v], predict, w_star
+
+def label_noise_step(predict, z, y_clean, delta, opt, gen):
+    noisy = y_clean + delta * (2 * torch.randint(0, 2, (1,), generator=gen).item() - 1)
+    loss = 0.5 * (predict(z) - noisy) ** 2
+    opt.zero_grad()
+    loss.backward()
+    opt.step()
+    return loss.item()
+
+def run_diagnet(opt_name, n_train, d=10000, kappa=50, delta=0.1,
+                steps=20000, lr=1e-2, exponent=0.5, seed=0):
+    gen = torch.Generator().manual_seed(seed + 1)
+    params, predict, w_star = make_diagonal_net(d, kappa, seed)
+    Z = (torch.randint(0, 2, (n_train, d), generator=gen) * 2 - 1).float()
+    y = Z @ w_star
+    Zt = (torch.randint(0, 2, (2000, d), generator=gen) * 2 - 1).float()
+    yt = Zt @ w_star
+    opt = make_optimizer(opt_name, params, lr, exponent)
 
     for _ in range(steps):
-        i = torch.randint(0, n_train, (1,), generator=g).item()
-        noisy = y[i] + delta * (2 * torch.randint(0, 2, (1,), generator=g).item() - 1)
-        loss = 0.5 * ((Z[i] * (u**2 - v**2)).sum() - noisy) ** 2   # fresh label noise
-        opt.zero_grad(); loss.backward(); opt.step()
+        i = torch.randint(0, n_train, (1,), generator=gen).item()
+        label_noise_step(predict, Z[i], y[i], delta, opt, gen)
 
     with torch.no_grad():
-        test_loss = 0.5 * ((Zt @ (u**2 - v**2) - yt) ** 2).mean()  # recovered if < 1
+        u, v = params
+        w_hat = u.square() - v.square()
+        test_loss = 0.5 * ((Zt @ w_hat - yt) ** 2).mean()
     return test_loss.item()
 ```
 

@@ -10,7 +10,7 @@ Now "uniformly make it wider" means scale the number of filters everywhere by so
 
 So let me reframe. The disease isn't "the network is big." The disease is that the network is *uniformly densely* big — every unit in a layer fully connected to every feature map below it, capacity sprayed evenly whether or not a given connection carries signal. The cure that suggests itself, if I take that diagnosis seriously, is *sparsity*: don't connect everything to everything; connect only where there's real statistical structure to exploit. A sparse network has fewer parameters (less overfitting) and fewer operations (less compute) for the same expressive reach — if I can find the right sparse pattern.
 
-Is there any principled reason to believe a good sparse pattern exists and is findable? I keep coming back to a learnability result I half-remember: roughly, if the data distribution can be modeled by a large but *very sparse* deep network, then you can build a good topology layer by layer — look at the correlation statistics of the activations in one layer, and cluster together the units whose outputs are highly correlated; each cluster becomes a unit in the next layer, wired only to the units it summarizes. That's a recipe, not just an existence claim. And it rhymes with something older and cruder that I trust as an intuition pump: the Hebbian slogan, neurons that fire together wire together. The strict theorem needs strong conditions I can't guarantee, but the fact that the careful result and the crude heuristic point the same way makes me believe the underlying idea survives outside the fine print. Group correlated activations; connect the groups. That would be the optimal *local* structure, repeated across the image because translation invariance means whatever's optimal at one location is optimal everywhere — which is just convolution again.
+Is there any principled reason to believe a good sparse pattern exists and is findable? I keep coming back to a learnability result: roughly, if the data distribution can be modeled by a large but *very sparse* deep network, then you can build a good topology layer by layer — look at the correlation statistics of the activations in one layer, and cluster together the units whose outputs are highly correlated; each cluster becomes a unit in the next layer, wired only to the units it summarizes. That's a recipe, not just an existence claim. And it rhymes with something older and cruder that I trust as an intuition pump: the Hebbian slogan, neurons that fire together wire together. The strict theorem needs strong conditions I can't guarantee, but the fact that the careful result and the crude heuristic point the same way makes me believe the underlying idea survives outside the fine print. Group correlated activations; connect the groups. That would be the optimal *local* structure, repeated across the image because translation invariance means whatever's optimal at one location is optimal everywhere — which is just convolution again.
 
 Great, so build the sparse net. Let me try to actually do it and watch where it breaks. I write out a network with non-uniform, clustered, sparse connection tables in the feature dimension. And immediately I hit the wall, and it's not a math wall, it's a hardware wall. Today's machines are catastrophically bad at non-uniform sparse computation. The arithmetic might drop by a hundred times, and it still loses, because the time goes into irregular memory access — scattered lookups, cache misses — not into the multiplies. Meanwhile the dense matrix-multiply routines keep getting faster, squeezing every drop out of the CPU and GPU, precisely because the access pattern is regular and predictable. That's not an accident of laziness; it's *why* the field abandoned the old sparse/random feature-map connection tables from the LeNet days and went back to full dense connections the moment GPUs showed up — dense is what the silicon rewards. So I have a cruel situation: the theory says sparse, the hardware says dense, and the hardware is not negotiable.
 
@@ -46,24 +46,25 @@ That's the block I'll commit to. Four parallel branches off the same input: a pl
 
 ```python
 class FeatureBlock(nn.Module):
-    def __init__(self, in_ch, ch1, ch3red, ch3, ch5red, ch5, poolproj):
+    def __init__(self, in_channels, *widths):
         super().__init__()
+        ch1, ch3red, ch3, ch5red, ch5, poolproj = widths
         # tightest, most local clusters: a single 1x1
-        self.branch1 = ConvUnit(in_ch, ch1, kernel_size=1)
+        self.branch1 = ConvUnit(in_channels, ch1, kernel_size=1)
         # mid-scale clusters: reduce channels, then 3x3
         self.branch2 = nn.Sequential(
-            ConvUnit(in_ch, ch3red, kernel_size=1),
+            ConvUnit(in_channels, ch3red, kernel_size=1),
             ConvUnit(ch3red, ch3, kernel_size=3, padding=1),
         )
         # wider clusters: reduce hard, then the expensive 5x5 at low width
         self.branch3 = nn.Sequential(
-            ConvUnit(in_ch, ch5red, kernel_size=1),
+            ConvUnit(in_channels, ch5red, kernel_size=1),
             ConvUnit(ch5red, ch5, kernel_size=5, padding=2),
         )
         # parallel pooling, projected down so it stops bloating the width
         self.branch4 = nn.Sequential(
             nn.MaxPool2d(kernel_size=3, stride=1, padding=1),
-            ConvUnit(in_ch, poolproj, kernel_size=1),
+            ConvUnit(in_channels, poolproj, kernel_size=1),
         )
 
     def forward(self, x):
@@ -111,10 +112,10 @@ What goes *in* a side head? It should be small and cheap — it's a regularizing
 
 ```python
 class SideHead(nn.Module):
-    def __init__(self, in_ch, num_classes):
+    def __init__(self, in_channels, num_classes):
         super().__init__()
         self.avgpool = nn.AvgPool2d(kernel_size=5, stride=3)
-        self.conv = ConvUnit(in_ch, 128, kernel_size=1)   # reduce before the FC
+        self.conv = ConvUnit(in_channels, 128, kernel_size=1)   # reduce before the FC
         self.fc1 = nn.Linear(128 * 4 * 4, 1024)
         self.fc2 = nn.Linear(1024, num_classes)
         self.dropout = nn.Dropout(0.7)                     # heavy: it's a crutch
@@ -142,39 +143,50 @@ class Net(nn.Module):
         self.lrn2 = nn.LocalResponseNorm(5, alpha=1e-4, beta=0.75, k=1.0)
         self.pool2 = nn.MaxPool2d(3, stride=2, ceil_mode=True)
 
-        self.b3a = FeatureBlock(192, 64, 96, 128, 16, 32, 32)
-        self.b3b = FeatureBlock(256, 128, 128, 192, 32, 96, 64)
-        self.pool3 = nn.MaxPool2d(3, stride=2, ceil_mode=True)
-        self.b4a = FeatureBlock(480, 192, 96, 208, 16, 48, 64)
-        self.b4b = FeatureBlock(512, 160, 112, 224, 24, 64, 64)
-        self.b4c = FeatureBlock(512, 128, 128, 256, 24, 64, 64)
-        self.b4d = FeatureBlock(512, 112, 144, 288, 32, 64, 64)
-        self.b4e = FeatureBlock(528, 256, 160, 320, 32, 128, 128)
-        self.pool4 = nn.MaxPool2d(3, stride=2, ceil_mode=True)
-        self.b5a = FeatureBlock(832, 256, 160, 320, 32, 128, 128)
-        self.b5b = FeatureBlock(832, 384, 192, 384, 48, 128, 128)
+        self.body = nn.ModuleList([
+            FeatureBlock(192, 64, 96, 128, 16, 32, 32),       # 3a
+            FeatureBlock(256, 128, 128, 192, 32, 96, 64),     # 3b
+            nn.MaxPool2d(3, stride=2, ceil_mode=True),
+            FeatureBlock(480, 192, 96, 208, 16, 48, 64),      # 4a
+            FeatureBlock(512, 160, 112, 224, 24, 64, 64),     # 4b
+            FeatureBlock(512, 128, 128, 256, 24, 64, 64),     # 4c
+            FeatureBlock(512, 112, 144, 288, 32, 64, 64),     # 4d
+            FeatureBlock(528, 256, 160, 320, 32, 128, 128),   # 4e
+            nn.MaxPool2d(3, stride=2, ceil_mode=True),
+            FeatureBlock(832, 256, 160, 320, 32, 128, 128),   # 5a
+            FeatureBlock(832, 384, 192, 384, 48, 128, 128),   # 5b
+        ])
 
+        self.side_heads = nn.ModuleDict()
         if aux:
-            self.aux1 = SideHead(512, num_classes)   # off 4a
-            self.aux2 = SideHead(528, num_classes)   # off 4d
+            self.side_heads["aux1"] = SideHead(512, num_classes)  # off 4a
+            self.side_heads["aux2"] = SideHead(528, num_classes)  # off 4d
 
         # parameter-free head: global average pool -> dropout -> one linear
-        self.gap = nn.AdaptiveAvgPool2d((1, 1))
-        self.dropout = nn.Dropout(0.4)
-        self.fc = nn.Linear(1024, num_classes)
+        self.final_pool = nn.AdaptiveAvgPool2d((1, 1))
+        self.classifier = nn.Sequential(
+            nn.Dropout(0.4),
+            nn.Linear(1024, num_classes),
+        )
 
     def forward(self, x):
         x = self.lrn1(self.pool1(self.conv1(x)))
         x = self.pool2(self.lrn2(self.conv3(self.conv2(x))))
-        x = self.b3a(x); x = self.b3b(x); x = self.pool3(x)
-        x = self.b4a(x)
-        a1 = self.aux1(x) if (self.aux and self.training) else None
-        x = self.b4b(x); x = self.b4c(x); x = self.b4d(x)
-        a2 = self.aux2(x) if (self.aux and self.training) else None
-        x = self.b4e(x); x = self.pool4(x)
-        x = self.b5a(x); x = self.b5b(x)
-        x = torch.flatten(self.gap(x), 1)
-        x = self.fc(self.dropout(x))
+        x = self.body[0](x)
+        x = self.body[1](x)
+        x = self.body[2](x)
+        x = self.body[3](x)
+        a1 = self.side_heads["aux1"](x) if (self.aux and self.training) else None
+        x = self.body[4](x)
+        x = self.body[5](x)
+        x = self.body[6](x)
+        a2 = self.side_heads["aux2"](x) if (self.aux and self.training) else None
+        x = self.body[7](x)
+        x = self.body[8](x)
+        x = self.body[9](x)
+        x = self.body[10](x)
+        x = torch.flatten(self.final_pool(x), 1)
+        x = self.classifier(x)
         if self.aux and self.training:
             return x, a2, a1
         return x
@@ -183,7 +195,8 @@ class Net(nn.Module):
 For training it's asynchronous SGD with momentum $0.9$, a fixed learning-rate schedule that decays the rate by $4\%$ every $8$ epochs, and I'd take a running average of the parameters to use as the final model — averaging late iterates smooths out the noise of stochastic optimization and tends to land on a flatter, better-generalizing point than any single iterate. The loss combines the three heads with the $0.3$ discount on the auxiliaries:
 
 ```python
-def compute_loss(outputs, target, aux_weight=0.3):
+def compute_loss(outputs, target):
+    aux_weight = 0.3
     if isinstance(outputs, tuple):
         main, a2, a1 = outputs
         return (F.cross_entropy(main, target)

@@ -46,57 +46,86 @@ The shared gap: no existing change-of-variables model has *all* of {train on dat
 - **Tabular density estimation** (POWER, GAS, HEPMASS, MINIBOONE, BSDS300, preprocessed as in Papamakarios et al. 2017): negative log-likelihood in nats.
 - **Image density estimation** (MNIST, CIFAR-10): bits/dim, with single-flow encoder-decoder and multiscale (squeeze-based) architectures à la Real NVP/Glow.
 - **Variational inference** (VAE posteriors on MNIST, Omniglot, Frey Faces, Caltech Silhouettes): negative ELBO, encoder/decoder mirroring Berg et al. 2018, comparing flow families for the approximate posterior.
-- **Protocol / solver:** Runge–Kutta 4(5) (Dormand–Prince) adaptive solver with tolerances around `1e-5` (tighter for tabular); Adam, lr `1e-3` decayed to `1e-4`; batch sizes up to `10,000` (tabular) and `900` (images), enabled by the `O(1)`-memory adjoint. Train with the stochastic trace estimator; evaluate test likelihood with the exact trace where feasible. Ablations measure number-of-function-evaluations (NFE) vs data dimension and the effect of a hidden bottleneck on estimator variance.
+- **Protocol / solver:** adaptive Runge-Kutta 4(5) (Dormand-Prince) ODE solves for continuous flows; maximum-likelihood training with Adam; likelihood evaluation by integrating a state and its log-density change between data time and base time.
 
 ## Code framework
 
-The pieces that already exist: a black-box adaptive ODE solver with an adjoint backward pass (`torchdiffeq.odeint_adjoint`), reverse-mode autodiff for vector-Jacobian products (`torch.autograd.grad`), PyTorch layers, and Adam. The base distribution is a fixed Gaussian. What is *not* yet decided: how to define the time-dependent dynamics network, and — the crux — how to compute the log-density change along the trajectory cheaply enough to allow an unrestricted `f`. The slots below are empty.
+The available pieces are a black-box adaptive ODE solver with an adjoint backward pass (`torchdiffeq.odeint_adjoint`), reverse-mode autodiff for vector-Jacobian products (`torch.autograd.grad`), PyTorch modules, smooth activations, and a fixed Gaussian base distribution. A continuous-flow harness already has places for a time-dependent dynamics network, a trace computation, an augmented ODE function, and an ODE-solve wrapper.
 
 ```python
+import numpy as np
 import torch, torch.nn as nn
 from torchdiffeq import odeint_adjoint as odeint
 
-class DiffEqNet(nn.Module):
-    """The dynamics f(z(t), t; θ): R^D × R → R^D, a neural net. How time t enters
-    and which layers are used is to be chosen; activations must be smooth/Lipschitz."""
-    def __init__(self, ...):
-        # stack of layers conditioned on t ; smooth nonlinearity
-        pass
-    def forward(self, t, z):
-        # TODO: return dz/dt
+from . import diffeq_layers
+from .squeeze import squeeze, unsqueeze
+
+class Swish(nn.Module):
+    # TODO: optional smooth activation.
+    pass
+
+class Lambda(nn.Module):
+    # TODO: wrapper for simple activation functions.
+    pass
+
+NONLINEARITIES = {}
+
+class ODEnet(nn.Module):
+    """Dynamics dz/dt = f(z(t), t; theta)."""
+    def __init__(self, hidden_dims, input_shape, strides=None, conv=False,
+                 layer_type="concat", nonlinearity="softplus", num_squeeze=0):
+        # TODO: choose time-conditioned linear/convolutional layers and activations.
         pass
 
-def divergence(dz_dt, z):
-    """Tr(∂f/∂z): the rate of change of log-density. How to compute it — and how cheaply —
-    is exactly the open question."""
-    # TODO
+    def forward(self, t, y):
+        # TODO: return the state derivative.
+        pass
+
+def divergence_bf(dx, y, **unused_kwargs):
+    # TODO: exact Tr(df/dy) for small states.
+    pass
+
+def divergence_approx(f, y, e=None):
+    # TODO: scalable trace computation.
+    pass
+
+def sample_rademacher_like(y):
+    # TODO: optional probe distribution.
+    pass
+
+def sample_gaussian_like(y):
+    # TODO: optional probe distribution.
     pass
 
 class ODEfunc(nn.Module):
-    """Augmented dynamics: integrates the state z together with its log-density change."""
-    def __init__(self, diffeq):
+    """Augmented dynamics for (state, accumulated log-density change)."""
+    def __init__(self, diffeq, divergence_fn="approximate",
+                 residual=False, rademacher=False):
         super().__init__()
-        self.diffeq = diffeq
+        # TODO: store the dynamics and select the trace computation.
+        pass
+
+    def before_odeint(self, e=None):
+        # TODO: reset per-solve state.
+        pass
+
     def forward(self, t, states):
-        z = states[0]                       # log-density is the second state
-        with torch.set_grad_enabled(True):
-            z.requires_grad_(True)
-            dz = self.diffeq(t, z)
-            dlogp = ???                      # TODO: -Tr(∂f/∂z)
-        return (dz, dlogp)
+        # TODO: return (dy/dt, dlogp/dt).
+        pass
 
 class CNF(nn.Module):
-    """Solve the augmented IVP from t0 to t1 (or reversed), returning z(t1) and Δlogp."""
-    def __init__(self, odefunc, T=1.0, solver='dopri5', atol=1e-5, rtol=1e-5):
+    """Solve the augmented IVP forward or backward in time."""
+    def __init__(self, odefunc, T=1.0, train_T=False,
+                 solver="dopri5", atol=1e-5, rtol=1e-5):
         super().__init__()
-        self.odefunc, self.T = odefunc, T
-        self.solver, self.atol, self.rtol = solver, atol, rtol
-    def forward(self, z, logpz=None, reverse=False):
-        logpz = torch.zeros(z.shape[0], 1).to(z) if logpz is None else logpz
-        times = torch.tensor([0.0, self.T]).to(z)
-        if reverse:
-            times = times.flip(0)
-        z_t, logpz_t = odeint(self.odefunc, (z, logpz), times,
-                              atol=self.atol, rtol=self.rtol, method=self.solver)
-        return z_t[-1], logpz_t[-1]
+        # TODO: configure end time, solver, and tolerances.
+        pass
+
+    def forward(self, z, logpz=None, integration_times=None, reverse=False):
+        # TODO: integrate (z, logpz) and return the final state.
+        pass
+
+def _flip(x, dim):
+    # TODO: reverse an integration-time tensor along one dimension.
+    pass
 ```

@@ -1,5 +1,3 @@
-# Context: the ground a weight-averaging training method stands on
-
 ## Research question
 
 Conventional training of a deep network runs stochastic gradient descent (SGD) until it converges to a single point that minimizes the (regularized) training loss, and ships that point. But the training-loss surface and the test-error surface, while qualitatively similar, are *shifted* relative to each other: the weight vector that minimizes train loss is generally *not* the one that minimizes test error. So a procedure that drives hard toward the train-loss minimizer can land at a point that is off-center for test error — and the sharper the optimum, the worse the mismatch, because a small shift between the two surfaces moves a sharp minimizer a long way up the error.
@@ -12,7 +10,7 @@ The question is whether there is a training procedure that ends at a *more centr
 
 **Averaging the iterates.** In convex optimization, averaging the points visited by SGD has a long history: Ruppert (1988) and Polyak & Juditsky (1992) showed that averaging SGD iterates (with a decaying step size) provably accelerates convergence. This is rarely used to train neural nets; practitioners instead sometimes keep an *exponentially decaying* running average of the weights alongside a *decaying* learning rate, which merely smooths the SGD trajectory and performs about the same as plain SGD — no real generalization gain.
 
-**Constant-learning-rate SGD as sampling.** Mandt et al. (2017) showed that, under simplifying assumptions, SGD with a *constant* learning rate behaves like sampling from a Gaussian centered at the loss minimum, with covariance controlled by the learning rate. A consequence: the sampled iterates from a high-dimensional Gaussian concentrate near the *surface* of a sphere, so each individual sample is on the periphery; the center of the sphere (higher density, more central) is not itself visited but could be reached by averaging.
+**Constant-learning-rate SGD as sampling.** Mandt et al. (2017) showed that, under simplifying assumptions, SGD with a *constant* learning rate behaves like sampling from a Gaussian centered at the loss minimum, with covariance controlled by the learning rate. A consequence: the sampled iterates from a high-dimensional Gaussian concentrate near the surface of an ellipsoid, or a sphere after whitening by the covariance, so each individual sample is on the periphery; the center of that set (higher density, more central) is not itself visited but could be reached by averaging.
 
 **Cyclical learning rates and fast ensembling.** Garipov et al. (2018) found that local optima of deep nets are connected by simple curves of near-constant loss (mode connectivity), and built Fast Geometric Ensembling (FGE): run SGD with a *cyclical* learning rate to generate a sequence of weight-space points that are close together but produce *diverse* predictions, then ensemble those predictions — yielding a strong ensemble in the wall-clock time of training a single model. FGE's proposals sit on the *periphery* of the set of good weights. Smith (2017) introduced cyclical learning rates for exploration. The relevant supporting components — batch normalization (Ioffe & Szegedy 2015), which keeps running activation statistics collected during training — also figure in.
 
@@ -34,25 +32,35 @@ The yardstick is image-classification test accuracy/error on CIFAR-10, CIFAR-100
 
 ## Code framework
 
-A standard SGD training loop in PyTorch fixes the model, the optimizer, the loss, the epoch loop, and the learning-rate schedule. What is *not* decided is how the learning rate behaves in the tail of training and which weights are ultimately returned — by default, the learning rate decays and the final SGD iterate is used. Those are the empty slots.
+A standard SGD training loop in PyTorch fixes the model, the optimizer, the loss, and the mini-batch update. What is *not* decided is how the learning rate behaves in the tail of training and which weights are ultimately returned; by default, the learning rate decays and the last iterate is used. Those are the empty slots.
 
 ```python
 import torch
 
-def train(model, loader, loss_fn, epochs, lr_init):
-    opt = torch.optim.SGD(model.parameters(), lr=lr_init, momentum=0.9, weight_decay=5e-4)
-    for epoch in range(epochs):
-        lr = lr_schedule(epoch, epochs, lr_init)   # TODO: tail-of-training LR behavior
-        for g in opt.param_groups:
-            g["lr"] = lr
-        for x, y in loader:
-            opt.zero_grad()
-            loss_fn(model(x), y).backward()
-            opt.step()
-        # TODO: which weights become the returned model?  (default: the last iterate)
-    return model
+def _set_lr(optimizer, lr):
+    for group in optimizer.param_groups:
+        group["lr"] = lr
 
-def lr_schedule(epoch, epochs, lr_init):
-    # TODO: schedule for the final phase of training
-    raise NotImplementedError
+def tail_lr(step, cycle_len, high_lr, low_lr=None):
+    # TODO: schedule for the final phase of training.
+    pass
+
+def train_tail(model, loader, loss_fn, optimizer, tail_epochs,
+               high_lr, low_lr=None, cycle_len=None, device=None):
+    model.train()
+    step = 0
+    for _ in range(tail_epochs):
+        for x, y in loader:
+            if device is not None:
+                x, y = x.to(device), y.to(device)
+            step += 1
+            lr = tail_lr(step, cycle_len or 1, high_lr, low_lr)
+            _set_lr(optimizer, lr)
+            optimizer.zero_grad()
+            loss_fn(model(x), y).backward()
+            optimizer.step()
+            # TODO: decide whether this tail iterate affects the returned weights.
+        # TODO: decide whether the epoch end changes the returned weights.
+    # TODO: decide whether the returned model needs refreshed model state.
+    return model
 ```

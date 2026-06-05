@@ -41,7 +41,7 @@ Two graphs are declared non-isomorphic the moment their multisets of node labels
 
 **Universal approximation.** A multilayer perceptron with at least one hidden layer can approximate any continuous function on a compact domain to arbitrary accuracy (Hornik et al. 1989, 1991). This is what licenses replacing an abstract function "f" or "ρ" in a decomposition with a trainable network. A single linear-layer-plus-nonlinearity (a generalized linear model) does *not* enjoy this universality.
 
-**The aggregators already on the table, and their observed behavior.** Practitioners had noticed, informally, that on featureless or repetitive graphs mean/max-based models struggle while sum-based models do better; that max-pooling is robust to outliers and tends to pick out a "skeleton" (Qi et al. 2017 show this for 3D point clouds); and that mean-aggregation models are strong on node-classification tasks with rich node features. These observations about *existing* aggregators are the empirical signposts pointing at a multiplicity-vs-distribution-vs-support distinction.
+**The aggregators already on the table, and their observed behavior.** Practitioners had concrete reasons to suspect that mean and max pooling were lossy on featureless or repetitive neighborhoods: they can collapse repeated node features that should remain countable. Max-pooling is robust to outliers and tends to pick out a "skeleton" (Qi et al. 2017 show this for 3D point clouds), while mean-aggregation models are strong on node-classification tasks with rich node features. These observations about *existing* aggregators are the empirical signposts pointing at a multiplicity-vs-distribution-vs-support distinction.
 
 ## Baselines
 
@@ -121,28 +121,21 @@ class GraphCNN(nn.Module):
         # TODO: build a sparse graph-to-node pooling matrix.
         pass
 
-    def aggregate_neighbors(self, h, graph_structure):
-        # TODO: collapse each node's neighbor multiset into one vector.
+    def maxpool(self, h, padded_neighbor_list):
+        # TODO: collapse each node's padded neighbor list with an element-wise max.
         pass
 
-    def next_layer(self, h, layer, graph_structure):
-        # TODO: one round of aggregation and update.
-        pass
-
-    def next_layer_with_center_weighting(self, h, layer, graph_structure):
+    def next_layer_with_center_weighting(self, h, layer,
+                                         padded_neighbor_list=None, Adj_block=None):
         # TODO: one round of aggregation and update when the center node is handled separately.
         pass
 
-    def readout(self, hidden_reps, graph_pool):
-        # TODO: pool node features into graph-level scores.
+    def next_layer(self, h, layer, padded_neighbor_list=None, Adj_block=None):
+        # TODO: one round of aggregation and update when the center node is in the pooled neighborhood.
         pass
 
     def forward(self, batch_graph):
-        # Stack node features, build batched neighbor structure,
-        # run num_layers-1 rounds of message passing, then read out class scores.
+        # TODO: stack node features, build batched neighbor structures,
+        # run num_layers-1 rounds of message passing, then pool every depth into class scores.
         pass
-
-# Training loop: Adam, learning-rate decay, dropout, cross-entropy, 10-fold CV.
-def train(model, graphs, ...):
-    pass
 ```

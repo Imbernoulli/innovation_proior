@@ -150,7 +150,7 @@ The benchmarks, datasets, and protocol that form the natural yardstick:
   choose the kernel bandwidth `σ` by cross-validation on a validation set, and report the mean
   log-likelihood of the held-out test set under that density. The procedure was introduced by
   Breuleux & Bengio (2011) and used for several generative models whose exact likelihood is intractable
-  (Rifai et al., 2012; Bengio et al., ICML 2013/2014). It is known to have high variance and to behave
+  (Rifai et al., 2012; Bengio et al., ICML 2013/2014). The estimate has high variance and behaves
   poorly in high dimensions, but is the accepted yardstick for sample-only models.
 
 - **Qualitative protocol.** Display fair random draws from the model (not cherry-picked, not
@@ -161,9 +161,10 @@ The benchmarks, datasets, and protocol that form the natural yardstick:
 
 ## Code framework
 
-The available code substrate is a generic implicit-generative-model harness: noise sampling, a
-differentiable network that maps noise to samples, automatic differentiation, an optimizer, and a
-loop over minibatches. The missing part is the scalar training signal.
+The available code substrate is a generic implicit-generative-model harness: noise sampling,
+differentiable feedforward modules, automatic differentiation, an optimizer that can move separate
+parameter groups, and a loop over minibatches. The missing part is the scalar training signal and the
+rule for which parameter group receives which gradient.
 
 - **Theano (Bergstra et al., 2010; Bastien et al., 2012).** A symbolic-expression compiler with GPU
   support and automatic differentiation. The load-bearing capability: given one scalar expression and a
@@ -182,36 +183,70 @@ loop over minibatches. The missing part is the scalar training signal.
   activations back through themselves.
 
 ```python
-# Bare harness for an implicit generative model.
-# Theano supplies T.grad; Pylearn2 supplies MLP layers and SGD with momentum.
+# Bare harness for an implicit generative model with one open training-signal slot.
+# Theano supplies T.grad; Pylearn2 supplies MLP layers, Cost, and SGD with momentum.
 
 import theano.tensor as T
 from theano.sandbox.rng_mrg import MRG_RandomStreams
+from pylearn2.costs.cost import Cost, DefaultDataSpecsMixin
 
 rng = MRG_RandomStreams(seed)
 
 def sample_noise(m, n_z):
-    # the only stochasticity: a noise prior z ~ p(z)
-    return rng.normal(size=(m, n_z))          # prior is arbitrary (gaussian/uniform); sampler exists
+    return rng.normal(size=(m, n_z))
 
-class Generator:
-    # a differentiable net mapping noise -> a sample; one forward pass, no Markov chain.
-    # Built from existing piecewise-linear-unit MLP layers.
-    def __init__(self, mlp): self.mlp = mlp
-    def sample(self, m, n_z):
-        z = sample_noise(m, n_z)
-        return self.mlp.fprop(z)              # x = G(z); implicitly defines a model distribution
-    params = property(lambda self: self.mlp.get_params())
+class NoiseDrivenSampler:
+    def __init__(self, mlp, noise="gaussian"):
+        self.mlp = mlp
+        self.noise = noise
 
-def train_step(generator, real_batch):
-    # TODO: define a scalar objective using generated samples and real data.
-    objective = None                          # TODO: define the scalar to optimize
-    grads = T.grad(objective, generator.params)   # autodiff will fill this once the objective exists
-    return grads
+    def sample_and_noise(self, m):
+        # TODO: draw z from p(z), format it for the MLP, and return (sample, z).
+        pass
 
-# An SGD-with-momentum optimizer + a loop over real minibatches drive train_step (Pylearn2 SGD).
+    def sample(self, m):
+        # TODO: return the generated sample only.
+        pass
+
+    def get_params(self):
+        return self.mlp.get_params()
+
+class TrainableSignal:
+    def __init__(self, mlp):
+        self.mlp = mlp
+
+    def fprop(self, x):
+        # TODO: compute the learned scalar signal on a batch of data-space points.
+        pass
+
+    def get_params(self):
+        return self.mlp.get_params()
+
+class PairedImplicitModel:
+    def __init__(self, sampler, signal):
+        self.sampler = sampler
+        self.signal = signal
+
+    def get_params(self):
+        return self.sampler.get_params() + self.signal.get_params()
+
+class LearnedSignalCost(DefaultDataSpecsMixin, Cost):
+    supervised = False
+
+    def get_samples_and_objectives(self, model, real_batch):
+        # TODO: draw model samples and define scalar objectives for both parameter groups.
+        pass
+
+    def get_gradients(self, model, real_batch):
+        # TODO: call T.grad on each scalar objective with respect to its own parameters.
+        pass
+
+class SplitParameterSGD:
+    def train_batch(self, real_batch):
+        # TODO: decide how often to move the signal parameters and sampler parameters.
+        pass
 ```
 
-This harness can backpropagate any scalar objective through a noise-driven generator, but by itself
-it supplies only sampling and optimization; the likelihood-free learning signal remains the open
-technical problem.
+This harness can backpropagate any scalar objective through a noise-driven sampler and any learned
+scalar signal, but by itself it supplies only sampling, parameter grouping, and optimization; the
+likelihood-free learning signal remains the open technical problem.

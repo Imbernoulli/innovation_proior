@@ -12,10 +12,10 @@ layer is actually responsible for the benefit, and removes the rest.
 
 The standard layer does two things: it subtracts the mean (giving **re-centering** invariance)
 and divides by the standard deviation (giving **re-scaling** invariance). Mean-subtraction
-recenters the activations but does not change their variance, so it is not what controls the
-spread of activations or gradients. The hypothesis: **re-scaling invariance is what makes
-layer normalization work; re-centering is dispensable.** Drop the mean-subtraction and normalize
-only by the root mean square.
+recenters the activations but does not change their variance, so it is not the direct
+spread-control term for activations or gradients. The hypothesis: **re-scaling invariance is what
+makes layer normalization work; re-centering is dispensable.** Drop the mean-subtraction and
+normalize only by the root mean square.
 
 ## Method
 
@@ -39,12 +39,14 @@ relative to the standard layer.
 | WeightNorm | ✓ | ✗ | ✓ | ✗ | ✗ | ✗ |
 | LayerNorm | ✓ | ✓ | ✗ | ✓ | ✗ | ✓ |
 | RMSNorm | ✓ | ✗ | ✗ | ✓ | ✗ | ✓ |
+| pRMSNorm | ✓ | ✗ | ✗ | ✓ | ✗ | ✓ |
 
 **Gradients.** With v the pre-nonlinearity expression v = (Wx)/RMS(a) ⊙ g + b:
 ∂L/∂b = ∂L/∂v and ∂L/∂g = ∂L/∂v ⊙ (Wx)/RMS(a) — both invariant to scaling x and W, and the
 g-gradient is proportional to the *normalized* inputs, keeping g's scale stable. For the weights,
+let u = ∂L/∂v and
 
-  ∂L/∂W = Σ_i [ xᵀ ⊗ (diag(g ⊙ ∂L/∂v) × R) ]_i,  R = (1/RMS(a))·( I − (Wx)(Wx)ᵀ/(n·RMS(a)²) ).
+  R = (1/RMS(a))·( I − (Wx)(Wx)ᵀ/(n·RMS(a)²) ),   ∂L/∂W = (R(g ⊙ u)) xᵀ.
 
 Scaling x or W by δ sends R → R/δ. Combined with the explicit x in the gradient, ∂L/∂W is
 **invariant to input scaling** (the δ from x cancels the 1/δ from R) and **inversely proportional
@@ -52,19 +54,20 @@ to weight scaling** (only R moves), so larger weights receive smaller gradients 
 per-layer learning-rate adaptation that keeps weight norms in check.
 
 **Efficiency.** One reduction (sum of squares) and no subtraction, versus two reductions and a
-subtraction. Measured wall-clock speedups over the standard layer of roughly 7%–64%, largest in
-RNNs (a norm per timestep) and smallest in Transformers (fewer sequential norms).
+subtraction. The saving is most valuable where the normalization is executed many times per
+training step, especially recurrent models with a normalization at each timestep.
 
 ## pRMSNorm (partial)
 
-Assuming the n neurons are roughly i.i.d., estimate the RMS from the first k = ⌈n·p⌉ entries and
-normalize all n by it:
+Assuming the n neurons are roughly i.i.d., estimate the RMS from the first k entries selected by a
+fraction p of the layer and normalize all n by it. In the mathematical description k = ceil(n·p);
+the implementation below follows the integer slice used in code:
 
   RMS̄(a) = √( (1/k) Σ_{i=1}^k aᵢ² ),  āᵢ = aᵢ / RMS̄(a) · gᵢ.
 
-Linearity still holds, so pRMSNorm has the same invariances as RMSNorm while touching only a
-p-fraction of the vector. RMS̄ is biased; gradients can explode for very small k, but p ≈ 6.25%
-works well in practice.
+Linearity still holds, so pRMSNorm has the same invariances as RMSNorm while touching only part
+of the vector. RMS̄ is a noisy and generally biased estimate of the full-vector RMS; gradients can
+explode for very small k, so p is a cost-stability knob rather than a free reduction.
 
 ## Code
 
@@ -77,7 +80,8 @@ class RMSNorm(nn.Module):
     def __init__(self, d, p=-1., eps=1e-8, bias=False):
         """
         d:    layer width (number of summed inputs / neurons).
-        p:    partial ratio in [0, 1]; p < 0 disables partial mode (plain RMSNorm).
+        p:    partial ratio; this implementation treats 0 <= p <= 1 as partial,
+              so practical partial use should keep p > 0. p < 0 or p > 1 disables partial mode.
         eps:  numerical floor on the denominator.
         bias: optional shift; off by default since RMSNorm does no mean-subtraction
               and therefore enforces no re-centering invariance to restore.
@@ -95,23 +99,15 @@ class RMSNorm(nn.Module):
             norm_x = x.norm(2, dim=-1, keepdim=True)      # ||a|| = sqrt(sum a_i^2): one reduction
             d_x = self.d
         else:
-            k = int(self.d * self.p)                      # use first k = floor(d*p) entries
-            partial_x, _ = torch.split(x, [k, self.d - k], dim=-1)
+            partial_size = int(self.d * self.p)           # use first int(d*p) entries
+            partial_x, _ = torch.split(x, [partial_size, self.d - partial_size], dim=-1)
             norm_x = partial_x.norm(2, dim=-1, keepdim=True)
-            d_x = k
+            d_x = partial_size
 
-        rms_x = norm_x * d_x ** (-1. / 2)                 # RMS(a) = ||a|| / sqrt(d)
+        rms_x = norm_x * d_x ** (-1. / 2)                 # full RMS or partial estimate = selected norm / sqrt(d_x)
         x_normed = x / (rms_x + self.eps)                 # a_i / RMS(a), no mean subtracted
 
         if self.bias:
             return self.scale * x_normed + self.offset
         return self.scale * x_normed                      # a_i / RMS(a) * g_i
-```
-
-Equivalent fused form (one mean-of-squares reduction, reciprocal-square-root):
-
-```python
-def rms_norm(x, scale, eps=1e-8):
-    ms = x.pow(2).mean(dim=-1, keepdim=True)              # (1/d) sum a_i^2
-    return scale * x * torch.rsqrt(ms + eps)              # a / RMS(a) * g
 ```

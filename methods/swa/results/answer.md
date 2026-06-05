@@ -6,11 +6,11 @@ Conventional SGD ships a single point that minimizes train loss, but the train-l
 
 ## Key idea
 
-SGD with a high constant or cyclical learning rate keeps exploring the periphery of the high-performing region (high-dimensional samples concentrate on a sphere's surface). **Averaging the weights** of the iterates collected during this exploration moves the solution to the flat, central interior. A Taylor argument shows that averaging weights gives essentially the same predictions as ensembling — but with a single model.
+SGD with a high constant or cyclical learning rate keeps exploring the periphery of the high-performing region (high-dimensional samples concentrate near an ellipsoid surface, or a sphere after whitening). **Averaging the weights** of the iterates collected during this exploration moves the solution to the flat, central interior. A Taylor argument shows that averaging weights gives essentially the same predictions as ensembling — but with a single model.
 
 ## Final method
 
-Start from a pretrained model `ŵ` (full or e.g. `0.75B` of the normal budget). Continue training with a high **constant** learning rate `α(i) = α_1`, or a **cyclical** one `α(i) = (1−t(i))α_1 + t(i)α_2`, `t(i) = (1/c)(mod(i−1,c)+1)`, jumping discontinuously from the minimum back to the maximum each cycle (exploration over per-proposal accuracy). Capture a model `w_i` once per cycle (at the LR minimum) or once per epoch (constant LR), and maintain their running average:
+Start from a pretrained model `ŵ` (full or e.g. `0.75B` of the normal budget). Continue training with a high **constant** learning rate `α(i) = α_1`, or a **cyclical** one over batch iterations, `α(i) = (1−t(i))α_1 + t(i)α_2`, `t(i) = (1/c)(mod(i−1,c)+1)`, jumping discontinuously from the minimum back to the maximum each cycle (exploration over per-proposal accuracy). Capture a model `w_i` once per cycle (at the LR minimum) or once per epoch (constant LR), and maintain their running average:
 
 `w_SWA ← (w_SWA · n_models + w) / (n_models + 1)`
 
@@ -29,28 +29,50 @@ Start from a pretrained model `ŵ` (full or e.g. `0.75B` of the normal budget). 
 ```python
 import torch
 
-def swa_train(model, loader, loss_fn, lr_init, swa_lr,
-              pretrain_epochs, swa_epochs, cycle_len=1):
-    opt = torch.optim.SGD(model.parameters(), lr=lr_init,
-                          momentum=0.9, weight_decay=5e-4)
-    swa_model = torch.optim.swa_utils.AveragedModel(model)   # holds running weight average
+def _set_lr(optimizer, lr):
+    for group in optimizer.param_groups:
+        group["lr"] = lr
 
-    # phase 1: conventional pretraining
-    for _ in range(pretrain_epochs):
+def tail_lr(step, cycle_len, high_lr, low_lr=None):
+    if low_lr is None:
+        return high_lr
+    if cycle_len <= 0:
+        raise ValueError("cycle_len must be positive")
+    t = ((step - 1) % cycle_len + 1) / cycle_len
+    return (1 - t) * high_lr + t * low_lr
+
+def train_tail(model, loader, loss_fn, optimizer, tail_epochs,
+               high_lr, low_lr=None, cycle_len=None, device=None):
+    if low_lr is not None and cycle_len is None:
+        raise ValueError("cycle_len is required for a cyclical tail")
+
+    avg_model = torch.optim.swa_utils.AveragedModel(model, device=device)
+    model.train()
+    step = 0
+
+    for _ in range(tail_epochs):
         for x, y in loader:
-            opt.zero_grad(); loss_fn(model(x), y).backward(); opt.step()
+            if device is not None:
+                x, y = x.to(device), y.to(device)
+            step += 1
+            lr = tail_lr(step, cycle_len or 1, high_lr, low_lr)
+            _set_lr(optimizer, lr)
+            optimizer.zero_grad()
+            loss_fn(model(x), y).backward()
+            optimizer.step()
 
-    # phase 2: explore with high constant/cyclical LR, average the captures
-    for _ in range(swa_epochs):
-        for i, (x, y) in enumerate(loader):
-            t = ((i % cycle_len) + 1) / cycle_len
-            alpha = (1 - t) * lr_init + t * swa_lr if cycle_len > 1 else swa_lr
-            for g in opt.param_groups:
-                g["lr"] = alpha
-            opt.zero_grad(); loss_fn(model(x), y).backward(); opt.step()
-        swa_model.update_parameters(model)   # w_SWA <- (w_SWA*n + w)/(n+1)
+            # Cyclical tail: capture exactly at the minimum LR, every c steps.
+            if low_lr is not None and step % cycle_len == 0:
+                avg_model.update_parameters(model)
 
-    # batch-norm fix: recompute running stats for the averaged weights
-    torch.optim.swa_utils.update_bn(loader, swa_model)
-    return swa_model
+        # Constant tail: capture one explored point per epoch.
+        if low_lr is None:
+            avg_model.update_parameters(model)
+
+    if int(avg_model.n_averaged) == 0:
+        avg_model.update_parameters(model)
+
+    # Batch-norm fix: recompute running stats for the averaged weights.
+    torch.optim.swa_utils.update_bn(loader, avg_model, device=device)
+    return avg_model
 ```

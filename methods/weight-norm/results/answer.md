@@ -9,8 +9,9 @@ each neuron's pre-activation over the minibatch, but in doing so it couples the 
 a batch, injects high-variance stochastic noise into the gradient, computes different
 functions at train and test time, and is awkward in recurrent and noise-sensitive settings
 (RNN/LSTM, reinforcement learning, generative models). The goal: a reparameterization of
-the basic neuron y = φ(w·x + b) that gives much of batch normalization's conditioning
-speed-up while being deterministic, per-example, cheap, and free of any batch dependence.
+the basic neuron y = φ(w·x + b) that keeps the useful conditioning effect of batch
+normalization while being deterministic, per-example, cheap, and free of any batch
+dependence.
 
 ## Key idea
 
@@ -19,12 +20,13 @@ directly in the new parameters:
 
     w = (g / ‖v‖) · v,
 
-with v a trainable vector and g a trainable scalar. Then ‖w‖ = g exactly, independent of v:
-the length of the weight (g) is decoupled from its direction (v/‖v‖). This is *weight
-normalization*. (Optionally g = e^s on a log scale; empirically no benefit, so plain g is
-used.) Unlike earlier max-norm/weight-clipping schemes, which optimize in w and project the
-norm back after each step, here the optimization is carried out in (g, v, b) themselves, so
-the optimizer experiences the better-conditioned geometry directly.
+with v a trainable vector and g a trainable scalar. For positive g, ‖w‖ = g exactly
+(with an unconstrained scalar, the Euclidean norm is |g| if g crosses zero), so the length
+scale of the weight is decoupled from its direction v/‖v‖. This is *weight normalization*.
+A log-scale g = e^s is possible, but the direct scalar g keeps the update simpler. Unlike
+earlier max-norm/weight-clipping schemes, which optimize in w and project the norm back
+after each step, here the optimization is carried out in (g, v, b) themselves, so the
+optimizer experiences the better-conditioned geometry directly.
 
 ## Gradients
 
@@ -56,9 +58,9 @@ deterministic, lower-variance one (CNNs have far fewer weights than pre-activati
 ## Data-dependent initialization
 
 Weight normalization does not fix per-layer feature scales the way batch normalization does,
-so initialize from one minibatch. Sample v ~ N(0, 0.05²). Feed one minibatch through;
-at each neuron compute the normalized pre-activation t = (v·x)/‖v‖ with minibatch mean μ[t]
-and std σ[t], and set
+so initialize from one minibatch. Sample v ~ N(0, 0.05²). Feed one minibatch through; at
+each neuron compute the normalized pre-activation t = (v·x)/‖v‖ with minibatch mean μ[t]
+and population standard deviation σ[t], and set
 
     g ← 1/σ[t],   b ← −μ[t]/σ[t],
 
@@ -86,40 +88,46 @@ import torch.nn as nn
 
 
 def _norm_except_dim(v, dim):
-    # Euclidean norm of v over every dimension except `dim` (one per output channel).
+    # dim=None uses one global norm; otherwise keep one norm per selected axis.
+    if dim is None:
+        dim = -1
     if dim == -1:
         return v.norm()
+    if dim < 0:
+        dim += v.dim()
     perm = [dim] + [d for d in range(v.dim()) if d != dim]
     flat = v.permute(*perm).reshape(v.size(dim), -1)
-    n = flat.norm(dim=1)
+    n = flat.norm(2, dim=1)
     shape = [1] * v.dim()
     shape[dim] = v.size(dim)
     return n.reshape(shape)
 
 
-def _compute_weight(module, name, dim):
+def _compute_effective_weight(module, name, dim):
     g = getattr(module, name + "_g")           # magnitude per output channel
     v = getattr(module, name + "_v")           # direction
-    return g * (v / _norm_except_dim(v, dim))  # w = g * v / ||v||
+    return v * (g / _norm_except_dim(v, dim))  # w = g * v / ||v||
 
 
-class _WeightNorm:
+class _WeightReparameterization:
     def __init__(self, name, dim):
         self.name, self.dim = name, dim
 
     def __call__(self, module, _inputs):       # runs right before forward()
-        setattr(module, self.name, _compute_weight(module, self.name, self.dim))
+        setattr(module, self.name, _compute_effective_weight(module, self.name, self.dim))
 
 
-def weight_norm(module, name="weight", dim=0):
+def reparameterize_weight(module, name="weight", dim=0):
     """Reparameterize module.<name> into magnitude (<name>_g) and direction (<name>_v);
-    SGD then runs in those. dim=0 -> one magnitude per output channel."""
+    SGD then runs in those. dim=0 -> one magnitude per output channel; dim=None -> one."""
+    if dim is None:
+        dim = -1
     w = getattr(module, name)
     del module._parameters[name]
     module.register_parameter(name + "_g", nn.Parameter(_norm_except_dim(w, dim).data))
     module.register_parameter(name + "_v", nn.Parameter(w.data))
-    setattr(module, name, _compute_weight(module, name, dim))
-    module.register_forward_pre_hook(_WeightNorm(name, dim))
+    setattr(module, name, _compute_effective_weight(module, name, dim))
+    module.register_forward_pre_hook(_WeightReparameterization(name, dim))
     return module
 
 
@@ -131,14 +139,17 @@ def data_dependent_init(layer, x):
         layer.bias.zero_()
     t = layer(x)
     reduce = [d for d in range(t.dim()) if d != 1]
-    mean, std = t.mean(dim=reduce), t.std(dim=reduce) + 1e-10
+    mean = t.mean(dim=reduce)
+    shape = [1, -1] + [1] * (t.dim() - 2)
+    centered = t - mean.reshape(shape)
+    std = (centered.pow(2).mean(dim=reduce) + 1e-10).sqrt()
     getattr(layer, "weight_g").copy_((1.0 / std).reshape(getattr(layer, "weight_g").shape))
     if layer.bias is not None:
-        layer.bias.copy_(-mean / std)
+        layer.bias.copy_((-mean / std).reshape(layer.bias.shape))
     return layer
 
 
-class MeanOnlyBatchNorm(nn.Module):
+class ActivationTransform(nn.Module):
     def __init__(self, num_features, momentum=0.1):
         super().__init__()
         self.bias = nn.Parameter(torch.zeros(num_features))
@@ -157,7 +168,8 @@ class MeanOnlyBatchNorm(nn.Module):
 
 
 # usage
-conv = weight_norm(nn.Conv2d(3, 96, 3, padding=1), name="weight", dim=0)
+conv = reparameterize_weight(nn.Conv2d(3, 96, 3, padding=1), name="weight", dim=0)
+center = ActivationTransform(96)
 # data_dependent_init(conv, first_minibatch)   # one-shot before training
 # then train with Adam; the pre-forward hook rebuilds `weight` each forward.
 ```

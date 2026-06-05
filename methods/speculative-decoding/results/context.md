@@ -10,7 +10,7 @@ The setting that makes this hard, and also makes it interesting, is the hardware
 
 ## Background
 
-**Autoregressive Transformer decoding.** A Transformer language model defines a conditional distribution `p(x_t | x_{<t})` over the next token. Sampling proceeds by drawing `x_t`, appending it, and feeding the extended prefix back in. Practical sampling layers a choice of scheme on top of the raw logits: greedy/argmax, temperature scaling, top-k truncation, and nucleus (top-p) truncation. A useful observation is that every one of these can be expressed as drawing a sample from a *single adjusted categorical distribution* — argmax, for instance, is sampling from the distribution that puts all mass on the max; top-k is sampling from the renormalized truncated distribution. So one can reduce "all the ways people sample" to the canonical operation "sample `x` from a probability vector."
+**Autoregressive Transformer decoding.** A Transformer language model defines a conditional distribution `p(x_t | x_{<t})` over the next token. Sampling proceeds by drawing `x_t`, appending it, and feeding the extended prefix back in. Practical sampling layers a choice of scheme on top of the raw logits: greedy/argmax, temperature scaling, top-k truncation, and nucleus (top-p) truncation. A useful observation is that every one of these can be expressed as drawing a sample from a *single adjusted categorical distribution* — argmax, for instance, is sampling from the distribution that puts all mass on the max; top-k is sampling from the renormalized truncated distribution. So one can reduce "all the ways people sample" to the common operation "sample `x` from a probability vector."
 
 **Teacher-forced parallel scoring.** A Transformer with causal masking can score an entire sequence in a *single* forward pass: given `x_1, ..., x_K`, one pass returns `p(·|x_{<1}), p(·|x_{<2}), ..., p(·|x_{<K})` for all positions at once (this is exactly how the model is trained). The key cost fact at batch size 1: because the pass is memory-bound, scoring a block of `K` tokens in one pass costs roughly the same wall-time as scoring a single token — the weights are read from memory once either way. Generation does not use this, because it does not yet know the tokens to score; it discovers them one at a time.
 
@@ -20,7 +20,7 @@ The setting that makes this hard, and also makes it interesting, is the hardware
 
 **Sampling from a hard distribution via an easy one.** Two classical tools take samples from a tractable proposal `q` and turn them into something about a target `p`. *Rejection sampling* (von Neumann): draw `x ~ q` and `r ~ U(0,1)`, accept `x` if `r < p(x) / (M q(x))` where `M = max_x p(x)/q(x)`, otherwise retry from scratch; accepted samples are exactly `p`-distributed. Its weaknesses are that `M` can be enormous (driving the accept rate toward zero) and that every rejection throws away the draw entirely. *Importance sampling*: keep all `x ~ q` but reweight each by `p(x)/q(x)`; this corrects expectations but does not produce unweighted `p`-distributed *draws*, so it cannot stand in for sampling a token.
 
-**Speculative execution.** A classic processor optimization: perform a task in parallel with checking whether it was actually needed (branch prediction is the canonical example). The payoff is increased concurrency whenever the guess is right; the prerequisite is a cheap, accurate mechanism for guessing what will be needed. In its standard form the guessed task is either needed or not — a deterministic predicate.
+**Speculative execution.** A classic processor optimization: perform a task in parallel with checking whether it was actually needed (branch prediction is the familiar example). The payoff is increased concurrency whenever the guess is right; the prerequisite is a cheap, accurate mechanism for guessing what will be needed. In its standard form the guessed task is either needed or not — a deterministic predicate.
 
 ## Baselines
 
@@ -36,14 +36,14 @@ The open gap across all of these: none simultaneously (a) keeps the *exact* outp
 
 ## Evaluation settings
 
-The natural yardsticks are standard conditional and unconditional generation tasks with public checkpoints, comparing against an optimized serial-decoding baseline:
+The natural yardsticks are standard conditional and unconditional generation tasks with existing checkpoints or deployed model families, comparing against an optimized serial-decoding baseline:
 
 - **Unconditional generation** with a GPT-like decoder-only Transformer trained on the One Billion Word benchmark (lm1b), using subword tokenization.
 - **Machine translation**, English→German (WMT EnDe), with an encoder-decoder Transformer fine-tuned for the task.
 - **Abstractive summarization** (CNN/DailyMail) with the same encoder-decoder family.
 - **Dialog** with a very large decoder-only conversational model.
 
-Across these, both argmax decoding (temperature 0) and standard stochastic sampling (temperature 1) are relevant settings. The metrics of interest are *wall-clock latency* (and the implied factor of speedup over the optimized serial baseline) at batch size 1 on a single accelerator, and — because any acceleration claim is only meaningful if outputs are unchanged — confirmation that the generated tokens are distributed identically to the baseline. A faithful comparison must use a strong, optimized implementation of standard decoding as the reference, not a naive loop.
+Across these, both argmax decoding (temperature 0) and standard stochastic sampling (temperature 1) are relevant settings. The metrics of interest are *wall-clock latency* (and the implied factor of speedup over the optimized serial baseline) at batch size 1 on a single accelerator, and — because any acceleration claim is only meaningful if outputs are unchanged — confirmation that the generated tokens are distributed identically to the baseline. A faithful comparison must use a strong, optimized implementation of standard decoding as the baseline, not a naive loop.
 
 ## Code framework
 
@@ -71,6 +71,10 @@ def top_k_top_p_filter(logits, top_k=0, top_p=0.0):
 def norm_logits(logits, temperature, top_k, top_p):
     # Fold any sampling scheme (argmax / top-k / nucleus / temperature)
     # into a single categorical distribution to sample from.
+    if temperature == 0.0:
+        probs = torch.zeros_like(logits)
+        probs.scatter_(1, torch.argmax(logits, dim=-1, keepdim=True), 1.0)
+        return probs
     logits = logits / temperature
     logits = top_k_top_p_filter(logits, top_k=top_k, top_p=top_p)
     return F.softmax(logits, dim=-1)
@@ -92,9 +96,10 @@ def autoregressive_decoding(prefix, model, max_len, temperature=1.0, top_k=0, to
 
 
 @torch.no_grad()
-def fast_decoding(prefix, model, max_len, **kwargs):
-    """Emit the same distribution as `autoregressive_decoding` but with fewer
-    serial passes of `model`, by exploiting the spare parallel compute."""
+def fast_decoding(prefix, helper_model, target_model, max_len, lookahead=4,
+                  temperature=1.0, top_k=0, top_p=0.0):
+    """Emit the same distribution as `autoregressive_decoding(prefix, target_model, ...)`
+    while reducing the number of serial passes through `target_model`."""
     # TODO: the decoding procedure we will design.
     pass
 ```

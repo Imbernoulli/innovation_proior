@@ -22,82 +22,113 @@ One subtlety about depth once everything is shared. The shared block is just app
 
 Now the auxiliary objective, which I've been suspicious of. Alongside masked language modeling, the standard recipe adds next-sentence prediction: classify whether two segments were consecutive, with positives being adjacent segments and negatives being segments from two *different* documents. It was supposed to help sentence-pair reasoning, but it's been found unreliable and quietly dropped. Why would it be so weak? Look at how the negative is built — two segments from different documents. To call that "not consecutive," the model only has to notice the two segments are about different *topics*. Topic is exactly the kind of thing masked language modeling already captures from word co-occurrence. So next-sentence prediction collapses into topic detection, which is easy and redundant with the main objective; it teaches almost nothing about how sentences cohere in order.
 
-I still believe inter-sentence structure matters for understanding — but the task has to actually be about *coherence*, not topic. So construct the negative differently: keep the two segments from the *same* document and *consecutive*, but swap their order. Positive is the two consecutive segments in their true order; negative is the identical two segments reversed. Now topic is identical on both sides — same document, same content — so topic gives the model nothing. The only way to win is to read the discourse cues that tell you which segment comes first. Call it sentence-order prediction. It's strictly harder, and it can't be shortcut through topic.
+I still believe inter-sentence structure matters for understanding — but the task has to actually be about *coherence*, not topic. So construct the negative differently: keep the two segments from the *same* document and *consecutive*, but swap their order. Positive is the two consecutive segments in their true order; negative is the identical two segments reversed. Now topic is identical on both sides — same document, same content — so topic gives the model nothing. The only way to win is to read the discourse cues that tell you which segment comes first. I can keep the old binary-classification convention: uncorrupted order is label 0, corrupted order is label 1. Call it sentence-order prediction. It's strictly harder, and it can't be shortcut through topic.
 
-Does that distinction bear out? If I take a model trained only with the old next-sentence objective and test it on the order task, it scores at chance — confirming the old objective never learned order, only topic shift. A model trained on the order objective, conversely, can still do the old next-sentence task reasonably *and* the order task well, because coherence cues subsume the topic ones. And the order objective is what helps the multi-sentence downstream tasks. So I replace next-sentence prediction with sentence-order prediction.
+If I take a model trained only with the old next-sentence objective and test whether it can recover the order of two same-document consecutive segments, the shortcut hypothesis predicts chance behavior: a topic detector has no signal when both alternatives contain the same text. That is exactly the weakness the new objective is designed to remove. So I replace next-sentence prediction with sentence-order prediction.
 
 A couple of training details follow from the regime I'm now in. For the masked-LM target, rather than masking isolated subword pieces I'll mask short spans — choose an n-gram length randomly with probability proportional to 1/n, capped at three, so the target is a whole word or short phrase like "White House correspondents." Predicting a coherent span is a harder, more linguistically meaningful target than predicting one subword given its neighbors. And on regularization: when I look at the largest model's curves it's *underfitting* — the training loss is high and there's no overfitting even after a million steps. Dropout's whole purpose is to fight overfitting, and there isn't any here; it's just throttling capacity I can't afford to waste. So for the large runs I remove dropout, and masked-LM accuracy goes up.
 
-Let me now write this as code. The model body is a standard Transformer encoder; the contribution is the factorized embedding, the single shared block applied L times, and the order-based inter-sentence objective.
+Let me now write this as code. The model body is a standard Transformer encoder; the pieces that matter are the embedding stem, the encoder stack, the masked-LM head tied back to the input embeddings, and the order-based inter-sentence objective.
 
 ```python
-import torch, torch.nn as nn, torch.nn.functional as F
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
-# --- factorized embedding: lookup in E, then project E -> H ---
-class FactorizedEmbedding(nn.Module):
-    def __init__(self, vocab_size, embed_dim, hidden):   # embed_dim E << hidden H
+# --- embedding stem: lookup in E, add type/position in E, project E -> H ---
+class EmbeddingStem(nn.Module):
+    def __init__(self, vocab_size, hidden, embedding_width=128,
+                 max_positions=512, type_vocab_size=2, dropout=0.0):
         super().__init__()
-        self.word = nn.Embedding(vocab_size, embed_dim)          # V x E (small)
-        self.proj = nn.Linear(embed_dim, hidden)                 # E x H
-    def forward(self, ids):
-        return self.proj(self.word(ids))                         # [B, T, H]
+        self.word = nn.Embedding(vocab_size, embedding_width)       # V x E
+        self.position = nn.Embedding(max_positions, embedding_width)
+        self.token_type = nn.Embedding(type_vocab_size, embedding_width)
+        self.norm = nn.LayerNorm(embedding_width)
+        self.drop = nn.Dropout(dropout)
+        self.proj = (nn.Linear(embedding_width, hidden)             # E x H
+                     if embedding_width != hidden else nn.Identity())
+
+    def forward(self, input_ids, token_type_ids=None):
+        if token_type_ids is None:
+            token_type_ids = torch.zeros_like(input_ids)
+        positions = torch.arange(input_ids.size(1), device=input_ids.device)
+        positions = positions.unsqueeze(0).expand_as(input_ids)
+        x = self.word(input_ids) + self.position(positions) + self.token_type(token_type_ids)
+        return self.proj(self.drop(self.norm(x)))                   # [B, T, H]
 
 # --- one encoder block (attention + 4H feed-forward, GELU) ---
 class EncoderBlock(nn.Module):
-    def __init__(self, hidden, n_heads, dropout=0.0):    # dropout off for large runs
+    def __init__(self, hidden, n_heads, dropout=0.0):              # dropout off for large runs
         super().__init__()
         self.attn = nn.MultiheadAttention(hidden, n_heads, dropout=dropout, batch_first=True)
         self.ln1 = nn.LayerNorm(hidden); self.ln2 = nn.LayerNorm(hidden)
         self.ffn = nn.Sequential(nn.Linear(hidden, 4*hidden), nn.GELU(),
                                  nn.Linear(4*hidden, hidden))
-    def forward(self, x, mask=None):
-        a, _ = self.attn(x, x, x, attn_mask=mask)
+
+    def forward(self, x, padding_mask=None):
+        a, _ = self.attn(x, x, x, key_padding_mask=padding_mask, need_weights=False)
         x = self.ln1(x + a)
         return self.ln2(x + self.ffn(x))
 
-# --- cross-layer sharing: ONE block, applied n_layers times ---
-class SharedEncoder(nn.Module):
+# --- cross-layer sharing: one block, applied n_layers times ---
+class EncoderStack(nn.Module):
     def __init__(self, n_layers, hidden, n_heads, dropout=0.0):
         super().__init__()
         self.n_layers = n_layers
-        self.block = EncoderBlock(hidden, n_heads, dropout)      # the ONLY block
-    def forward(self, x, mask=None):
-        for _ in range(self.n_layers):                          # reuse same weights
-            x = self.block(x, mask)
+        self.block = EncoderBlock(hidden, n_heads, dropout)        # the only block
+
+    def forward(self, x, padding_mask=None):
+        for _ in range(self.n_layers):                             # reuse same weights
+            x = self.block(x, padding_mask)
         return x
 
-# --- sentence-order prediction: positive = true order, negative = swapped ---
-def sop_examples(doc_segments):
-    seg_a, seg_b = doc_segments                                 # two CONSECUTIVE segments, same doc
-    if torch.rand(1) < 0.5:
-        return (seg_a, seg_b), 1                                # correct order
-    else:
-        return (seg_b, seg_a), 0                                # swapped: only coherence distinguishes
+# --- sentence-order prediction: label 0 = true order, label 1 = swapped ---
+def inter_sentence_examples(seg_a, seg_b):                         # consecutive segments, same doc
+    if torch.rand(()) < 0.5:
+        return (seg_a, seg_b), 0                                   # correct order
+    return (seg_b, seg_a), 1                                       # swapped
 
-class SOPHead(nn.Module):
+class SentencePairHead(nn.Module):
     def __init__(self, hidden):
-        super().__init__(); self.cls = nn.Linear(hidden, 2)
-    def forward(self, features):
-        return self.cls(features[:, 0, :])                      # over [CLS]
+        super().__init__()
+        self.pooler = nn.Linear(hidden, hidden)
+        self.classifier = nn.Linear(hidden, 2)
+
+    def forward(self, sequence_output):
+        pooled = torch.tanh(self.pooler(sequence_output[:, 0, :]))  # [CLS] pooler
+        return self.classifier(pooled)
 
 # --- n-gram masking for the MLM target: p(n) ∝ 1/n, n in 1..3 ---
 def sample_ngram_length(max_n=3):
     w = torch.tensor([1.0/n for n in range(1, max_n+1)])
-    return 1 + int(torch.multinomial(w / w.sum(), 1))           # length with prob (1/n)/sum_k(1/k)
+    return 1 + int(torch.multinomial(w / w.sum(), 1))             # (1/n) / sum_k (1/k)
+
+def gather_positions(sequence_output, positions):
+    batch, seq_len, width = sequence_output.shape
+    offsets = torch.arange(batch, device=sequence_output.device).unsqueeze(1) * seq_len
+    flat_positions = (positions + offsets).reshape(-1)
+    return sequence_output.reshape(batch * seq_len, width).index_select(0, flat_positions)
 
 class MLMHead(nn.Module):
-    def __init__(self, hidden, embed_dim, vocab_size):
+    def __init__(self, hidden, embedding_width, vocab_size):
         super().__init__()
-        self.dense = nn.Linear(hidden, embed_dim)               # project back toward embedding space
-        self.ln = nn.LayerNorm(embed_dim)
-        self.decoder = nn.Linear(embed_dim, vocab_size)
-    def forward(self, x):
-        return self.decoder(self.ln(F.gelu(self.dense(x))))
+        self.dense = nn.Linear(hidden, embedding_width)           # H -> E
+        self.ln = nn.LayerNorm(embedding_width)
+        self.bias = nn.Parameter(torch.zeros(vocab_size))
 
-def total_loss(mlm_logits, mlm_labels, sop_logits, sop_labels):
-    return (F.cross_entropy(mlm_logits.view(-1, mlm_logits.size(-1)),
-                            mlm_labels.view(-1), ignore_index=-100)
-            + F.cross_entropy(sop_logits, sop_labels))          # MLM + SOP
+    def forward(self, sequence_output, positions, embedding_table):
+        x = gather_positions(sequence_output, positions)
+        x = self.ln(F.gelu(self.dense(x)))
+        return x @ embedding_table.weight.t() + self.bias          # tied to input embeddings
+
+def total_loss(mlm_logits, mlm_labels, mlm_weights, pair_logits, pair_labels):
+    flat_labels = mlm_labels.reshape(-1)
+    flat_weights = mlm_weights.reshape(-1).float()
+    mlm_each = F.cross_entropy(mlm_logits.view(-1, mlm_logits.size(-1)),
+                               flat_labels, reduction="none")
+    mlm_loss = (mlm_each * flat_weights).sum() / (flat_weights.sum() + 1e-5)
+    pair_loss = F.cross_entropy(pair_logits, pair_labels.reshape(-1))
+    return mlm_loss + pair_loss
 
 # config: E=128 fixed; xxlarge = L12, H4096, A=64; LAMB, batch 4096, lr 0.00176
 ```

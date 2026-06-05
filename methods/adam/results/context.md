@@ -202,6 +202,10 @@ class Optimizer:
         # lazily-initialized per-parameter buffers, if the update rule needs any
         self.state = {id(p): {} for p in self.params}
 
+    def zero_grad(self):
+        for p in self.params:
+            p.grad = None
+
     @torch.no_grad()
     def step(self):
         for p in self.params:

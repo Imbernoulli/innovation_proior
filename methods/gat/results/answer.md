@@ -30,7 +30,7 @@ Given node features `h = {h_1, …, h_N}`, `h_i ∈ ℝ^F`, the layer produces `
 
    `z_i = (1/K) Σ_{k=1}^{K} Σ_{j∈𝒩_i} α_ij^k W^k h_j`.
 
-**Efficient scoring.** Since `a⃗ᵀ[W h_i ‖ W h_j] = a⃗_1ᵀ(W h_i) + a⃗_2ᵀ(W h_j)`, compute one scalar per node for each half and form the logit matrix by a broadcast sum, rather than materializing a `2F'` concatenation per edge.
+**Efficient scoring.** Since `a⃗ᵀ[W h_i ‖ W h_j] = a⃗_1ᵀ(W h_i) + a⃗_2ᵀ(W h_j)`, compute one scalar per node for each half and form the logit matrix by a broadcast sum, rather than materializing a `2F'` concatenation per edge. The TensorFlow scorers keep scalar bias terms, but those still fit the same per-node broadcast structure.
 
 **Properties.** Per-head method cost `O(|V| F F' + |E| F')` with a sparse edge-index implementation (on par with GCN; no eigendecomposition or inversion); fully parallel across edges (scores) and nodes (outputs); applies to directed graphs (omit `α_ij` for absent edges); inductive — the identical parameters run on completely unseen graphs. The dense TensorFlow 1 code below materializes an `N×N` attention tensor for simplicity, so that implementation has dense attention-tensor cost before masking.
 
@@ -50,11 +50,11 @@ import tensorflow as tf
 conv1d = tf.layers.conv1d
 
 
-def attn_head(seq, out_sz, bias_mat, activation,
-              in_drop=0.0, coef_drop=0.0, residual=False):
-    """One attention head.
+def graph_layer(seq, out_sz, neigh, activation,
+                in_drop=0.0, op_drop=0.0, residual=False):
+    """One local graph-attention operator.
 
-    seq: [batch, N, F]; bias_mat is broadcastable to [batch, N, N],
+    seq: [batch, N, F]; neigh is broadcastable to [batch, N, N],
     with 0 on edges/self-loops and -1e9 off edges.
     """
     with tf.name_scope('my_attn'):
@@ -64,14 +64,14 @@ def attn_head(seq, out_sz, bias_mat, activation,
         # shared linear transform W h_i (1x1 conv = per-node linear map)
         seq_fts = tf.layers.conv1d(seq, out_sz, 1, use_bias=False)
 
-        # additive attention a = [a1 || a2]: a^T[Wh_i || Wh_j] = a1^T Wh_i + a2^T Wh_j
-        f_1 = tf.layers.conv1d(seq_fts, 1, 1, use_bias=False)
-        f_2 = tf.layers.conv1d(seq_fts, 1, 1, use_bias=False)
+        # additive scoring split a = [a1 || a2], implemented as two one-channel scorers
+        f_1 = tf.layers.conv1d(seq_fts, 1, 1)
+        f_2 = tf.layers.conv1d(seq_fts, 1, 1)
         logits = f_1 + tf.transpose(f_2, [0, 2, 1])          # raw_score[i,j] = f_1[i] + f_2[j]
-        coefs = tf.nn.softmax(tf.nn.leaky_relu(logits, alpha=0.2) + bias_mat)
+        coefs = tf.nn.softmax(tf.nn.leaky_relu(logits) + neigh)
 
-        if coef_drop != 0.0:
-            coefs = tf.nn.dropout(coefs, 1.0 - coef_drop)    # attention dropout
+        if op_drop != 0.0:
+            coefs = tf.nn.dropout(coefs, 1.0 - op_drop)      # coefficient dropout
         if in_drop != 0.0:
             seq_fts = tf.nn.dropout(seq_fts, 1.0 - in_drop)
 
@@ -79,46 +79,44 @@ def attn_head(seq, out_sz, bias_mat, activation,
         ret = tf.contrib.layers.bias_add(vals)
 
         if residual:
-            in_dim = seq.get_shape().as_list()[-1]
-            out_dim = ret.get_shape().as_list()[-1]
-            if in_dim != out_dim:
-                ret = ret + conv1d(seq, out_dim, 1)
+            if seq.shape[-1] != ret.shape[-1]:
+                ret = ret + conv1d(seq, ret.shape[-1], 1)
             else:
                 ret = ret + seq
 
         return activation(ret)
 
 
-class GAT:
+class NodeModel:
     @staticmethod
-    def inference(inputs, nb_classes, nb_nodes, training, attn_drop, ffd_drop,
-                  bias_mat, hid_units, n_heads, activation=tf.nn.elu, residual=False):
+    def inference(inputs, nb_classes, nb_nodes, training, op_drop, ffd_drop,
+                  neigh, hid_units, layer_repeats,
+                  activation=tf.nn.elu, residual=False):
         # first hidden layer: heads concatenated
-        attns = [attn_head(inputs, bias_mat=bias_mat, out_sz=hid_units[0],
-                           activation=activation, in_drop=ffd_drop,
-                           coef_drop=attn_drop, residual=False)
-                 for _ in range(n_heads[0])]
+        attns = [graph_layer(inputs, neigh=neigh, out_sz=hid_units[0],
+                             activation=activation, in_drop=ffd_drop,
+                             op_drop=op_drop, residual=False)
+                 for _ in range(layer_repeats[0])]
         h_1 = tf.concat(attns, axis=-1)
 
         # further hidden layers: concatenate heads (residual optional)
         for i in range(1, len(hid_units)):
-            attns = [attn_head(h_1, bias_mat=bias_mat, out_sz=hid_units[i],
-                               activation=activation, in_drop=ffd_drop,
-                               coef_drop=attn_drop, residual=residual)
-                     for _ in range(n_heads[i])]
+            attns = [graph_layer(h_1, neigh=neigh, out_sz=hid_units[i],
+                                 activation=activation, in_drop=ffd_drop,
+                                 op_drop=op_drop, residual=residual)
+                     for _ in range(layer_repeats[i])]
             h_1 = tf.concat(attns, axis=-1)
 
         # output layer: heads produce class scores, AVERAGED
-        out = [attn_head(h_1, bias_mat=bias_mat, out_sz=nb_classes,
-                         activation=lambda x: x, in_drop=ffd_drop,
-                         coef_drop=attn_drop, residual=False)
-               for _ in range(n_heads[-1])]
-        logits = tf.add_n(out) / float(n_heads[-1])
+        out = [graph_layer(h_1, neigh=neigh, out_sz=nb_classes,
+                           activation=lambda x: x, in_drop=ffd_drop,
+                           op_drop=op_drop, residual=False)
+               for _ in range(layer_repeats[-1])]
+        logits = tf.add_n(out) / layer_repeats[-1]
         return logits
 
 
 def masked_softmax_cross_entropy(logits, labels, mask):
-    labels = tf.cast(labels, tf.float32)
     loss = tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=labels)
     mask = tf.cast(mask, tf.float32)
     mask /= tf.reduce_mean(mask)
@@ -135,39 +133,57 @@ def masked_sigmoid_cross_entropy(logits, labels, mask):
     return tf.reduce_mean(loss * mask)
 
 
+def masked_accuracy(logits, labels, mask):
+    correct_prediction = tf.equal(tf.argmax(logits, 1), tf.argmax(labels, 1))
+    accuracy_all = tf.cast(correct_prediction, tf.float32)
+    mask = tf.cast(mask, tf.float32)
+    mask /= tf.reduce_mean(mask)
+    accuracy_all *= mask
+    return tf.reduce_mean(accuracy_all)
+
+
+def micro_f1(logits, labels, mask):
+    predicted = tf.round(tf.nn.sigmoid(logits))
+    predicted = tf.cast(predicted, dtype=tf.int32)
+    labels = tf.cast(labels, dtype=tf.int32)
+    mask = tf.cast(mask, dtype=tf.int32)
+    mask = tf.expand_dims(mask, -1)
+
+    tp = tf.count_nonzero(predicted * labels * mask)
+    tn = tf.count_nonzero((predicted - 1) * (labels - 1) * mask)
+    fp = tf.count_nonzero(predicted * (labels - 1) * mask)
+    fn = tf.count_nonzero((predicted - 1) * labels * mask)
+
+    precision = tp / (tp + fp)
+    recall = tp / (tp + fn)
+    fmeasure = (2 * precision * recall) / (precision + recall)
+    return tf.cast(fmeasure, tf.float32)
+
+
 def training(loss, lr, l2_coef):
     vars = tf.trainable_variables()
-    skip = {'bias', 'biases', 'gamma', 'b', 'g', 'beta'}
-    decay_vars = [v for v in vars if v.op.name.rsplit('/', 1)[-1] not in skip]
-    lossL2 = tf.add_n([tf.nn.l2_loss(v) for v in decay_vars]) * l2_coef if decay_vars else 0.0
-    return tf.train.AdamOptimizer(learning_rate=lr).minimize(loss + lossL2)
+    lossL2 = tf.add_n([tf.nn.l2_loss(v) for v in vars if v.name not
+                       in ['bias', 'gamma', 'b', 'g', 'beta']]) * l2_coef
+    opt = tf.train.AdamOptimizer(learning_rate=lr)
+    return opt.minimize(loss + lossL2)
 
 
 # --- transductive Cora: build the neighbor bias mask and train ---
-def adj_to_bias(adj, sizes=None, nhood=1):
-    if adj.ndim == 2:
-        adj = adj[np.newaxis, :, :]
-    if sizes is None:
-        sizes = [adj.shape[1]] * adj.shape[0]
+def neighborhood_bias(adj, sizes, nhood=1):
     nb_graphs = adj.shape[0]
-    nb_nodes = adj.shape[1]
-    mt = np.empty(adj.shape, dtype=np.float32)
-    eye = np.eye(nb_nodes, dtype=np.float32)
+    mt = np.empty(adj.shape)
     for g in range(nb_graphs):
-        mt[g] = eye
-        adj_with_self = adj[g].astype(np.float32) + eye
+        mt[g] = np.eye(adj.shape[1])
         for _ in range(nhood):
-            mt[g] = np.matmul(mt[g], adj_with_self)
-        mt[g] = (mt[g] > 0.0).astype(np.float32)
-        if sizes is not None:
-            n = int(sizes[g])
-            mt[g, :n, n:] = 0.0
-            mt[g, n:, :n] = 0.0
-            mt[g, n:, n:] = np.eye(nb_nodes - n, dtype=np.float32)
+            mt[g] = np.matmul(mt[g], (adj[g] + np.eye(adj.shape[1])))
+        for i in range(sizes[g]):
+            for j in range(sizes[g]):
+                if mt[g][i][j] > 0.0:
+                    mt[g][i][j] = 1.0
     return -1e9 * (1.0 - mt)        # 0 on neighbors, -1e9 elsewhere
 
 
 hid_units = [8]
-n_heads = [8, 1]
+layer_repeats = [8, 1]
 lr, l2_coef = 0.005, 0.0005         # dropout 0.6 on inputs and attention coefficients at train time
 ```

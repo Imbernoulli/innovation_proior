@@ -23,56 +23,105 @@ $$\nabla_\theta\, \mathcal{L}^{\text{qry}}(\theta_i') = \left(\frac{\partial \th
 where $\partial\theta_i'/\partial\theta$ is the Jacobian of the adapted parameters with respect to the initialization, and $\nabla_{\theta'}\mathcal{L}^{\text{qry}}(\theta_i')$ is the ordinary gradient of the query loss evaluated *at the adapted point* $\theta_i'$. The second factor is easy — it's just a normal backward pass of the query loss at $\theta_i'$. The first factor is where the structure lives. Differentiate $\theta_i' = \theta - \alpha\,\nabla_\theta \mathcal{L}^{\text{sup}}(f_\theta)$ with respect to $\theta$:
 $$\frac{\partial \theta_i'}{\partial \theta} = I - \alpha\, \nabla_\theta^2\, \mathcal{L}_{\mathcal{T}_i}^{\text{sup}}(f_\theta),$$
 because the derivative of $\theta$ is $I$ and the derivative of the gradient $\nabla_\theta \mathcal{L}^{\text{sup}}$ is, by definition, the Hessian $\nabla_\theta^2 \mathcal{L}^{\text{sup}}$ of the *support* loss at $\theta$. So
-$$\nabla_\theta\, \mathcal{L}_{\mathcal{T}_i}^{\text{qry}}(f_{\theta_i'}) = \left(I - \alpha\, \nabla_\theta^2 \mathcal{L}_{\mathcal{T}_i}^{\text{sup}}(f_\theta)\right) \nabla_{\theta'}\mathcal{L}_{\mathcal{T}_i}^{\text{qry}}(f_{\theta_i'}).$$
-There's the second-order term. The meta-gradient is the query-loss gradient at the adapted point, *pre-multiplied* by $(I - \alpha H)$ where $H$ is the support-loss Hessian at the initialization. Two distinct losses appear, and I have to keep them straight: the Hessian is of the loss I adapted on (support), the gradient is of the loss I'm evaluating (query). It would be a sign-and-quantity error to mix them.
+$$\nabla_\theta\, \mathcal{L}_{\mathcal{T}_i}^{\text{qry}}(f_{\theta_i'}) = \left(I - \alpha\, \nabla_\theta^2 \mathcal{L}_{\mathcal{T}_i}^{\text{sup}}(f_\theta)\right)^{\!\top} \nabla_{\theta'}\mathcal{L}_{\mathcal{T}_i}^{\text{qry}}(f_{\theta_i'}).$$
+There's the second-order term. The meta-gradient is the query-loss gradient at the adapted point, multiplied by the transpose of the Jacobian of the adaptation step. For a smooth scalar support loss the Hessian is symmetric, so the transpose rarely changes the notation, but keeping it there prevents a chain-rule mistake. Two distinct losses appear, and I have to keep them straight: the Hessian is of the loss I adapted on (support), the gradient is of the loss I'm evaluating (query). It would be a sign-and-quantity error to mix them.
 
 Let me sanity-check the meaning, because second-order terms are easy to write and easy to get backwards. If $\alpha\to 0$, the factor is $I$ and the meta-gradient is just $\nabla_{\theta'}\mathcal{L}^{\text{qry}}$ — adaptation does nothing, so improving the initialization is the same as improving the post-"adaptation" point, which is the same point; consistent. The $-\alpha H$ correction says: a step of size $\beta$ in $\theta$ doesn't move $\theta'$ by exactly $\beta$, because moving $\theta$ also moves the gradient I subtract; the Hessian is exactly how much the inner gradient bends as $\theta$ changes, and $(I-\alpha H)$ propagates that bending. So the outer optimizer accounts for the fact that it's steering not the final point directly but the *starting* point of a gradient step, and the inner curvature mediates the two. Good — the term is doing real work: it's the credit for "how does nudging the initialization change the trajectory of the adaptation step."
 
-Now the obvious worry: a Hessian. For a net with $n$ parameters that's an $n\times n$ object, hopeless to form. But I don't need the Hessian — I need $H$ times a *vector*, namely the vector $\nabla_{\theta'}\mathcal{L}^{\text{qry}}$. A Hessian-vector product is just the gradient of (gradient-dotted-with-a-fixed-vector), one extra backward pass, no matrix ever materialized. And in fact I don't even need to hand-implement that: if I build $\theta_i'$ as a node in the computation graph — literally subtract $\alpha$ times the inner gradient from $\theta$, *keeping that subtraction in the graph* — and then forward the query set through $f_{\theta_i'}$ and call backward to $\theta$, reverse-mode autodiff produces exactly $(I-\alpha H)\nabla_{\theta'}\mathcal{L}^{\text{qry}}$ for me. The only requirement is that the inner gradient was computed with the graph retained (create the graph for the second derivative). So the whole bilevel objective is trainable with one extra backward pass, on top of plain autodiff. Nothing about the model entered any of this — I only assumed $f_\theta$ is differentiable in $\theta$ and trained by gradient descent. So the same three lines work for an MLP under MSE, a conv net under cross-entropy, or a policy under a policy-gradient loss. That generality is the point: no metric, no recurrent optimizer, no extra parameters, just an initialization and ordinary gradient descent.
+Now the obvious worry: a Hessian. For a net with $n$ parameters that's an $n\times n$ object, hopeless to form. But I don't need the Hessian — I need $H^\top$ times a *vector*, namely the vector $\nabla_{\theta'}\mathcal{L}^{\text{qry}}$; for the smooth scalar case $H^\top=H$. A Hessian-vector product is just the gradient of (gradient-dotted-with-a-fixed-vector), one extra backward pass, no matrix ever materialized. And in fact I don't even need to hand-implement that: if I build $\theta_i'$ as a node in the computation graph — literally subtract $\alpha$ times the inner gradient from $\theta$, *keeping that subtraction in the graph* — and then forward the query set through $f_{\theta_i'}$ and call backward to $\theta$, reverse-mode autodiff produces exactly $(I-\alpha H)^\top\nabla_{\theta'}\mathcal{L}^{\text{qry}}$ for me. The only requirement is that the inner gradient was computed with the graph retained (create the graph for the second derivative). So the whole bilevel objective is trainable with one extra backward pass, on top of plain autodiff. Nothing about the model entered any of this — I only assumed $f_\theta$ is differentiable in $\theta$ and trained by gradient descent. So the same three lines work for an MLP under MSE, a conv net under cross-entropy, or a policy under a policy-gradient loss. That generality is the point: no metric, no recurrent optimizer, no extra parameters, just an initialization and ordinary gradient descent.
 
 If one inner step is good, several should be straightforward: unroll. With two steps, $\theta_i'' = \theta_i' - \alpha\nabla_{\theta'}\mathcal{L}^{\text{sup}}(\theta_i')$, and the Jacobian chains, $\partial\theta_i''/\partial\theta = (I-\alpha H_1)(I - \alpha H_0)$ — a product of $(I-\alpha H_k)$ factors, one per step, evaluated along the inner trajectory. Autodiff through the unrolled loop handles this without me writing the product down; I just take the inner steps inside the graph and differentiate the final query loss. Memory grows with the number of unrolled steps, which is why I'll usually meta-train with one or a few steps even though I can take more at test time.
 
 Let me make sure the test-time story is coherent, since the meta-objective trains for performance after exactly one (or a few) steps. Does the learned $\theta$ overfit to "good after exactly one step, bad after two"? The objective optimizes for being in a region where the support gradient points somewhere that generalizes — that's a property of the *region*, the loss landscape around $\theta$, not a property of stopping at step one. So I'd expect, and would want to confirm, that adaptation keeps improving with extra gradient steps past the one I trained for; the initialization sits in a basin amenable to fast adaptation rather than at a point that's only good after a single jump. And because the deliverable is just a weight vector, at test time I can adapt with any number of steps and any amount of data — no learned optimizer constrains me. This is the concrete advantage over the learned-update-rule methods I set aside earlier.
 
-Now the cost. That extra backward pass for the Hessian-vector product is real — it roughly doubles the per-task compute and needs second-derivative support in the autodiff library. Can I avoid it? Look again at the meta-gradient: $(I - \alpha H)\,\nabla_{\theta'}\mathcal{L}^{\text{qry}}$. What if I just... drop the $\alpha H$? Set the Jacobian $\partial\theta_i'/\partial\theta \approx I$, i.e. pretend the adapted parameters don't depend on the initialization through the inner gradient. Then the meta-gradient collapses to
+Now the cost. That extra backward pass for the Hessian-vector product is real — it roughly doubles the per-task compute and needs second-derivative support in the autodiff library. Can I avoid it? Look again at the meta-gradient: $(I - \alpha H)^\top\nabla_{\theta'}\mathcal{L}^{\text{qry}}$. What if I just... drop the $\alpha H$? Set the Jacobian $\partial\theta_i'/\partial\theta \approx I$, i.e. pretend the adapted parameters don't depend on the initialization through the inner gradient. Then the meta-gradient collapses to
 $$\nabla_\theta\, \mathcal{L}_{\mathcal{T}_i}^{\text{qry}}(f_{\theta_i'}) \approx \nabla_{\theta'}\mathcal{L}_{\mathcal{T}_i}^{\text{qry}}(f_{\theta_i'}).$$
 This is a strange-looking object: I compute the gradient of the query loss *at the adapted point* $\theta_i'$, and then apply it to update $\theta$ as if it were a gradient at $\theta$. Concretely: adapt with `stop_gradient` on the inner step so no second-order graph is built, evaluate the query gradient at $\theta_i'$, and use that to update $\theta$. The crucial thing I must *not* drop is that the gradient is still evaluated at the *post-update* parameters — if I evaluated it at $\theta$ I'd just be doing joint training on the query sets, which is back to plain pretraining. The approximation throws away the curvature correction but keeps "the signal is the query gradient after adaptation."
 
-Should I expect this first-order version to hurt much? The dropped term is $\alpha H \nabla_{\theta'}\mathcal{L}^{\text{qry}}$, and its size is governed by $H = \nabla_\theta^2\mathcal{L}^{\text{sup}}$, the second derivatives of the model's loss. For ReLU networks there's a known fact that they're locally almost piecewise-linear — within a region the activation pattern is fixed and the map is affine, so the second derivatives of the network output are zero there, and the loss Hessian is dominated by the (often small) curvature of the loss head, not the network. If $H\approx 0$ over the relevant region, then $(I - \alpha H)\approx I$ and the first-order approximation is *exact* to leading order, not just cheap. So I'd predict the first-order variant to perform nearly identically while saving the extra backward pass — that's the kind of thing I'd want to verify, and the local-linearity argument tells me it's a principled approximation rather than a hack. It also tells me when it would break: a model with genuine curvature (smooth nonlinearities, sharp loss landscapes) would lose more by dropping $H$.
+Should I expect this first-order version to be reasonable? The dropped term is $\alpha H^\top \nabla_{\theta'}\mathcal{L}^{\text{qry}}$, and its size is governed by the support-loss curvature along the query-gradient direction. ReLU networks give me a useful but limited clue: they often behave nearly linearly in local neighborhoods, so many curvature corrections can be small. I should not turn that into the false statement that a deep ReLU net has zero Hessian with respect to all weights; even with a fixed activation pattern, products across layers can still create parameter curvature, and the loss itself can add curvature. The approximation is justified only when $\alpha H^\top v$ is small compared with $v=\nabla_{\theta'}\mathcal{L}^{\text{qry}}$. That gives me a clean diagnostic: dropping $H$ saves the extra backward pass while preserving the most important signal, the query gradient evaluated after adaptation; it should break when the inner step crosses highly curved regions or uses a large $\alpha$.
 
-So the algorithm, end to end. Initialize $\theta$ randomly. Repeatedly: sample a batch of tasks; for each task, draw a support set and adapt $\theta_i' = \theta - \alpha\nabla_\theta \mathcal{L}^{\text{sup}}(f_\theta)$ (one or more steps), then draw a query set and accumulate $\mathcal{L}^{\text{qry}}(f_{\theta_i'})$; then take one outer step $\theta \leftarrow \theta - \beta\nabla_\theta\sum_i \mathcal{L}^{\text{qry}}(f_{\theta_i'})$, where that meta-gradient carries the $(I-\alpha H)$ second-order term (or drops it for the first-order variant). The step sizes: $\alpha$ I can fix as a small constant (or meta-learn it, but fixed is fine), $\beta$ is just the outer learning rate, and I'll let a standard adaptive optimizer like Adam drive the outer loop to keep it stable. For control, where the loss is an expected return I can't differentiate through the environment, both the inner gradient and the meta-gradient are estimated with the score-function (policy-gradient) estimator, and I'd use a trust-region outer step for stability and finite differences for the Hessian-vector products to avoid third derivatives.
+So the algorithm, end to end. Initialize $\theta$ randomly. Repeatedly: sample a batch of tasks; for each task, draw a support set and adapt $\theta_i' = \theta - \alpha\nabla_\theta \mathcal{L}^{\text{sup}}(f_\theta)$ (one or more steps), then draw a query set and accumulate $\mathcal{L}^{\text{qry}}(f_{\theta_i'})$; then take one outer step $\theta \leftarrow \theta - \beta\nabla_\theta\sum_i \mathcal{L}^{\text{qry}}(f_{\theta_i'})$, where that meta-gradient carries the $(I-\alpha H)^\top$ second-order term (or drops it for the first-order variant). The step sizes: $\alpha$ can be a fixed hyperparameter, $\beta$ is the outer learning rate, and a standard adaptive optimizer like Adam can drive the supervised outer loop.
+
+For supervised regression and classification, the loss is simple: mean squared error over the sampled input-output pairs, or cross-entropy over $N K$ examples in an $N$-way, $K$-shot episode. Control needs one more sign check. If $J_i(\phi)=\mathbb{E}_{\tau\sim \pi_\phi,q_i}[\sum_{t=1}^H r_i(x_t,a_t)]$ is the expected return, the loss is $\mathcal{L}_i(\phi)=-J_i(\phi)$. Gradient descent on the loss is therefore reward ascent:
+$$\theta_i'=\theta-\alpha\nabla_\theta\mathcal{L}_i(\theta)=\theta+\alpha\nabla_\theta J_i(\theta).$$
+The score-function estimator gives
+$$\nabla_\theta J_i(\theta)=\mathbb{E}_{\tau}\left[\sum_{t=1}^H \nabla_\theta \log \pi_\theta(a_t\mid x_t)\,(R_t-b_t)\right],$$
+with a fitted baseline $b_t$ only reducing variance, not changing the expectation. The query loss after adaptation has to be estimated from fresh trajectories sampled by $\pi_{\theta_i'}$, because policy gradients are on-policy; every additional inner gradient step likewise needs new trajectories from the current adapted policy. For the outer update in control, a trust-region step is safer than an unconstrained Adam step because the sampled policy distribution should not jump too far, and if the trust-region solver needs Hessian-vector products, finite differences avoid differentiating through the policy-gradient estimator into third derivatives.
 
 To turn the math into code I need one nonstandard thing from the model: a forward pass that runs on an *explicitly supplied* set of weights, not just the weights stored on the module — because $\theta_i'$ is a fresh set of weights I produce on the fly and must run through $f$ without clobbering $\theta$. With that, the inner step is literally `fast_weights = {k: w - alpha * g for ...}` over the gradient dict, and the meta-loss is the query loss through `forward(x_query, fast_weights)`.
 
 ```python
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 
-def inner_adapt(model, x_s, y_s, alpha, n_steps, first_order=False):
-    # Start adaptation from the current meta-parameters theta.
-    fast_weights = {n: p for n, p in model.named_parameters()}
+
+class Learner(nn.Module):
+    def __init__(self, dim_in, hidden, dim_out):
+        super().__init__()
+        sizes = [dim_in] + hidden + [dim_out]
+        self.params = nn.ParameterDict()
+        for i in range(len(sizes) - 1):
+            self.params[f"w{i}"] = nn.Parameter(
+                torch.randn(sizes[i + 1], sizes[i]) * 0.01)
+            self.params[f"b{i}"] = nn.Parameter(torch.zeros(sizes[i + 1]))
+        self.n_layers = len(sizes) - 1
+
+    def functional_forward(self, x, weights):
+        h = x
+        for i in range(self.n_layers):
+            h = F.linear(h, weights[f"w{i}"], weights[f"b{i}"])
+            if i < self.n_layers - 1:
+                h = F.relu(h)
+        return h
+
+    def init_weights(self):
+        return {k: v for k, v in self.params.items()}
+
+
+def mse_loss(pred, y):
+    return ((pred - y) ** 2).mean()
+
+
+def adapt_parameters(model, loss_fn, x_s, y_s, alpha, n_steps, first_order=False):
+    fast_weights = model.init_weights()
     for _ in range(n_steps):
-        logits = model.functional_forward(x_s, fast_weights)   # forward on supplied weights
-        loss_sup = model.loss_fn(logits, y_s)                  # support loss L^sup(theta)
+        support_pred = model.functional_forward(x_s, fast_weights)
+        support_loss = loss_fn(support_pred, y_s)
         # create_graph=True keeps the inner step in the graph so the meta-grad
-        # picks up (I - alpha * H); first_order drops H by detaching.
-        grads = torch.autograd.grad(loss_sup, fast_weights.values(),
+        # includes the Hessian-vector term; first_order drops that path.
+        grads = torch.autograd.grad(support_loss, fast_weights.values(),
                                     create_graph=not first_order)
-        # theta' = theta - alpha * grad(L^sup) ; the subtraction stays in the graph
         fast_weights = {n: w - alpha * (g.detach() if first_order else g)
                         for (n, w), g in zip(fast_weights.items(), grads)}
     return fast_weights
 
-def maml_step(model, meta_opt, tasks, alpha, n_steps, first_order=False):
+
+def meta_update_step(model, loss_fn, meta_opt, tasks, alpha,
+                     n_steps=1, first_order=False, grad_clip=None):
     meta_opt.zero_grad()
     meta_loss = 0.0
     for (x_s, y_s, x_q, y_q) in tasks:
-        fast_weights = inner_adapt(model, x_s, y_s, alpha, n_steps, first_order)
-        q_logits = model.functional_forward(x_q, fast_weights)  # evaluate at theta'
-        meta_loss = meta_loss + model.loss_fn(q_logits, y_q)    # query loss = meta signal
+        fast_weights = adapt_parameters(model, loss_fn, x_s, y_s,
+                                        alpha, n_steps, first_order)
+        query_pred = model.functional_forward(x_q, fast_weights)
+        meta_loss = meta_loss + loss_fn(query_pred, y_q)
     meta_loss = meta_loss / len(tasks)
-    meta_loss.backward()   # autodiff yields (I - alpha*H) . grad_{theta'} L^qry per task
-    meta_opt.step()        # theta <- theta - beta * meta-grad   (Adam supplies beta)
+    meta_loss.backward()
+    if grad_clip is not None:
+        torch.nn.utils.clip_grad_value_(model.parameters(), grad_clip)
+    meta_opt.step()
+    return meta_loss.detach().item()
+
+
+def meta_train(model, sample_tasks, steps=70000, alpha=0.01,
+               meta_lr=1e-3, n_steps=1, first_order=False):
+    meta_opt = torch.optim.Adam(model.parameters(), lr=meta_lr)
+    for _ in range(steps):
+        tasks = sample_tasks()
+        meta_update_step(model, mse_loss, meta_opt, tasks, alpha,
+                         n_steps=n_steps, first_order=first_order)
+    return model
 ```
 
-The causal chain, start to finish: fine-tuning from a generic pretrain isn't built for few-shot adaptation because the initialization was chosen to minimize average loss, not to be a good launch point — so I make "performs well after a few support-set gradient steps, on held-out query points" the *objective* for the initialization itself; writing that bilevel objective down and differentiating through the inner gradient step produces a meta-gradient $(I - \alpha\nabla_\theta^2\mathcal{L}^{\text{sup}})\nabla_{\theta'}\mathcal{L}^{\text{qry}}$, a Hessian-vector product I can get from one extra backward pass with autodiff; dropping the Hessian gives a first-order variant that, because ReLU nets are locally near-linear and so $H\approx 0$, costs almost nothing in accuracy while saving the second backward pass; and because none of this touched the model's form, the same initialization-as-objective trick adapts MLPs, conv nets, and policies alike, with no extra parameters and ordinary gradient descent doing the adapting.
+The causal chain, start to finish: fine-tuning from a generic pretrain isn't built for few-shot adaptation because the initialization was chosen to minimize average loss, not to be a good launch point — so I make "performs well after a few support-set gradient steps, on held-out query points" the *objective* for the initialization itself; writing that bilevel objective down and differentiating through the inner gradient step produces a meta-gradient $(I - \alpha\nabla_\theta^2\mathcal{L}^{\text{sup}})^\top\nabla_{\theta'}\mathcal{L}^{\text{qry}}$, a Hessian-vector product I can get from one extra backward pass with autodiff; dropping the Hessian gives a first-order variant that is valid when the curvature correction is small but still keeps the query gradient at the adapted parameters; and because none of this touched the model's form, the same initialization-as-objective trick adapts MLPs, conv nets, and policies alike, with no extra parameters and ordinary gradient descent doing the adapting.

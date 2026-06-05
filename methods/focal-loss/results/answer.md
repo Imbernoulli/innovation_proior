@@ -12,13 +12,13 @@ Reshape cross entropy so that well-classified examples are down-weighted, focusi
 
 - When an example is hard or misclassified (p_t → 0), the factor (1 − p_t)^γ → 1 and the loss is essentially unchanged.
 - When an example is easy (p_t → 1), the factor → 0 and the loss is sharply suppressed.
-- γ ≥ 0 is the **focusing parameter**; γ = 0 recovers CE. For γ = 2, an example at p_t = 0.9 has 100× lower loss than CE, and at p_t ≈ 0.968 it has 1000× lower loss, while hard examples (p_t ≤ 0.5) are down-weighted by at most 4×. γ = 2 works best.
+- γ ≥ 0 is the **focusing parameter**; γ = 0 recovers CE. For γ = 2, an example at p_t = 0.9 has 100× lower loss than CE, and at p_t ≈ 0.968 it has 1000× lower loss, while hard examples (p_t ≤ 0.5) are down-weighted by at most 4×.
 
 The **α-balanced** form, used in practice, adds class weighting (α_t = α for positives, 1−α for negatives) on top of the modulating factor:
 
     FL(p_t) = −α_t · (1 − p_t)^γ · log(p_t)
 
-α should decrease as γ increases; α = 0.25, γ = 2 is the default. Unlike a robust loss (e.g. Huber) that down-weights hard outliers, the focal loss down-weights easy inliers.
+α should decrease as γ increases; α = 0.25, γ = 2 is the default pairing. Unlike a robust loss (e.g. Huber) that down-weights hard outliers, the focal loss down-weights easy inliers.
 
 **Gradient (w.r.t. the logit x, with x_t = yx, p_t = σ(x_t), before α-balancing):**
 
@@ -39,54 +39,23 @@ A deliberately simple one-stage detector so that accuracy gains come from the lo
 
 ## Code
 
-The focal loss (sigmoid form, fusing sigmoid + cross entropy for numerical stability):
-
-```python
-import torch
-from torch.nn import functional as F
-
-
-def sigmoid_focal_loss(inputs, targets, alpha=-1, gamma=2.0, reduction="none"):
-    """
-    inputs:  raw logits, arbitrary shape (one binary prediction per class per anchor).
-    targets: 0/1 binary labels, same shape as inputs.
-    alpha:   positive-vs-negative weighting in (0,1); <0 disables it.
-    gamma:   focusing parameter for the modulating factor (1 - p_t)^gamma.
-    """
-    inputs = inputs.float()
-    targets = targets.float()
-    p = torch.sigmoid(inputs)
-    ce_loss = F.binary_cross_entropy_with_logits(inputs, targets, reduction="none")  # -log(p_t)
-    p_t = p * targets + (1 - p) * (1 - targets)            # prob. of the correct class
-    loss = ce_loss * ((1 - p_t) ** gamma)                 # modulating factor
-
-    if alpha >= 0:
-        alpha_t = alpha * targets + (1 - alpha) * (1 - targets)
-        loss = alpha_t * loss
-
-    if reduction == "mean":
-        loss = loss.mean()
-    elif reduction == "sum":
-        loss = loss.sum()
-    return loss
-```
-
-The dense head with separate classification and box-regression towers, plus prior-π bias initialization:
+The dense head, the sigmoid focal loss, and the shared positive-anchor normalization:
 
 ```python
 import math
 import torch
 from torch import nn
+from torch.nn import functional as F
 
 
 class DenseHead(nn.Module):
-    def __init__(self, in_channels, num_anchors, num_classes, conv_dims=None, prior_prob=0.01):
+    def __init__(self, in_channels, num_anchors, num_classes, conv_dims=None, initial_prob=0.01):
         super().__init__()
         conv_dims = conv_dims or [in_channels] * 4
         cls_layers = []
         bbox_layers = []
         prev_channels = in_channels
-        for out_channels in conv_dims:                    # four 3x3 conv + ReLU by default
+        for out_channels in conv_dims:
             cls_layers += [nn.Conv2d(prev_channels, out_channels, 3, padding=1), nn.ReLU()]
             bbox_layers += [nn.Conv2d(prev_channels, out_channels, 3, padding=1), nn.ReLU()]
             prev_channels = out_channels
@@ -101,8 +70,9 @@ class DenseHead(nn.Module):
                 if isinstance(layer, nn.Conv2d):
                     nn.init.normal_(layer.weight, mean=0, std=0.01)
                     nn.init.constant_(layer.bias, 0)
-        # start every anchor at foreground-prob = prior_prob: sigma(b) = pi => b = -log((1-pi)/pi)
-        nn.init.constant_(self.cls_score.bias, -math.log((1 - prior_prob) / prior_prob))
+
+        bias = -math.log((1 - initial_prob) / initial_prob)
+        nn.init.constant_(self.cls_score.bias, bias)
 
     def forward(self, features):
         logits = []
@@ -111,11 +81,31 @@ class DenseHead(nn.Module):
             logits.append(self.cls_score(self.cls_subnet(feature)))
             bbox_reg.append(self.bbox_pred(self.bbox_subnet(feature)))
         return logits, bbox_reg
-```
 
-The classification loss over all valid anchors, normalized by the assigned positives:
 
-```python
+def dense_binary_loss(inputs, targets, loss_params, reduction="sum"):
+    inputs = inputs.float()
+    targets = targets.float()
+    loss_params = {"alpha": 0.25, "gamma": 2.0} if loss_params is None else loss_params
+    alpha = loss_params.get("alpha", -1)
+    gamma = loss_params.get("gamma", 2.0)
+
+    p = torch.sigmoid(inputs)
+    ce_loss = F.binary_cross_entropy_with_logits(inputs, targets, reduction="none")
+    p_t = p * targets + (1 - p) * (1 - targets)
+    loss = ce_loss * ((1 - p_t) ** gamma)
+
+    if alpha >= 0:
+        alpha_t = alpha * targets + (1 - alpha) * (1 - targets)
+        loss = alpha_t * loss
+
+    if reduction == "mean":
+        loss = loss.mean()
+    elif reduction == "sum":
+        loss = loss.sum()
+    return loss
+
+
 class PositiveAnchorNormalizer:
     def __init__(self, momentum=100):
         self.momentum = momentum
@@ -130,28 +120,37 @@ class PositiveAnchorNormalizer:
         return self.value
 
 
-def classification_loss(pred_logits, gt_labels, num_classes, normalizer=None, alpha=0.25, gamma=2.0):
+def classification_loss(pred_logits, gt_labels, num_classes, loss_normalizer, loss_params):
     logits = torch.cat(pred_logits, dim=1) if isinstance(pred_logits, (list, tuple)) else pred_logits
     gt_labels = torch.stack(gt_labels) if isinstance(gt_labels, (list, tuple)) else gt_labels
 
-    valid = gt_labels >= 0                                # drop ignored anchors
-    pos = valid & (gt_labels != num_classes)
-    num_pos = pos.sum().item()
-    denom = normalizer.update(num_pos) if normalizer is not None else max(num_pos, 1)
-    target = F.one_hot(gt_labels[valid], num_classes + 1)[:, :-1].float()  # drop background col
-    loss_cls = sigmoid_focal_loss(
-        logits[valid], target.to(logits.dtype), alpha=alpha, gamma=gamma, reduction="sum"
+    valid_mask = gt_labels >= 0
+    pos_mask = valid_mask & (gt_labels != num_classes)
+    normalizer_value = loss_normalizer.update(pos_mask.sum().item())
+
+    targets = F.one_hot(gt_labels[valid_mask], num_classes + 1)[:, :-1]
+    loss_cls = dense_binary_loss(
+        logits[valid_mask], targets.to(logits.dtype), loss_params, reduction="sum"
     )
-    return loss_cls / denom
+    return loss_cls / normalizer_value, normalizer_value, pos_mask
 
 
 def detector_losses(anchors, pred_logits, pred_deltas, gt_labels, gt_boxes,
-                    num_classes, normalizer):
-    loss_cls = classification_loss(pred_logits, gt_labels, num_classes, normalizer)
-    loss_box = smooth_l1_loss(pred_deltas, encode_boxes(anchors, gt_boxes))
-    return {"loss_cls": loss_cls, "loss_box_reg": loss_box / normalizer.value}
+                    num_classes, loss_normalizer, loss_params):
+    loss_cls, normalizer_value, pos_mask = classification_loss(
+        pred_logits, gt_labels, num_classes, loss_normalizer, loss_params
+    )
+    deltas = torch.cat(pred_deltas, dim=1) if isinstance(pred_deltas, (list, tuple)) else pred_deltas
+    target_deltas = encode_boxes(anchors, gt_boxes)
+
+    if pos_mask.any():
+        loss_box = smooth_l1_loss(deltas[pos_mask], target_deltas[pos_mask], reduction="sum")
+    else:
+        loss_box = deltas.sum() * 0
+
+    return {"loss_cls": loss_cls, "loss_box_reg": loss_box / normalizer_value}
 ```
 
 ## Alternate form (FL*)
 
-The exact form is not crucial. With x_t = y·x and p_t = σ(x_t), define p_t* = σ(γ·x_t + β) and FL* = −log(p_t*)/γ. Parameters γ (steepness) and β (shift) control the curve; settings such as (γ=2, β=1) or (γ=4, β=0) give accuracy comparable to FL. Any loss that diminishes the weight of well-classified examples (x_t > 0) is similarly effective.
+The exact form is not crucial. With x_t = y·x and p_t = σ(x_t), define p_t* = σ(γ·x_t + β) and FL* = −log(p_t*)/γ. Parameters γ (steepness) and β (shift) control where the loss falls off, and dFL*/dx = y(p_t* − 1). The useful property is the same: the gradient is small once x_t > 0 is confidently correct and large when the example remains wrong or ambiguous.

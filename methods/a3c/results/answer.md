@@ -19,7 +19,7 @@ Maintain a shared policy π(a|s;θ) and value function V(s;θ_v), with most para
 3. Bootstrap R = V(s_t;θ′_v) for the last non-terminal state, else R = 0.
 4. Walk backward over the rollout, R ← r_i + γR. Then
    Â_i = R − V(s_i;θ′_v)
-   = Σ_{j=0}^{k-1} γ^j r_{i+j} + γ^k V(s_{i+k};θ′_v) − V(s_i;θ′_v), k ≤ t_max.
+   = Σ_{j=0}^{k-1} γ^j r_{i+j} + γ^k V(s_{i+k};θ′_v) − V(s_i;θ′_v), k ≤ t_max, with the bootstrap value zero at a terminal state.
 5. Minimize the per-step losses
    L_π = −log π(a_i|s_i;θ′) stopgrad(Â_i) − βH(π(·|s_i;θ′)),
    L_v = 0.5 [stopgrad(R_i) − V(s_i;θ′_v)]²,
@@ -28,20 +28,74 @@ Maintain a shared policy π(a|s;θ) and value function V(s;θ_v), with most para
 
 The baseline is mathematically safe: for a fixed state, E_a[∇_θ log π(a|s)b(s)] = b(s)Σ_a∇_θπ(a|s) = b(s)∇_θ1 = 0. Choosing b(s) ≈ V(s) cuts variance and makes R − V(s) an advantage estimate. In the actor loss this advantage is stopped; in the value loss only the target return R_i is stopped, so the value prediction still learns. The entropy term H(π) = −Σ_aπ(a|s)logπ(a|s) discourages premature collapse to a deterministic policy.
 
-The value-based variants reuse the same rollout skeleton with a target network θ⁻: one-step Q uses target r + γ max_{a'} Q(s',a';θ⁻); one-step Sarsa uses r + γ Q(s',a';θ⁻) with the actually-taken a′; n-step Q bootstraps R = max_a Q(s_t,a;θ⁻) and minimizes (R − Q(s_i,a_i;θ′))² while walking backward through the rollout. Each value-based worker uses ε-greedy exploration, with ε varied across workers to increase diversity.
+The value-based variants reuse the same rollout skeleton with a target network θ⁻: one-step Q uses target r at a terminal s' and r + γ max_{a'} Q(s',a';θ⁻) otherwise; one-step Sarsa uses r at a terminal s' and r + γ Q(s',a';θ⁻) with the actually-taken a′ otherwise; n-step Q bootstraps R = 0 at a terminal last state and R = max_a Q(s_t,a;θ⁻) otherwise, then minimizes (R − Q(s_i,a_i;θ′))² while walking backward through the rollout. Each value-based worker uses ε-greedy exploration, with ε varied across workers to increase diversity.
 
-The algorithmic optimizer is shared non-centered RMSProp. For an accumulated loss gradient Δθ, g ← αg + (1−α)Δθ² and θ ← θ − ηΔθ/√(g+ε), elementwise, with g shared across workers. The PyTorch code below uses the same shared-adaptive-state idea with Adam: shared first moments, shared second moments, and lock-free steps on shared parameters.
+The algorithmic optimizer is shared non-centered RMSProp. For an accumulated loss gradient Δθ, g ← αg + (1−α)Δθ² and θ ← θ − ηΔθ/√(g+ε), elementwise, with g shared across workers. The code below uses the same shared-adaptive-state idea with Adam: shared first moments, shared second moments, and lock-free steps on shared parameters.
 
 ## Working code
 
 ```python
 import math
+import os
+import time
+from collections import deque
+
+import cv2
+import gym
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import torch.multiprocessing as mp
+from gym.spaces.box import Box
+
+
+def create_atari_env(env_name):
+    env = gym.make(env_name)
+    env = AtariRescale42x42(env)
+    env = NormalizedEnv(env)
+    return env
+
+
+def _process_frame42(frame):
+    frame = frame[34:34 + 160, :160]
+    frame = cv2.resize(frame, (80, 80))
+    frame = cv2.resize(frame, (42, 42))
+    frame = frame.mean(2, keepdims=True)
+    frame = frame.astype(np.float32)
+    frame *= 1.0 / 255.0
+    frame = np.moveaxis(frame, -1, 0)
+    return frame
+
+
+class AtariRescale42x42(gym.ObservationWrapper):
+    def __init__(self, env=None):
+        super().__init__(env)
+        self.observation_space = Box(0.0, 1.0, [1, 42, 42])
+
+    def _observation(self, observation):
+        return _process_frame42(observation)
+
+
+class NormalizedEnv(gym.ObservationWrapper):
+    def __init__(self, env=None):
+        super().__init__(env)
+        self.state_mean = 0
+        self.state_std = 0
+        self.alpha = 0.9999
+        self.num_steps = 0
+
+    def _observation(self, observation):
+        self.num_steps += 1
+        self.state_mean = self.state_mean * self.alpha + \
+            observation.mean() * (1 - self.alpha)
+        self.state_std = self.state_std * self.alpha + \
+            observation.std() * (1 - self.alpha)
+
+        unbiased_mean = self.state_mean / (1 - pow(self.alpha, self.num_steps))
+        unbiased_std = self.state_std / (1 - pow(self.alpha, self.num_steps))
+        return (observation - unbiased_mean) / (unbiased_std + 1e-8)
 
 
 def normalized_columns_initializer(weights, std=1.0):
@@ -168,7 +222,8 @@ def train(rank, args, shared_model, counter, lock, optimizer=None):
         optimizer = optim.Adam(shared_model.parameters(), lr=args.lr)
 
     model.train()
-    state = torch.from_numpy(env.reset())
+    state = env.reset()
+    state = torch.from_numpy(state)
     done = True
     episode_length = 0
 
@@ -194,7 +249,7 @@ def train(rank, args, shared_model, counter, lock, optimizer=None):
             action = prob.multinomial(num_samples=1).detach()
             log_prob = log_prob.gather(1, action)
 
-            state, reward, done, _ = env.step(action.item())
+            state, reward, done, _ = env.step(action.numpy())
             done = done or episode_length >= args.max_episode_length
             reward = max(min(reward, 1), -1)
 
@@ -234,43 +289,103 @@ def train(rank, args, shared_model, counter, lock, optimizer=None):
                 - log_probs[i] * gae.detach() \
                 - args.entropy_coef * entropies[i]
 
-        optimizer.zero_grad(set_to_none=True)
+        optimizer.zero_grad()
         (policy_loss + args.value_loss_coef * value_loss).backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
         ensure_shared_grads(model, shared_model)
         optimizer.step()
-```
 
-The harness shares the model and optimizer state, then launches one evaluator and several worker processes:
 
-```python
-env = create_atari_env(args.env_name)
-shared_model = ActorCritic(env.observation_space.shape[0], env.action_space)
-shared_model.share_memory()
+def test(rank, args, shared_model, counter):
+    torch.manual_seed(args.seed + rank)
+    env = create_atari_env(args.env_name)
+    env.seed(args.seed + rank)
+    model = ActorCritic(env.observation_space.shape[0], env.action_space)
 
-if args.no_shared:
-    optimizer = None
-else:
-    optimizer = SharedAdam(shared_model.parameters(), lr=args.lr)
-    optimizer.share_memory()
+    model.eval()
+    state = env.reset()
+    state = torch.from_numpy(state)
+    reward_sum = 0
+    done = True
+    start_time = time.time()
+    actions = deque(maxlen=100)
+    episode_length = 0
 
-counter = mp.Value('i', 0)
-lock = mp.Lock()
-processes = []
+    while True:
+        episode_length += 1
+        if done:
+            model.load_state_dict(shared_model.state_dict())
+            cx = torch.zeros(1, 256)
+            hx = torch.zeros(1, 256)
+        else:
+            cx = cx.detach()
+            hx = hx.detach()
 
-p = mp.Process(target=test, args=(args.num_processes, args,
-                                  shared_model, counter))
-p.start()
-processes.append(p)
+        with torch.no_grad():
+            value, logit, (hx, cx) = model((state.unsqueeze(0), (hx, cx)))
+        prob = F.softmax(logit, dim=-1)
+        action = prob.max(1, keepdim=True)[1].numpy()
 
-for rank in range(args.num_processes):
-    p = mp.Process(target=train,
-                   args=(rank, args, shared_model, counter, lock, optimizer))
+        state, reward, done, _ = env.step(action[0, 0])
+        done = done or episode_length >= args.max_episode_length
+        reward_sum += reward
+
+        actions.append(action[0, 0])
+        if actions.count(actions[0]) == actions.maxlen:
+            done = True
+
+        if done:
+            print("Time {}, num steps {}, FPS {:.0f}, episode reward {}, "
+                  "episode length {}".format(
+                      time.strftime("%Hh %Mm %Ss",
+                                    time.gmtime(time.time() - start_time)),
+                      counter.value,
+                      counter.value / (time.time() - start_time),
+                      reward_sum,
+                      episode_length))
+            reward_sum = 0
+            episode_length = 0
+            actions.clear()
+            state = env.reset()
+            time.sleep(60)
+
+        state = torch.from_numpy(state)
+
+
+def launch(args):
+    os.environ['OMP_NUM_THREADS'] = '1'
+    os.environ['CUDA_VISIBLE_DEVICES'] = ''
+
+    torch.manual_seed(args.seed)
+    env = create_atari_env(args.env_name)
+    shared_model = ActorCritic(env.observation_space.shape[0],
+                               env.action_space)
+    shared_model.share_memory()
+
+    if args.no_shared:
+        optimizer = None
+    else:
+        optimizer = SharedAdam(shared_model.parameters(), lr=args.lr)
+        optimizer.share_memory()
+
+    counter = mp.Value('i', 0)
+    lock = mp.Lock()
+    processes = []
+
+    p = mp.Process(target=test, args=(args.num_processes, args,
+                                      shared_model, counter))
     p.start()
     processes.append(p)
 
-for p in processes:
-    p.join()
+    for rank in range(args.num_processes):
+        p = mp.Process(target=train,
+                       args=(rank, args, shared_model, counter, lock,
+                             optimizer))
+        p.start()
+        processes.append(p)
+
+    for p in processes:
+        p.join()
 ```
 
-The PyTorch defaults here are 4 worker processes, 20 rollout steps, γ = 0.99, GAE λ = 1.0, entropy weight 0.01, value-loss weight 0.5, max gradient norm 50, 42×42 normalized Atari observations, and SharedAdam unless the non-shared optimizer path is selected. With λ = 1, the GAE recursion telescopes to the same finite n-step advantage R − V(s_i).
+The run configuration paired with this code uses 4 worker processes, 20 rollout steps, γ = 0.99, GAE λ = 1.0, entropy weight 0.01, value-loss weight 0.5, max gradient norm 50, 42×42 normalized Atari observations, and SharedAdam unless the non-shared optimizer path is selected. With λ = 1, the GAE recursion telescopes to the same finite n-step advantage R − V(s_i).

@@ -71,10 +71,13 @@ class SpectralConv2d(nn.Module):
 
 
 class FNO2d(nn.Module):
-    def __init__(self, modes1, modes2, width):
+    def __init__(self, modes1, modes2, width, in_channels=1, out_channels=1, padding=9):
         super().__init__()
-        self.padding = 9                       # pad for non-periodic domains
-        self.fc0 = nn.Linear(3, width)         # lift P: (a(x,y), x, y) -> width channels
+        self.modes1 = modes1
+        self.modes2 = modes2
+        self.width = width
+        self.padding = padding                 # pad for non-periodic domains
+        self.fc0 = nn.Linear(in_channels + 2, width)  # lift P: values plus (x, y)
         self.conv0 = SpectralConv2d(width, width, modes1, modes2)
         self.conv1 = SpectralConv2d(width, width, modes1, modes2)
         self.conv2 = SpectralConv2d(width, width, modes1, modes2)
@@ -84,19 +87,22 @@ class FNO2d(nn.Module):
         self.w2 = nn.Conv2d(width, width, 1)
         self.w3 = nn.Conv2d(width, width, 1)
         self.fc1 = nn.Linear(width, 128)       # projection Q
-        self.fc2 = nn.Linear(128, 1)
+        self.fc2 = nn.Linear(128, out_channels)
 
     def forward(self, x):
         grid = self.get_grid(x.shape, x.device)
         x = torch.cat((x, grid), dim=-1)
         x = self.fc0(x).permute(0, 3, 1, 2)
-        x = F.pad(x, [0, self.padding, 0, self.padding])
+        if self.padding:
+            x = F.pad(x, [0, self.padding, 0, self.padding])
         for conv, w in [(self.conv0, self.w0), (self.conv1, self.w1),
                         (self.conv2, self.w2), (self.conv3, self.w3)]:
             x = conv(x) + w(x)                 # global Fourier branch + local pointwise branch
             if conv is not self.conv3:
                 x = F.gelu(x)                  # nonlinearity in physical space
-        x = x[..., :-self.padding, :-self.padding].permute(0, 2, 3, 1)
+        if self.padding:
+            x = x[..., :-self.padding, :-self.padding]
+        x = x.permute(0, 2, 3, 1)
         x = F.gelu(self.fc1(x))
         return self.fc2(x)
 
@@ -112,13 +118,18 @@ def relative_l2(pred, target):
     return (diff / target.reshape(target.size(0), -1).norm(dim=1)).mean()
 
 
-def train(model, train_loader, epochs=500, lr=1e-3):
+def train(model, train_loader, y_normalizer=None, epochs=500, lr=1e-3):
     opt = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-4)
     sched = torch.optim.lr_scheduler.StepLR(opt, step_size=100, gamma=0.5)
     for _ in range(epochs):
         for a, u in train_loader:
             opt.zero_grad()
-            loss = relative_l2(model(a), u)
+            pred = model(a).reshape_as(u)
+            target = u
+            if y_normalizer is not None:
+                pred = y_normalizer.decode(pred)
+                target = y_normalizer.decode(target)
+            loss = relative_l2(pred, target)
             loss.backward()
             opt.step()
         sched.step()

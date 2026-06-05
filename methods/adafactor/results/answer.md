@@ -138,7 +138,8 @@ class Adafactor(Optimizer):
                     v.mul_(beta2t).add_(sq, alpha=1.0 - beta2t)
                     update = v.rsqrt().mul_(grad)
 
-                update.div_((self._rms(update) / group["clip_threshold"]).clamp_(min=1.0))
+                if group["clip_threshold"] is not None:
+                    update.div_((self._rms(update) / group["clip_threshold"]).clamp_(min=1.0))
                 update.mul_(lr)
 
                 if use_first_moment:

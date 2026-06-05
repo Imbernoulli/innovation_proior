@@ -26,8 +26,8 @@ Pit two networks against each other.
 
 `D` is trained to classify real vs. generated correctly; `G` is trained to make `D` wrong. Two design
 choices carry the whole idea. The contrast is a *learned generator* rather than fixed noise (as in
-NCE) or a fixed statistic (as in MMD), so the classification task keeps getting *harder* as `G`
-improves and the learning signal never goes slack. And the opponent is a *classifier* rather than a
+NCE) or a fixed hand-chosen statistic, so the classifier keeps looking for the current mismatch instead
+of going slack after a fixed contrast is solved. And the opponent is a *classifier* rather than a
 direct density-ratio estimator, so its sigmoid output `p_data/(p_data + p_g)` is the ratio squashed
 into `(0,1)` — bounded and stable, where the raw ratio `p_data/p_g ∈ (0, ∞)` would have to be clipped.
 
@@ -57,23 +57,25 @@ Since `JSD ≥ 0` with equality iff the distributions are equal, the **unique gl
 is symmetric) and finite even on disjoint supports — properties that came for free from the game, not
 from a design choice. Viewing `V` as `U(p_g, D)`: it is linear hence convex in `p_g`, so `sup_D U` is
 convex with that unique optimum, and the subgradient of the sup at the maximizing `D*` is a valid
-descent direction — so small alternating steps with `D` kept near optimal converge `p_g → p_data`
-(in distribution space; optimizing `θ_g` through an MLP is nonconvex, justified empirically).
+descent direction. In the ideal distribution-space update where `D` reaches `D*` at each step,
+sufficiently small generator steps converge `p_g → p_data`; with finite MLPs and approximate `D`,
+this is a target and descent-direction argument, not a global parameter-space guarantee.
 
 ## Two practical fixes
 
 1. **k-step schedule.** Optimizing `D` to completion each step is prohibitive and overfits, so take
-   `k` discriminator steps per generator step (`k = 1` works and is cheapest), keeping `D` *near*
-   optimal as `G` moves slowly — the persistent-chain (SML/PCD) trick, with `D`'s parameters as the
-   carried-over state. This also stops `G` from outrunning a stale `D` into a **collapse** (the
-   "Helvetica" scenario: many `z` mapped to a few outputs that fool the current `D`, losing diversity).
+   `k` discriminator steps per generator step (`k = 1` is the least expensive setting), trying to keep
+   `D` tracking its moving optimum as `G` changes slowly — the persistent-chain (SML/PCD) trick, with
+   `D`'s parameters as the carried-over state. This also keeps `G` from training too long against a
+   stale `D`, the setup that leads to **collapse** (the "Helvetica" scenario: many `z` mapped to a few
+   outputs that fool the current `D`, losing diversity).
 2. **Non-saturating generator loss.** Early on `D(G(z)) ≈ 0`. With discriminator logit `a` and
    `D = σ(a)`, the minimax generator term has logit derivative
    `d/da log(1 - σ(a)) = -σ(a) = -D`, so the signal to `G` vanishes when `D` confidently rejects
    fakes. Train `G` to **maximize `log D(G(z))`** instead, equivalently minimize `-log D(G(z))`:
-   `d/da[-log σ(a)] = -(1 - D) ≈ -1` when `D ≈ 0`. Same game equilibrium, much stronger early
-   gradient. (The minimax analysis and Algorithm-1 box use the `log(1 - D(G(z)))` generator term; the
-   implementation uses the non-saturating form to actually train.)
+   `d/da[-log σ(a)] = -(1 - D) ≈ -1` when `D ≈ 0`. Same fixed point, much stronger early
+   gradient. The minimax objective stays useful for the clean divergence argument; the executable
+   generator loss uses the non-saturating form.
 
 ## Algorithm
 
@@ -83,123 +85,226 @@ for number of training iterations:
         sample minibatch z^(1..m) ~ p_z,  x^(1..m) ~ p_data
         ascend  ∇_{θ_d}  (1/m) Σ [ log D(x^i) + log(1 - D(G(z^i))) ]
     sample minibatch z^(1..m) ~ p_z
-    ascend  ∇_{θ_g}  (1/m) Σ  log D(G(z^i))        # non-saturating (impl.); minimax box: descend log(1 - D)
+    ascend  ∇_{θ_g}  (1/m) Σ  log D(G(z^i))        # non-saturating; minimax alternative descends log(1 - D)
 ```
 
-Updates use any gradient rule (the original used SGD with momentum). The generator uses rectifier +
-sigmoid units; the discriminator uses maxout with dropout — maxout for clean piecewise-linear
-gradients, dropout to keep a powerful `D` from overfitting the moving target. Quantitative evaluation
-of these implicit models uses a Gaussian Parzen-window log-likelihood estimate on samples (bandwidth
-`σ` cross-validated).
+Updates use any gradient rule; the Theano/Pylearn2 setup below uses SGD with momentum. The generator
+uses rectifier + sigmoid units; the discriminator uses maxout with dropout — maxout for clean
+piecewise-linear gradients, dropout to keep a powerful `D` from overfitting the moving target.
+Quantitative evaluation of these implicit models uses a Gaussian Parzen-window log-likelihood
+estimate on samples (bandwidth `σ` cross-validated).
 
 ## Code
 
-The objective reuses one binary-cross-entropy loss against hard targets: `BCE(D, target=1) = -log D`
-and `BCE(D, target=0) = -log(1 - D)`. The two players' parameter sets are disjoint, so autodiff
-produces the two gradients independently. This is an original-style MLP implementation: ReLU +
-sigmoid generator, maxout + dropout discriminator, and SGD with momentum. `BCEWithLogitsLoss` is the
-numerically stable version of the sigmoid-output cross-entropy used by the Pylearn2 cost; conceptually
-`D(x) = sigmoid(a(x))`.
+The objective reuses one binary-cross-entropy loss against hard targets:
+`cost(target=1, D(x)) = -log D(x)` and `cost(target=0, D(x)) = -log(1 - D(x))`.
+The two players' parameter sets are disjoint, so autodiff produces the two gradients independently.
+This is the Theano/Pylearn2 core: a noise-driven `Generator`, an `AdversaryPair`, the
+`AdversaryCost2` loss, and the split SGD loop that takes `k` discriminator updates per generator
+update.
 
 ```python
-import math
-import torch
-import torch.nn as nn
+import numpy as np
+from theano import tensor as T
+from theano.compat import OrderedDict
+from theano.sandbox.rng_mrg import MRG_RandomStreams
 
-latent_dim, img_dim = 100, 28 * 28
-k = 1
-
-
-class Maxout(nn.Module):
-    def __init__(self, in_features, out_features, pieces):
-        super().__init__()
-        self.out_features = out_features
-        self.pieces = pieces
-        self.linear = nn.Linear(in_features, out_features * pieces)
-
-    def forward(self, x):
-        x = self.linear(x)
-        x = x.view(x.size(0), self.out_features, self.pieces)
-        return x.max(dim=2).values
+from pylearn2.costs.cost import Cost, DefaultDataSpecsMixin
+from pylearn2.models import Model
+from pylearn2.space import VectorSpace
+from pylearn2.utils import safe_zip, sharedX
 
 
-class Generator(nn.Module):          # x = G(z): noise -> data; one forward pass, no Markov chain
-    def __init__(self):
-        super().__init__()
-        self.model = nn.Sequential(
-            nn.Linear(latent_dim, 1200),
-            nn.ReLU(inplace=True),
-            nn.Linear(1200, 1200),
-            nn.ReLU(inplace=True),
-            nn.Linear(1200, img_dim),
-            nn.Sigmoid(),               # MNIST-style [0,1] pixels; implicitly defines p_g
+class Generator(Model):
+    def __init__(self, mlp, noise="gaussian"):
+        Model.__init__(self)
+        self.mlp = mlp
+        self.noise = noise
+        self.theano_rng = MRG_RandomStreams(2014 * 5 + 27)
+
+    def get_noise(self, size):
+        if isinstance(size, int):
+            size = (size, self.mlp.get_input_space().get_total_dimension())
+        if self.noise == "uniform":
+            return self.theano_rng.uniform(
+                low=-np.sqrt(3), high=np.sqrt(3), size=size, dtype="float32"
+            )
+        if self.noise == "gaussian":
+            return self.theano_rng.normal(size=size, dtype="float32")
+        if self.noise == "spherical":
+            noise = self.theano_rng.normal(size=size, dtype="float32")
+            norm = T.maximum(1e-7, T.sqrt(T.sqr(noise).sum(axis=1))).dimshuffle(0, "x")
+            return noise / norm
+        raise NotImplementedError(self.noise)
+
+    def sample_and_noise(self, num_samples, default_input_include_prob=1.,
+                         default_input_scale=1., all_g_layers=False):
+        n = self.mlp.get_input_space().get_total_dimension()
+        noise = self.get_noise((num_samples, n))
+        formatted_noise = VectorSpace(n).format_as(noise, self.mlp.get_input_space())
+        if all_g_layers:
+            rval = self.mlp.dropout_fprop(
+                formatted_noise,
+                default_input_include_prob=default_input_include_prob,
+                default_input_scale=default_input_scale,
+                return_all=all_g_layers,
+            )
+            other_layers, sample = rval[:-1], rval[-1]
+        else:
+            sample = self.mlp.dropout_fprop(
+                formatted_noise,
+                default_input_include_prob=default_input_include_prob,
+                default_input_scale=default_input_scale,
+            )
+            other_layers = None
+        return sample, formatted_noise, other_layers
+
+    def sample(self, num_samples, default_input_include_prob=1., default_input_scale=1.):
+        sample, _, _ = self.sample_and_noise(
+            num_samples, default_input_include_prob, default_input_scale
+        )
+        return sample
+
+    def get_params(self):
+        return self.mlp.get_params()
+
+    def get_input_space(self):
+        return self.mlp.get_input_space()
+
+    def get_output_space(self):
+        return self.mlp.get_output_space()
+
+    def get_lr_scalers(self):
+        return self.mlp.get_lr_scalers()
+
+
+class AdversaryPair(Model):
+    def __init__(self, generator, discriminator):
+        Model.__init__(self)
+        self.generator = generator
+        self.discriminator = discriminator
+
+    def get_params(self):
+        return self.generator.get_params() + self.discriminator.get_params()
+
+    def get_input_space(self):
+        return self.discriminator.get_input_space()
+
+    def get_input_source(self):
+        return self.discriminator.get_input_source()
+
+    def get_lr_scalers(self):
+        rval = self.generator.get_lr_scalers()
+        rval.update(self.discriminator.get_lr_scalers())
+        return rval
+
+
+class AdversaryCost2(DefaultDataSpecsMixin, Cost):
+    supervised = False
+
+    def __init__(self, scale_grads=1, target_scale=.1,
+                 discriminator_default_input_include_prob=1.,
+                 discriminator_input_include_probs=None,
+                 discriminator_default_input_scale=1.,
+                 discriminator_input_scales=None,
+                 generator_default_input_include_prob=1.,
+                 generator_default_input_scale=1.,
+                 no_drop_in_d_for_g=False):
+        self.__dict__.update(locals())
+        del self.self
+        self.now_train_generator = sharedX(np.array(1., dtype="float32"))
+        self.now_train_discriminator = sharedX(np.array(1., dtype="float32"))
+
+    def expr(self, model, data, **kwargs):
+        _, d_obj, g_obj, _ = self.get_samples_and_objectives(model, data)
+        return d_obj + g_obj
+
+    def get_samples_and_objectives(self, model, data):
+        space, _ = self.get_data_specs(model)
+        space.validate(data)
+        g, d = model.generator, model.discriminator
+        X = data
+        m = data.shape[space.get_batch_axis()]
+        y1 = T.alloc(1, m, 1)
+        y0 = T.alloc(0, m, 1)
+
+        S, z, other_layers = g.sample_and_noise(
+            m,
+            default_input_include_prob=self.generator_default_input_include_prob,
+            default_input_scale=self.generator_default_input_scale,
+            all_g_layers=False,
         )
 
-    def forward(self, z):
-        return self.model(z)
+        y_hat1 = d.dropout_fprop(
+            X,
+            self.discriminator_default_input_include_prob,
+            self.discriminator_input_include_probs,
+            self.discriminator_default_input_scale,
+            self.discriminator_input_scales,
+        )
+        y_hat0 = d.dropout_fprop(
+            S,
+            self.discriminator_default_input_include_prob,
+            self.discriminator_input_include_probs,
+            self.discriminator_default_input_scale,
+            self.discriminator_input_scales,
+        )
+
+        d_obj = 0.5 * (
+            d.layers[-1].cost(y1, y_hat1)      # -log D(x)
+            + d.layers[-1].cost(y0, y_hat0)    # -log(1 - D(G(z)))
+        )
+
+        if self.no_drop_in_d_for_g:
+            y_hat0_for_g = d.dropout_fprop(S)
+        else:
+            y_hat0_for_g = y_hat0
+        g_obj = d.layers[-1].cost(y1, y_hat0_for_g)  # -log D(G(z))
+        return S, d_obj, g_obj, 0
+
+    def get_gradients(self, model, data, **kwargs):
+        S, d_obj, g_obj, _ = self.get_samples_and_objectives(model, data)
+        g_params = model.generator.get_params()
+        d_params = model.discriminator.get_params()
+        for param in g_params:
+            assert param not in d_params
+        for param in d_params:
+            assert param not in g_params
+
+        d_grads = T.grad(d_obj, d_params)
+        g_grads = T.grad(g_obj, g_params)
+
+        if self.scale_grads:
+            S_grad = T.grad(g_obj, S)
+            scale = T.maximum(1., self.target_scale / T.sqrt(T.sqr(S_grad).sum()))
+            g_grads = [g_grad * scale for g_grad in g_grads]
+
+        rval = OrderedDict()
+        rval.update(OrderedDict(safe_zip(
+            d_params, [self.now_train_discriminator * dg for dg in d_grads]
+        )))
+        rval.update(OrderedDict(safe_zip(
+            g_params, [self.now_train_generator * gg for gg in g_grads]
+        )))
+        return rval, OrderedDict()
 
 
-class Discriminator(nn.Module):      # returns logit a(x); D(x) = sigmoid(a(x))
-    def __init__(self):
-        super().__init__()
-        self.input_drop = nn.Dropout(p=0.5)  # Pylearn2 keep prob .5 on discriminator inputs
-        self.h0 = Maxout(img_dim, 240, pieces=5)
-        self.h0_drop = nn.Dropout(p=0.2)     # Pylearn2 keep prob .8 after h0
-        self.h1 = Maxout(240, 240, pieces=5)
-        self.out = nn.Linear(240, 1)
-
-    def forward(self, x):
-        x = self.input_drop(x)
-        x = self.h0(x)
-        x = self.h0_drop(x)
-        x = self.h1(x)
-        return self.out(x)
-
-
-def sample_noise(m, device):
-    # Uniform with variance 1, matching the original MNIST config's uniform noise.
-    bound = math.sqrt(3.0)
-    return torch.empty(m, latent_dim, device=device).uniform_(-bound, bound)
-
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-G, D = Generator().to(device), Discriminator().to(device)
-bce = nn.BCEWithLogitsLoss()         # target 1: -log sigmoid(a); target 0: -log(1-sigmoid(a))
-opt_G = torch.optim.SGD(G.parameters(), lr=0.1, momentum=0.5)
-opt_D = torch.optim.SGD(D.parameters(), lr=0.1, momentum=0.5)
-
-for real, _ in dataloader:           # real: minibatch x ~ p_data, assumed scaled to [0,1]
-    real = real.to(device).view(real.size(0), -1)
-    valid = torch.ones(real.size(0), 1, device=real.device)  # label "real"
-    fake = torch.zeros(real.size(0), 1, device=real.device)  # label "fake"
-
-    # ---- update D: ascend log D(x) + log(1 - D(G(z))) by minimizing BCE ----
-    for _ in range(k):
-        opt_D.zero_grad()
-        z = sample_noise(real.size(0), real.device)
-        gen = G(z).detach()
-        real_loss = bce(D(real), valid)              # -log D(x)
-        fake_loss = bce(D(gen), fake)                # -log(1 - D(G(z)))
-        d_loss = 0.5 * (real_loss + fake_loss)
-        d_loss.backward()
-        opt_D.step()
-
-    # ---- update G: non-saturating, maximize log D(G(z)) ----
-    opt_G.zero_grad()
-    z = sample_noise(real.size(0), real.device)
-    gen = G(z)
-    g_loss = bce(D(gen), valid)        # target 1 on fakes -> minimize -log D(G(z))
-    g_loss.backward()
-    opt_G.step()
+def split_sgd_epoch(iterator, d_func, g_func, discriminator_steps=1):
+    i = 0
+    for batch in iterator:
+        d_func(*batch)
+        i += 1
+        if i == discriminator_steps:
+            g_func(*batch)
+            i = 0
 ```
 
-The Pylearn2 `AdversaryCost2` mapping is the same: it builds
-`d_obj = 0.5 * (D.last_layer.cost(ones, D(X)) + D.last_layer.cost(zeros, D(G(z))))` and the
-non-saturating `g_obj = D.last_layer.cost(ones, D(G(z)))`, then returns `T.grad(d_obj, θ_d)` and
-`T.grad(g_obj, θ_g)` separately, gating the generator update once per `k` discriminator updates. Note
-the discrepancy worth flagging: the Algorithm-1 box descends the minimax generator term
-`log(1 - D(G(z)))`, but the released code maximizes `log D(G(z))` (the non-saturating form) — same
-fixed point, healthier early gradient, and it is the non-saturating form that actually trains.
+For the MNIST configuration, this core is instantiated with uniform noise of dimension `100`; a
+generator MLP `100 -> 1200 -> 1200 -> 784` with rectified hidden layers and a sigmoid output; a
+discriminator MLP with two maxout layers of `240` units and `5` pieces, then a sigmoid output; batch
+size `100`; learning rate `.1`; momentum `.5` adjusted to `.7`; `AdversaryCost2(scale_grads=0)`;
+`discriminator_steps=1`; discriminator input keep probability `.5`, first-hidden keep probability
+`.8`, and corresponding dropout scales `2.` and `1.25`.
 
 ## What it buys and costs
 

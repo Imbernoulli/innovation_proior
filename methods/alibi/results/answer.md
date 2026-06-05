@@ -18,7 +18,7 @@ Why it extrapolates: the bias is a parameter-free monotone function of relative 
 
 ## The slopes
 
-For $n$ heads, the slopes form a geometric sequence with start and ratio both equal to $2^{-8/n}$:
+For power-of-two head counts, the slopes form a geometric sequence with start and ratio both equal to $2^{-8/n}$:
 
 $$
 m_h = 2^{-8h/n}, \qquad h = 1, \dots, n.
@@ -27,7 +27,7 @@ $$
 - $n=8$: $\tfrac{1}{2}, \tfrac{1}{4}, \tfrac{1}{8}, \dots, \tfrac{1}{256}$ (start $=$ ratio $= 2^{-1}$).
 - $n=16$: start $=$ ratio $= 2^{-1/2} = 1/\sqrt{2}$, giving $2^{-0.5}, 2^{-1}, 2^{-1.5}, \dots, 2^{-8}$ — the 8-head set with a geometric mean interposed between each consecutive pair.
 
-The slopes lie in $(0,1)$ and are **dense near 0**: many heads with small slopes (long, near-uniform effective windows, finely spaced) and a few with large slopes (sharp recency). Geometric spacing gives this; linear spacing would waste resolution on the local heads and starve the valuable long-range ones. The slopes are **fixed before training and not learned** — making them trainable yields weak extrapolation (and a small slowdown). The method is robust to the exact set, so it is fixed once and reused across model sizes and datasets without retuning. For a head count that is not a power of two, take the nearest lower power-of-two's slopes and interpolate the remainder from the next set.
+The slopes lie in $(0,1)$ and are **dense near 0**: many heads with small slopes (long, near-uniform effective windows, finely spaced) and a few with large slopes (sharp recency). Geometric spacing gives this; linear spacing would waste resolution on the local heads and starve the valuable long-range ones. The slopes are **fixed before training and not learned** — making them trainable yields weak extrapolation (and a small slowdown). The method is robust to the exact set, so it is fixed once and reused across model sizes and datasets without retuning. For a head count that is not a power of two, keep the nearest lower power-of-two's slopes, then append every other slope from the next power-of-two set until there are $n$ slopes.
 
 The bias is **not** multiplied by the $1/\sqrt{d_k}$ score scaling.
 
@@ -43,7 +43,7 @@ import torch.nn.functional as F
 
 
 def get_slopes(n_heads):
-    # m_h = 2^{-8h/n}: geometric, start = ratio = 2^{-8/n}, dense near 0. Fixed, not learned.
+    # Power-of-two case: m_h = 2^{-8h/n}, geometric and dense near 0. Fixed, not learned.
     def slopes_power_of_2(n):
         start = 2 ** (-(2 ** -(math.log2(n) - 3)))     # = 2^{-8/n}
         ratio = start

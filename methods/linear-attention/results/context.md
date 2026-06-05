@@ -67,8 +67,8 @@ $$ V'_i = \frac{\sum_{j=1}^N \text{sim}(Q_i, K_j)\, V_j}
 which reduces to softmax attention when $\text{sim}(q,k) = \exp(q^Tk/\sqrt{D})$.
 This kernel framing (Tsai et al., 2019) makes clear that softmax is just one
 admissible choice: the only thing the similarity must satisfy for this to be a
-well-defined weighted average is that it be non-negative, which holds for any
-positive-definite kernel $k(x,y): \mathbb{R}^{2\times F} \to \mathbb{R}_+$.
+well-defined weighted average is that it be non-negative, which includes any
+kernel $k(x,y): \mathbb{R}^{2\times F} \to \mathbb{R}_+$.
 Polynomial and RBF-kernel variants of attention have been shown to perform
 comparably to the exponential one.
 
@@ -126,7 +126,7 @@ profile we want while attention has the quality.
 
 ## Evaluation settings
 
-The natural yardsticks, all predating any new method:
+The natural yardsticks are:
 
 - **Synthetic.** A sequence-duplication / copy task with causal masking (a short
   alphabet plus a separator symbol, sequences up to length 128), used to check
@@ -153,70 +153,113 @@ Standard optimizers and schedules of the time (Adam / RAdam) are assumed.
 The primitives that already exist: an attention layer that owns the
 query/key/value projections and the output projection and delegates the actual
 mixing to a pluggable inner module; a softmax attention as the baseline inner
-module; a feed-forward block and residual wrapper forming a transformer layer;
-and a standard training loop. The contribution will be a new inner attention
-module (and a matching recurrent form for generation) slotted in where softmax
-attention sits today.
+module; a feature-map interface that can encode queries and keys; a feed-forward
+block and residual wrapper forming a transformer layer; and a standard training
+loop. The open slots are the feature map, the global inner attention rule, the
+causal prefix product used during training, the causal inner attention rule, and
+the fixed-state recurrent form used during generation.
 
 ```python
 import torch
 from torch.nn import Module, Linear
 
-# --- already exists: shared projection wrapper around any inner attention ---
 class AttentionLayer(Module):
     def __init__(self, inner_attention, d_model, n_heads,
-                 d_keys=None, d_values=None):
+                 d_keys=None, d_values=None, d_model_keys=None):
         super().__init__()
         d_keys = d_keys or (d_model // n_heads)
         d_values = d_values or (d_model // n_heads)
+        d_model_keys = d_model_keys or d_model
         self.inner_attention = inner_attention
         self.query_projection = Linear(d_model, d_keys * n_heads)
-        self.key_projection = Linear(d_model, d_keys * n_heads)
-        self.value_projection = Linear(d_model, d_values * n_heads)
+        self.key_projection = Linear(d_model_keys, d_keys * n_heads)
+        self.value_projection = Linear(d_model_keys, d_values * n_heads)
         self.out_projection = Linear(d_values * n_heads, d_model)
         self.n_heads = n_heads
 
-    def forward(self, queries, keys, values, attn_mask):
+    def forward(self, queries, keys, values, attn_mask,
+                query_lengths, key_lengths):
         N, L, _ = queries.shape
         _, S, _ = keys.shape
         H = self.n_heads
         q = self.query_projection(queries).view(N, L, H, -1)
         k = self.key_projection(keys).view(N, S, H, -1)
         v = self.value_projection(values).view(N, S, H, -1)
-        out = self.inner_attention(q, k, v, attn_mask).view(N, L, -1)
+        out = self.inner_attention(
+            q, k, v, attn_mask, query_lengths, key_lengths
+        ).view(N, L, -1)
         return self.out_projection(out)
 
 
-# --- already exists: the baseline inner attention (softmax) ---
 class FullAttention(Module):
     def __init__(self, softmax_temp=None):
         super().__init__()
         self.softmax_temp = softmax_temp
 
-    def forward(self, queries, keys, values, attn_mask):
+    def forward(self, queries, keys, values, attn_mask,
+                query_lengths, key_lengths):
         from math import sqrt
         N, L, H, E = queries.shape
         temp = self.softmax_temp or 1. / sqrt(E)
         QK = torch.einsum("nlhe,nshe->nhls", queries * temp, keys)
-        if attn_mask is not None:
-            QK = QK + attn_mask          # additive -inf above the diagonal
-        A = torch.softmax(QK, dim=-1)    # the O(N^2) attention matrix
+        if not attn_mask.all_ones:
+            QK = QK + attn_mask.additive_matrix
+        if not key_lengths.all_ones:
+            QK = QK + key_lengths.additive_matrix[:, None, None]
+        A = torch.softmax(QK, dim=-1)
         return torch.einsum("nhls,nshd->nlhd", A, values).contiguous()
 
 
-# --- TODO: the inner attention we are going to design ----------------------
-class EfficientAttention(Module):
-    """The mixing rule that will replace FullAttention. Must give linear time
-    and memory, support causal masking at linear cost, and admit a
-    constant-cost-per-step form for autoregressive generation."""
-    def forward(self, queries, keys, values, attn_mask):
+class CandidateFeatureMap(Module):
+    def new_feature_map(self, device):
+        pass  # TODO
+
+    def forward_queries(self, x):
+        pass  # TODO
+
+    def forward_keys(self, x):
         pass  # TODO
 
 
-# --- TODO: the per-step generation form of the same mechanism --------------
+class EfficientAttention(Module):
+    def __init__(self, query_dimensions, feature_map=None, eps=1e-6):
+        super().__init__()
+        pass  # TODO
+
+    def forward(self, queries, keys, values, attn_mask,
+                query_lengths, key_lengths):
+        pass  # TODO
+
+
+class CausalPrefixProduct(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, queries, keys, values):
+        pass  # TODO
+
+    @staticmethod
+    def backward(ctx, grad_out):
+        pass  # TODO
+
+
+def causal_prefix_product(queries, keys, values):
+    pass  # TODO
+
+
+class CausalEfficientAttention(Module):
+    def __init__(self, query_dimensions, feature_map=None, eps=1e-6):
+        super().__init__()
+        pass  # TODO
+
+    def forward(self, queries, keys, values, attn_mask,
+                query_lengths, key_lengths):
+        pass  # TODO
+
+
 class RecurrentEfficientAttention(Module):
-    """Same mechanism, one position at a time: carry a fixed-size state,
-    update it from the current step, read off the output in O(1)."""
-    def forward(self, query, key, value, state=None):
+    def __init__(self, query_dimensions, feature_map=None, eps=1e-6):
+        super().__init__()
+        pass  # TODO
+
+    def forward(self, query, key, value, state=None, memory=None):
         pass  # TODO
 ```

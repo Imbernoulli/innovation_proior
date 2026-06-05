@@ -29,7 +29,7 @@ log|det(dh_i/dh_{i-1})| = sum(log |diag(dh_i/dh_{i-1})|),
 
 an `O(D)` quantity.
 
-**Dequantization.** Image pixels are 8-bit integers, but a continuous density placed on a discrete grid can put unbounded density on the grid points and cheat the likelihood. Adding uniform noise `u ~ U(0, a)` to form `x̃ = x + u` (with `a` set by the discretization level) turns the continuous-density objective into a lower bound on the discrete-data log-likelihood:
+**Dequantization.** Image pixels are 8-bit integers, but a continuous density placed on a discrete grid can put unbounded density on the grid points and cheat the likelihood. Adding independent uniform noise `u ~ U([0, a)^M)` to form `x̃ = x + u` (with `a` set by the discretization level) turns the continuous-density objective into a lower bound on the discrete-data log-likelihood:
 
 ```
 log P(x) = log ∫_bin p(x') dx'
@@ -37,9 +37,9 @@ log P(x) = log ∫_bin p(x') dx'
          ≥ M log a + E_u[log p(x + u)].
 ```
 
-Thus the negative log-likelihood objective carries the fixed constant `−M log a`; with `a = 1/n_bins`, the log-likelihood accumulator adds `−M log(n_bins)`.
+Thus the negative log-likelihood objective carries the fixed constant `−M log a`; with `a = 1/n_bins`, the log-likelihood accumulator adds `M log a = −M log(n_bins)`.
 
-**Why this family is attractive.** Because `f` is an exact bijection, latent inference `z = f(x)` is exact (no approximate posterior as in VAEs, no missing encoder as in adversarial models), and the likelihood is the exact `log p_θ(x)` (not a bound). Both directions are feed-forward neural nets, so training and sampling parallelize on a GPU — unlike autoregressive models, whose sampling is inherently sequential in the number of pixels. And because the layers are invertible, activations can be recomputed on the backward pass rather than stored, giving memory cost roughly constant in depth (Gomez et al., 2017, RevNets).
+**Why this family is attractive.** Because `f` is an exact bijection, latent inference `z = f(x)` is exact (no approximate posterior as in VAEs, no missing encoder as in adversarial models), and the continuous-density term `log p_θ(x)` is exact once the data have been dequantized. Both directions are feed-forward neural nets, so training and sampling parallelize on a GPU — unlike autoregressive models, whose sampling is inherently sequential in the number of pixels. And because the layers are invertible, activations can be recomputed on the backward pass rather than stored, giving memory cost roughly constant in depth (Gomez et al., 2017, RevNets).
 
 **Diagnostic observations that shape the design.** Two facts about the existing systems matter. First, a coupling layer leaves half the variables unchanged, so the permutation placed between coupling layers decides which variables can condition which later variables; fixed reversal and fixed random shuffling are arbitrary, non-learned routing choices. Second, batch normalization, the standard tool for training deep nets, injects activation noise whose variance is inversely proportional to the per-processing-unit minibatch size; for high-resolution images memory forces a minibatch of size 1 per GPU, the regime where batch-normalization statistics are at their noisiest and least reliable.
 
@@ -48,20 +48,20 @@ Thus the negative log-likelihood objective carries the fixed constant `−M log 
 **NICE — Non-linear Independent Components Estimation (Dinh, Krueger & Bengio, 2014).** The founding instance of this approach. Its workhorse is the **additive coupling layer**: split the input into two parts `(x_a, x_b)`, leave one part untouched and shift the other by an arbitrary neural net of the untouched part,
 
 ```
-y_a = x_a + m(x_b),    y_b = x_b,
+y_a = x_a,    y_b = x_b + m(x_a),
 ```
 
-with inverse `x_a = y_a − m(y_b), x_b = y_b`. Because `m` is only ever evaluated, never inverted, it can be any network. The Jacobian is triangular with **ones on the diagonal**, so its determinant is `1` and its log-determinant is `0` — the map is volume-preserving. Stacking such layers requires swapping which half is updated between layers (otherwise `x_b` would never change), so NICE alternates the partition. To let the model rescale volume at all, NICE appends a single learned **diagonal scaling** `z = s ⊙ h` at the end, contributing `Σ log|s|` to the log-determinant. **Gap it leaves:** the per-layer transformation is purely additive (no per-coupling scaling), the mixing between layers is a hand-fixed partition, and it was demonstrated on small data rather than convolutional image models at scale.
+with inverse `x_a = y_a, x_b = y_b − m(y_a)`. Because `m` is only ever evaluated, never inverted, it can be any network. The Jacobian is triangular with **ones on the diagonal**, so its determinant is `1` and its log-determinant is `0` — the map is volume-preserving. Stacking such layers requires swapping which half is updated between layers (otherwise the same variables would only condition while the other half alone changed), so NICE alternates the partition. To let the model rescale volume at all, NICE appends a single learned **diagonal scaling** `z = s ⊙ h` at the end, contributing `Σ log|s|` to the log-determinant. **Gap it leaves:** the per-layer transformation is purely additive (no per-coupling scaling), the mixing between layers is a hand-fixed partition, and it was demonstrated on small data rather than convolutional image models at scale.
 
 **RealNVP — Density estimation using Real NVP (Dinh, Sohl-Dickstein & Bengio, 2016).** Extends NICE in the directions that make it a real image model.
 
 - **Affine coupling layer.** Generalize the additive shift to a scale *and* shift, both functions of the untouched half:
 
   ```
-  y_a = x_a ⊙ exp(s(x_b)) + t(x_b),    y_b = x_b,
+  y_a = x_a,    y_b = (x_b + t(x_a)) ⊙ exp(s(x_a)),
   ```
 
-  inverted by `x_a = (y_a − t(y_b)) ⊙ exp(−s(y_b))`. The Jacobian is block-triangular with diagonal block `diag(exp(s(x_b)))` and identity, so the **log-determinant is `Σ s(x_b)`** — the layer can now change volume (additive coupling is the special case `s ≡ 0`).
+  inverted by `x_a = y_a, x_b = y_b ⊙ exp(−s(y_a)) − t(y_a)`. The Jacobian is block-triangular with identity and diagonal block `diag(exp(s(x_a)))`, so the **log-determinant is `Σ s(x_a)`** — the layer can now change volume (additive coupling is the special case `s ≡ 0`).
 - **Masking.** Rather than a literal split, RealNVP uses binary masks in two patterns — a spatial **checkerboard** mask and a **channel** mask — and alternates them so every variable is eventually transformed.
 - **Squeeze.** A reshape that trades space for channels, `h × w × c → (h/2) × (w/2) × 4c`, so deeper layers have channels to apply channel-wise coupling to.
 - **Multi-scale architecture.** After several flow steps at a given resolution, **factor out** half of the dimensions as part of the latent `z` (modeled by a Gaussian) and continue transforming only the other half at the next, coarser scale. This produces a coarse-to-fine latent and reduces compute and memory at deep layers.
@@ -84,7 +84,7 @@ Preprocessing follows the RealNVP protocol; some studies use reduced-bit (5-bit)
 
 ## Code framework
 
-The existing pieces are a data pipeline that loads images and dequantizes them, a generic invertible-layer abstraction with forward/inverse and a running log-determinant accumulator, the change-of-variables objective in bits/dim, the squeeze/multi-scale plumbing inherited from prior flows, a Gaussian latent prior, and the Adam training loop. The open design slot is the content of one generic invertible step.
+The existing pieces are a data pipeline that loads images and dequantizes them, a generic invertible-layer abstraction with forward/inverse and a running log-determinant accumulator, the change-of-variables objective in bits/dim, the squeeze/multi-scale plumbing inherited from prior flows, convolutional heads for conditional Gaussian priors, and the Adam training loop. The unresolved design slot is the content of one generic invertible step.
 
 ```python
 import math
@@ -121,10 +121,19 @@ def unsqueeze2d(x, factor=2):
     x = x.permute(0, 1, 4, 2, 5, 3).contiguous()
     return x.view(b, c // factor ** 2, h * factor, w * factor)
 
+# ---- convolutional output head for Gaussian prior parameters ----
+class OutputConv2d(nn.Module):
+    def __init__(self, in_ch, out_ch, kernel_size=3, logscale_factor=3.0):
+        super().__init__()
+        pass  # TODO
+
+    def forward(self, x):
+        pass  # TODO
+
 # ---- open invertible step ----
 class FlowStep(FlowModule):
     """One generic step of the flow."""
-    def __init__(self, channels):
+    def __init__(self, channels, width=512):
         super().__init__()
         pass  # TODO
 
@@ -138,6 +147,26 @@ class FlowStep(FlowModule):
 def gaussian_logp(z, mean, log_sd):
     return (-0.5 * (math.log(2 * math.pi) + 2 * log_sd
                     + (z - mean) ** 2 / torch.exp(2 * log_sd)))
+
+class ImageFlow(nn.Module):
+    def __init__(self, in_ch=3, depth=32, levels=3, width=512):
+        super().__init__()
+        self.levels = levels
+        self.blocks = nn.ModuleList()
+        self.split_priors = nn.ModuleList()
+        channels = in_ch * 4
+        for level in range(levels):
+            self.blocks.append(nn.ModuleList([FlowStep(channels, width) for _ in range(depth)]))
+            if level < levels - 1:
+                self.split_priors.append(OutputConv2d(channels // 2, channels))
+                channels *= 2
+        self.top_prior = OutputConv2d(channels, 2 * channels)
+
+    def forward(self, x):
+        pass  # TODO: squeeze, run FlowStep blocks, split latents, score Gaussian priors
+
+    def reverse(self, z, eps=None, eps_std=1.0):
+        pass  # TODO: sample/merge latents, reverse FlowStep blocks, unsqueeze
 
 def loss_bits_per_dim(logdet, log_p, n_bins, n_pixels):
     lower_bound = log_p + logdet - math.log(n_bins) * n_pixels

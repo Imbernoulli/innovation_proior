@@ -1,4 +1,4 @@
-# The slow SDE for adaptive gradient methods, and Adam's unique sharpness reduction
+# Adam-Slow-SDE
 
 ## What it is
 
@@ -10,12 +10,13 @@ manifold of equally-good solutions, and a slow, noise-driven drift selects *whic
 minimizer it ends up at. The result is a **slow SDE** that tracks this wandering for
 a full `O(η⁻²)` steps and reveals that Adam performs **adaptive semi-gradient descent
 on a sharpness measure**, biasing toward flatter regions in a way that differs from
-SGD. Under label noise the slow SDE collapses to an ODE whose fixed points minimize
+SGD. Under label noise the slow SDE collapses to an ODE whose fixed points are
+stationary for
 
 ```
-SGD :    tr(H)                 (≈ ℓ1 on the spectrum / ground truth)
-Adam:    tr(Diag(H)^{1/2})     (≈ ℓ0.5 — sparser)
-AdamE-λ: tr(Diag(H)^{1-λ})     (interpolates: λ=0 ⇒ SGD, λ=1/2 ⇒ Adam)
+SGD :    tr(H)                 (diagonal net: ℓ1)
+Adam:    tr(Diag(H)^{1/2})     (diagonal net: ℓ0.5)
+AdamE-λ: tr(Diag(H)^{1-λ})     (λ=0 ⇒ SGD, λ=1/2 ⇒ Adam)
 ```
 
 where `H = ∇²L`. The `^{1/2}` (instead of SGD's linear `tr H`) makes Adam's bias
@@ -48,17 +49,20 @@ and `S : ℝ^D_{≥0} → 𝕊^d_{++}` smooth with `S(v) ⪰ I/R0`. Instances:
 Let `Φ_S(x)` be the limit of the **preconditioned** gradient flow `ẋ = -S∇L(x)`;
 at `ζ∈Γ`, `∂Φ_S(ζ)` is identity on tangent directions and kills `S` times normal
 directions. With
-`c = (1-β2)/η²`, `S_t = S(v(t))`:
+`c = (1-β2)/η²`, `S_t = S(v(t))`, the moment calculation gives the expanded
+form:
 
 ```
-dζ = P_{ζ,S_t}( Σ_∥^{1/2}(ζ;S_t) dW_t  −  ½ S_t ∇³L(ζ)[Σ_◇(ζ;S_t)] dt )
+dζ = S_t ∂Φ_{S_t}(ζ) S_t Σ^{1/2}(ζ) dW_t
+     + ½ S_t ∂²Φ_{S_t}(ζ)[S_t Σ(ζ) S_t] dt
 dv = c ( V(Σ(ζ)) − v ) dt
 
-Σ_◇(ζ;S) = S Σ(ζ) S − Σ_∥(ζ;S),     Σ_∥(ζ;S) = ∂Φ_S(ζ) S Σ(ζ) S ∂Φ_S(ζ)
+Σ_∥(ζ;S) = ∂Φ_S(ζ) S Σ(ζ) S ∂Φ_S(ζ),     Σ_◇(ζ;S) = S Σ(ζ) S − Σ_∥(ζ;S)
 ```
 
-The drift is the negative **semi-gradient** of `μ(ζ,v)=⟨∇²L(ζ), Σ_◇(ζ;S)⟩`
-(gradient w.r.t. the first argument only), preconditioned by `S_t`. The second line
+Using the projection identity, the drift is equivalently the projected negative
+**semi-gradient** of `μ(ζ,v)=⟨∇²L(ζ), Σ_◇(ζ;S)⟩` (gradient w.r.t. the first
+argument only), preconditioned by `S_t`. The second line
 is an OU-like equation: the preconditioner state `v` relaxes toward `V(Σ(ζ))` on the
 **same** `O(η⁻²)` timescale, which is why `1-β2` must scale as `Θ(η²)` (the
 "2-scheme") — fast enough to inject adaptiveness, slow enough to be trackable.
@@ -73,89 +77,111 @@ around `Γ`, a giant-step moment calculation, and a weak-approximation argument.
 
 ## Working code
 
-The code below is grounded
-in the standard PyTorch Adam update generalized to the `(V,S)` AGM form, and in the
-diagonal-network sparse-regression-with-label-noise setup exactly as specified.
+The update below is the analyzed one: no bias correction, no weight decay, and
+`1-β2` chosen on the `η²` scale when using the slow-SDE regime.
 
-### The AGM optimizer (Adam / RMSProp / AdamE-λ)
+### Optimizer and diagnostic harness
 
 ```python
 import torch
 
-class AGM(torch.optim.Optimizer):
-    """General Adaptive Gradient Method:
-        m <- b1 m + (1-b1) g
-        v <- b2 v + (1-b2) V(g gᵀ)
-        θ <- θ - η S(v) m
-    Diagonal V/S instances (Adam, RMSProp, AdamE-λ) need no matrix algebra:
-    V(g gᵀ) = g⊙²  and  S(v) m = m / (v^λ + ε)   (λ=1/2 is Adam).
-    """
-    def __init__(self, params, lr=1e-3, b1=0.9, b2=0.999, eps=1e-8, lam=0.5):
-        super().__init__(params, dict(lr=lr, b1=b1, b2=b2, eps=eps, lam=lam))
+class CoordinateRescaledOptimizer(torch.optim.Optimizer):
+    def __init__(self, params, lr=1e-3, beta1=0.9, beta2=0.999,
+                 eps=1e-8, exponent=0.5):
+        if not 0 <= exponent < 1:
+            raise ValueError("exponent must lie in [0, 1)")
+        defaults = dict(lr=lr, beta1=beta1, beta2=beta2,
+                        eps=eps, exponent=exponent)
+        super().__init__(params, defaults)
 
     @torch.no_grad()
-    def step(self):
-        for grp in self.param_groups:
-            b1, b2, eps, lam, lr = grp["b1"], grp["b2"], grp["eps"], grp["lam"], grp["lr"]
-            for p in grp["params"]:
+    def step(self, closure=None):
+        loss = None
+        if closure is not None:
+            with torch.enable_grad():
+                loss = closure()
+
+        for group in self.param_groups:
+            beta1 = group["beta1"]
+            beta2 = group["beta2"]
+            eps = group["eps"]
+            exponent = group["exponent"]
+            lr = group["lr"]
+            for p in group["params"]:
                 if p.grad is None:
                     continue
-                g = p.grad
-                st = self.state[p]
-                if not st:
-                    st["m"] = torch.zeros_like(p)
-                    st["v"] = torch.zeros_like(p)
-                m, v = st["m"], st["v"]
-                m.mul_(b1).add_(g, alpha=1 - b1)          # first moment
-                v.mul_(b2).addcmul_(g, g, value=1 - b2)   # V(g gᵀ)=g⊙²  (second moment)
-                S_diag = v.pow(lam).add_(eps)             # S(v)=Diag(1/(v^λ+ε))
-                p.addcdiv_(m, S_diag, value=-lr)          # θ -= η S(v) m
-```
+                grad = p.grad
+                state = self.state[p]
+                if not state:
+                    state["m"] = torch.zeros_like(p)
+                    state["v"] = torch.zeros_like(p)
+                m = state["m"]
+                v = state["v"]
 
-Bias correction and the `2-scheme` are matters of hyperparameter choice; the analysis
-omits bias correction (negligible for large `k`) and takes `1-β2 = Θ(η²)`.
+                m.mul_(beta1).add_(grad, alpha=1 - beta1)
+                v.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)
+                denom = v.pow(exponent).add(eps)
+                p.addcdiv_(m, denom, value=-lr)
 
-### Diagonal-net sparse regression with label noise (prediction target)
+        return loss
 
-```python
-import torch
+def make_optimizer(name, params, lr, exponent=0.5):
+    if name == "sgd":
+        return torch.optim.SGD(params, lr=lr)
+    if name == "rmsprop":
+        return CoordinateRescaledOptimizer(params, lr=lr, beta1=0.0, exponent=0.5)
+    if name == "adam":
+        return CoordinateRescaledOptimizer(params, lr=lr, exponent=0.5)
+    if name == "adame":
+        return CoordinateRescaledOptimizer(params, lr=lr, exponent=exponent)
+    raise ValueError(f"unknown optimizer: {name}")
 
-def run_diagnet(opt_name, n_train, d=10000, kappa=50, delta=0.1, steps=20000,
-                lr=1e-2, lam=0.5, seed=0):
+def make_diagonal_net(d, kappa, seed=0):
     g = torch.Generator().manual_seed(seed)
-    # κ-sparse ground truth
-    w_star = torch.zeros(d); idx = torch.randperm(d, generator=g)[:kappa]
+    w_star = torch.zeros(d)
+    idx = torch.randperm(d, generator=g)[:kappa]
     w_star[idx] = torch.randn(kappa, generator=g)
-    # data z ∈ {±1}^d, clean labels y = <z, w*>
-    Z = (torch.randint(0, 2, (n_train, d), generator=g) * 2 - 1).float()
-    y = Z @ w_star
-    Ztest = (torch.randint(0, 2, (2000, d), generator=g) * 2 - 1).float()
-    ytest = Ztest @ w_star
-
-    # diagonal net parameterization  ŵ = u⊙² - v⊙²
     u = torch.full((d,), 0.1, requires_grad=True)
     v = torch.full((d,), 0.1, requires_grad=True)
-    if opt_name == "sgd":
-        opt = torch.optim.SGD([u, v], lr=lr)
-    else:  # "adam" (lam=0.5) or "adame" (general lam)
-        opt = AGM([u, v], lr=lr, lam=lam)
+
+    def predict(z):
+        return (z * (u.square() - v.square())).sum()
+
+    return [u, v], predict, w_star
+
+def label_noise_step(predict, z, y_clean, delta, opt, gen):
+    noisy = y_clean + delta * (2 * torch.randint(0, 2, (1,), generator=gen).item() - 1)
+    loss = 0.5 * (predict(z) - noisy) ** 2
+    opt.zero_grad()
+    loss.backward()
+    opt.step()
+    return loss.item()
+
+def run_diagnet(opt_name, n_train, d=10000, kappa=50, delta=0.1,
+                steps=20000, lr=1e-2, exponent=0.5, seed=0):
+    gen = torch.Generator().manual_seed(seed + 1)
+    params, predict, w_star = make_diagonal_net(d, kappa, seed)
+    Z = (torch.randint(0, 2, (n_train, d), generator=gen) * 2 - 1).float()
+    y = Z @ w_star
+    Ztest = (torch.randint(0, 2, (2000, d), generator=gen) * 2 - 1).float()
+    ytest = Ztest @ w_star
+    opt = make_optimizer(opt_name, params, lr, exponent)
 
     for _ in range(steps):
-        i = torch.randint(0, n_train, (1,), generator=g).item()
-        noisy = y[i] + delta * (2 * torch.randint(0, 2, (1,), generator=g).item() - 1)
-        pred = (Z[i] * (u**2 - v**2)).sum()             # <z_i, ŵ>
-        loss = 0.5 * (pred - noisy) ** 2                # fresh label noise each step
-        opt.zero_grad(); loss.backward(); opt.step()
+        i = torch.randint(0, n_train, (1,), generator=gen).item()
+        label_noise_step(predict, Z[i], y[i], delta, opt, gen)
 
     with torch.no_grad():
-        w_hat = u**2 - v**2
+        u, v = params
+        w_hat = u.square() - v.square()
         test_loss = 0.5 * ((Ztest @ w_hat - ytest) ** 2).mean()
-    return test_loss.item()                              # "recovered" if < 1
+    return test_loss.item()
 ```
 
-The narrative: SGD's slow drift minimizes `tr H ∝ Σ(u_i²+v_i²)`, i.e. `‖ŵ‖₁`;
-Adam's minimizes `tr(Diag(H)^{1/2}) ∝ Σ(|u_i|+|v_i|)`, i.e. the `ℓ_{0.5}`
-quasi-norm up to a monotone power. Because
+The narrative: SGD's slow drift has stationary points for `tr H ∝ Σ(u_i²+v_i²)`,
+i.e. `‖ŵ‖₁`; Adam's has stationary points for
+`tr(Diag(H)^{1/2}) ∝ Σ(|u_i|+|v_i|)`, i.e. the `ℓ_{0.5}` quasi-norm up to a
+monotone power. Because
 `u_i² - v_i²` is what the loss sees, the optimum forces `u_i=0 ∨ v_i=0`, so these
 become genuine `ℓ₁` vs `ℓ_{0.5}` penalties on the recovered vector. The sparser
 `ℓ_{0.5}` target predicts that Adam, and AdamE with `λ>0`, should need fewer samples

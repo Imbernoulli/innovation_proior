@@ -88,7 +88,7 @@ condition `sqrt(v_hat_{t,i}) / alpha_t` nondecreasing in `t`, the clean bound is
 ```
 R(T) <= D^2/(2 alpha (1-beta_1)) * sum_i sqrt(T * v_hat_{T,i})
       + alpha(1+beta_1) G_inf / ((1-beta_1) sqrt(1-beta_2) (1-gamma)^2) * sum_i ||g_{1:T,i}||_2
-      + sum_i D_inf^2 G_inf sqrt(1-beta_2) / (2 alpha beta_1 (1-lambda)^2),
+      + sum_i D_inf^2 G_inf sqrt(1-beta_2) / (2 alpha (1-beta_1) (1-lambda)^2),
 ```
 
 with `gamma = beta_1^2 / sqrt(beta_2) < 1`. Hence `R(T) = O(sqrt(T))` and average regret
@@ -110,8 +110,11 @@ sparse, since it is written in per-coordinate gradient norms rather than `d·G_i
 - **AdaMax** (infinity-norm variant): generalize the `L2` denominator to `Lp`, let `p ->
   infinity`, and the power-EMA collapses to a decayed running max
   `u_t = max(beta_2 · u_{t-1}, |g_t|)`; step `theta_t = theta_{t-1} - (alpha/(1-beta_1^t)) ·
-  m_t / u_t`. No bias correction needed for `u` (a max does not average in the zero init), and
-  `|Delta_t| <= alpha` with no case split. Good default `alpha = 0.002`.
+  m_t / u_t`. No bias correction is needed for `u` because a max does not average in the zero
+  init. For `beta_1 < beta_2`, the exact all-sequence envelope is
+  `|Delta_t|/alpha <= ((1-beta_1)/(1-beta_1^t)) * (1-(beta_1/beta_2)^t)/(1-beta_1/beta_2)`,
+  which is alpha-scale and essentially one for `beta_2` near 1; the implementation adds `eps`
+  inside the max as the zero-denominator floor. Good default `alpha = 0.002`.
 
 ## Working code
 
@@ -135,6 +138,10 @@ class Adam:
         self.params = list(params)
         self.lr, self.betas, self.eps, self.weight_decay = lr, betas, eps, weight_decay
         self.state = {id(p): {} for p in self.params}
+
+    def zero_grad(self):
+        for p in self.params:
+            p.grad = None
 
     @torch.no_grad()
     def step(self):
@@ -188,6 +195,10 @@ class Adamax:
         self.params = list(params)
         self.lr, self.betas, self.eps, self.weight_decay = lr, betas, eps, weight_decay
         self.state = {id(p): {} for p in self.params}
+
+    def zero_grad(self):
+        for p in self.params:
+            p.grad = None
 
     @torch.no_grad()
     def step(self):

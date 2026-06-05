@@ -18,7 +18,7 @@ And the empirical loss versus compute is also a power law. So each scale, alone,
 
 These two laws can't both be the whole story at once, though, because a model isn't trained on infinite data. If I have finite $D$ and keep growing $N$, at some point the model has more capacity than the data can constrain and it overfits — the loss stops following $L(N)$ and bends up. So I need a *joint* law $L(N,D)$ that knows about both, and reduces to each single law in the appropriate limit. Rather than fit some arbitrary surface, let me pin down its form from principles, because the form is what extrapolates.
 
-What must $L(N,D)$ satisfy? First, if I change the vocabulary or tokenization, the loss just rescales by an overall factor — same model, different units of "token". So whatever form I write must be able to absorb such a rescaling into its constants; that means $N_c$ and $D_c$ are not fundamental, they soak up the vocabulary convention. Second, the limits: fix $D$ and send $N\to\infty$ (infinite capacity, finite data) and the loss must bottom out at the data-limited value $L(D)$; fix $N$ and send $D\to\infty$ (infinite data, finite capacity) and it must bottom out at the capacity-limited value $L(N)$. Third — more speculative — overfitting at large data should come from the finite-sample variance of the dataset, which scales like $1/D$, so the loss ought to be analytic at $D=\infty$ with a series in *integer* powers of $1/D$.
+What must $L(N,D)$ satisfy? If I change the vocabulary or tokenization, the loss just rescales by an overall factor — same model, different units of "token". So whatever form I write must be able to absorb such a rescaling into its constants; that means $N_c$ and $D_c$ are not fundamental, they soak up the vocabulary convention. The limits also have to work: fix $D$ and send $N\to\infty$ (infinite capacity, finite data) and the loss must bottom out at the data-limited value $L(D)$; fix $N$ and send $D\to\infty$ (infinite data, finite capacity) and it must bottom out at the capacity-limited value $L(N)$. The more speculative requirement is the overfitting shape: at large data it should come from the finite-sample variance of the dataset, which scales like $1/D$, so the loss ought to be analytic at $D=\infty$ with a series in *integer* powers of $1/D$.
 
 Let me try to satisfy all three. The second principle says the two single laws are the two limits, so the joint form is built out of $(N_c/N)^{\text{something}}$ and $(D_c/D)$. The third principle is the sharp one: I want a clean $1/D$ expansion. That pushes me to put $D$ in as a bare $D_c/D$ — first power — rather than as $(D_c/D)^{\alpha_D}$ with a fractional exponent that wouldn't give integer powers. So try
 $$L(N,D) = \left[ \left(\frac{N_c}{N}\right)^{\alpha_N/\alpha_D} + \frac{D_c}{D} \right]^{\alpha_D}.$$
@@ -30,19 +30,33 @@ Now the part I actually care about: the budget. I don't get to pick $N$ and $D$ 
 $$L(N, S_{\text{min}}) = \left(\frac{N_c}{N}\right)^{\alpha_N} + \left(\frac{S_c}{S_{\text{min}}}\right)^{\alpha_S},$$
 with $\alpha_S \approx 0.76$. This one is *additive*, not bracketed — because at infinite data the two effects are independent: a capacity floor $(N_c/N)^{\alpha_N}$ you can't beat with more steps, plus an optimization gap $(S_c/S_{\text{min}})^{\alpha_S}$ that you close by training longer. They just add.
 
+This also gives a finite-data stopping estimate. If the finite-$D$ curve follows the infinite-data curve until overfitting begins, then the amount I leave on the table by stopping at $S$ is about $(S_c/S_{\text{min}})^{\alpha_S}$. The finite-data optimum cannot keep following the infinite-data curve past the point where that optimization gap is smaller than the finite-data penalty $\Delta L = L(N,D)-L(N,\infty)$. So the stopping point should satisfy
+$$S_{\text{stop}}(N,D) \gtrsim \frac{S_c}{\left[L(N,D)-L(N,\infty)\right]^{1/\alpha_S}}.$$
+It is a lower bound, not an equality, because the finite-data test loss can slow down before the idealized infinite-data curve reaches that gap; still, it ties early stopping to the same two laws instead of adding a new knob.
+
 What's this $S_{\text{min}}$ rather than raw steps $S$? Because most of my runs were trained at some fixed batch size that isn't the efficient one, and I need to put them on a common footing before I can talk about "optimal" anything. The batch-size physics: there's a critical batch size $B_{\text{crit}}$ such that training with $B$ below it costs essentially no extra *compute* but takes more *steps*, while above it you waste compute. Concretely, to reach a fixed loss, steps and examples trade off as $(S/S_{\text{min}} - 1)(E/E_{\text{min}} - 1) = 1$, and $B_{\text{crit}} \equiv E_{\text{min}}/S_{\text{min}}$. Crucially $B_{\text{crit}}$ depends only on the *loss reached*, not on model size, and it grows as the loss falls — it tracks the gradient noise scale — fitting $B_{\text{crit}}(L) = B_*/L^{1/\alpha_B}$ with $\alpha_B \approx 0.21$. So I define $S_{\text{min}} = S/(1 + B_{\text{crit}}/B)$ as the step count I'd need at $B \gg B_{\text{crit}}$ (minimum steps), and $C_{\text{min}} = C/(1 + B/B_{\text{crit}})$ as the compute I'd use at $B \ll B_{\text{crit}}$ (minimum compute). Standardizing every run to these makes the trends clean and the extrapolation trustworthy; the raw fixed-batch $L(C)$ is contaminated by batch inefficiency.
 
-Now minimize. The compute spent is $C_{\text{min}} = 6\, N\, B_{\text{crit}}\, S_{\text{min}}$ — size times batch times steps, the three ways I can spend a FLOP. I want, at fixed $C_{\text{min}}$, the $N$ that minimizes the loss. Substitute $S_{\text{min}} = C_{\text{min}}/(6 N B)$ into $L(N, S_{\text{min}})$ and minimize over $N$. The structure is two competing power laws: the capacity term $(N_c/N)^{\alpha_N}$ falls as $N$ grows, while pushing more compute into $N$ leaves fewer steps, so the optimization term $(S_c/S_{\text{min}})^{\alpha_S} \propto (N B/C_{\text{min}})^{\alpha_S}$ rises with $N$. Balancing two power laws of $N$ that pull opposite ways gives a power-law optimum. Each of the three spending directions — size, batch, steps — has its own efficiency exponent ($\alpha_N$, $\alpha_B$, $\alpha_S$), and because they combine multiplicatively in $C_{\text{min}} = 6NBS$, the loss-versus-compute exponent is their reciprocal-of-reciprocals combination:
+Now minimize, but be careful: the batch in the efficient compute expression is not a fixed external batch. It is $B_{\text{crit}}(L)$, so it changes with the target loss. If I pretend it is constant, I drop the $\alpha_B$ contribution and get the wrong allocation. The efficient compute is
+$$C_{\text{min}} = 6\,N\,B_{\text{crit}}(L)\,S_{\text{min}},\qquad B_{\text{crit}}(L)=B_*/L^{1/\alpha_B}.$$
+Let $A=(N_c/N)^{\alpha_N}$ be the capacity term and $T=(S_c/S_{\text{min}})^{\alpha_S}$ be the optimization term, so $L=A+T$. Substituting $S_{\text{min}}=C_{\text{min}}/(6NB_{\text{crit}}(L))$ gives
+$$T=\left(6B_*S_c\,\frac{N}{C_{\text{min}}L^{1/\alpha_B}}\right)^{\alpha_S}.$$
+At fixed compute I differentiate $L=A+T$ with respect to $N$. The derivative of $T$ contains an implicit $dL/dN$ term from $B_{\text{crit}}(L)$, but exactly at the optimum $dL/dN=0$, so that term drops out. What remains is
+$$0=-\frac{\alpha_N}{N}A+\frac{\alpha_S}{N}T,\qquad\text{so}\qquad T=\frac{\alpha_N}{\alpha_S}A.$$
+That is a useful sanity check: compute-efficient training stops at a fixed fraction above the converged capacity floor,
+$$L=A+T=\left(1+\frac{\alpha_N}{\alpha_S}\right)A,$$
+about $10\%$ above the infinite-data converged loss with the fitted exponents. Now eliminate the variables in terms of $L$: since $A\propto N^{-\alpha_N}$, I have $N\propto L^{-1/\alpha_N}$; since $T\propto S_{\text{min}}^{-\alpha_S}$ and $T$ is proportional to $L$, I have $S_{\text{min}}\propto L^{-1/\alpha_S}$; and by definition $B_{\text{crit}}\propto L^{-1/\alpha_B}$. Multiplying them in $C_{\text{min}}=6NB_{\text{crit}}S_{\text{min}}$ gives
+$$C_{\text{min}}\propto L^{-\left(1/\alpha_N+1/\alpha_B+1/\alpha_S\right)}.$$
+So the loss-versus-compute exponent is forced to be the reciprocal-of-reciprocals combination:
 $$\alpha_C^{\text{min}} = \frac{1}{\,1/\alpha_N + 1/\alpha_S + 1/\alpha_B\,}.$$
-The direction with the *smallest* exponent — the least efficient one, here $\alpha_N$ — dominates the sum of reciprocals and so dominates where the compute goes. Plug in: $1/\alpha_N = 1/0.077 = 12.99$, $1/\alpha_B = 1/0.21 = 4.76$, $1/\alpha_S = 1/0.76 = 1.32$, summing to $19.07$, so $\alpha_C^{\text{min}} = 0.052 \approx 0.05$ — matching the directly-fit $L(C_{\text{min}}) = (C_c^{\text{min}}/C_{\text{min}})^{\alpha_C^{\text{min}}}$ exponent. Two roads, same number; that agreement is what makes me believe the minimization.
+The direction with the smallest exponent — the least efficient one, here $\alpha_N$ — dominates the sum of reciprocals and so dominates where the compute goes. With the rounded component fits, $1/0.077=12.99$, $1/0.21=4.76$, and $1/0.76=1.32$, so $\alpha_C^{\text{min}}\approx0.052$, consistent with the directly fit compute exponent of about $0.05$.
 
-And the allocation of compute among the three falls out. At the optimum each spending direction scales as $C_{\text{min}}$ to the power $\alpha_C^{\text{min}}/(\text{its own exponent})$:
+The theoretical allocation among the three directions falls out at the same time:
 $$N \propto C_{\text{min}}^{\alpha_C^{\text{min}}/\alpha_N}, \qquad B \propto C_{\text{min}}^{\alpha_C^{\text{min}}/\alpha_B}, \qquad S \propto C_{\text{min}}^{\alpha_C^{\text{min}}/\alpha_S}, \qquad D = B\,S.$$
-The model-size exponent is $\alpha_C^{\text{min}}/\alpha_N \approx 0.71$, in line with the directly fit $N(C_{\text{min}}) \propto C_{\text{min}}^{0.73}$. The batch exponent is $\approx 0.24$, and the steps exponent is $\alpha_C^{\text{min}}/\alpha_S \approx 0.052/0.76 \approx 0.03$ — essentially zero. So as I scale compute, almost all of it should go into a *bigger model*; the batch size grows modestly, the number of serial optimization steps barely grows at all, and the data processed $D = B S$ grows only like $C^{0.27}$. Because $\alpha_N$ is by far the smallest exponent — model size is the least-efficient single lever — it gets the lion's share of the budget. Bigger models are, in effect, more sample-efficient: they reach a given loss in fewer steps and on less data than smaller ones. (In practice people train smaller models for longer than this says, but only because of hardware limits, not because it's compute-optimal.)
+Using only the rounded component exponents gives roughly $N\sim C^{0.68}$, $B\sim C^{0.25}$, and $S\sim C^{0.07}$. The direct frontier fits put the practical allocation at about $N\sim C^{0.73}$, $B\sim C^{0.24}$, and $S\sim C^{0.03}$, with the step exponent small enough that it may be effectively zero. I should not pretend those rounded numbers are identical, but they tell the same story: as compute grows, most of it should go into a bigger model; batch grows modestly; serial training time grows very slowly; and the amount of data consumed grows far slower than compute. Bigger models are, in effect, more sample-efficient: they reach a given loss in fewer steps and on less data than smaller ones. In practice people train smaller models for longer than this says, but only because of hardware limits, not because it is compute-optimal.
 
-There's a tension lurking if I extrapolate too far. The compute-optimal model size grows like $C^{0.71}$, so the data $D = BS$ grows only like $C^{0.27}$ — much slower. But the pure data law $L(D)$ says you need data to keep improving. Push both laws out many orders of magnitude and the compute-efficient loss $L(C_{\text{min}})$ would dip below what the slowly-growing data could support under $L(D)$. They cross. That can't be physical, so the laws must break before that crossing — and the crossing point is a natural guess for where this simple scale-only picture stops, perhaps near the maximal performance a Transformer of this kind can reach. The laws also can't literally continue to zero loss forever, since natural language has nonzero entropy; they must flatten eventually, though I see no sign of flattening yet in the studied range.
+There's a tension lurking if I extrapolate too far. The empirical compute-optimal model size grows around $C^{0.73}$, so one-epoch data use grows only around $C^{0.27}$ — much slower. But the pure data law $L(D)$ says data-limited loss falls only as $D^{-0.095}$. Push both laws out many orders of magnitude and the compute-efficient loss $L(C_{\text{min}})$ would dip below what the slowly growing data could support under $L(D)$. They cross. That cannot be physical, so the laws must break before that crossing — and the crossing point is a natural guess for where this simple scale-only picture stops, perhaps near the maximal performance a Transformer of this kind can reach. The laws also cannot literally continue to zero loss forever, since natural language has nonzero entropy; they must flatten eventually, though I see no sign of flattening yet in the studied range.
 
-Let me write the method as code — the counting, the fits, and the allocation. The parameter and compute counts first, the definitions everything rests on:
+Let me write the method as code — the counting, the fits, the stopping estimate, and the allocation. I start with the parameter and compute counts, because every fit depends on these definitions:
 
 ```python
 import numpy as np
@@ -62,7 +76,7 @@ def forward_flops_per_token(N, n_layer, d_model, n_ctx):
     return 2 * N + 2 * n_layer * n_ctx * d_model
 ```
 
-The single-variable power-law fit — a straight line in log-log:
+Then I fit a single-variable power law as a straight line in log-log space:
 
 ```python
 def fit_power_law(X, L):
@@ -73,7 +87,7 @@ def fit_power_law(X, L):
     return X_c, alpha
 ```
 
-The joint loss law and its fit — the bracket form that reduces to each single law in its limit:
+For the joint surface, I use the bracket form that reduces to each single law in its limit:
 
 ```python
 def joint_loss(N, D, params):
@@ -86,6 +100,7 @@ def joint_loss(N, D, params):
 def fit_joint_loss(runs):
     # runs: array of (N_i, D_i, L_i). Fit the four parameters in log space.
     from scipy.optimize import curve_fit
+    runs = np.asarray(runs, dtype=float)
     N, D, L = runs[:, 0], runs[:, 1], runs[:, 2]
 
     def model(ND, alpha_N, alpha_D, log_Nc, log_Dc):
@@ -99,19 +114,31 @@ def fit_joint_loss(runs):
     return alpha_N, alpha_D, np.exp(log_Nc), np.exp(log_Dc)
 ```
 
-And the compute-optimal allocation — the reciprocal-of-reciprocals combination and the per-direction exponents:
+The finite-data stopping estimate is just the optimization-gap equation solved for the step count:
+
+```python
+def early_stopping_lower_bound(N, D, params, S_c, alpha_S):
+    # S_stop >= S_c / (L(N,D) - L(N,inf))**(1/alpha_S)
+    alpha_N, alpha_D, N_c, D_c = params
+    finite_data_loss = joint_loss(N, D, params)
+    infinite_data_loss = (N_c / N) ** alpha_N
+    gap = finite_data_loss - infinite_data_loss
+    return S_c / np.maximum(gap, np.finfo(float).tiny) ** (1.0 / alpha_S)
+```
+
+For the compute allocation, I keep the function mathematical: it returns the exponents implied by the reciprocal formula for the exponents I pass in, rather than hard-coding the separate empirical frontier fit:
 
 ```python
 def compute_optimal_exponents(alpha_N, alpha_S, alpha_B):
     # alpha_C^min = 1 / (1/alpha_N + 1/alpha_S + 1/alpha_B)
     alpha_C = 1.0 / (1.0 / alpha_N + 1.0 / alpha_S + 1.0 / alpha_B)
     return {
-        "alpha_C_min": alpha_C,           # ~0.05  : loss vs compute
-        "N_exp": alpha_C / alpha_N,        # ~0.71  : optimal model size vs C
-        "B_exp": alpha_C / alpha_B,        # ~0.24  : optimal batch vs C
-        "S_exp": alpha_C / alpha_S,        # ~0.03  : optimal steps vs C (~flat)
-        "D_exp": alpha_C / alpha_B + alpha_C / alpha_S,  # D = B*S  -> ~0.27
+        "alpha_C_min": alpha_C,          # rounded fits give ~0.052; direct fit ~0.050
+        "N_exp": alpha_C / alpha_N,       # theoretical model-size exponent
+        "B_exp": alpha_C / alpha_B,       # theoretical critical-batch exponent
+        "S_exp": alpha_C / alpha_S,       # theoretical serial-step exponent
+        "D_exp": alpha_C / alpha_B + alpha_C / alpha_S,
     }
 ```
 
-The causal chain, start to end: loss is nearly independent of architecture shape at fixed non-embedding parameter count, so a single scale $N$ summarizes a model and a low-dimensional law is possible; defining $N \approx 12 n_{\text{layer}} d_{\text{model}}^2$ and compute $C \approx 6ND$ cleanly, the loss is a power law in each of $N$, $D$, $C$ alone, fit by log-log regression; demanding the right infinite-limit behaviour and a clean $1/D$ overfitting expansion forces the joint law $L(N,D) = [(N_c/N)^{\alpha_N/\alpha_D} + D_c/D]^{\alpha_D}$, which says data should grow only as $N^{0.74}$; adding training time via $L(N,S_{\text{min}}) = (N_c/N)^{\alpha_N} + (S_c/S_{\text{min}})^{\alpha_S}$ and standardizing batch effects through the critical batch size, then minimizing loss at fixed $C_{\text{min}} = 6NBS_{\text{min}}$, gives $\alpha_C^{\text{min}} = 1/(1/\alpha_N + 1/\alpha_S + 1/\alpha_B) \approx 0.05$ and the allocation $N \propto C^{0.71}$, $B \propto C^{0.24}$, $S \propto C^{0.03}$ — extra compute should go almost entirely into a bigger model, with data and serial steps growing slowly, until the $L(C_{\text{min}})$ and $L(D)$ extrapolations cross and the simple picture must give out.
+So the chain is: loss is nearly independent of architecture shape at fixed non-embedding parameter count, so a single scale $N$ summarizes a model and a low-dimensional law is possible; defining $N \approx 12 n_{\text{layer}} d_{\text{model}}^2$ and compute $C \approx 6ND$ cleanly, the loss is a power law in each of $N$, $D$, $C$ alone, fit by log-log regression; demanding the right infinite-limit behaviour and a clean $1/D$ overfitting expansion forces $L(N,D) = [(N_c/N)^{\alpha_N/\alpha_D} + D_c/D]^{\alpha_D}$, which says data should grow only as $N^{0.74}$ to avoid overfitting; adding training time via $L(N,S_{\text{min}}) = (N_c/N)^{\alpha_N} + (S_c/S_{\text{min}})^{\alpha_S}$ gives both the finite-data stopping lower bound and the compute-efficient frontier; because $B_{\text{crit}}$ grows as loss falls, minimizing at fixed $C_{\text{min}}=6NB_{\text{crit}}S_{\text{min}}$ gives $\alpha_C^{\text{min}} = 1/(1/\alpha_N + 1/\alpha_S + 1/\alpha_B)$, so extra compute should go mostly into bigger models, with batch growing modestly and serial steps slowly, until the compute and data extrapolations collide and the simple scale-only picture gives out.

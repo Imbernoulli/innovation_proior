@@ -8,7 +8,7 @@ What's already out there for "neural network on a graph"? Let me think through t
 
 But wait — why do I even need to go spectral to define a convolution? Why not just write down "slide a filter across the graph" directly? Because sliding is exactly what I can't do. An ordinary convolution is built on *translation*: take a little filter, shift it by one position, multiply-and-sum, shift again. On a regular grid "shift by one" is unambiguous. On a graph it is meaningless — node 7 has three neighbors, node 8 has nine hundred, there is no canonical "the next node over." Translation is undefined, so the spatial definition of convolution doesn't transfer. The only way I know to define convolution *without* translation is the convolution theorem: in ordinary signal processing, convolving two signals in the spatial domain equals multiplying them pointwise in the Fourier domain. If I can build a Fourier domain on the graph, I can define convolution as "transform, multiply by a filter, transform back," and never mention translation at all. The spectral route is the one that survives the loss of a shift operator.
 
-So I need a graph Fourier basis. The object that supplies one is the symmetric normalized Laplacian L = I_N − D^{−1/2} A D^{−1/2}. Why this matrix and not, say, A itself? Because L is real and symmetric, so it diagonalizes with an *orthonormal* eigenbasis L = UΛUᵀ, U orthogonal, Λ diagonal and real — and an orthonormal basis is exactly what a Fourier basis must be (Parseval, invertibility by Uᵀ rather than an inverse I'd have to compute). The eigenvectors are the graph's Fourier modes: the eigenvector with eigenvalue near 0 varies slowly across edges (it's the would-be DC / smooth mode), the eigenvector with the largest eigenvalue oscillates hardest from node to node. The eigenvalues are the frequencies. The graph Fourier transform of a node signal x ∈ R^N is Uᵀx; the inverse is U(·). And the roughness of a signal is xᵀLx = Σ_{i,j}(1/2)A_{ij}(x_i/√d_i − x_j/√d_j)² ≥ 0, which is why L is positive semidefinite and why its spectrum starts at 0. One more fact I'll lean on hard later: for the *normalized* Laplacian the eigenvalues are bounded, λ ∈ [0, 2]. (Quick check on the upper bound: D^{−1/2}AD^{−1/2} is similar to the random-walk matrix D^{−1}A, whose rows are convex combinations, so its eigenvalues sit in [−1, 1]; hence L = I − D^{−1/2}AD^{−1/2} has eigenvalues in [0, 2], with 2 attained on bipartite components.) That boundedness is a gift the *unnormalized* Δ = D − A doesn't give me — Δ's top eigenvalue grows with the maximum degree — and it's the first hint that normalizing is not cosmetic.
+So I need a graph Fourier basis. The object that supplies one is the symmetric normalized Laplacian L = I_N − D^{−1/2} A D^{−1/2}. Why this matrix and not, say, A itself? Because L is real and symmetric, so it diagonalizes with an *orthonormal* eigenbasis L = UΛUᵀ, U orthogonal, Λ diagonal and real — and an orthonormal basis is exactly what a Fourier basis must be (Parseval, invertibility by Uᵀ rather than an inverse I'd have to compute). The eigenvectors are the graph's Fourier modes: the eigenvector with eigenvalue near 0 varies slowly across edges (it's the would-be DC / smooth mode), the eigenvector with the largest eigenvalue oscillates hardest from node to node. The eigenvalues are the frequencies. The graph Fourier transform of a node signal x ∈ R^N is Uᵀx; the inverse is U(·). And the roughness of a signal is xᵀLx = Σ_{i,j}(1/2)A_{ij}(x_i/√d_i − x_j/√d_j)² ≥ 0, which is why L is positive semidefinite and why its spectrum starts at 0. One more fact I'll lean on hard later: for the *normalized* Laplacian the eigenvalues are bounded, λ ∈ [0, 2]. Quick check on the upper bound: D^{−1/2}AD^{−1/2} is similar to the random-walk matrix D^{−1}A, so the random-walk operator has spectral radius at most 1 while the similar symmetric matrix has real eigenvalues; those eigenvalues therefore lie in [−1, 1], and L = I − D^{−1/2}AD^{−1/2} has eigenvalues in [0, 2], with 2 attained on bipartite components. That boundedness is a gift the *unnormalized* Δ = D − A doesn't give me — Δ's top eigenvalue grows with the maximum degree — and it's the first hint that normalizing is not cosmetic.
 
 Now, with a Fourier basis, define spectral convolution. A filter is anything diagonal in the spectral domain — multiply each Fourier coefficient by its own gain. With a free filter g_θ = diag(θ), θ ∈ R^N,
 
@@ -26,9 +26,9 @@ Now push this back through the U's. (UΛUᵀ)^k = UΛ^k Uᵀ — the U's telesco
 
   g_{θ'} ⋆ x = U (Σ_k θ'_k T_k(Λ̃)) Uᵀ x = Σ_k θ'_k U T_k(Λ̃) Uᵀ x = Σ_k θ'_k T_k(L̃) x,
 
-with L̃ = (2/λ_max)L − I_N. The U's vanished. I never form them. I only ever apply L̃ — sparse, a nonzero only where there's an edge — to a vector, K times, via the recurrence T_k(L̃)x = 2 L̃ T_{k−1}(L̃)x − T_{k−2}(L̃)x, T_0 = I, T_1 = L̃. That's K sparse matrix-vector products, cost O(K|E|), linear in edges, no eigendecomposition. And it's K-localized in exactly the right sense: a K-th order polynomial in L̃ has a nonzero at (i,j) only if there's a walk of length ≤ K from i to j, so the filter at a node reaches only its K-hop neighborhood. All four of Bruna's walls fall at once — parameters drop from N to K, locality is back and is exactly K hops, no eigendecomposition, and θ' is graph-independent because it's coefficients of a polynomial in L, not coordinates in a fixed U. This is Defferrard et al. 2016's ChebNet, and it's a genuinely good convolution. I could stop here and stack ChebNet layers.
+with L̃ = (2/λ_max)L − I_N. The U's vanished. I never form them. I only ever apply L̃ — sparse, a nonzero only where there's an edge — to a vector, K times, via the recurrence T_k(L̃)x = 2 L̃ T_{k−1}(L̃)x − T_{k−2}(L̃)x, T_0 = I, T_1 = L̃. That's K sparse matrix-vector products, cost O(K|E|), linear in edges, no eigendecomposition. And it's K-localized in exactly the right sense: a K-th order polynomial in L̃ has a nonzero at (i,j) only if there's a walk of length ≤ K from i to j, so the filter at a node reaches only its K-hop neighborhood. All four of Bruna's walls fall at once — parameters drop from N to K+1 coefficients, locality is back and is exactly K hops, no eigendecomposition, and θ' is graph-independent because it's coefficients of a polynomial in L, not coordinates in a fixed U. This is Defferrard et al. 2016's ChebNet, and it's a genuinely good convolution. I could stop here and stack ChebNet layers.
 
-But let me look harder at what ChebNet costs me per layer. Each filter still has K free coefficients θ'_0…θ'_K, so with C input and F output channels that's K weight matrices per layer. And here's the structural thing that bugs me: in ChebNet, K does double duty. It sets the filter's expressiveness (how wild a function of the spectrum it can be) *and* it sets the receptive field (how many hops the layer reaches). Those are tangled together. On a graph with a wide degree distribution, a K=3 filter centered on a high-degree hub reaches the hub's entire 3-hop neighborhood — which can be a huge fraction of the graph — and a filter with that much reach and that many parameters can overfit the idiosyncratic local structure around that one hub. I want to *untangle* expressiveness from receptive field.
+But let me look harder at what ChebNet costs me per layer. Each filter still has the K+1 free coefficients θ'_0…θ'_K, so with C input and F output channels that's K+1 weight matrices per layer. And here's the structural thing that bugs me: in ChebNet, K does double duty. It sets the filter's expressiveness (how wild a function of the spectrum it can be) *and* it sets the receptive field (how many hops the layer reaches). Those are tangled together. On a graph with a wide degree distribution, a K=3 filter centered on a high-degree hub reaches the hub's entire 3-hop neighborhood — which can be a huge fraction of the graph — and a filter with that much reach and that many parameters can overfit the idiosyncratic local structure around that one hub. I want to *untangle* expressiveness from receptive field.
 
 And there's a clean way to untangle them, because I'm going to *stack* layers. Receptive field composes: if one layer reaches one hop and I stack k of them, the composition reaches k hops. So depth can supply the receptive field that K supplied in ChebNet — and depth is the move that's worked everywhere else (He et al. 2015 made very deep nets trainable). Meanwhile, the *expressiveness* I lose by making each layer's spectral filter low-order, I get back from the point-wise nonlinearities between layers: a stack of linear-spectral-filter-then-nonlinearity is not itself a low-order polynomial filter, it's a rich nonlinear function on the graph, and crucially one I'm *not* forced to write as an explicit Chebyshev expansion. So: take K as small as it goes — K = 1 — making each layer's spectral filter *linear* in L, and let depth and nonlinearity do the rest. There's a regularization argument folded in here too: K=1 means two parameters per filter instead of K+1, and on graphs where a single layer's 1-hop neighborhood is already large (hubs), fewer parameters per layer is exactly what fights overfitting the local neighborhood.
 
@@ -76,11 +76,11 @@ Let me write the propagation rule for one node, in vector form, by reading off w
 
   h_i^{(l+1)} = σ( Σ_{j ∈ N_i ∪ {i}} (1/c_ij) h_j^{(l)} W^{(l)} ),  with c_ij = √(d̃_i d̃_j).
 
-Compare that to the 1-dimensional Weisfeiler–Lehman graph-isomorphism algorithm, the classical thing for assigning canonical node colorings: WL-1 repeats h_i ← hash( h_i, multiset{h_j : j ∈ N_i} ) until the coloring stabilizes — each node hashes its own current color together with the aggregate of its neighbors' colors, over and over, and two graphs that produce different stable colorings are provably non-isomorphic. My layer is *that*, with two substitutions: replace the hash with a differentiable, parameterized, normalized map σ(Σ_j (1/c_ij) h_j W), and pick the normalization constant c_ij = √(d̃_i d̃_j). And that constant isn't a free choice I'm slipping in — it's *forced* if I want the WL aggregation to be exactly my operator. WL-1 uses an unweighted aggregate (c_ij = 1), which is the raw-adjacency aggregation I already rejected as degree-unstable; the symmetric normalization I derived spectrally puts 1/√(d̃_i d̃_j) on edge (i,j), including the self-loop, so the only c_ij that makes the two views coincide is √(d̃_i d̃_j). The spectral derivation and the WL view agree on the *same* normalization constant, which is a stronger coincidence than either picture alone. So everything I derived from the spectral side — Chebyshev, K=1, λ_max≈2, tie the coefficients, renormalize — comes out the *other* side as a smooth, trainable generalization of 1-WL: a network that does WL-style neighborhood aggregation but *learns* what to aggregate instead of hashing. Two completely different motivations landing on the same operator. And it predicts something I can sanity-check without any training: if WL-style aggregation already separates graph structure into distinct colorings, then even an *untrained* network of these layers — random W — should produce structurally-organized node embeddings. Take a small community-structured graph, set X = I_N (featureless, every node just its own identity), run three layers of Â-propagation with random Glorot weights and a tanh, project to 2-D, and the communities should already fall into separate clusters with no gradient steps at all. The aggregation is doing the work; training just sharpens it. That's a strong independent reason to believe the operator is the right one — it's not that the weights are clever, it's that Â-propagation *is* WL relabeling.
+Compare that to the 1-dimensional Weisfeiler–Lehman graph-isomorphism algorithm, the classical thing for assigning canonical node colorings: WL-1 repeats h_i ← hash( h_i, multiset{h_j : j ∈ N_i} ) until the coloring stabilizes — each node hashes its own current color together with the aggregate of its neighbors' colors, over and over, and two graphs that produce different stable colorings are provably non-isomorphic. My layer is *that*, with two substitutions: replace the hash with a differentiable, parameterized, normalized map σ(Σ_j (1/c_ij) h_j W), and pick the normalization constant c_ij = √(d̃_i d̃_j). And that constant isn't a free choice I'm slipping in — it's *forced* if I want the WL aggregation to be exactly my operator. WL-1 uses an unweighted aggregate (c_ij = 1), which is the raw-adjacency aggregation I already rejected as degree-unstable; the symmetric normalization I derived spectrally puts 1/√(d̃_i d̃_j) on edge (i,j), including the self-loop, so the only c_ij that makes the two views coincide is √(d̃_i d̃_j). The spectral derivation and the WL view agree on the *same* normalization constant, which is a stronger coincidence than either picture alone. So everything I derived from the spectral side — Chebyshev, K=1, λ_max≈2, tie the coefficients, renormalize — comes out the *other* side as a smooth, trainable generalization of 1-WL: a network that does WL-style neighborhood aggregation but *learns* what to aggregate instead of hashing. Two completely different motivations landing on the same operator. This gives me a clean diagnostic before I trust the supervised classifier: set X = I_N on a small community-structured graph, initialize a few Â-propagation layers randomly, and check whether neighborhood roles remain visible; if they disappear immediately, the propagation operator is not carrying the graph structure I think it is.
 
 Let me also pin down why each simplification is allowed to stand, since I made several and any one could be the weak link. Going spectral at all: forced, because translation is undefined on a graph and the convolution theorem is the only translation-free definition of convolution. Symmetric normalized Laplacian as the basis: forced, because it's the symmetric PSD operator with an orthonormal eigenbasis and a bounded [0,2] spectrum. Chebyshev over a free diagonal: kills O(N) params, gives K-locality, removes the eigendecomposition, transfers across graphs. Rescaling to [−1,1]: required for the Chebyshev recurrence to stay bounded. K=1: untangles expressiveness from receptive field — depth supplies the hops, nonlinearity supplies the expressiveness — and cuts parameters so wide-degree neighborhoods don't overfit. λ_max≈2: the [0,2] bound makes 2 a safe guess and trainable weights absorb the error. Symmetric vs random-walk normalization: symmetric keeps the operator in the spectral framework and is more than a neighbor-average. Tying θ'_0 = −θ'_1: one parameter, fewer matmuls, more regularization. The renormalization trick is the one that's load-bearing for *depth* — without it the [0,2]-spectrum operator destabilizes deep stacks; with it the spectral radius is 1 and I can stack freely (and if I do go very deep, residual connections H^{(l+1)} = σ(Â H^{(l)} W^{(l)}) + H^{(l)} carry the previous layer through, the same trick that made deep nets trainable elsewhere). Each step is a deliberate move from rich-but-expensive ChebNet toward the cheapest operator that still propagates and still stacks.
 
-Now to real code, and it should slot straight into the bare harness I started with: the one empty `graph_layer` slot becomes the Â-propagation I just derived; the stack-of-layers model becomes the two-layer composition; the masked full-batch loss is untouched. Everything hinges on three things: build Â once with sparse SciPy ops (this is the preprocessing of the raw A that the harness left open); make each layer a sparse-dense matmul of the graph operator against a dense activation times a weight; train full-batch with the masked loss so all-node outputs supervise on labeled-node targets only. The structure follows the canonical TensorFlow implementation.
+Now to code, and it should slot straight into the bare harness I started with: the sparse graph-support slot becomes the Â operator I just derived; the layer slot becomes dropout, a feature projection, sparse propagation, summation over supports, and an activation; the masked full-batch loss is untouched. Everything hinges on three things: build Â once with sparse SciPy ops from the raw A, make each layer a sparse-dense matmul of the graph operator against a dense activation times a weight, and train full-batch with the masked loss so all-node outputs supervise on labeled-node targets only.
 
 ```python
 import numpy as np
@@ -96,8 +96,15 @@ def sparse_to_tuple(sparse_mx):
         return coords, mx.data, mx.shape
     return [to_tuple(mx) for mx in sparse_mx] if isinstance(sparse_mx, list) else to_tuple(sparse_mx)
 
+def preprocess_features(features):
+    """Row-normalize feature matrix and convert to tuple representation."""
+    rowsum = np.array(features.sum(1))
+    r_inv = np.power(rowsum, -1).flatten()
+    r_inv[np.isinf(r_inv)] = 0.
+    return sparse_to_tuple(sp.diags(r_inv).dot(features))
+
 def glorot(shape, name=None):
-    """Glorot & Bengio uniform initialization, matching the TensorFlow implementation."""
+    """Glorot & Bengio uniform initialization."""
     init_range = np.sqrt(6.0 / (shape[0] + shape[1]))
     initial = tf.random_uniform(shape, minval=-init_range, maxval=init_range,
                                 dtype=tf.float32)
@@ -109,9 +116,6 @@ def sparse_dropout(x, keep_prob, noise_shape):
     dropout_mask = tf.cast(tf.floor(random_tensor), dtype=tf.bool)
     dropped = tf.sparse_retain(x, dropout_mask)
     return dropped * (1. / keep_prob)
-
-# ---- preprocessing of the raw A (the harness left this open): build Â once ----
-#      Â = D̃^{-1/2} (A+I) D̃^{-1/2}
 
 def normalize_adj(adj):
     """Symmetric normalization D^{-1/2} A D^{-1/2}, kept sparse throughout.
@@ -125,85 +129,75 @@ def normalize_adj(adj):
     return adj.dot(d_mat).transpose().dot(d_mat).tocoo()
 
 def preprocess_adj(adj):
-    # renormalization trick: add self-loops FIRST, then normalize, so the
-    # degrees used for normalization include the self-loop -> spectral radius 1
-    # (raw I + D^{-1/2}AD^{-1/2} has eigenvalues in [0,2] and destabilizes depth).
-    return sparse_to_tuple(normalize_adj(adj + sp.eye(adj.shape[0])))  # tuple-form sparse Â
-
-def chebyshev_polynomials(adj, K):
-    """The richer ChebNet support that the K=1 model collapses: rescaled Laplacian
-    L~ = (2/lambda_max) L - I in [-1,1], then the stable recurrence T_k = 2 L~ T_{k-1} - T_{k-2}."""
-    from scipy.sparse.linalg import eigsh
-    L = sp.eye(adj.shape[0]) - normalize_adj(adj)
-    lambda_max = eigsh(L, 1, which='LM')[0][0]         # one top eigenvalue, no full decomp
-    L_tilde = (2. / lambda_max) * L - sp.eye(adj.shape[0])
-    Tk = [sp.eye(adj.shape[0]), L_tilde]               # T_0 = I, T_1 = L~
-    for _ in range(2, K + 1):
-        Tk.append(2 * L_tilde.dot(Tk[-1]) - Tk[-2])    # telescoping (UΛU^T)^k = UΛ^k U^T
-    return sparse_to_tuple(Tk)
-
-# ---- the layer = the filled-in graph_layer slot: Â (X W) as a sparse-dense product ----
+    # Renormalization: add self-loops first, then normalize with the new degrees.
+    return sparse_to_tuple(normalize_adj(adj + sp.eye(adj.shape[0])))
 
 def dot(x, y, sparse=False):
     return tf.sparse_tensor_dense_matmul(x, y) if sparse else tf.matmul(x, y)
 
-class GraphConvolution:
-    """One layer: out = act( sum_s  support_s @ (dropout(x) @ W_s) ).
-    For the renormalization-trick model `support` is the single operator [Â];
-    the same code handles a list (the Chebyshev operators) by summing -> K=1 is length 1."""
+class GraphLayer:
+    """One layer: act(sum_s support_s @ (dropout(x) @ W_s))."""
     def __init__(self, input_dim, output_dim, support, act=tf.nn.relu,
                  dropout=0., sparse_inputs=False, num_features_nonzero=None):
-        self.support = support            # list of sparse graph operators; here [Â]
+        self.support = support
         self.act, self.dropout = act, dropout
         self.sparse_inputs = sparse_inputs
         self.num_features_nonzero = num_features_nonzero
-        self.weights = [glorot([input_dim, output_dim]) for _ in support]  # W per support
+        self.weights = [glorot([input_dim, output_dim], name='weights_%d' % i)
+                        for i in range(len(support))]
 
     def __call__(self, x):
-        # dropout (sparse first layer needs the sparse variant)
         x = sparse_dropout(x, 1 - self.dropout, self.num_features_nonzero) if self.sparse_inputs \
             else tf.nn.dropout(x, 1 - self.dropout)
         out = []
         for s, W in zip(self.support, self.weights):
-            xw = dot(x, W, sparse=self.sparse_inputs)  # X W   (= Θ-projection)
-            out.append(dot(s, xw, sparse=True))        # Â (X W): sparse-dense matmul
-        return self.act(tf.add_n(out))                 # one term when support = [Â]
+            xw = dot(x, W, sparse=self.sparse_inputs)  # X W
+            out.append(dot(s, xw, sparse=True))        # Â (X W)
+        return self.act(tf.add_n(out))
 
-# ---- the model = the filled-in GraphModel: softmax( Â ReLU( Â X W0 ) W1 ) ----
-
-class GCN:
+class GraphModel:
     def __init__(self, placeholders, input_dim, hidden, num_classes):
-        support = placeholders['support']              # [Â]
-        self.inputs = placeholders['features']         # sparse X
+        support = placeholders['support']              # one sparse placeholder for Â
+        self.inputs = placeholders['features']
         dropout = placeholders['dropout']
-        self.gc1 = GraphConvolution(input_dim, hidden, support,
-                                    act=tf.nn.relu, dropout=dropout,
-                                    sparse_inputs=True,
-                                    num_features_nonzero=placeholders['num_features_nonzero'])
-        self.gc2 = GraphConvolution(hidden, num_classes, support,
-                                    act=lambda z: z,   # logits; softmax is in the loss
-                                    dropout=dropout)
-        h = self.gc1(self.inputs)                      # ReLU( Â X W0 )
-        self.outputs = self.gc2(h)                     # Â h W1   -> logits
-
-# ---- masked cross-entropy (unchanged from the harness): all-node outputs, labeled-only supervision ----
+        self.layers = [
+            GraphLayer(input_dim, hidden, support, act=tf.nn.relu, dropout=dropout,
+                       sparse_inputs=True,
+                       num_features_nonzero=placeholders['num_features_nonzero']),
+            GraphLayer(hidden, num_classes, support, act=lambda z: z, dropout=dropout),
+        ]
+        h = self.layers[0](self.inputs)                # ReLU(Â X W0)
+        self.outputs = self.layers[1](h)               # Â h W1, logits
 
 def masked_softmax_cross_entropy(logits, labels, mask):
     loss = tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=labels)
     mask = tf.cast(mask, tf.float32); mask /= tf.reduce_mean(mask)
-    return tf.reduce_mean(loss * mask)                 # only labeled nodes count
+    return tf.reduce_mean(loss * mask)
 
-# ---- full-batch training over the whole graph (unchanged harness loop) ----
+features = preprocess_features(features)               # sparse row-normalized X
+support = [preprocess_adj(adj)]                        # sparse tuple for Â
+num_supports = len(support)
 
-model = GCN(placeholders, input_dim=num_features, hidden=16, num_classes=num_classes)
-opt = tf.train.AdamOptimizer(learning_rate=0.01)       # lr 0.01, full-batch
+placeholders = {
+    'support': [tf.sparse_placeholder(tf.float32) for _ in range(num_supports)],
+    'features': tf.sparse_placeholder(tf.float32,
+                                      shape=tf.constant(features[2], dtype=tf.int64)),
+    'labels': tf.placeholder(tf.float32, shape=(None, y_train.shape[1])),
+    'labels_mask': tf.placeholder(tf.int32),
+    'dropout': tf.placeholder_with_default(0., shape=()),
+    'num_features_nonzero': tf.placeholder(tf.int32),
+}
+
+model = GraphModel(placeholders, input_dim=features[2][1],
+                   hidden=16, num_classes=y_train.shape[1])
 loss = masked_softmax_cross_entropy(model.outputs,
                                     placeholders['labels'],
                                     placeholders['labels_mask'])
-loss += 5e-4 * tf.add_n([tf.nn.l2_loss(W) for W in model.gc1.weights])
-train_op = opt.minimize(loss)
+loss += 5e-4 * tf.add_n([tf.nn.l2_loss(W) for W in model.layers[0].weights])
+train_op = tf.train.AdamOptimizer(learning_rate=0.01).minimize(loss)
+
 feed_dict = {
-    placeholders['features']: features,                  # sparse row-normalized X
+    placeholders['features']: features,
     placeholders['labels']: y_train,
     placeholders['labels_mask']: train_mask,
     placeholders['num_features_nonzero']: features[1].shape,
@@ -211,7 +205,7 @@ feed_dict = {
 }
 feed_dict.update({placeholders['support'][i]: support[i] for i in range(len(support))})
 _, train_loss = sess.run([train_op, loss], feed_dict=feed_dict)
-# repeat the full-batch step for up to 200 epochs and early-stop on validation loss.
+# Repeat the full-batch step for up to 200 epochs and early-stop on validation loss.
 ```
 
-The causal chain, start to end: I refused to keep the graph in the loss (the edges-mean-similarity cap) and demanded a model f(X, A); a convolution on a graph can't be defined by sliding a filter because translation is undefined, so the only principled route was spectral via the convolution theorem, g_θ ⋆ x = U g_θ Uᵀ x over the symmetric normalized Laplacian's orthonormal eigenbasis; but free spectral filters need an eigendecomposition, O(N²) multiplies, and aren't localized or transferable, so I replaced the filter with a Chebyshev polynomial in L (Hammond/ChebNet), which telescopes the U's away, costs O(K|E|), and is K-hop localized; I then untangled receptive field from filter order — depth gives the hops, nonlinearity gives the expressiveness — drove K down to 1, approximated λ_max ≈ 2 to drop the per-graph eigenvalue, kept symmetric rather than random-walk normalization to stay spectral and beat mere averaging, and tied the two coefficients into a single parameter, leaving the operator I_N + D^{−1/2}AD^{−1/2}; that operator's spectral radius ≈ 2 made deep stacks blow up, so the renormalization trick — add self-loops before normalizing, Â = D̃^{−1/2}(A+I)D̃^{−1/2} — pulled the radius back to 1 by normalizing the self-loop consistently; the resulting layer H^{(l+1)} = σ(Â H^{(l)} W^{(l)}) is a cheap sparse-dense matmul costing O(|E|FC), and stacked twice gives softmax(Â ReLU(Â X W^{(0)}) W^{(1)}), trained with a masked cross-entropy that supervises on labeled nodes while features and gradients flow across edges to the unlabeled ones; and reading the same layer node-wise reveals it is a differentiable, normalized generalization of 1-Weisfeiler–Lehman aggregation, which is why it organizes graph structure even before training.
+The causal chain, start to end: I refused to keep the graph in the loss (the edges-mean-similarity cap) and demanded a model f(X, A); a convolution on a graph can't be defined by sliding a filter because translation is undefined, so the only principled route was spectral via the convolution theorem, g_θ ⋆ x = U g_θ Uᵀ x over the symmetric normalized Laplacian's orthonormal eigenbasis; but free spectral filters need an eigendecomposition, O(N²) multiplies, and aren't localized or transferable, so I replaced the filter with a Chebyshev polynomial in L (Hammond/ChebNet), which telescopes the U's away, costs O(K|E|), and is K-hop localized; I then untangled receptive field from filter order — depth gives the hops, nonlinearity gives the expressiveness — drove K down to 1, approximated λ_max ≈ 2 to drop the per-graph eigenvalue, kept symmetric rather than random-walk normalization to stay spectral and beat mere averaging, and tied the two coefficients into a single parameter, leaving the operator I_N + D^{−1/2}AD^{−1/2}; that operator's spectral radius ≈ 2 made deep stacks blow up, so the renormalization trick — add self-loops before normalizing, Â = D̃^{−1/2}(A+I)D̃^{−1/2} — pulled the radius back to 1 by normalizing the self-loop consistently; the resulting layer H^{(l+1)} = σ(Â H^{(l)} W^{(l)}) is a cheap sparse-dense matmul costing O(|E|FC), and stacked twice gives softmax(Â ReLU(Â X W^{(0)}) W^{(1)}), trained with a masked cross-entropy that supervises on labeled nodes while features and gradients flow across edges to the unlabeled ones; and reading the same layer node-wise reveals it as a differentiable, normalized generalization of 1-Weisfeiler–Lehman aggregation.

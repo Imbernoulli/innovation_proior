@@ -88,7 +88,7 @@ Each step is autoregressive with respect to z_{t-1}, so ∂z_t/∂z_{t-1} is tri
 diagonal and determinant ∏_i σ_{t,i}. (The Jacobian with respect to h is unconstrained, but that's fine
 — h is just extra context, it doesn't enter the z-to-z determinant.) Now assemble the density. The
 initial step gives log q(z_0|x) = log N(ε; 0, I) − Σ_i log σ_{0,i}, because z_0 = μ_0 + σ_0 ⊙ ε rescales
-the noise; writing out the standard Gaussian, that's −Σ_i (½ ε_i² + ½ log 2π + log σ_{0,i}). Each later
+the noise; writing out the standard Gaussian, that's −Σ_i (½ ε_i² + ½ log 2π + log σ_{0,i}). Each following
 step contributes −Σ_i log σ_{t,i} to the telescoped density. Summing over the chain,
 
   log q(z_T|x) = − Σ_i ( ½ ε_i² + ½ log 2π + Σ_{t=0}^{T} log σ_{t,i} ).
@@ -98,19 +98,20 @@ dimensions in parallel, with the flexibility growing with the expressiveness of 
 and the depth of the chain.
 
 Before I trust it I should sanity-check that the simplest version recovers something I understand. Take
-one linear autoregressive step. A linear inverse-autoregressive map of a Gaussian should give a Gaussian
-— but which one? Any full-covariance Gaussian N(m, C) can be written as an autoregressive model
-coordinate by coordinate: y_i = μ_i(y_{1:i-1}) + σ_i(y_{1:i-1})·ε_i with the conditional mean and
-variance given by the usual Gaussian-conditioning formulas, μ_i = m_i + C[i, 1:i-1]·C[1:i-1, 1:i-1]^{-1}
-(y_{1:i-1} − m_{1:i-1}) and σ_i² = C[i, i] − C[i, 1:i-1]·C[1:i-1, 1:i-1]^{-1}·C[1:i-1, i]. Inverting that
-model is linear, ε = (y − μ(y))/σ(y) = L(y − m), and L is exactly the inverse Cholesky factor of C — a
-lower-triangular matrix. So if I let my encoder output a lower-triangular L(x) (and a mean) and start
-from a factorized Gaussian y = μ(x) + σ(x) ⊙ ε, then a single linear inverse-autoregressive step z = L(x)·y
-turns that factorized Gaussian into an arbitrary *full-covariance* Gaussian posterior. Since the
-parameterization is overcomplete I can pin m = 0 and put ones on L's diagonal and still reach every
-correlation structure. The simplest IAF is "learn the inverse Cholesky," which gives full-covariance
-Gaussian posteriors — a clean, correct special case. Good; the machinery does what it should at the bottom,
-and the nonlinear autoregressive nets generalize far beyond Gaussian from there.
+one linear autoregressive step. A full-covariance Gaussian N(m, C) can be written coordinate by coordinate:
+
+  y_i = μ_i(y_{1:i-1}) + σ_i(y_{1:i-1})·ε_i,
+
+with μ_i(y_{1:i-1}) = m_i + C[i, 1:i-1]·C[1:i-1, 1:i-1]^{-1}(y_{1:i-1} − m_{1:i-1}) and
+σ_i²(y_{1:i-1}) = C[i, i] − C[i, 1:i-1]·C[1:i-1, 1:i-1]^{-1}·C[1:i-1, i]. Inverting that Gaussian
+autoregression is linear: ε = (y − μ(y))/σ(y) = L(y − m), with L a lower-triangular whitening matrix,
+the inverse Cholesky factor of C under this ordering. The flow direction I actually sample in goes the
+other way: start from a factorized Gaussian y = μ(x) + σ(x) ⊙ ε and apply a lower-triangular linear map
+to get z. If I restrict that triangular map to have ones on the diagonal, its determinant is one, so
+q(z|x) = q(y|x) and no extra log-determinant appears; the diagonal scales in the starting Gaussian plus
+the unit-diagonal triangular map give an LDLᵀ factorization, which reaches any full covariance matrix.
+So the linear bottom of the construction is not a toy: it is exactly a full-covariance Gaussian posterior,
+and the nonlinear autoregressive nets generalize beyond Gaussian from there.
 
 Now a wall I'll hit in practice. The step z_t = μ_t + σ_t ⊙ z_{t-1} multiplies by a learned σ_t every
 layer, and an unconstrained σ_t can blow up or vanish across a deep chain — multiplying T learned scales
@@ -149,32 +150,101 @@ posterior is well-equipped to match it — so I get a tighter bound without maki
 itself any less flexible. The IAF on the q side and an autoregressive prior on the p side pull in the same
 direction: both increase flexibility where the KL gap lives.
 
-Let me write the core IAF step, the numerically-stable gated version with the forget-gate-bias init. The
-autoregressive network is a masked net (MADE-style) that takes the current z and the context h and outputs
-the two unconstrained vectors:
+The ordering of inference in that deep stack matters. If the generative model samples top-down,
+z_L first and then z_{L-1}, ..., z_1, a purely bottom-up inference model samples in the opposite order:
+q(z_1|x)q(z_2|z_1,x)... That is easy for recognition, but each posterior layer misses the top-down
+state that defines its prior. I can keep the cheap bottom-up evidence by running a deterministic
+bottom-up pass first, storing h_l^(q), and then sample the stochastic variables top-down in the same
+order as the generative model, conditioning q(z_l|.) on both h_l^(q) and the current top-down state
+h_l^(p). That gives each local posterior the evidence from x and the prior context it is being compared
+against. The IAF context h is exactly the place to feed those deterministic activations.
+
+One more practical wall appears when there are many stochastic layers. Early in training, the
+reconstruction term is weak, and the model can fall into the quiet state q(z|x) ≈ p(z): the KL terms are
+near zero, the stochastic layers carry no information, and the encoder receives a low-signal gradient for
+escaping. Annealing the KL weight upward is one way to avoid punishing latent information too early,
+but then training depends on a schedule. A cleaner objective is to stop rewarding the model for using
+less than a small amount of information in each group of latents. Split the latents into K groups j, and
+on a minibatch M replace the usual reconstruction-minus-KL objective by
+
+  L_λ = E_{x∈M} E_{q(z|x)}[log p(x|z)] − Σ_{j=1}^{K} max(λ, E_{x∈M}[KL(q(z_j|x) ‖ p(z_j))]).
+
+If a group's average KL is below λ, the penalty is the constant λ, so the gradient no longer pushes that
+group toward zero information. Once it uses more than λ nats, the term becomes the ordinary KL again.
+So the objective is still the ELBO above the threshold, but it removes the local attraction of the
+zero-information solution below the threshold.
+
+The flow-prior trade is really a coordinate choice. Suppose the autoregressive transform whitens a
+structured latent y into z = (y − μ(y))/σ(y). If I call y the model's latent variable, then the prior over y
+is autoregressive and a simple posterior over the whitened z corresponds, through the inverse change of
+variables, to an IAF posterior over y. If instead I call z the model's latent variable, the prior can be
+factorized and the posterior carries the autoregressive flow. Those are two coordinate descriptions of the
+same triangular change of variables; moving flexibility between the prior and posterior changes where the
+computation sits, not the underlying reason the KL gap gets easier to close.
+
+Let me write the core step, the numerically-stable gated version with the forget-gate-bias init. The
+autoregressive network is a masked net that takes the current z and the context h and outputs the two
+unconstrained vectors:
 
 ```python
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 
+class MaskedLinear(nn.Linear):
+    def __init__(self, in_features, out_features, mask):
+        super().__init__(in_features, out_features)
+        self.register_buffer("mask", mask.float())
+
+    def forward(self, x):
+        return F.linear(x, self.weight * self.mask, self.bias)
+
+
 class AutoregressiveNN(nn.Module):
-    """Masked net: outputs (m, s) for every coordinate with output i depending only on z_{1:i-1};
-    a projection of the context h is added (h is unconstrained, so it doesn't affect the Jacobian)."""
+    """Masked net: output i depends only on z_{1:i-1}; h can affect every output."""
     def __init__(self, dim, hidden, context_dim):
         super().__init__()
-        self.made = MADE(dim, hidden, n_out=2 * dim)        # degree-masked feedforward net
+        input_degrees = torch.arange(1, dim + 1)
+        if dim == 1:
+            hidden_degrees = torch.zeros(hidden, dtype=torch.long)
+        else:
+            hidden_degrees = torch.arange(hidden) % (dim - 1) + 1
+        output_degrees = torch.cat([input_degrees, input_degrees])
+        mask_in = (hidden_degrees[:, None] >= input_degrees[None, :]).float()
+        mask_out = (output_degrees[:, None] > hidden_degrees[None, :]).float()
+        self.input = MaskedLinear(dim, hidden, mask_in)
+        self.output = MaskedLinear(hidden, 2 * dim, mask_out)
         self.context = nn.Linear(context_dim, 2 * dim)
 
     def forward(self, z, h):
-        m, s = torch.chunk(self.made(z) + self.context(h), 2, dim=1)
+        hidden = F.elu(self.input(z))
+        m, s = torch.chunk(self.output(hidden) + self.context(h), 2, dim=1)
         return m, s
 
 
-class IAFStep(nn.Module):
-    """One inverse-autoregressive refinement: z <- sigma*z + (1-sigma)*m, sigma = sigmoid(s+bias).
-    Contributes -sum(log sigma) to log q(z|x)."""
+class Encoder(nn.Module):
+    def __init__(self, x_dim, z_dim, context_dim, hidden):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(x_dim, hidden),
+            nn.ELU(),
+            nn.Linear(hidden, 2 * z_dim + context_dim),
+        )
+        self.z_dim = z_dim
+        self.context_dim = context_dim
+
+    def forward(self, x):
+        params = self.net(x.reshape(x.size(0), -1))
+        mu0 = params[:, :self.z_dim]
+        log_sigma0 = params[:, self.z_dim:2 * self.z_dim].clamp(min=-7.0, max=7.0)
+        h = params[:, 2 * self.z_dim:]
+        return mu0, log_sigma0, h
+
+
+class RefiningStep(nn.Module):
+    """One refinement: z <- sigma*z + (1-sigma)*m; add -sum(log sigma) to log q."""
     def __init__(self, dim, hidden, context_dim, forget_bias=1.5):
         super().__init__()
         self.net = AutoregressiveNN(dim, hidden, context_dim)
@@ -182,26 +252,24 @@ class IAFStep(nn.Module):
 
     def forward(self, z, h):
         m, s = self.net(z, h)
-        sigma = torch.sigmoid(s + self.forget_bias)         # start near 1 -> step starts as identity
-        z = sigma * z + (1.0 - sigma) * m                   # LSTM-style bounded blend
-        log_det = -torch.log(sigma + 1e-8).sum(dim=1)       # -sum_i log sigma_i
-        return z, log_det
+        sigma = torch.sigmoid(s + self.forget_bias)         # near identity at initialization
+        z = sigma * z + (1.0 - sigma) * m                   # bounded LSTM-style blend
+        log_density_delta = -torch.log(sigma.clamp_min(1e-8)).sum(dim=1)
+        return z, log_density_delta
 ```
 
 the encoder emits the initial Gaussian's parameters and the context, and the posterior reparameterizes,
 then refines, accumulating the exact log-density of the chain:
 
 ```python
-import math
-
-
-class IAFPosterior(nn.Module):
-    def __init__(self, x_dim, z_dim, context_dim, n_steps, hidden):
+class FlexiblePosterior(nn.Module):
+    def __init__(self, x_dim, z_dim, context_dim, n_steps, hidden, reverse_between_steps=True):
         super().__init__()
-        self.z_dim = z_dim
-        self.encoder = Encoder(x_dim, z_dim, context_dim)   # -> (mu0, log_sigma0, h)
+        self.encoder = Encoder(x_dim, z_dim, context_dim, hidden)
         self.steps = nn.ModuleList(
-            [IAFStep(z_dim, hidden, context_dim) for _ in range(n_steps)])
+            [RefiningStep(z_dim, hidden, context_dim) for _ in range(n_steps)]
+        )
+        self.reverse_between_steps = reverse_between_steps
 
     def sample_and_log_prob(self, x):
         mu0, log_sigma0, h = self.encoder(x)
@@ -210,9 +278,10 @@ class IAFPosterior(nn.Module):
         # log q(z_0|x) = -sum_i ( 1/2 eps_i^2 + 1/2 log 2pi + log sigma_{0,i} )
         log_q = -(0.5 * eps ** 2 + 0.5 * math.log(2 * math.pi) + log_sigma0).sum(dim=1)
         for i, step in enumerate(self.steps):               # reverse variable order between steps
-            z = z.flip(dims=(1,)) if i % 2 == 1 else z
-            z, log_det = step(z, h)
-            log_q = log_q + log_det                         # accumulate -sum log sigma_t
+            z, log_density_delta = step(z, h)
+            log_q = log_q + log_density_delta
+            if self.reverse_between_steps and i + 1 < len(self.steps):
+                z = z.flip(dims=(1,))                       # permutation has |det| = 1
         return z, log_q
 ```
 
@@ -224,7 +293,8 @@ def elbo(decoder, prior, x, z, log_q):
     log_pz = prior.log_prob(z)                              # log p(z); may be an autoregressive prior
     return (log_px_z + log_pz - log_q).mean()               # E[ log p(x,z) - log q(z|x) ]
 
-# optimize -elbo(...) with Adam
+def make_optimizer(params):
+    return torch.optim.Adam(params)
 ```
 
 So the causal chain: the VAE bound is loose by KL(q ‖ true posterior), and a diagonal-Gaussian q can't
@@ -233,9 +303,10 @@ cheap-to-sample, and parallel in high dimensions; planar flows squeeze everythin
 don't scale; autoregressive networks are flexible and high-dimensional but their *sampling* is sequential
 — yet their *inverse* ε = (y − μ)/σ is parallel in one pass and has a triangular Jacobian with log-det
 −Σ log σ, exactly the flow step I needed; chaining these inverse-autoregressive steps over a
-reparameterized Gaussian gives an exact, cheap posterior density, whose simplest linear instance is just
-the inverse-Cholesky map to a full-covariance Gaussian; a sigmoid-gated LSTM-style update with a
+reparameterized Gaussian gives an exact, cheap posterior density, whose simplest linear instance gives
+a full-covariance Gaussian through a unit-diagonal triangular map; a sigmoid-gated LSTM-style update with a
 forget-gate-bias init keeps the deep chain numerically stable and starting from the identity; reversing
-the order between steps mixes dependencies for free; and pairing the IAF posterior with an autoregressive
-prior tightens the bound from the other side, since a more flexible prior makes the true posterior a shape
-the IAF can match.
+the order between steps mixes dependencies for free; bidirectional inference gives each stochastic layer
+both bottom-up evidence and top-down prior context; free bits remove the zero-information attraction in
+deep stacks; and the autoregressive-prior view is the same triangular change of variables seen from the
+other coordinate system.

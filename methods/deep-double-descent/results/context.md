@@ -13,8 +13,8 @@ Concretely: is there one axis along which test error behaves predictably across 
 time, regularization, and dataset size simultaneously — one that explains both the classical
 "larger is worse past a threshold" U-curve and the modern "larger is better" experience, and that
 locates *where* increasing complexity flips from helpful to harmful? A satisfying answer would also
-have to explain anomalies that neither classical theory nor modern folklore predicts: settings where
-training *longer* first hurts then helps, and settings where adding *more data* hurts.
+have to put pressure on the shared assumptions: whether training time behaves like a complexity knob,
+and whether the usual "more data always helps" rule can fail near the fitting transition.
 
 ## Background
 
@@ -69,8 +69,9 @@ The prior accounts of the complexity–error relationship that a unified view mu
   past the threshold, contradicting the over-parameterized regime where error descends again.
 
 - **"Bigger is better" (modern deep learning practice).** Monotone benefit from scaling parameters
-  and training to zero training error. Gap: ignores the peak — there *are* realistic regimes where a
-  bigger model or more training is worse — and it has no account of *where* the benefit kicks in.
+  and training to zero training error. Gap: ignores the possibility of a peak — if a bigger model or
+  more training can hurt near interpolation, this view has no account of where that failure begins
+  or why the benefit resumes afterward.
 
 - **Parameter-count double descent (Belkin et al. 2019).** Test error double-descends as a function of
   the number of parameters, peaking at the interpolation threshold. Gap: tied to parameter count
@@ -97,9 +98,9 @@ completion:
 - **Optimization:** cross-entropy for the vision nets, trained either with Adam (learning rate 1e-4,
   4K epochs) or SGD (learning rate ∝ 1/√T, 500K steps); Transformers trained 80K steps with 10% label
   smoothing and no dropout.
-- **Label noise:** with probability p a training example keeps its correct label, otherwise gets a
-  uniformly-random wrong one; the noise is drawn once (not re-sampled per epoch). Test error is
-  reported on the clean (or noisy) distribution.
+- **Label noise:** with probability p a training example is assigned a uniformly random incorrect
+  label; otherwise it keeps the correct label. The noise is drawn once, not re-sampled per epoch.
+  Test error can be measured against the noisy or clean label distribution.
 - **Knobs swept:** model width, number of training epochs, dataset size, label-noise level, and the
   presence of data augmentation / regularization.
 
@@ -109,42 +110,51 @@ interpolation threshold), and early-stopping behavior.
 ## Code framework
 
 The primitives that exist: trainable architectures whose size is set by a width hyperparameter, the
-optimizers, a loss, a label-noising step, and a training loop that records train and test error over
-epochs. What is missing is the *organizing quantity* — the single complexity measure along which test
-error is to be understood — and the harness that sweeps a knob and measures both that quantity and
-the error. The scaffold leaves the complexity measure as an empty slot.
+optimizer factory, a loss, a label-noising step, and a training loop that records train and test
+error over epochs. The empty slots are the fitting-capacity quantity and the sweeps that compare
+errors as one knob changes at a time.
 
 ```python
 import numpy as np
 
-def make_model(width):
+EPS = 0.1
+
+def make_model(width, fixed):
     """Architecture scaled by a width parameter (e.g. ResNet18 widths [k,2k,4k,8k])."""
     # TODO
     pass
 
 def add_label_noise(labels, p, num_classes, rng):
-    """Each label kept w.p. (1-p), else replaced by a uniform random label. Drawn ONCE."""
+    """Each label kept w.p. (1-p), else replaced by a uniform incorrect label. Drawn once."""
     flip = rng.random(len(labels)) < p
     noisy = labels.copy()
-    noisy[flip] = rng.integers(0, num_classes, size=flip.sum())
+    replacement = rng.integers(0, num_classes - 1, size=int(flip.sum()))
+    original = labels[flip]
+    noisy[flip] = replacement + (replacement >= original)
     return noisy
 
-def train(model, data, optimizer, num_steps):
+def train(model, train_data, test_data, optimizer, num_steps, fixed, record_every=None):
     """Train; return train_error and test_error (record per-epoch for epoch-wise studies)."""
     # TODO
     pass
 
-def effective_complexity(training_procedure, distribution, epsilon=0.1):
-    """The organizing quantity: the largest sample count on which the procedure reaches
-    (approximately) zero training error. THE missing definition. TODO."""
+def effective_complexity(procedure, distribution, sample_grid, trials, epsilon=EPS):
+    """Largest sample count on which the procedure reaches approximately zero training error."""
+    # TODO
     pass
 
-def sweep(knob_values, fixed):
-    """Vary one knob (model width, #epochs, or #samples), training to completion,
-    and record train/test error to expose how error behaves along the complexity axis. TODO."""
-    results = []
-    for v in knob_values:
-        # build procedure with this knob, train, record (train_err, test_err)
-        pass
-    return results
+def model_size_sweep(widths, fixed):
+    """Vary model width while keeping the rest of the procedure fixed."""
+    # TODO
+    pass
+
+def training_time_sweep(width, step_budget, fixed):
+    """Train one model and record errors over training time."""
+    # TODO
+    pass
+
+def sample_count_sweep(width, sample_sizes, fixed):
+    """Vary the number of training samples while keeping model and procedure fixed."""
+    # TODO
+    pass
 ```

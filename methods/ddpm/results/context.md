@@ -1,5 +1,3 @@
-# Context: the ground a high-fidelity, likelihood-based image generator would stand on (mid-2020)
-
 ## Research question
 
 The concrete goal is a generative model of natural images that simultaneously hits four targets that, as of mid-2020, no single family achieves together:
@@ -76,6 +74,14 @@ import torch.nn as nn
 from torch.optim import Adam
 from torchvision import transforms as T
 
+def get_step_variance_schedule(schedule, *, start, end, steps):
+    # TODO: choose the latent path's step-variance schedule.
+    pass
+
+def extract(coefs, t, x_shape):
+    # TODO: gather per-step coefficients and broadcast them to image tensors.
+    pass
+
 def to_model_input(img):
     return img * 2.0 - 1.0
 
@@ -87,31 +93,40 @@ transform = T.Compose([
 
 class ImageBackbone(nn.Module):
     """Same-shape image network with optional scalar conditioning."""
-    def __init__(self, channels=3, cond_dim=None, base_channels=128):
+    def __init__(self, image_size=32, channels=3, base_channels=128,
+                 out_channels=None, channel_mult=(1, 2, 4, 8),
+                 num_res_blocks=2, attn_resolutions=(), dropout=0.0):
         super().__init__()
         # TODO: choose the architecture and conditioning mechanism.
         pass
 
-    def forward(self, x, cond=None):
+    def forward(self, x, t):
         # TODO: return an image-shaped tensor.
         pass
 
 class ImageLatentGenerator(nn.Module):
     """Latent-variable image generator trained by a scalar objective."""
-    def __init__(self, backbone, image_size, latent_steps=None):
+    def __init__(self, backbone, image_size, latent_steps=1000,
+                 schedule="linear", variance_start=None, variance_end=None,
+                 variance_type=None,
+                 prediction_type=None, loss_type=None):
         super().__init__()
         self.backbone = backbone
         self.image_size = image_size
         self.latent_steps = latent_steps
-        # TODO: choose the latent process and cache any fixed coefficients.
+        # TODO: choose the latent process, prediction target, variance branch, loss, and cached coefficients.
         pass
 
-    def training_loss(self, x0):
-        # TODO: scalar loss for fitting the generator to data x0.
+    def training_losses(self, x0, t=None, noise=None):
+        # TODO: per-example losses for fitting the generator to data x0.
+        pass
+
+    def training_loss(self, x0, t=None, noise=None):
+        # TODO: scalar loss for a training step.
         pass
 
     @torch.no_grad()
-    def sample(self, batch_size):
+    def sample(self, batch_size, device=None):
         # TODO: draw a batch of images from the trained generator.
         pass
 
@@ -132,7 +147,7 @@ class ModelEMA:
             else:
                 value.copy_(src)
 
-model = ImageLatentGenerator(ImageBackbone(), image_size=32)
+model = ImageLatentGenerator(ImageBackbone(image_size=32), image_size=32)
 opt = Adam(model.parameters(), lr=2e-4)
 ema = ModelEMA(model, decay=0.9999)
 

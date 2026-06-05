@@ -20,7 +20,7 @@ There are other ways to chase serving speed, and I should separate them before I
 
 So what controls the cache size? The number of key heads and value heads. In the standard layer I have $h$ query heads and, to match, $h$ key heads and $h$ value heads — each head a separate learned projection, each contributing its own slice to the cache. Do I actually need $h$ key/value heads? The query I bring to a decoding step is just the current token's query — tiny, one position, not cached. It's the *keys and values* that accumulate across all past positions and get reloaded every step. The cache cost is entirely about how many distinct key/value heads I store, not how many query heads I run.
 
-So here's the lever. Keep all $h$ query heads — they're cheap to keep and they do the representational work of attending in $h$ different ways. But collapse the key and value projections down. The extreme version: a *single* key head and a *single* value head, shared by all $h$ query heads. Every query head still computes its own attention pattern, but they all attend over the same one set of keys and one set of values.
+The query heads are cheap to keep, and they do the representational work of attending in $h$ different ways, so I should not cut them first. The accumulating objects are the key and value heads. The extreme version is a *single* key head and a *single* value head, shared by all $h$ query heads. Every query head still computes its own attention pattern, but they all attend over the same one set of keys and one set of values.
 
 Let me redo the count under that change and confirm it actually moves the offending term. Arithmetic is essentially unchanged — still $\Theta(b\,n\,d^2)$, the query/output projections still dominate (the key/value projections got smaller, which only helps). Memory: the cache is now $[b, n, k]$ — no $h$ — so summed over steps it's $\Theta(b\,n^2 k) = \Theta(b\,n^2 d / h)$. Plus the small reloads of activations $\Theta(b\,n\,d)$ and weights $\Theta(n\,d^2)$. New ratio:
 
@@ -38,17 +38,17 @@ Let me see what the diagnostic says about an intermediate count, because the who
 
 $$\frac{1}{d} + \frac{nG}{d\,h} + \frac{1}{b}.$$
 
-At $G = h$ the cache term is $n/d$ — I'm back to full multi-head, no surprise. At $G = 1$ it's $n/(dh)$ — the single-head case. And in between it slides linearly: the cache, and the per-step memory traffic that dominates decoding, is simply *proportional to $G$*. So $G$ is a continuous dial between the two regimes, and it dials exactly the quantity I care about.
+At $G = h$ the cache term is $n/d$ — I'm back to full multi-head, no surprise. At $G = 1$ it's $n/(dh)$ — the single-head case. And in between it slides linearly: the cache, and the per-step memory traffic that dominates decoding, is simply *proportional to $G$*. So $G$ is a discrete dial between the two regimes, and it dials exactly the quantity I care about.
 
 What does an intermediate $G$ mean structurally? I have $h$ query heads and I want them to share $G$ key/value heads. The natural thing: partition the $h$ query heads into $G$ groups of $h/G$ each, and give each group its own single key head and value head, shared within the group. So query heads in the same group attend over a common key/value subspace; query heads in different groups get different ones. $G = 1$ is one big group — all query heads share — which is the single-head collapse. $G = h$ is $h$ groups of one — every query head gets its own — which is full multi-head. The grouping *is* the interpolation, and the two methods I started with are literally its two endpoints.
 
 Why is an intermediate $G$ not just a compromise but a genuinely good trade? A few things line up. First, capacity: instead of one shared subspace I now have $G$ of them, so the query heads aren't all forced through the same bottleneck — the representational damage of the collapse is spread over $G$ buckets rather than concentrated in one. That should recover most of the quality and, I'd bet, fix the brittleness, since the optimization no longer has to cram everything through a single head. Second, and this is the part I like, the trade *scales the right way*. Bigger models use more heads $h$. The single-head collapse is a fixed cut to one head regardless of $h$, so as $h$ grows it becomes a relatively more aggressive amputation of capacity. But if I instead fix the *proportion* — say $G$ a fixed fraction of $h$, or just a fixed modest number like $G=8$ — then as the model grows I keep cutting the cache by the same proportional factor $h/G$ while the per-group capacity grows with the model. The reduction in bandwidth and the reduction in capacity stay matched as I scale.
 
-There's a sharper version of why intermediate $G$ is nearly free on the speed side for the large models I actually deploy. The cache scales with $d$ (it's $b\,G\,n\,k$ and $G k \le d$), but the model's parameters and FLOPs scale with $d^2$. So as the model gets bigger, the cache term shrinks *relative* to the compute term — large models are less dominated by the cache to begin with. Which means moving $G$ up from $1$ toward $h$ only slowly re-introduces the bandwidth cost: near $G=1$ the cache is a small slice of the total time, so a few extra key/value heads barely move the wall clock; it's only as $G$ approaches $h$ that the cache term grows back to dominate. So the speed-versus-$G$ curve is flat near the cheap end and steep near the expensive end — I can buy a lot of capacity back from $G=1$ for almost no time, which is exactly the shape I want. Something like $G = 8$ sits in the flat region: near the single-head speed, but with eight subspaces instead of one.
+There's a sharper version of why intermediate $G$ should be cheap on the speed side for the large models I actually deploy. The cache scales at most linearly with the model width, while the model's parameters and FLOPs scale with $d^2$. So as the model gets bigger, the cache term shrinks *relative* to the compute term — large models are less dominated by the cache to begin with. That means moving $G$ up from $1$ toward $h$ should only slowly re-introduce bandwidth cost at first; the expensive region should be closer to $G=h$, where the cache has grown all the way back to the full multi-head size. A small integer such as $G = 8$ is a sensible target to try: eight subspaces instead of one, while the cache is still cut by $h/8$.
 
 And there's a sharding subtlety that quietly favours $G$ over $1$. When I shard a big model across, say, $P$ accelerators, each partition wants its own copy of the key/value heads to work with. With a single shared head and $P$ partitions, that one head gets *replicated* $P$ times across the partitions — so the "single head" isn't really paying off once it drops below the partition count; I'm storing copies. If instead I pick $G$ around the number of partitions, each partition naturally owns a distinct key/value head and there's no wasteful replication. The grouping lines up with the hardware.
 
-One scope check. This bandwidth pain is specifically a *decoding* problem — it comes from the sequential, one-token-at-a-time loop where each step reloads the cache. The encoder processes its whole input in parallel; it's compute-bound, not bandwidth-bound, and it has no growing cache to stream. So there's no reason to pay the capacity cost of grouping there. Apply the grouping to the decoder's self-attention and to the cross-attention (both run inside the sequential decode loop), but leave the encoder's self-attention as plain multi-head. Free quality, no speed cost.
+This bandwidth pain is specifically a *decoding* problem — it comes from the sequential, one-token-at-a-time loop where each step reloads the cache. The encoder processes its whole input in parallel; it's compute-bound, not bandwidth-bound, and it has no growing cache to stream. So there's no reason to pay the capacity cost of grouping there. Apply the grouping to the decoder's self-attention and to the cross-attention, both of which sit inside the sequential decode loop, but leave the encoder's self-attention as plain multi-head.
 
 So I think the architecture is settled: partition the $h$ query heads into $G$ groups, one key head and one value head per group, shared within the group, cache proportional to $G$, with $G$ a small number that scales sensibly. Now the harder, more practical question, and honestly the one that decides whether any of this gets used.
 
@@ -70,7 +70,7 @@ After the surgery the model isn't quite itself — the averaged key/value heads 
 
 So the full recipe is two moves: convert the checkpoint by mean-pooling each group's key and value projections into one, then continue pre-training briefly to let it adapt. The architecture is the grouping; the cheap-to-obtain part is the conversion. Together they should let me take a trained multi-head model and get a faster-decoding grouped model for a few percent of the original compute, with capacity loss controlled by $G$ instead of forced all the way to one shared subspace.
 
-Let me write the code, grounding it in how a real decoder attention layer is structured. The architecture first. I have $H$ query heads and a smaller number of key/value heads; call it $G$ groups, with group size $H/G$. The query projection outputs $H$ heads' worth; the key and value projections output only $G$ heads' worth — that's the whole structural change, and it's why the cache is $G$ times smaller. Then, to form the attention scores, each of the $G$ key/value heads has to serve its $H/G$ query heads, so I expand the key/value heads back up to $H$ by repeating each one $H/G$ times — repeat, not re-project, so I store $G$ in the cache but compute against $H$:
+Let me write the code in the shape of the decoder attention module I actually need. The config carries $H$ query heads and $G$ key/value heads. The query projection still emits $H$ heads. The key and value projections emit only $G$ heads, so the cache stores $G$. Right before the score matmul, after any cache update, I repeat each stored key/value head $H/G$ times so the tensors line up with the $H$ query heads. The repeat is deliberately after the cache: store the small tensor, expand only for the local computation.
 
 ```python
 import torch
@@ -79,91 +79,160 @@ import torch.nn.functional as F
 import math
 
 
-def repeat_kv(x: torch.Tensor, n_rep: int) -> torch.Tensor:
-    # x: [b, G, s, k]  ->  [b, G*n_rep, s, k]
-    # Each of the G key/value heads is repeated n_rep = H/G times so it
-    # serves its group of query heads. Only G heads live in the cache;
-    # the expansion happens after loading, just before the score matmul.
-    b, G, s, k = x.shape
-    if n_rep == 1:
-        return x
-    x = x[:, :, None, :, :].expand(b, G, n_rep, s, k)
-    return x.reshape(b, G * n_rep, s, k)
-
-
-class GroupedQueryAttention(nn.Module):
-    def __init__(self, hidden_size, num_heads, num_kv_heads):
-        super().__init__()
-        self.num_heads = num_heads          # H query heads
-        self.num_kv_heads = num_kv_heads     # G key/value heads (groups)
-        self.num_kv_groups = num_heads // num_kv_heads   # group size = H/G = n_rep
+class AttentionConfig:
+    def __init__(
+        self,
+        hidden_size,
+        num_heads,
+        num_key_value_heads=None,
+        attention_dropout=0.0,
+        attention_bias=False,
+    ):
+        self.hidden_size = hidden_size
+        self.num_heads = num_heads
         self.head_dim = hidden_size // num_heads
+        self.num_key_value_heads = (
+            num_heads if num_key_value_heads is None else num_key_value_heads
+        )
+        if hidden_size % num_heads != 0:
+            raise ValueError("hidden_size must be divisible by num_heads")
+        if num_heads % self.num_key_value_heads != 0:
+            raise ValueError("num_heads must be divisible by num_key_value_heads")
+        self.num_key_value_groups = num_heads // self.num_key_value_heads
+        self.attention_dropout = attention_dropout
+        self.attention_bias = attention_bias
 
-        # Queries: full H heads. Keys/Values: only G heads -> cache is G/H the size.
-        self.q_proj = nn.Linear(hidden_size, num_heads * self.head_dim, bias=False)
-        self.k_proj = nn.Linear(hidden_size, num_kv_heads * self.head_dim, bias=False)
-        self.v_proj = nn.Linear(hidden_size, num_kv_heads * self.head_dim, bias=False)
-        self.o_proj = nn.Linear(num_heads * self.head_dim, hidden_size, bias=False)
 
-    def forward(self, x, kv_cache=None, mask=None):
-        b, s, _ = x.shape
-        q = self.q_proj(x).view(b, s, self.num_heads, self.head_dim).transpose(1, 2)
-        k = self.k_proj(x).view(b, s, self.num_kv_heads, self.head_dim).transpose(1, 2)
-        v = self.v_proj(x).view(b, s, self.num_kv_heads, self.head_dim).transpose(1, 2)
+def repeat_key_value_heads(hidden_states, n_rep):
+    # [b, G, s, k] -> [b, G*n_rep, s, k]. Only the [b, G, s, k] tensor
+    # is cached; this expansion is local to the attention matmul.
+    batch, num_key_value_heads, seq_len, head_dim = hidden_states.shape
+    if n_rep == 1:
+        return hidden_states
+    hidden_states = hidden_states[:, :, None, :, :].expand(
+        batch, num_key_value_heads, n_rep, seq_len, head_dim
+    )
+    return hidden_states.reshape(
+        batch, num_key_value_heads * n_rep, seq_len, head_dim
+    )
 
-        if kv_cache is not None:                  # the thing we stream each decode step
-            k, v = kv_cache.append(k, v)          # cache holds only G heads
 
-        # Expand G kv-heads up to H to match the query heads (no extra cache cost).
-        k = repeat_kv(k, self.num_kv_groups)
-        v = repeat_kv(v, self.num_kv_groups)
+class DecoderAttention(nn.Module):
+    def __init__(self, config, layer_idx=0):
+        super().__init__()
+        self.config = config
+        self.layer_idx = layer_idx
+        self.hidden_size = config.hidden_size
+        self.num_heads = config.num_heads
+        self.head_dim = config.head_dim
+        self.num_key_value_heads = config.num_key_value_heads
+        self.num_key_value_groups = config.num_key_value_groups
+        self.attention_dropout = config.attention_dropout
+        self.q_proj = nn.Linear(
+            self.hidden_size,
+            self.num_heads * self.head_dim,
+            bias=config.attention_bias,
+        )
+        self.k_proj = nn.Linear(
+            self.hidden_size,
+            self.num_key_value_heads * self.head_dim,
+            bias=config.attention_bias,
+        )
+        self.v_proj = nn.Linear(
+            self.hidden_size,
+            self.num_key_value_heads * self.head_dim,
+            bias=config.attention_bias,
+        )
+        self.o_proj = nn.Linear(
+            self.hidden_size, self.hidden_size, bias=config.attention_bias
+        )
 
-        scores = torch.matmul(q, k.transpose(2, 3)) / math.sqrt(self.head_dim)
-        if mask is not None:
-            scores = scores + mask
-        attn = F.softmax(scores, dim=-1, dtype=torch.float32).to(q.dtype)
-        out = torch.matmul(attn, v)
-        out = out.transpose(1, 2).reshape(b, s, self.num_heads * self.head_dim)
-        return self.o_proj(out)
+    def forward(self, hidden_states, attention_mask=None, past_key_value=None):
+        bsz, q_len, _ = hidden_states.size()
+        query_states = self.q_proj(hidden_states)
+        key_states = self.k_proj(hidden_states)
+        value_states = self.v_proj(hidden_states)
+
+        query_states = query_states.view(
+            bsz, q_len, self.num_heads, self.head_dim
+        ).transpose(1, 2)
+        key_states = key_states.view(
+            bsz, q_len, self.num_key_value_heads, self.head_dim
+        ).transpose(1, 2)
+        value_states = value_states.view(
+            bsz, q_len, self.num_key_value_heads, self.head_dim
+        ).transpose(1, 2)
+
+        if past_key_value is not None:
+            key_states, value_states = past_key_value.update(
+                key_states, value_states, self.layer_idx
+            )
+
+        key_states = repeat_key_value_heads(key_states, self.num_key_value_groups)
+        value_states = repeat_key_value_heads(value_states, self.num_key_value_groups)
+
+        attn_weights = torch.matmul(
+            query_states, key_states.transpose(2, 3)
+        ) / math.sqrt(self.head_dim)
+        if attention_mask is not None:
+            attn_weights = attn_weights + attention_mask[:, :, :, : key_states.shape[-2]]
+        attn_weights = F.softmax(
+            attn_weights, dim=-1, dtype=torch.float32
+        ).to(query_states.dtype)
+        attn_weights = F.dropout(
+            attn_weights, p=self.attention_dropout, training=self.training
+        )
+        attn_output = torch.matmul(attn_weights, value_states)
+        attn_output = attn_output.transpose(1, 2).contiguous()
+        attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
+        return self.o_proj(attn_output)
 ```
 
-And the conversion — the surgical edit that takes a trained multi-head layer and produces the grouped one by mean-pooling within each group. The query and output projections copy straight over; only key and value change. I reshape the $H$ trained heads into $G$ groups of $H/G$, average over the within-group head axis, and that average is the group's single key/value head:
+The conversion is the same surgical idea in code. I reshape the trained key/value projection rows as heads, group them, average over the within-group axis, and write the result into the smaller key/value projection. Query and output projections copy directly. If $G=h$, the group size is one and this is exactly the identity on the key/value weights; if $G=1$, the mean is over all heads.
 
 ```python
-def convert_mha_to_gqa(mha, num_kv_heads):
-    H = mha.num_heads
-    G = num_kv_heads
-    rep = H // G                              # heads per group
-    Dh = mha.head_dim
+def convert_attention_checkpoint(pretrained_attention, config):
+    converted = DecoderAttention(
+        config, layer_idx=getattr(pretrained_attention, "layer_idx", 0)
+    )
+    source_heads = pretrained_attention.num_heads
+    target_heads = config.num_key_value_heads
+    head_dim = pretrained_attention.head_dim
+    if source_heads % target_heads != 0:
+        raise ValueError("source heads must be divisible by target key/value heads")
+    heads_per_group = source_heads // target_heads
 
-    gqa = GroupedQueryAttention(mha.q_proj.in_features, H, G)
-    # Unchanged structure: copy directly.
-    gqa.q_proj.weight.data.copy_(mha.q_proj.weight.data)
-    gqa.o_proj.weight.data.copy_(mha.o_proj.weight.data)
+    def copy_linear(dst, src):
+        dst.weight.copy_(src.weight)
+        if dst.bias is not None and src.bias is not None:
+            dst.bias.copy_(src.bias)
 
-    # Key/value: mean-pool the rep trained head projections in each group
-    # into one. weight rows are [head, head_dim, in_features]; average over
-    # the head axis within each group.
-    def mean_pool(weight):                    # weight: [H*Dh, in]
-        w = weight.view(G, rep, Dh, -1)        # [G, rep, Dh, in]
-        return w.mean(dim=1).reshape(G * Dh, -1)  # [G*Dh, in]: one head per group
+    def mean_pool_weight(weight):
+        grouped = weight.view(target_heads, heads_per_group, head_dim, -1)
+        return grouped.mean(dim=1).reshape(target_heads * head_dim, -1)
 
-    gqa.k_proj.weight.data.copy_(mean_pool(mha.k_proj.weight.data))
-    gqa.v_proj.weight.data.copy_(mean_pool(mha.v_proj.weight.data))
-    return gqa
-    # G == H: rep == 1, mean over one element -> identity (still MHA).
-    # G == 1: mean over all H heads -> single shared kv head.
-```
+    def mean_pool_bias(bias):
+        grouped = bias.view(target_heads, heads_per_group, head_dim)
+        return grouped.mean(dim=1).reshape(target_heads * head_dim)
 
-```python
-def uptrain(model, pretrain_step_fn, original_steps, alpha=0.05):
-    # After conversion the averaged kv-heads don't perfectly fit the rest of
-    # the network; run the ORIGINAL pre-training recipe/data for a small
-    # fraction alpha of the original steps to let the model adapt. Cheap:
-    # ~5% of a pre-training run, vs. a full run from scratch.
-    for step in range(int(alpha * original_steps)):
+    with torch.no_grad():
+        copy_linear(converted.q_proj, pretrained_attention.q_proj)
+        copy_linear(converted.o_proj, pretrained_attention.o_proj)
+        converted.k_proj.weight.copy_(mean_pool_weight(pretrained_attention.k_proj.weight))
+        converted.v_proj.weight.copy_(mean_pool_weight(pretrained_attention.v_proj.weight))
+        if converted.k_proj.bias is not None and pretrained_attention.k_proj.bias is not None:
+            converted.k_proj.bias.copy_(mean_pool_bias(pretrained_attention.k_proj.bias))
+        if converted.v_proj.bias is not None and pretrained_attention.v_proj.bias is not None:
+            converted.v_proj.bias.copy_(mean_pool_bias(pretrained_attention.v_proj.bias))
+    return converted
+
+
+def continue_pretraining(model, pretrain_step_fn, original_steps, alpha=0.05):
+    # The averaged key/value heads have to re-coordinate with the untouched
+    # query/output projections and the rest of the network.
+    for _ in range(int(alpha * original_steps)):
         pretrain_step_fn(model)
     return model
 ```
 
-The causal chain, start to end: autoregressive decoding is memory-bound, and the diagnostic pins the bottleneck to one term — the $n/d$ in the memory-to-compute ratio — which is the cost of streaming a key/value cache that carries one key and one value per head. Collapsing to a single shared key/value head cuts that term by the head count $h$ and makes decoding fast, but forcing all query heads through one subspace costs quality and destabilizes training. Since the cache cost is simply proportional to the number of key/value heads, that number is a continuous dial: partition the query heads into $G$ groups sharing $G$ key/value heads, with the single-head and full multi-head cases as the $G=1$ and $G=h$ endpoints — capacity spread over $G$ subspaces, cache cut by $h/G$, and the speed curve flat near the cheap end so a modest $G$ buys back most of the quality for almost no time. And because only the key/value projections change, an existing multi-head checkpoint converts by mean-pooling each group's trained key/value projections into one — the most information-preserving merge — followed by a few percent of continued pre-training to adapt, yielding a fast model at near-multi-head quality without paying for a fresh pre-training run.
+The causal chain, start to end: autoregressive decoding is memory-bound, and the diagnostic pins the bottleneck to one term — the $n/d$ in the memory-to-compute ratio — which is the cost of streaming a key/value cache that carries one key and one value per head. Collapsing to a single shared key/value head cuts that term by the head count $h$ and makes decoding fast, but forcing all query heads through one subspace costs quality and destabilizes training. Since the cache cost is simply proportional to the number of key/value heads, that number is a discrete dial: partition the query heads into $G$ groups sharing $G$ key/value heads, with the single-head and full multi-head cases as the $G=1$ and $G=h$ endpoints — capacity spread over $G$ subspaces and cache cut by $h/G$. And because only the key/value projections change, an existing multi-head checkpoint converts by mean-pooling each group's trained key/value projections into one — the most information-preserving merge — followed by a few percent of continued pre-training to adapt, giving a way to lower decode bandwidth without paying for a fresh pre-training run.

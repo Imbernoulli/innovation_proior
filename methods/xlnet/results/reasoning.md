@@ -52,7 +52,7 @@ Let me make this concrete and see if it breaks. Take two permutations z^(1) and 
 
   z_{<t}^{(1)} = z_{<t}^{(2)} = z_{<t},   but   z_t^{(1)} = i ≠ j = z_t^{(2)}.
 
-Substitute each into the formula. In both cases the context is x_{z_{<t}}, so h_θ(x_{z_{<t})}) is the *same vector*, so:
+Substitute each into the formula. In both cases the context is x_{z_{<t}}, so h_θ(x_{z_{<t}}) is the *same vector*, so:
 
   p_θ(X_i = x | x_{z_{<t}}) = exp(e(x)ᵀ h(x_{z_{<t}})) / Σ_{x′} … = p_θ(X_j = x | x_{z_{<t}}).
 
@@ -64,18 +64,15 @@ So I replace h_θ(x_{z_{<t}}) with a new kind of representation that *also takes
 
 Now positions i and j get different g's because z_t differs, so the distributions can differ. Good — but now I have to actually *build* g_θ(x_{z_{<t}}, z_t), and that's where the next wall is.
 
-The natural idea: "stand at" the target position z_t and let that position issue a query that gathers information from the context x_{z_{<t}} through attention. So g is the output of an attention operation whose query is keyed by the position z_t and whose keys/values come from the context tokens. Fine. But now think about what g at position z_t is allowed to *see*, and you hit a contradiction.
+The natural idea: "stand at" the target position z_t and let that position issue a query that gathers information from the context x_{z_{<t}} through attention. So g is the output of an attention operation whose query is keyed by the position z_t and whose keys/values come from the context tokens. Fine. But now I have to separate two jobs that a standard Transformer normally collapses into one hidden state.
 
-Requirement (1): to predict the token x_{z_t}, the representation g_θ(x_{z_{<t}}, z_t) must use the *position* z_t but must absolutely *not* use the *content* x_{z_t} itself. If g could see the token sitting at z_t, then predicting that very token from a representation that already contains it is trivial — the objective collapses, the model just reads off the answer.
+To predict the token x_{z_t}, the representation g_θ(x_{z_{<t}}, z_t) must use the *position* z_t but must absolutely *not* use the *content* x_{z_t} itself. If g could see the token sitting at z_t, then predicting that very token from a representation that already contains it is trivial — the objective collapses, the model just reads off the answer.
 
-Requirement (2): but this *same* position z_t will, for later steps in the order, serve as *context* for predicting some other token x_{z_j} with j > t. And to be useful context, the representation at z_t had *better* encode the content x_{z_t} — otherwise the later token is being predicted from a context that has forgotten what word is actually at z_t.
+But this *same* position z_t will, for later steps in the order, serve as *context* for predicting some other token x_{z_j} with j > t. And to be useful context, the representation at z_t had *better* encode the content x_{z_t}; otherwise the later token is being predicted from a context that has forgotten what word is actually at z_t.
 
-So the representation at a single position needs, simultaneously, to *exclude* its own content (when it's the thing being predicted) and *include* its own content (when it's serving as context for something else). One vector cannot do both. In a standard Transformer there's exactly one hidden state per position, so this is genuinely impossible to satisfy with a single stream.
+So the representation at a single position needs, simultaneously, to *exclude* its own content when it is the thing being predicted and *include* its own content when it is serving as context for something else. One vector cannot do both. In a standard Transformer there's exactly one hidden state per position, so a single stream cannot satisfy the two uses.
 
-The way out is to stop insisting on one representation per position and keep *two*:
-
-- A **content** representation, h_{z_t} = h_θ(x_{z_{≤t}}) — it attends to the context *and to z_t's own content*, exactly like a normal Transformer hidden state. This is the one that serves as context for later predictions (requirement 2). Note the ≤ t: it includes itself.
-- A **query** representation, g_{z_t} = g_θ(x_{z_{<t}}, z_t) — it attends to the context x_{z_{<t}} *and to the position z_t*, but *not* to the content x_{z_t}. This is the one I feed into the softmax to predict x_{z_t} (requirement 1). Note the < t: it excludes itself.
+The way out is to stop insisting on one representation per position and keep two. The content representation is h_{z_t} = h_θ(x_{z_{≤t}}): it attends to the context *and to z_t's own content*, exactly like a normal Transformer hidden state, so it can serve as context for later predictions. The ≤ t matters because it includes itself. The query representation is g_{z_t} = g_θ(x_{z_{<t}}, z_t): it attends to the context x_{z_{<t}} and to the position z_t, but not to the content x_{z_t}, so it is the one I feed into the softmax to predict x_{z_t}. The < t matters because it excludes itself.
 
 Two streams, sharing all parameters, updated in parallel. Let me write the per-layer update, schematically:
 
@@ -98,25 +95,25 @@ Let me push on optimization now, because I suspect the full objective is going t
 
   max_θ  E_{z ∼ Z_T} [ log p_θ(x_{z_{>c}} | x_{z_{≤c}}) ]  =  E_{z ∼ Z_T} [ Σ_{t=c+1}^{|z|} log p_θ(x_{z_t} | x_{z_{<t}}) ].
 
-The tail is exactly the set of tokens with the longest available context under the current order, so I'm keeping the informative predictions and dropping the starved ones. Pick c so that roughly 1/K of the tokens are predicted — about a sixth in practice. And there's a nice efficiency dividend: for the non-target tokens z_{≤c} I never call the softmax, so I don't need their *query* representations at all — I only need their content stream (to serve as context). Skip the query stream for unpredicted positions and save compute and memory.
+The tail is exactly the set of tokens with the longest available context under the current order, so I'm keeping the informative predictions and dropping the starved ones. Pick c so that roughly 1/K of the tokens are predicted — about a sixth in practice. And there's a nice efficiency dividend: for the non-target tokens z_{≤c} I never call the softmax, so I only need their content stream to serve as context. If I compact the computation to the selected prediction slots, I save query-stream compute and memory.
 
-Worth pausing on how this lines up with the denoising AE, because superficially "only predict a subset" sounds like masking. Both end up doing partial prediction. For the AE it's a *necessity* — if it masked everything there'd be no context left to reconstruct from. For me it's an *optimization* choice — I could predict everything in principle. But the deep difference survives: even restricted to the same target set, when "New" precedes "York" in my order, I train log p(York | New, is, a, city), which contains the New→York dependency the AE's product factorization throws away. Formally: let T be the targets and N = x \ T the non-targets. The AE optimizes Σ_{x∈T} log p(x | N) — every target conditioned on the non-targets only. I optimize Σ_{x∈T} log p(x | N ∪ T_{<x}), where T_{<x} is the set of targets that precede x in the sampled order — every target conditioned on the non-targets *and* on the earlier targets. So for any target–context dependency (x, U): if U ⊆ N, both of us capture it; but if U reaches into the targets, U ⊆ N ∪ T_{<x} with U ∩ T_{<x} ≠ ∅, then only I capture it. I cover a strict superset of the dependencies — denser training signal from the same targets. (And against a plain forward AR model the same lens shows its limit: it only ever covers (x, U) with U among the tokens *before x in the original order*; anything to x's right, like (New, {York}), it can never cover, while I cover it in expectation over orders.)
+Worth pausing on how this lines up with the denoising AE, because superficially "only predict a subset" sounds like masking. Both end up doing partial prediction. For the AE it's a *necessity* — if it masked everything there'd be no context left to reconstruct from. For me it's an *optimization* choice — I could predict everything in principle. But the deep difference survives: even restricted to the same target set, when "New" precedes "York" in my order, I train log p(York | New, is, a, city), which contains the New→York dependency the AE's product factorization throws away. Formally: let T be the targets and N = x \ T the non-targets. The AE optimizes Σ_{x∈T} log p(x | N) — every target conditioned on the non-targets only. I optimize Σ_{x∈T} log p(x | N ∪ T_{<x}), where T_{<x} is the set of targets that precede x in the sampled order — every target conditioned on the non-targets *and* on the earlier targets. So for any target–context dependency (x, U): if U ⊆ N, both of us capture it; but if U reaches into the targets, U ⊆ N ∪ T_{<x} with U ∩ T_{<x} ≠ ∅, then only I capture it. Whenever the target set contains such earlier-target dependencies, I get a strictly denser training signal from the same targets. (And against a plain forward AR model the same lens shows its limit: it only ever covers (x, U) with U among the tokens *before x in the original order*; anything to x's right, like (New, {York}), it can never cover, while I cover it in expectation over orders.)
 
 Now I want to fold in the recurrence and relative-position machinery from the state-of-the-art AR language model, because my objective is in the AR framework and I'd be foolish not to inherit longer context for free.
 
-Relative positional encoding first, and it's not optional — it's *forced* by my design. I've already committed to keeping tokens in natural order and realizing the permutation purely through attention masking, with positional encodings tied to the *original* positions. If I used absolute position embeddings added to the inputs, the recurrence below would break (position-1 of segment two would collide with position-1 of segment one), and more fundamentally the "order" the model perceives must come from the *mask*, not from baked-in absolute coordinates. The relative scheme gives me exactly that: the attention logit between a query at actual position i and a key at actual position j depends on position only through the relative distance i−j. Concretely the logit decomposes into a content term and a relative-position term, each with its own global bias:
+Relative positional encoding first, because it is the cleanest way to make this design reusable across segments. I've already committed to keeping tokens in natural order and realizing the permutation purely through attention masking, with positional encodings tied to the *original* positions. If I used absolute position embeddings added to the inputs, the recurrence below would break (position-1 of segment two would collide with position-1 of segment one), and more fundamentally the "order" the model perceives should come from the *mask*, not from baked-in absolute coordinates. The relative scheme gives me exactly that: the attention logit between a query at actual position i and a key at actual position j depends on position only through the relative distance i−j. Concretely the logit decomposes into a content term and a relative-position term, each with its own global bias:
 
   A_{ij} = (q_i + u)ᵀ k_j  +  (q_i + v)ᵀ W_R r_{i−j},
 
-where q_i, k_j are the content query/key, r_{i−j} the sinusoidal relative-distance embedding, W_R its projection, and u, v two learnable global bias vectors. The first term is content-to-content; the second, content-to-relative-position. This is applied in *both* streams, with distances computed from the actual indices z_i − z_j — never the permutation indices — so the model always knows the true geometry regardless of factorization order. (This is, again, what distinguishes me from the orderless density estimators: I am order-aware through these encodings; they are not.)
+where q_i, k_j are the content query/key, r_{i−j} the sinusoidal relative-distance embedding, W_R its projection, and u, v two learnable global bias vectors. The first term is content-to-content; the second, content-to-relative-position. This is applied in *both* streams, with distances computed from the actual sequence indices i−j — or z_t−z_s when I am writing the same pair in factorization-order notation — never from the ranks t−s in the sampled order. That keeps the true geometry visible regardless of factorization order. (This is, again, what distinguishes me from the orderless density estimators: I am order-aware through these encodings; they are not.)
 
 Now the segment recurrence. Take a long sequence and split it into two segments, x̃ = s_{1:T} and x = s_{T+1:2T}, with their own permutations z̃ and z. Process the first segment under z̃ and cache its per-layer *content* representations h̃^{(m)}. Then for the current segment, the content-stream update simply lets each query also attend to the cached memory, concatenated along the sequence dimension:
 
   h_{z_t}^{(m)} ← Attention(Q = h_{z_t}^{(m−1)}, KV = [ h̃^{(m−1)}, h_{z_{≤t}}^{(m−1)} ]),
 
-and the query stream the same way with the cache prepended. The gradient does not flow into the cache (it's read-only memory). Here's the subtle, lovely part: because positional encodings depend only on the *actual* positions, and the cached states are just vectors at known actual positions, this attention update *does not depend on z̃* at all — once I have h̃^{(m)}, I can reuse it without ever knowing what factorization order produced it. So I can cache and reuse memory freely across segments, and in expectation the model learns to use that memory averaged over all orders of the previous segment.
+and the query stream the same way with the cache prepended. The gradient does not flow into the cache; it is read-only memory. Because positional encodings depend only on the *actual* positions, and the cached states are just vectors at known actual positions, this attention update *does not depend on z̃* at all — once I have h̃^{(m)}, I can reuse it without ever knowing what factorization order produced it. So I can cache and reuse memory freely across segments, and in expectation the model learns to use that memory averaged over all orders of the previous segment.
 
-Two segments at finetuning need handling too. Following the standard two-sentence format I feed [CLS, A, SEP, B, SEP] and run permutation language modeling over the concatenation, reusing memory only within the same context. I don't add an absolute segment embedding to each position the way the denoising AE does; that's inconsistent with my whole relative philosophy and it can't extend past two segments. Instead I encode segments *relatively*: for a query at i attending to a key at j, I ask only whether i and j are in the *same* segment, using a learnable vector s_+ if so and s_− if not, and add a term a_{ij} = (q_i + b)ᵀ s_{ij} to the logit (b a learnable per-head bias). Only the same-segment-or-not relation matters, not which specific segment — that's the relative-encoding spirit, it generalizes better, and it lets me finetune on tasks with more than two segments. I also tried carrying over the next-sentence-prediction auxiliary objective from the two-sentence format, but it gave no consistent gain in ablation, so I drop it.
+Two segments at finetuning need handling too. Following the standard two-sentence format I feed [CLS, A, SEP, B, SEP] and run permutation language modeling over the concatenation, reusing memory only within the same context. I don't add an absolute segment embedding to each position the way the denoising AE does; that's inconsistent with my whole relative philosophy and it can't extend past two segments. Instead I encode segments *relatively*: for a query at i attending to a key at j, I ask only whether i and j are in the *same* segment, using a learnable vector s_+ if so and s_− if not, and add a term a_{ij} = (q_i + b)ᵀ s_{ij} to the logit (b a learnable per-head bias). Only the same-segment-or-not relation matters, not which specific segment — that's the relative-encoding spirit, it generalizes better, and it lets me finetune on tasks with more than two segments. The token-level objective already couples the two segments through attention, so I do not add a separate next-sentence-prediction loss.
 
 Let me write down the full per-layer computation with the real Transformer-XL machinery — multi-head relative attention, residual, layer norm, position-wise FFN — for both streams. Initialize h_t = e(x_t), g_t = w, and let h̃^{(m)} be the cached content memory from the previous segment. For layer m = 1, …, M and every t:
 
@@ -131,12 +128,40 @@ The only difference between the two RelAttn calls is the key/value range: z_{≤
 
 Now let me get to honest code, because there's a real implementation question hiding in "attend to z_{<t}": I am *not* going to recompute the attention from scratch for every position t under every order. Instead I realize the whole permutation as a single static attention mask over the natural-order sequence, and give the two streams two slightly different masks.
 
-Here's how the masking falls out. Assign each position its rank in the sampled order. Position i may attend to position j iff j precedes-or-equals i in the order (for the content stream) or strictly precedes i (for the query stream) — equivalently, iff rank(j) ≤ rank(i) or rank(j) < rank(i). The content stream is allowed to see itself; the query stream is the content mask with the diagonal removed. In the code below, `perm_mask[i,j]=1` means i may *not* attend to j; I build it from a comparison of order-ranks, and the content (`non_tgt`) mask is the same thing with the self-position re-allowed. Only the targets (the predicted tail) get a query stream and contribute to the loss, gated by `target_mask`; non-targets only ever live in the content stream. The relative attention itself is the Transformer-XL `ac + bd (+ ef)` decomposition — content term plus relative-position term plus the relative-segment term — which I derived above. The loss is the cross-entropy of the target tokens against the top query states, averaged over the predicted positions.
+Assign each position its rank in the sampled order. Position i may attend to position j iff j precedes-or-equals i in the order for the content stream, or strictly precedes i for the query stream — equivalently, iff rank(j) ≤ rank(i) or rank(j) < rank(i). The content stream is allowed to see itself; the query stream is the content mask with the diagonal removed. In the code below, `perm_mask[i,j]=1` means i may *not* attend to j; I build it from a comparison of order-ranks, and the content mask is the same thing with the self-position re-allowed. With compact target mapping, only the selected prediction slots are materialized in the query stream; either way, `target_mask` is what gates the loss. The relative attention itself is the Transformer-XL `ac + bd (+ ef)` decomposition — content term plus relative-position term plus the relative-segment term. The loss is the tied-embedding cross-entropy of the target tokens against the top query states, averaged over the predicted positions.
 
 ```python
 import tensorflow as tf
 
-# --- Transformer-XL relative attention: logit = content + rel-position + rel-segment ---
+def embedding_lookup(x, n_token, d_embed, initializer):
+    table = tf.get_variable('lookup_table', [n_token, d_embed], initializer=initializer)
+    return tf.nn.embedding_lookup(table, x), table
+
+
+def head_projection(h, d_model, n_head, d_head, initializer, name):
+    w = tf.get_variable('{}/kernel'.format(name), [d_model, n_head, d_head],
+                        dtype=h.dtype, initializer=initializer)
+    return tf.einsum('ibh,hnd->ibnd', h, w)
+
+
+def post_attention(h, attn_vec, d_model, n_head, d_head, dropout,
+                   is_training, initializer, residual=True):
+    proj_o = tf.get_variable('o/kernel', [d_model, n_head, d_head],
+                             dtype=h.dtype, initializer=initializer)
+    attn_out = tf.einsum('ibnd,hnd->ibh', attn_vec, proj_o)
+    attn_out = tf.layers.dropout(attn_out, dropout, training=is_training)
+    base = attn_out + h if residual else attn_out
+    return tf.contrib.layers.layer_norm(base, begin_norm_axis=-1, scope='LayerNorm')
+
+
+def rel_shift(x, klen=-1):
+    s = tf.shape(x)
+    x = tf.reshape(x, [s[1], s[0], s[2], s[3]])
+    x = tf.slice(x, [1, 0, 0, 0], [-1, -1, -1, -1])
+    x = tf.reshape(x, [s[0], s[1] - 1, s[2], s[3]])
+    return tf.slice(x, [0, 0, 0, 0], [-1, klen, -1, -1])
+
+
 def rel_attn_core(q_head, k_head_h, v_head_h, k_head_r, seg_embed, seg_mat,
                   r_w_bias, r_r_bias, r_s_bias, attn_mask, dropatt, is_training, scale):
     ac = tf.einsum('ibnd,jbnd->ijbn', q_head + r_w_bias, k_head_h)        # content-to-content (A_ij term 1)
@@ -154,71 +179,113 @@ def rel_attn_core(q_head, k_head_h, v_head_h, k_head_r, seg_embed, seg_mat,
     return tf.einsum('ijbn,jbnd->ibnd', attn_prob, v_head_h)
 
 
-# --- two streams: shared K/V from CONTENT reps; streams differ by query and by mask ---
-def two_stream_rel_attn(h, g, r, mems, r_w_bias, r_r_bias, seg_mat, r_s_bias, seg_embed,
-                        attn_mask_h, attn_mask_g, target_mapping,
-                        d_model, n_head, d_head, dropout, dropatt, is_training, kernel_initializer):
-    scale = 1 / (d_head ** 0.5)
-    cat = tf.concat([mems, h], 0) if mems is not None and mems.shape.ndims > 1 else h
-    k_head_h = head_projection(cat, d_model, n_head, d_head, kernel_initializer, 'k')  # keys from content
-    v_head_h = head_projection(cat, d_model, n_head, d_head, kernel_initializer, 'v')  # values from content
-    k_head_r = head_projection(r,   d_model, n_head, d_head, kernel_initializer, 'r')  # relative-position keys
-
-    # content stream: query from h, mask lets a position SEE ITSELF (z_<=t)
-    q_head_h = head_projection(h, d_model, n_head, d_head, kernel_initializer, 'q')
-    attn_vec_h = rel_attn_core(q_head_h, k_head_h, v_head_h, k_head_r, seg_embed, seg_mat,
-                               r_w_bias, r_r_bias, r_s_bias, attn_mask_h, dropatt, is_training, scale)
-    output_h = post_attention(h, attn_vec_h, d_model, n_head, d_head, dropout, is_training, kernel_initializer)
-
-    # query stream: query from g, mask FORBIDS seeing own content (z_<t); only targets need it
-    q_head_g = head_projection(g, d_model, n_head, d_head, kernel_initializer, 'q')
-    if target_mapping is not None:
-        q_head_g = tf.einsum('mbnd,mlb->lbnd', q_head_g, target_mapping)   # gather only predicted slots
-    attn_vec_g = rel_attn_core(q_head_g, k_head_h, v_head_h, k_head_r, seg_embed, seg_mat,
-                               r_w_bias, r_r_bias, r_s_bias, attn_mask_g, dropatt, is_training, scale)
-    if target_mapping is not None:
-        attn_vec_g = tf.einsum('lbnd,mlb->mbnd', attn_vec_g, target_mapping)
-    output_g = post_attention(g, attn_vec_g, d_model, n_head, d_head, dropout, is_training, kernel_initializer)
-    return output_h, output_g
+def positionwise_ffn(inp, d_model, d_inner, dropout, kernel_initializer,
+                     activation, is_training, reuse=None):
+    with tf.variable_scope('ff', reuse=reuse):
+        output = tf.layers.dense(inp, d_inner, activation=activation,
+                                 kernel_initializer=kernel_initializer, name='layer_1')
+        output = tf.layers.dropout(output, dropout, training=is_training, name='drop_1')
+        output = tf.layers.dense(output, d_model,
+                                 kernel_initializer=kernel_initializer, name='layer_2')
+        output = tf.layers.dropout(output, dropout, training=is_training, name='drop_2')
+        return tf.contrib.layers.layer_norm(output + inp, begin_norm_axis=-1, scope='LayerNorm')
 
 
-# --- realize the factorization order z as a static attention mask over the natural-order sequence ---
-def local_perm(inputs, targets, is_masked, perm_size, seq_len):
-    # sample a permutation; its ranks decide who may attend to whom
+def cache_mem(curr_out, prev_mem, mem_len, reuse_len=None):
+    if mem_len is None or mem_len == 0:
+        return None
+    if reuse_len is not None and reuse_len > 0:
+        curr_out = curr_out[:reuse_len]
+    if prev_mem is None:
+        new_mem = curr_out[-mem_len:]
+    else:
+        new_mem = tf.concat([prev_mem, curr_out], 0)[-mem_len:]
+    return tf.stop_gradient(new_mem)
+
+
+def build_pretraining_inputs(inputs, targets, is_selected, perm_size, seq_len,
+                             sep_id, cls_id, num_predict=None):
     index = tf.range(seq_len, dtype=tf.int64)
     index = tf.transpose(tf.reshape(index, [-1, perm_size]))
     index = tf.random_shuffle(index)
     index = tf.reshape(tf.transpose(index), [-1])
 
-    non_func = tf.logical_not(tf.logical_or(tf.equal(inputs, SEP_ID), tf.equal(inputs, CLS_ID)))
-    non_mask = tf.logical_and(tf.logical_not(is_masked), non_func)   # context tokens (not predicted)
-    masked_or_func = tf.logical_not(non_mask)
+    non_func = tf.logical_not(tf.logical_or(tf.equal(inputs, sep_id), tf.equal(inputs, cls_id)))
+    non_target = tf.logical_and(tf.logical_not(is_selected), non_func)
+    target_or_func = tf.logical_not(non_target)
 
-    # context tokens get rank -1: visible to everyone, and they never see masked targets (no leak)
-    rev_index = tf.where(non_mask, -tf.ones([seq_len], tf.int64), index)
-    target_tokens = tf.logical_and(masked_or_func, non_func)
-    target_mask = tf.cast(target_tokens, tf.float32)                 # 1 -> predicted, contributes to loss
+    rev_index = tf.where(non_target, -tf.ones([seq_len], tf.int64), index)
+    target_tokens = tf.logical_and(target_or_func, non_func)
+    target_mask = tf.cast(target_tokens, tf.float32)
 
-    # a target may not see itself; perm_mask[i,j]=1 means i CANNOT attend j
     self_rev_index = tf.where(target_tokens, rev_index, rev_index + 1)
-    perm_mask = tf.logical_and(self_rev_index[:, None] <= rev_index[None, :], masked_or_func)
-    perm_mask = tf.cast(perm_mask, tf.float32)                       # query-stream mask (excludes self)
+    perm_mask = tf.logical_and(self_rev_index[:, None] <= rev_index[None, :], target_or_func)
+    perm_mask = tf.cast(perm_mask, tf.float32)
 
     new_targets = tf.concat([inputs[0:1], targets[:-1]], axis=0)
-    return perm_mask, new_targets, target_mask, inputs, target_mask  # last two: inputs_k, inputs_q
+    features = {
+        'perm_mask': perm_mask,
+        'target': new_targets,
+        'target_mask': target_mask,
+        'input_k': inputs,
+        'input_q': target_mask,
+    }
+
+    if num_predict is not None:
+        indices = tf.boolean_mask(tf.range(seq_len, dtype=tf.int64), tf.cast(target_mask, tf.bool))
+        actual = tf.shape(indices)[0]
+        pad_len = num_predict - actual
+        target_mapping = tf.one_hot(indices, seq_len, dtype=tf.float32)
+        target_mapping = tf.concat([target_mapping, tf.zeros([pad_len, seq_len])], axis=0)
+        mapped_target = tf.boolean_mask(new_targets, tf.cast(target_mask, tf.bool))
+        mapped_target = tf.concat([mapped_target, tf.zeros([pad_len], dtype=mapped_target.dtype)], axis=0)
+        mapped_mask = tf.concat([tf.ones([actual], tf.float32), tf.zeros([pad_len], tf.float32)], axis=0)
+        features.update({'target_mapping': target_mapping, 'target': mapped_target, 'target_mask': mapped_mask})
+    return features
 
 
-# --- inside the stack: content mask re-allows the diagonal that the query mask forbids ---
-#   non_tgt_mask = attn_mask with the self-position subtracted back in  ->  content stream can see itself
-#   query-stream init g_i^(0) = w (a shared mask-embedding); content init h_i^(0) = e(x_i)
+def objective_attention_layer(h, g, r, mems, r_w_bias, r_r_bias, seg_mat, r_s_bias, seg_embed,
+                              attn_mask_h, attn_mask_g, target_mapping,
+                              d_model, n_head, d_head, dropout, dropatt,
+                              is_training, kernel_initializer, scope='rel_attn'):
+    scale = 1 / (d_head ** 0.5)
+    with tf.variable_scope(scope, reuse=False):
+        cat = tf.concat([mems, h], 0) if mems is not None and mems.shape.ndims > 1 else h
+        k_head_h = head_projection(cat, d_model, n_head, d_head, kernel_initializer, 'k')
+        v_head_h = head_projection(cat, d_model, n_head, d_head, kernel_initializer, 'v')
+        k_head_r = head_projection(r, d_model, n_head, d_head, kernel_initializer, 'r')
 
-# --- loss: cross-entropy of target tokens vs top query states, averaged over predicted positions ---
-def two_stream_loss(hidden, target, target_mask, n_token, d_model, initializer):
-    softmax_w = tf.get_variable('softmax_w', [n_token, d_model], initializer=initializer)
-    softmax_b = tf.get_variable('softmax_b', [n_token], initializer=tf.zeros_initializer())
+        q_head_h = head_projection(h, d_model, n_head, d_head, kernel_initializer, 'q')
+        attn_vec_h = rel_attn_core(q_head_h, k_head_h, v_head_h, k_head_r, seg_embed, seg_mat,
+                                   r_w_bias, r_r_bias, r_s_bias, attn_mask_h, dropatt, is_training, scale)
+        output_h = post_attention(h, attn_vec_h, d_model, n_head, d_head, dropout, is_training, kernel_initializer)
+
+    with tf.variable_scope(scope, reuse=True):
+        q_head_g = head_projection(g, d_model, n_head, d_head, kernel_initializer, 'q')
+        if target_mapping is not None:
+            q_head_g = tf.einsum('mbnd,mlb->lbnd', q_head_g, target_mapping)
+            attn_vec_g = rel_attn_core(q_head_g, k_head_h, v_head_h, k_head_r, seg_embed, seg_mat,
+                                       r_w_bias, r_r_bias, r_s_bias, attn_mask_g, dropatt, is_training, scale)
+            attn_vec_g = tf.einsum('lbnd,mlb->mbnd', attn_vec_g, target_mapping)
+        else:
+            attn_vec_g = rel_attn_core(q_head_g, k_head_h, v_head_h, k_head_r, seg_embed, seg_mat,
+                                       r_w_bias, r_r_bias, r_s_bias, attn_mask_g, dropatt, is_training, scale)
+        output_g = post_attention(g, attn_vec_g, d_model, n_head, d_head, dropout, is_training, kernel_initializer)
+    return output_h, output_g
+
+
+def pretraining_loss(hidden, target, target_mask, lookup_table, n_token, d_model,
+                     initializer, use_tpu=False):
+    softmax_w = lookup_table
+    softmax_b = tf.get_variable('bias', [n_token], dtype=hidden.dtype,
+                                initializer=tf.zeros_initializer())
     logits = tf.einsum('ibd,nd->ibn', hidden, softmax_w) + softmax_b
-    per_tok = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=target, logits=logits)
-    return tf.reduce_sum(per_tok * target_mask) / tf.reduce_sum(target_mask)
+    if use_tpu:
+        one_hot_target = tf.one_hot(target, n_token, dtype=logits.dtype)
+        loss = -tf.reduce_sum(tf.nn.log_softmax(logits) * one_hot_target, -1)
+    else:
+        loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=target, logits=logits)
+    return tf.reduce_sum(loss * target_mask) / tf.reduce_sum(target_mask)
 ```
 
-Let me trace the whole chain once more to make sure it holds together. I started from the pain: AR pretraining is honest but one-eyed; denoising AE is two-eyed but lies about independence, smuggles in [MASK], and leaves the language-modeling framework. I kept AR's product form and made it bidirectional by averaging the log-likelihood over random factorization orders — no independence assumption, no fake symbols, still density estimation. Realizing the order as an attention mask (not a token shuffle) kept the natural sequence and the positional encodings intact, so finetuning sees no new artifact, and it's what forces a Transformer rather than an RNN. Then a naive softmax turned out position-blind — two different next-positions sharing a prefix got identical predictions — which forced a target-position-aware representation g(x_{z_{<t}}, z_t). Building g exposed a contradiction: a position's representation must hide its own content to be predicted, yet expose it to serve as later context — irreconcilable in one stream, so two streams, a content stream (sees itself, becomes the ordinary finetuning model) and a query stream (sees position not content, feeds the softmax). Partial prediction tamed the optimization by predicting only the long-context tail, and skipping the query stream elsewhere paid for itself. Folding in Transformer-XL — relative positions (forced by the masking-not-shuffling choice, and order-aware unlike NADE) and segment recurrence (whose memory is reusable precisely because relative positions make it order-agnostic) — extended the context, and a relative segment encoding handled multi-segment inputs while supporting more than two segments. The code is just that: the relative `ac + bd + ef` attention, two streams sharing content-derived keys/values but differing in query and mask, the permutation compiled into a static mask, and a cross-entropy over the predicted tail.
+Let me trace the whole chain once more to make sure it holds together. I started from the pain: AR pretraining is honest but one-eyed; denoising AE is two-eyed but lies about independence, smuggles in [MASK], and leaves the language-modeling framework. I kept AR's product form and made it bidirectional by averaging the log-likelihood over random factorization orders — no independence assumption, no fake symbols, still density estimation. Realizing the order as an attention mask (not a token shuffle) kept the natural sequence and the positional encodings intact, so finetuning sees no new artifact, and it is what makes a masked self-attention backbone the natural fit. Then a naive softmax turned out position-blind — two different next-positions sharing a prefix got identical predictions — which forced a target-position-aware representation g(x_{z_{<t}}, z_t). Building g exposed a contradiction: a position's representation must hide its own content to be predicted, yet expose it to serve as later context — irreconcilable in one stream, so two streams, a content stream (sees itself, becomes the ordinary finetuning model) and a query stream (sees position not content, feeds the softmax). Partial prediction tamed the optimization by predicting only the long-context tail, and skipping the query stream elsewhere paid for itself. Folding in Transformer-XL — relative positions that preserve actual geometry under mask-only permutation, plus segment recurrence whose memory is reusable because those positions are relative — extended the context, and a relative segment encoding handled multi-segment inputs while supporting more than two segments. The code is just that: the relative `ac + bd + ef` attention, two streams sharing content-derived keys/values but differing in query and mask, the permutation compiled into a static mask, and a cross-entropy over the predicted tail.

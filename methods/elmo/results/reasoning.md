@@ -14,7 +14,7 @@ Take CoVe first. It's trained on parallel translation data. Parallel corpora are
 
 Now the deeper problem, shared by CoVe *and* the prior biLM-tagging work: they both use only the *top* layer of their encoder. CoVe takes the top encoder layer; the biLM tagger takes the top LM layer. And I have a nagging reason to think that's wrong. There's a body of observations about what different layers of a deep recurrent network encode. When people supervise a low-level task like POS tagging at the *lower* layers of a deep network, the high-level tasks at the top improve — as if the lower layers naturally want to hold syntax. In an MT encoder, the first-layer representations predict POS tags *better* than the second-layer ones, even though the two-layer system has higher BLEU. And the top layer of a context biLSTM has been shown to capture word sense. Put those together and a picture forms: in a deep contextual encoder, lower layers lean syntactic, higher layers lean semantic. Which is *exactly* the syntax-vs-semantics split I wanted to pull apart at the very start.
 
-So here's where the top-layer convention starts to look like a real mistake. If lower layers carry syntax and upper layers carry word sense, then by taking only the top layer, CoVe and the biLM tagger are throwing away the syntactic information for any task that would have wanted it. POS tagging would rather have the lower layer; WSD would rather have the upper. There is no single layer that is best for everything. Let me make sure I actually believe this and I'm not just repeating a slogan. Suppose I freeze a two-layer LM encoder and, for each layer separately, feed its activations into a tiny probe — a 1-nearest-neighbor classifier for word sense, a linear classifier for POS — and read off the accuracy. If my picture is right, the first layer should win on POS and the second on WSD. And that is what I'd expect to see: the first LM layer noticeably better at POS, the second LM layer noticeably better at WSD, the gap going opposite directions for the two tasks. (And an MT encoder would show the same ordering but lower across the board, because translation is a weaker teacher of monolingual word knowledge than language modeling.) If the two layers genuinely specialize in opposite directions, then committing to either one alone is leaving the other's information on the floor.
+The top-layer convention starts to look like a real mistake. If lower layers carry syntax and upper layers carry word sense, then by taking only the top layer, CoVe and the biLM tagger are throwing away the syntactic information for any task that would have wanted it. POS tagging would rather have the lower layer; WSD would rather have the upper. There is no single layer that is best for everything. Let me make sure I actually believe this and I'm not just repeating a slogan. Suppose I freeze a two-layer LM encoder and, for each layer separately, feed its activations into a tiny probe — a 1-nearest-neighbor classifier for word sense, a linear classifier for POS — and read off the accuracy. If my picture is right, the first layer should win on POS and the second on WSD. And that is what I'd expect to see: the first LM layer noticeably better at POS, the second LM layer noticeably better at WSD, the gap going opposite directions for the two tasks. (And an MT encoder would show the same ordering but lower across the board, because translation is a weaker teacher of monolingual word knowledge than language modeling.) If the two layers genuinely specialize in opposite directions, then committing to either one alone is leaving the other's information on the floor.
 
 So the design pressure is clear: don't pick a layer. Use all of them. But "use all of them" isn't yet a representation — I have to say *how* a downstream model consumes L+1 vectors per token (the token-embedding layer plus the L LSTM layers) instead of one. Let me hold that thought; first I have to settle the encoder itself, because there's an asymmetry problem.
 
@@ -58,12 +58,29 @@ Two more practical pieces. First, regularization of the layer weights w. I can a
 
 Let me now pin the encoder I'll actually pretrain, balancing language-model quality against the cost of running it inside downstream models. A known strong character-input LM is the CNN-BIG-LSTM architecture; I'll halve its embedding and hidden dimensions to keep it affordable as a frozen feature extractor while staying purely character-based. So: L=2 biLSTM layers, 4096 units each with a 512-dimensional projection, and a residual connection from the first to the second LSTM layer so the second layer can build on rather than replace the first. The input is the char-CNN — on the order of 2048 character n-gram convolution filters, two highway layers, linearly projected down to 512. That yields three layers of representation per token (token, LSTM-1, LSTM-2), available even for tokens outside any training vocabulary because the input is characters. Train it on something like a billion words of raw text for a handful of epochs; I'd expect forward and backward perplexities in the same ballpark as each other. And once it's pretrained, if a downstream domain differs from the pretraining text, I can fine-tune the biLM on that domain's raw text (ignoring the labels, just the LM objective) for an epoch before freezing, reducing the domain mismatch without spending labels.
 
-Let me write the pieces down as code, grounded in how this actually gets built — a character encoder, the biLM that stacks LSTMs on top of it, the scalar-mixture that *is* ELMo, and the injection into a task model.
+Let me write the pieces down as code: a character encoder, the bidirectional LM that exposes all of its layers, the learned layer combination, and the injection into a task model.
 
 ```python
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+
+class Highway(nn.Module):
+    """Highway transform used after the character convolutions."""
+    def __init__(self, size, num_layers, activation=F.relu):
+        super().__init__()
+        self.layers = nn.ModuleList([nn.Linear(size, 2 * size) for _ in range(num_layers)])
+        self.activation = activation
+
+    def forward(self, x):
+        for layer in self.layers:
+            projected = layer(x)
+            nonlinear, gate = projected.chunk(2, dim=-1)
+            gate = torch.sigmoid(gate)
+            # The gate carries the input path and the complement takes the transform.
+            x = gate * x + (1 - gate) * self.activation(nonlinear)
+        return x
 
 
 class CharacterCNNEncoder(nn.Module):
@@ -84,6 +101,7 @@ class CharacterCNNEncoder(nn.Module):
 
     def forward(self, char_ids):                 # (B, T, max_chars)
         B, T, C = char_ids.shape
+        mask = (char_ids.gt(0).long().sum(dim=-1) > 0).long()
         x = self.char_emb(char_ids.view(B * T, C))    # (B*T, C, char_dim)
         x = x.transpose(1, 2)                          # (B*T, char_dim, C)
         convs = []
@@ -94,55 +112,84 @@ class CharacterCNNEncoder(nn.Module):
         tok = torch.cat(convs, dim=-1)                 # (B*T, total)
         tok = self.highways(tok)
         tok = self.proj(tok)                           # (B*T, proj_dim)
-        return tok.view(B, T, -1)                       # x_k^LM, layer 0
+        tok = tok.view(B, T, -1) * mask.unsqueeze(-1).float()
+        return tok, mask                                # x_k^LM, layer 0
 
 
-class BiLM(nn.Module):
+class StackedProjectedLSTM(nn.Module):
+    """A stack of projected LSTMs; every layer output is returned for mixing."""
+    def __init__(self, input_dim, cell_dim=4096, proj_dim=512, n_layers=2, residual=True):
+        super().__init__()
+        self.layers = nn.ModuleList()
+        self.projections = nn.ModuleList()
+        self.residual = residual
+        dim = input_dim
+        for _ in range(n_layers):
+            self.layers.append(nn.LSTM(dim, cell_dim, batch_first=True))
+            self.projections.append(nn.Linear(cell_dim, proj_dim))
+            dim = proj_dim
+
+    def forward(self, x):
+        outputs = []
+        inp = x
+        for layer_index, (lstm, projection) in enumerate(zip(self.layers, self.projections)):
+            out, _ = lstm(inp)
+            out = projection(out)
+            if self.residual and layer_index != 0:
+                out = out + inp
+            outputs.append(out)
+            inp = out
+        return outputs
+
+
+class BidirectionalLanguageModel(nn.Module):
     """Forward + backward LM sharing token (char-CNN) and softmax params, with
     separate LSTM stacks per direction. Returns ALL L+1 layers per token (the
     token layer plus each biLSTM layer), not just the top -- that stack is R_k."""
-    def __init__(self, n_layers=2, proj_dim=512, hidden=4096, vocab_size=793471):
+    def __init__(self, n_layers=2, proj_dim=512, cell_dim=4096, vocab_size=793471):
         super().__init__()
         self.char_encoder = CharacterCNNEncoder(proj_dim=proj_dim)   # Theta_x (tied)
-        self.fwd = StackedProjLSTM(proj_dim, hidden, proj_dim, n_layers, residual=True)
-        self.bwd = StackedProjLSTM(proj_dim, hidden, proj_dim, n_layers, residual=True)
+        self.forward_lm = StackedProjectedLSTM(proj_dim, cell_dim, proj_dim, n_layers, residual=True)
+        self.backward_lm = StackedProjectedLSTM(proj_dim, cell_dim, proj_dim, n_layers, residual=True)
         self.softmax = nn.Linear(proj_dim, vocab_size)               # Theta_s (tied)
         self.n_layers = n_layers
 
     def forward(self, char_ids):                  # (B, T, max_chars)
-        x = self.char_encoder(char_ids)           # layer-0 token rep, both directions
-        fwd_layers = self.fwd(x)                   # list of L states (left context)
-        bwd_layers = self.bwd(x.flip(1))           # run on reversed sequence
+        x, mask = self.char_encoder(char_ids)      # layer-0 token rep, both directions
+        fwd_layers = self.forward_lm(x)             # list of L states (left context)
+        bwd_layers = self.backward_lm(x.flip(1))    # run on reversed sequence
         bwd_layers = [h.flip(1) for h in bwd_layers]
         # R_k: layer 0 is the token rep (duplicated across directions);
         # each biLSTM layer is the concat of the two directions.
-        layers = [torch.cat([x, x], dim=-1)]
+        layers = [torch.cat([x, x], dim=-1) * mask.unsqueeze(-1).float()]
         for f, b in zip(fwd_layers, bwd_layers):
-            layers.append(torch.cat([f, b], dim=-1))   # h_{k,j} = [h->; h<-]
-        return layers                              # length L+1, this is R_k
+            layers.append(torch.cat([f, b], dim=-1) * mask.unsqueeze(-1).float())
+        return {"activations": layers, "mask": mask}   # length L+1, this is R_k
 
     def lm_loss(self, char_ids, targets_fwd, targets_bwd):
         # jointly maximize forward + backward log-likelihood; softmax (Theta_s)
         # and char encoder (Theta_x) shared across both directions. targets_fwd
         # and targets_bwd are pre-shifted next/previous-token ids.
-        x = self.char_encoder(char_ids)
-        f_top = self.fwd(x)[-1]
-        b_top = self.bwd(x.flip(1))[-1].flip(1)
+        x, _ = self.char_encoder(char_ids)
+        f_top = self.forward_lm(x)[-1]
+        b_top = self.backward_lm(x.flip(1))[-1].flip(1)
         loss_f = F.cross_entropy(self.softmax(f_top).transpose(1, 2), targets_fwd)
         loss_b = F.cross_entropy(self.softmax(b_top).transpose(1, 2), targets_bwd)
         return loss_f + loss_b
 
 
-class ScalarMix(nn.Module):
+class LayerCombination(nn.Module):
     """Collapse the L+1 biLM layers into one per-token vector:
         gamma * sum_j softmax(w)_j * h_{k,j}
-    This mirrors the canonical ScalarMix: one scalar parameter per layer, a
-    learned gamma, optional tensor-level normalization, and no biLM gradients."""
+    One scalar parameter per layer, a learned gamma, optional tensor-level
+    normalization, and no biLM gradients."""
     def __init__(self, mixture_size, do_layer_norm=False,
                  initial_scalar_parameters=None, trainable=True):
         super().__init__()
         if initial_scalar_parameters is None:
             initial_scalar_parameters = [0.0] * mixture_size
+        if len(initial_scalar_parameters) != mixture_size:
+            raise ValueError("initial scalar parameter count must match mixture_size")
         self.scalar_parameters = nn.ParameterList([
             nn.Parameter(torch.tensor([value], dtype=torch.float),
                          requires_grad=trainable)
@@ -152,7 +199,10 @@ class ScalarMix(nn.Module):
         self.do_layer_norm = do_layer_norm
 
     def forward(self, layers, mask=None):        # layers: list of (B, T, D)
+        if len(layers) != len(self.scalar_parameters):
+            raise ValueError("wrong number of layer tensors")
         s = F.softmax(torch.cat([p for p in self.scalar_parameters]), dim=0)
+        s = torch.split(s, split_size_or_sections=1)
         if self.do_layer_norm:
             if mask is None:
                 raise ValueError("mask is required when do_layer_norm=True")
@@ -162,8 +212,7 @@ class ScalarMix(nn.Module):
 
     @staticmethod
     def _layer_norm(h, mask):
-        # zero-mean unit-var over non-masked entries of this layer tensor before
-        # weighting, matching the AllenNLP ScalarMix behavior.
+        # zero-mean unit-var over non-masked entries of this layer tensor before weighting.
         m = mask.unsqueeze(-1).float()
         n = m.sum() * h.size(-1)
         mean = (h * m).sum() / n
@@ -171,40 +220,50 @@ class ScalarMix(nn.Module):
         return (h - mean) / torch.sqrt(var + 1e-12)
 
 
-class TaskModelWithELMo(nn.Module):
-    """Freeze the biLM, run it, concat ELMo onto the task token rep at the input
-    (and optionally the output, with its OWN weights). Rest of the task model is
-    unchanged. L2 on ELMo weights (lambda) dials between free weights and average;
-    dropout on the ELMo vector."""
-    def __init__(self, bilm, task_rnn, n_layers_plus1, use_output=False,
-                 elmo_dropout=0.5, lam=0.001):
+class ContextualFeatureExtractor(nn.Module):
+    """Freeze the biLM, run it once, and learn one layer combination per place
+    where the task model wants an ELMo vector."""
+    def __init__(self, bilm, num_output_representations=1,
+                 do_layer_norm=False, dropout=0.5, freeze_bilm=True):
         super().__init__()
         self.bilm = bilm
-        for p in self.bilm.parameters():           # frozen feature extractor
-            p.requires_grad = False
-        self.elmo_in = ScalarMix(n_layers_plus1)
-        self.elmo_out = ScalarMix(n_layers_plus1) if use_output else None
-        self.task_rnn = task_rnn
-        self.drop = nn.Dropout(elmo_dropout)
-        self.lam = lam
+        self.freeze_bilm = freeze_bilm
+        if freeze_bilm:
+            for p in self.bilm.parameters():
+                p.requires_grad = False
+        self.layer_combinations = nn.ModuleList([
+            LayerCombination(bilm.n_layers + 1, do_layer_norm=do_layer_norm)
+            for _ in range(num_output_representations)
+        ])
+        self.dropout = nn.Dropout(dropout)
 
-    def forward(self, char_ids, x_task, mask=None):
-        with torch.no_grad():
-            layers = self.bilm(char_ids)            # R_k, biLM frozen
-        elmo_in = self.drop(self.elmo_in(layers, mask))
-        h = self.task_rnn(torch.cat([x_task, elmo_in], dim=-1))   # [x_k; ELMo_k]
-        if self.elmo_out is not None:
-            elmo_out = self.drop(self.elmo_out(layers, mask))
-            h = torch.cat([h, elmo_out], dim=-1)    # [h_k; ELMo_k] for attention tasks
-        return h
+    def forward(self, char_ids):
+        if self.freeze_bilm:
+            with torch.no_grad():
+                output = self.bilm(char_ids)
+        else:
+            output = self.bilm(char_ids)
+        layers, mask = output["activations"], output["mask"]
+        features = [self.dropout(mix(layers, mask)) for mix in self.layer_combinations]
+        return features, mask
 
-    def weight_reg(self):
-        # lambda * ||w||^2 ; large lambda -> uniform softmax -> average of layers,
-        # small lambda -> task picks layers freely. Larger lambda for small datasets.
-        reg = self.lam * sum((p ** 2).sum() for p in self.elmo_in.scalar_parameters)
-        if self.elmo_out is not None:
-            reg = reg + self.lam * sum((p ** 2).sum() for p in self.elmo_out.scalar_parameters)
-        return reg
+    def weight_regularization(self, coefficient):
+        # coefficient * ||w||^2; large coefficient -> uniform softmax -> average.
+        return coefficient * sum(
+            (p ** 2).sum()
+            for mix in self.layer_combinations
+            for p in mix.scalar_parameters
+        )
+
+
+def add_feature_to_task_model(task_token_repr, contextual_input,
+                              task_context_repr=None, contextual_output=None):
+    """Concatenate ELMo at the input, and optionally at a later task state."""
+    task_input = torch.cat([task_token_repr, contextual_input], dim=-1)
+    if task_context_repr is None or contextual_output is None:
+        return task_input
+    task_output = torch.cat([task_context_repr, contextual_output], dim=-1)
+    return task_input, task_output
 ```
 
 So the causal chain, start to end: a fixed vector per word type can't say which "play" I mean, because it indexes the type, not the token — and the only thing that disambiguates a token is its sentence. A language model trained on unlimited unlabeled text already builds, in its hidden states, a representation of each token conditioned on its context, so its internals *are* the contextual representation I want; I make it bidirectional (forward + backward LMs, sharing token and softmax parameters) so both sides of the sentence are seen, and character-based at the input so it works for any word. Prior work used only the top layer, but lower layers carry syntax and upper layers carry word sense, so no single layer is right for every task — and rather than guess, I let each task learn a softmax-normalized weighting over all L+1 layers plus a scalar scale to match magnitudes, optionally layer-normalizing first. That weighted sum, ELMo_k^task = γ^task sum_j s_j^task h_{k,j}^LM, is concatenated as a frozen feature into the bottom (and sometimes the top) of an otherwise-unchanged task model, with L2 on the weights to trade off free selection against averaging depending on how much labeled data the task has.

@@ -1,4 +1,4 @@
-# DDPG — Deep Deterministic Policy Gradient
+# DDPG: Deep Deterministic Policy Gradient
 
 ## Problem it solves
 
@@ -14,7 +14,7 @@ With a normalized state distribution `d^μ=(1-γ)ρ^μ`, the same update has an 
 
 `y = r + γ(1-d) Q_targ(s', μ_targ(s'))`.
 
-The actor loss is `-Q(s, μ(s)).mean()`, so minimizing it ascends the critic. Target actor and critic networks are updated by Polyak averaging, `θ_targ ← ρ θ_targ + (1-ρ)θ`; with `ρ=0.995`, the live-network coefficient is `τ=0.005`. The implementation shown here uses independent Gaussian action noise after an initial random-action warm-up; if an OU process is substituted, the zero-mean unit-step update is `x ← x + θ_ou(-x) + σξ`.
+The actor loss is `-Q(s, μ(s)).mean()`, so minimizing it ascends the critic. Target actor and critic networks are updated by Polyak averaging, `θ_targ ← ρ θ_targ + (1-ρ)θ`; with `ρ=0.995`, the live-network coefficient is `τ=0.005`. The code uses independent Gaussian action noise after an initial random-action warm-up; if an OU process is substituted, the zero-mean unit-step update is `x ← x + θ_ou(-x) + σξ`.
 
 ## Algorithm
 
@@ -30,8 +30,6 @@ For each environment step:
 Typical code defaults: `γ=0.99`, `polyak=0.995`, actor and critic learning rates `1e-3`, replay size `10^6`, batch size `100`, `start_steps=10000`, `update_after=1000`, `update_every=50`, `act_noise=0.1`, and hidden layers `(256,256)`.
 
 ## Working code
-
-This follows the canonical OpenAI Spinning Up PyTorch structure while keeping logging out of the snippet.
 
 ```python
 from copy import deepcopy
@@ -106,11 +104,11 @@ class ReplayBuffer:
                      done=self.done_buf[idxs])
         return {k: torch.as_tensor(v, dtype=torch.float32) for k, v in batch.items()}
 
-def ddpg(env_fn, actor_critic=MLPActorCritic, ac_kwargs=dict(), seed=0,
-         steps_per_epoch=4000, epochs=100, replay_size=int(1e6), gamma=0.99,
-         polyak=0.995, pi_lr=1e-3, q_lr=1e-3, batch_size=100,
-         start_steps=10000, update_after=1000, update_every=50,
-         act_noise=0.1, max_ep_len=1000):
+def train(env_fn, actor_critic=MLPActorCritic, ac_kwargs=dict(), seed=0,
+          steps_per_epoch=4000, epochs=100, replay_size=int(1e6), gamma=0.99,
+          polyak=0.995, pi_lr=1e-3, q_lr=1e-3, batch_size=100,
+          start_steps=10000, update_after=1000, update_every=50,
+          act_noise=0.1, max_ep_len=1000):
     torch.manual_seed(seed)
     np.random.seed(seed)
     env = env_fn()
@@ -179,5 +177,4 @@ def ddpg(env_fn, actor_critic=MLPActorCritic, ac_kwargs=dict(), seed=0,
         if t >= update_after and t % update_every == 0:
             for _ in range(update_every):
                 update(replay_buffer.sample_batch(batch_size))
-
 ```

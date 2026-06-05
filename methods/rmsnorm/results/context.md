@@ -11,7 +11,7 @@ layer for sequence models and Transformers computes, within a single layer and a
 training example, the mean and standard deviation of that neuron-vector and standardizes by
 them. It accelerates convergence measured in number of steps.
 
-The precise problem this context sets up: that normalization layer is not free. It runs once
+The precise problem: that normalization layer is not free. It runs once
 per layer — and in a recurrent network, once per layer *per timestep* — and each invocation
 requires gathering statistics over the whole neuron-vector and rewriting every element. For
 small shallow models this overhead is negligible, but as networks grow deep and wide, or
@@ -19,7 +19,7 @@ unroll over long sequences, the per-step cost mounts until it eats much of the b
 convergence is faster in *steps*, but each step is slower in *wall-clock time*, so the net
 speedup over an unnormalized baseline is far smaller than the step-count curve suggests. The
 goal is a normalization that keeps the stabilization benefit but costs less to compute — and,
-to know what can safely be cut, one first has to understand *which part* of the standard
+to know what can safely be removed, one first has to understand *which part* of the standard
 layer's mechanism is actually responsible for its success.
 
 ## Background
@@ -44,9 +44,10 @@ what a normalization layer acts on.
 
 **Two distinct invariances.** A useful way to characterize a normalization layer is by what
 transformations of its inputs and weights leave its output unchanged (Ba et al. 2016). Two
-are central. *Re-centering* invariance: shift the summed inputs (or the weights) by a constant
-and the output is unchanged — this holds whenever the layer subtracts a mean. *Re-scaling*
-invariance: multiply the summed inputs (or the weights) by a constant and the output is
+are central. *Re-centering* invariance: shift every coordinate of the summed-input vector by
+the same constant, or recenter the weight matrix so it induces such a shift, and the output is
+unchanged — this holds whenever the layer subtracts a mean. *Re-scaling*
+invariance: multiply the summed inputs (or the weights) by a positive constant and the output is
 unchanged — this holds whenever the layer divides by a quantity that scales linearly with the
 input, such as a standard deviation. A layer that both subtracts the mean and divides by the
 standard deviation has both invariances at once, and the prevailing wisdom credits *both* with
@@ -131,46 +132,40 @@ since the computational overhead of a normalization layer is partly an implement
 
 ## Code framework
 
-The primitives that already exist: an autodiff tensor library with elementwise ops, a sum/mean
-reduction along a chosen axis, square root and reciprocal-square-root, and an `nn.Module`
-abstraction with learnable `Parameter`s. A layer computes summed inputs and a nonlinearity; a
-normalization module is inserted to rescale the summed inputs using a within-layer statistic.
+The primitives that already exist: an autodiff tensor library with elementwise ops, a reduction
+along a chosen axis, square root or reciprocal-square-root, and an `nn.Module` abstraction with
+learnable `Parameter`s. A layer computes summed inputs and a nonlinearity; a normalization module
+is inserted to rescale the summed inputs using a within-layer statistic.
 
 ```python
 import torch
 import torch.nn as nn
 
 
-class Normalization(nn.Module):
-    """Rescales the summed inputs of a layer using a statistic computed
-    within that layer, over the last (feature) axis. Holds a learnable
-    per-neuron gain (and optionally a shift)."""
+class FeatureNormalization(nn.Module):
+    """Rescales summed inputs over the last feature axis."""
 
-    def __init__(self, d, eps=1e-8):
+    def __init__(self, d, p=-1., eps=1e-8, bias=False):
         super().__init__()
-        self.d = d
         self.eps = eps
-        self.scale = nn.Parameter(torch.ones(d))   # per-neuron gain g, init 1
-        # TODO: a shift parameter is only needed if the chosen statistic
-        # removes a location/offset that must be restored.
+        self.d = d
+        self.p = p
+        self.bias = bias
+        self.scale = nn.Parameter(torch.ones(d))
+        self.register_parameter("scale", self.scale)
+        if self.bias:
+            self.offset = nn.Parameter(torch.zeros(d))
+            self.register_parameter("offset", self.offset)
 
     def forward(self, x):
         # x: [..., d], the summed inputs a to the layer's neurons.
-        # TODO: compute the within-layer statistic that defines this layer
-        #       (which moments of x over the last axis, and how they rescale x),
-        #       then apply the learned gain.
-        raise NotImplementedError
-
-
-# The known reference point this slot must at least recover:
-def layernorm_forward(x, scale, shift, eps=1e-8):
-    mean = x.mean(dim=-1, keepdim=True)                  # reduction 1: the mean
-    var = x.var(dim=-1, unbiased=False, keepdim=True)    # reduction 2: the (centered) variance
-    x_normed = (x - mean) / torch.sqrt(var + eps)        # subtract mean, divide by std
-    return scale * x_normed + shift
+        # TODO: choose the within-layer scale statistic, decide whether it
+        # can be estimated from a subset of coordinates, then apply gain and
+        # the optional offset.
+        pass
 ```
 
-The single open slot is the body of `Normalization.forward`: which statistic of the summed
-inputs to compute, and how to rescale by it. The `layernorm_forward` reference shows the known
-recipe — two reductions (mean, then variance) plus a subtraction — that the slot will be
-measured against on both quality and cost.
+The open slot is the body of `FeatureNormalization.forward`: which statistic of the summed inputs
+to compute, whether a cheaper subset estimate is valid, and how to rescale `x` before applying the
+learned gain and optional offset. The existing layer-normalization recipe remains the cost target:
+two reductions, mean subtraction, and a learned affine transform.

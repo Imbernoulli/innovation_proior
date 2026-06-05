@@ -61,6 +61,20 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+class Highway(nn.Module):
+    def __init__(self, size, num_layers, activation=F.relu):
+        super().__init__()
+        self.layers = nn.ModuleList([nn.Linear(size, 2 * size) for _ in range(num_layers)])
+        self.activation = activation
+
+    def forward(self, x):
+        for layer in self.layers:
+            nonlinear, gate = layer(x).chunk(2, dim=-1)
+            gate = torch.sigmoid(gate)
+            x = gate * x + (1 - gate) * self.activation(nonlinear)
+        return x
+
+
 class CharacterCNNEncoder(nn.Module):
     """x_k^LM: context-independent token vector from characters (works for any
     string, captures morphology)."""
@@ -78,84 +92,145 @@ class CharacterCNNEncoder(nn.Module):
 
     def forward(self, char_ids):                       # (B, T, max_chars)
         B, T, C = char_ids.shape
+        mask = (char_ids.gt(0).long().sum(dim=-1) > 0).long()
         x = self.char_emb(char_ids.view(B * T, C)).transpose(1, 2)   # (B*T, char_dim, C)
         convs = []
         for conv in self.convs:
             c, _ = conv(x).max(dim=-1)                  # conv + max-pool over chars
             convs.append(F.relu(c))
         tok = self.proj(self.highways(torch.cat(convs, dim=-1)))
-        return tok.view(B, T, -1)
+        tok = tok.view(B, T, -1) * mask.unsqueeze(-1).float()
+        return tok, mask
 
 
-class BiLM(nn.Module):
+class StackedProjectedLSTM(nn.Module):
+    """Projected LSTM stack returning every layer output."""
+    def __init__(self, input_dim, cell_dim=4096, proj_dim=512, n_layers=2, residual=True):
+        super().__init__()
+        self.layers = nn.ModuleList()
+        self.projections = nn.ModuleList()
+        self.residual = residual
+        dim = input_dim
+        for _ in range(n_layers):
+            self.layers.append(nn.LSTM(dim, cell_dim, batch_first=True))
+            self.projections.append(nn.Linear(cell_dim, proj_dim))
+            dim = proj_dim
+
+    def forward(self, x):
+        outputs = []
+        inp = x
+        for layer_index, (lstm, projection) in enumerate(zip(self.layers, self.projections)):
+            out, _ = lstm(inp)
+            out = projection(out)
+            if self.residual and layer_index != 0:
+                out = out + inp
+            outputs.append(out)
+            inp = out
+        return outputs
+
+
+class BidirectionalLanguageModel(nn.Module):
     """Forward + backward LM; char-CNN (Theta_x) and softmax (Theta_s) shared
     across directions, separate LSTM stacks. Returns all L+1 layers = R_k."""
-    def __init__(self, n_layers=2, proj_dim=512, hidden=4096, vocab=793471):
+    def __init__(self, n_layers=2, proj_dim=512, cell_dim=4096, vocab_size=793471):
         super().__init__()
         self.char_encoder = CharacterCNNEncoder(proj_dim=proj_dim)
-        self.fwd = StackedProjLSTM(proj_dim, hidden, proj_dim, n_layers, residual=True)
-        self.bwd = StackedProjLSTM(proj_dim, hidden, proj_dim, n_layers, residual=True)
-        self.softmax = nn.Linear(proj_dim, vocab)
+        self.forward_lm = StackedProjectedLSTM(proj_dim, cell_dim, proj_dim, n_layers, residual=True)
+        self.backward_lm = StackedProjectedLSTM(proj_dim, cell_dim, proj_dim, n_layers, residual=True)
+        self.softmax = nn.Linear(proj_dim, vocab_size)
         self.n_layers = n_layers
 
     def forward(self, char_ids):
-        x = self.char_encoder(char_ids)
-        fwd = self.fwd(x)
-        bwd = [h.flip(1) for h in self.bwd(x.flip(1))]
-        layers = [torch.cat([x, x], dim=-1)]            # layer 0 (token), both dirs
+        x, mask = self.char_encoder(char_ids)
+        fwd = self.forward_lm(x)
+        bwd = [h.flip(1) for h in self.backward_lm(x.flip(1))]
+        layers = [torch.cat([x, x], dim=-1) * mask.unsqueeze(-1).float()]
         for f, b in zip(fwd, bwd):
-            layers.append(torch.cat([f, b], dim=-1))    # h_{k,j} = [h->; h<-]
-        return layers                                   # length n_layers + 1
+            layers.append(torch.cat([f, b], dim=-1) * mask.unsqueeze(-1).float())
+        return {"activations": layers, "mask": mask}
 
     def lm_loss(self, char_ids, tgt_fwd, tgt_bwd):
-        x = self.char_encoder(char_ids)
-        f = self.softmax(self.fwd(x)[-1]).transpose(1, 2)
-        b = self.softmax(self.bwd(x.flip(1))[-1].flip(1)).transpose(1, 2)
+        x, _ = self.char_encoder(char_ids)
+        f = self.softmax(self.forward_lm(x)[-1]).transpose(1, 2)
+        b = self.softmax(self.backward_lm(x.flip(1))[-1].flip(1)).transpose(1, 2)
         return F.cross_entropy(f, tgt_fwd) + F.cross_entropy(b, tgt_bwd)
 
 
-class ScalarMix(nn.Module):
-    """ELMo combination: gamma * sum_j softmax(w)_j * layer_j, optional per-layer
-    layer-norm first. Learned per task; biLM frozen."""
-    def __init__(self, mixture_size, do_layer_norm=False):
+class LayerCombination(nn.Module):
+    """ELMo combination: gamma * sum_j softmax(w)_j * layer_j."""
+    def __init__(self, mixture_size, do_layer_norm=False,
+                 initial_scalar_parameters=None, trainable=True):
         super().__init__()
-        self.w = nn.Parameter(torch.zeros(mixture_size))
-        self.gamma = nn.Parameter(torch.ones(1))
+        if initial_scalar_parameters is None:
+            initial_scalar_parameters = [0.0] * mixture_size
+        if len(initial_scalar_parameters) != mixture_size:
+            raise ValueError("initial scalar parameter count must match mixture_size")
+        self.scalar_parameters = nn.ParameterList([
+            nn.Parameter(torch.tensor([value], dtype=torch.float), requires_grad=trainable)
+            for value in initial_scalar_parameters
+        ])
+        self.gamma = nn.Parameter(torch.tensor([1.0]), requires_grad=trainable)
         self.do_layer_norm = do_layer_norm
 
     def forward(self, layers, mask=None):
-        s = F.softmax(self.w, dim=0)
+        if len(layers) != len(self.scalar_parameters):
+            raise ValueError("wrong number of layer tensors")
+        s = F.softmax(torch.cat([p for p in self.scalar_parameters]), dim=0)
+        s = torch.split(s, split_size_or_sections=1)
         if self.do_layer_norm:
-            m = mask.unsqueeze(-1).float()
-            n = m.sum() * layers[0].size(-1)
-            def ln(h):
-                mean = (h * m).sum() / n
-                var = (((h - mean) * m) ** 2).sum() / n
-                return (h - mean) / torch.sqrt(var + 1e-12)
-            layers = [ln(h) for h in layers]
+            if mask is None:
+                raise ValueError("mask is required when do_layer_norm=True")
+            layers = [self._layer_norm(h, mask) for h in layers]
         return self.gamma * sum(s_j * h for s_j, h in zip(s, layers))
 
+    @staticmethod
+    def _layer_norm(h, mask):
+        m = mask.unsqueeze(-1).float()
+        n = m.sum() * h.size(-1)
+        mean = (h * m).sum() / n
+        var = (((h - mean) * m) ** 2).sum() / n
+        return (h - mean) / torch.sqrt(var + 1e-12)
 
-class ELMo(nn.Module):
-    """Frozen biLM + one ScalarMix per output location (e.g. input and output)."""
-    def __init__(self, bilm, num_output_representations=1, do_layer_norm=False):
+
+class ContextualFeatureExtractor(nn.Module):
+    """Frozen biLM + one learned layer combination per output location."""
+    def __init__(self, bilm, num_output_representations=1,
+                 do_layer_norm=False, dropout=0.5, freeze_bilm=True):
         super().__init__()
         self.bilm = bilm
-        for p in self.bilm.parameters():
-            p.requires_grad = False
-        self.mixes = nn.ModuleList(
-            [ScalarMix(bilm.n_layers + 1, do_layer_norm)
-             for _ in range(num_output_representations)])
+        self.freeze_bilm = freeze_bilm
+        if freeze_bilm:
+            for p in self.bilm.parameters():
+                p.requires_grad = False
+        self.layer_combinations = nn.ModuleList([
+            LayerCombination(bilm.n_layers + 1, do_layer_norm=do_layer_norm)
+            for _ in range(num_output_representations)
+        ])
+        self.dropout = nn.Dropout(dropout)
 
-    def forward(self, char_ids, mask=None):
-        with torch.no_grad():
-            layers = self.bilm(char_ids)
-        return [mix(layers, mask) for mix in self.mixes]   # one ELMo vector per location
+    def forward(self, char_ids):
+        if self.freeze_bilm:
+            with torch.no_grad():
+                output = self.bilm(char_ids)
+        else:
+            output = self.bilm(char_ids)
+        layers, mask = output["activations"], output["mask"]
+        features = [self.dropout(mix(layers, mask)) for mix in self.layer_combinations]
+        return features, mask
+
+    def weight_regularization(self, coefficient):
+        return coefficient * sum(
+            (p ** 2).sum()
+            for mix in self.layer_combinations
+            for p in mix.scalar_parameters
+        )
 
 
-# Downstream use: concatenate ELMo onto the task token representation.
-#   elmo_in, *rest = elmo(char_ids, mask)
-#   h = task_rnn(torch.cat([x_task, dropout(elmo_in)], dim=-1))   # [x_k; ELMo_k]
-#   # optionally also h = torch.cat([h, dropout(elmo_out)], dim=-1)  # [h_k; ELMo_k]
-# Add lambda * ||w||^2 to the loss to trade free layer-selection against averaging.
+def add_feature_to_task_model(task_token_repr, contextual_input,
+                              task_context_repr=None, contextual_output=None):
+    task_input = torch.cat([task_token_repr, contextual_input], dim=-1)
+    if task_context_repr is None or contextual_output is None:
+        return task_input
+    task_output = torch.cat([task_context_repr, contextual_output], dim=-1)
+    return task_input, task_output
 ```

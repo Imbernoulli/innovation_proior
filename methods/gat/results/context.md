@@ -48,43 +48,42 @@ Standard training machinery available at the time: Glorot initialization, the Ad
 
 ## Code framework
 
-The pieces that exist before the new layer is designed: a data pipeline that loads features and adjacency, a generic per-node layer abstraction with an empty local-operator slot, a model wrapper for stacking such layers, and a standard masked-loss training loop.
+The pieces that exist before the new layer is designed: a data pipeline that loads features and adjacency, a generic per-node layer abstraction with an empty local-operator slot, a model wrapper for stacking such layers, and standard masked-loss/training helpers.
 
 ```python
 import numpy as np
 import tensorflow as tf
 
-# --- data pipeline (exists) ---
+# --- data pipeline ---
 def load_graph(dataset):
     # returns features [N, F], adjacency A [N, N], labels, train/val/test masks
     ...
 
-def neighborhood_mask(adj, nhood=1):
-    # turn adjacency into something that restricts each node to its <=nhood neighbors
-    # (a per-node neighbor indicator, including self)
-    ...
-
-# --- the layer we have to design: a generic per-node operator over local structure ---
-def graph_layer(seq, out_sz, neigh, activation, in_drop=0.0, op_drop=0.0, residual=False):
-    """Map node features [B, N, F] -> [B, N, out_sz] using each node's neighborhood.
-    The contribution lives here: define the local transformation while respecting
-    the graph structure encoded by `neigh`."""
-    # TODO: transform node features with shared parameters
-    # TODO: use `neigh` to limit each node's local receptive field
-    # TODO: combine available local information into one output per node
-    # TODO: apply activation/residual/dropout conventions as appropriate
+def neighborhood_bias(adj, sizes, nhood=1):
+    # returns an additive neighborhood mask broadcastable to [B, N, N]
     pass
 
-# --- stacking the layers into a model (generic skeleton) ---
+# --- local graph operator ---
+def graph_layer(seq, out_sz, neigh, activation,
+                in_drop=0.0, op_drop=0.0, residual=False):
+    """Map node features [B, N, F] -> [B, N, out_sz] using each node's neighborhood."""
+    # TODO: transform node features with shared parameters.
+    # TODO: use `neigh` to restrict each node to its local receptive field.
+    # TODO: combine local information into one output per node.
+    # TODO: apply activation/residual/dropout conventions.
+    pass
+
+# --- stacking the local operator into a model ---
 class NodeModel:
     @staticmethod
-    def inference(inputs, nb_classes, neigh, hid_units, activation=tf.nn.elu,
-                  residual=False):
-        # TODO: build hidden graph layers
-        # TODO: produce output logits for the task
+    def inference(inputs, nb_classes, nb_nodes, training, op_drop, ffd_drop,
+                  neigh, hid_units, layer_repeats,
+                  activation=tf.nn.elu, residual=False):
+        # TODO: build hidden graph layers.
+        # TODO: produce task logits.
         pass
 
-# --- training machinery (exists) ---
+# --- training helpers ---
 def masked_softmax_cross_entropy(logits, labels, mask):
     loss = tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=labels)
     mask = tf.cast(mask, tf.float32); mask /= tf.reduce_mean(mask)
@@ -97,9 +96,15 @@ def masked_sigmoid_cross_entropy(logits, labels, mask):
     mask = tf.cast(mask, tf.float32); mask /= tf.reduce_mean(mask)
     return tf.reduce_mean(loss * mask)
 
-def train(model, features, neigh, labels, masks, lr, l2_coef):
-    logits = model.inference(features, nb_classes=..., neigh=neigh, hid_units=...)
-    loss = masked_softmax_cross_entropy(logits, labels, masks["train"])
-    l2 = tf.add_n([tf.nn.l2_loss(v) for v in tf.trainable_variables()]) * l2_coef
-    return tf.train.AdamOptimizer(lr).minimize(loss + l2)
+def masked_accuracy(logits, labels, mask):
+    # TODO: compute masked node-classification accuracy.
+    pass
+
+def micro_f1(logits, labels, mask):
+    # TODO: threshold multi-label logits and compute masked micro-F1.
+    pass
+
+def training(loss, lr, l2_coef):
+    # TODO: add weight decay and apply Adam.
+    pass
 ```

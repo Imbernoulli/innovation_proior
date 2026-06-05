@@ -1,6 +1,6 @@
 Let me start from the thing that actually annoys me in practice. I train a transformer language model on input subsequences of length $L$, and that single number sets the cost of everything: attention is quadratic in $L$, so doubling the training length roughly quadruples the attention compute and memory per step. Longer inputs are unambiguously good for the model — every prediction gets more left context, the loss drops — but they are punishingly expensive to train on. So the obvious dream: train on short sequences, then at inference just hand the model longer ones. Use a small $L$ during training and a big $L_\text{valid}$ at test time. If that worked, I'd get long-context quality at short-context training cost.
 
-Does it work? The recurrent models from before transformers were trained short and run long as a matter of course, and nobody thought twice. And the transformer paper itself floated the hope that the architecture "may extrapolate to sequence lengths longer than the ones encountered during training." So let me just check it. Take a standard transformer LM, train it at $L=512$, and evaluate it on the validation set at $512+k$ tokens, sweeping $k$ from a handful up to thousands. Plot perplexity against $k$.
+Does it work? The recurrent models from before transformers were trained short and run long as a matter of course, and nobody thought twice. Vaswani et al. even floated the hope that the architecture "may extrapolate to sequence lengths longer than the ones encountered during training." So let me just check it. Take a standard transformer LM, train it at $L=512$, and evaluate it on the validation set at $512+k$ tokens, sweeping $k$ from a handful up to thousands. Plot perplexity against $k$.
 
 What I see is discouraging. For very small $k$ — the first dozen or two tokens of extra context — perplexity improves a little, which makes sense: a few more context tokens help. Then it flattens almost immediately, and then it *climbs*. By the time I'm a few hundred tokens past $L$, the extra context is hurting rather than helping. The model doesn't gently plateau; it breaks when you give it more tokens than it trained on. So the casual assumption is false for this architecture as built. The dream of "train short, test long" is unusable unless I understand why.
 
@@ -48,15 +48,15 @@ How to space them? Let me reason about what a slope does. A near-zero slope make
 
 A geometric sequence in $(0,1)$ with a common ratio $r<1$ does exactly this — the terms pile up near $0$. So for $n$ heads let the slopes be $m_h = r^h$ for $h=1,\dots,n$, geometric with ratio $r$. I just need to fix $r$. A clean, memorable choice: for the common case of $8$ heads, let the slopes run $\tfrac12, \tfrac14, \tfrac18, \dots, \tfrac1{256}$ — that is, $m_h=(1/2)^h$, starting at $1/2$ with ratio $1/2$, the last head having a barely-there slope of $1/256$ (very long range) and the first a firmly local $1/2$. Eight heads, eight nicely spread windows, dense toward the small-slope end.
 
-Now generalize off $8$. I want the *shape* of that spread to be invariant to the head count — whether I have $16$ heads or $8$, the slopes should cover the same $(0,1)$ territory with the same near-$0$ density, just sampled more or less finely. The $8$-head choice has start $=$ ratio $= 2^{-1} = 2^{-8/8}$. So read it as: start and ratio both equal $2^{-8/n}$. Then for general $n$,
+Now generalize off $8$. I want the *shape* of that spread to be invariant to the head count — whether I have $16$ heads or $8$, the slopes should cover the same $(0,1)$ territory with the same near-$0$ density, just sampled more or less finely. The $8$-head choice has start $=$ ratio $= 2^{-1} = 2^{-8/8}$. So for the power-of-two head counts I actually use, I read it as: start and ratio both equal $2^{-8/n}$. Then
 
 $$m_h = \big(2^{-8/n}\big)^{h} = 2^{-8h/n}, \qquad h=1,\dots,n.$$
 
 Check $n=8$: $2^{-8/8}=2^{-1}=1/2$, giving $1/2,1/4,\dots,1/256$. Good. Check $n=16$: start and ratio $2^{-8/16}=2^{-1/2}=1/\sqrt2$, giving $2^{-0.5},2^{-1},2^{-1.5},\dots,2^{-8}$ — which is exactly the $8$-head set with a new point geometrically interposed between each consecutive pair (the geometric mean of $2^{-1}$ and $2^{-2}$ is $2^{-1.5}$, and so on). So doubling the heads just refines the same spread, end-points fixed, density unchanged. That's the invariance I wanted, and it falls right out of tying start and ratio to $2^{-8/n}$.
 
-In code the start is written as $2^{-2^{-(\log_2 n - 3)}}$, which looks opaque until I simplify the exponent: $-2^{-(\log_2 n-3)} = -2^{3-\log_2 n} = -8/n$. So it's the same $2^{-8/n}$, just expressed so it's easy to compute from $n$. For a head count that isn't a power of two, the geometric trick doesn't land on clean values, so the fallback is to take the slopes of the nearest lower power of two and then borrow extra slopes from the next power-of-two set, taking every other one — a workaround purely to preserve the "in $(0,1)$, dense near $0$" property when $n$ isn't a power of two.
+In code the power-of-two start is written as $2^{-2^{-(\log_2 n - 3)}}$, which looks opaque until I simplify the exponent: $-2^{-(\log_2 n-3)} = -2^{3-\log_2 n} = -8/n$. So it's the same $2^{-8/n}$, just expressed so it's easy to compute from $n$. For a head count that isn't a power of two, the pure geometric rule no longer gives the same clean interpolation structure, so the fallback is exact and separate: take the slopes of the nearest lower power of two, then append every other slope from the next power-of-two set until I have enough heads. That preserves the "in $(0,1)$, dense near $0$" shape without pretending the non-power-of-two case is a single geometric sequence.
 
-Is the exact schedule load-bearing, or just a reasonable point in a good region? A short manual sweep over a handful of slope sets says the latter: the method is robust to the choice as long as the slopes live in $(0,1)$ and crowd toward $0$. Even drawing slopes randomly from an exponential distribution works in some cases (with higher variance). So I don't need to re-tune this per dataset or per model size — I fix it once, like the sinusoidal frequency ladder was fixed once and reused everywhere. That robustness is reassuring: it means the geometric-$2^{-8/n}$ rule isn't a fragile magic number, it's just a convenient way to hit the right region.
+Is the exact schedule load-bearing, or just a reasonable point in a good region? A short manual sweep over a handful of slope sets says the latter: the method is robust to the choice as long as the slopes live in $(0,1)$ and crowd toward $0$. Even drawing slopes randomly from an exponential distribution works in some cases (with higher variance). So I don't need to re-tune this per dataset or per model size — I fix it once, like the sinusoidal frequency ladder was fixed once and reused everywhere. That robustness is reassuring: it means the power-of-two geometric rule and its explicit fallback are not fragile magic numbers; they are a convenient way to hit the right region.
 
 One more detail on the bias itself. The original score has a $1/\sqrt{d_k}$ scaling on the dot product to keep the softmax in a sane regime. Do I scale the bias too? No — the bias isn't a dot product of $d_k$ random-ish terms whose variance grows with $d_k$; it's a deliberate fixed penalty in score units. Scaling it by $1/\sqrt{d_k}$ would just rescale my slopes by a constant, which I can absorb into $m$ anyway. So leave the bias unscaled; it's added raw to the (already-scaled) scores.
 
@@ -70,7 +70,7 @@ For a fixed query row $i$, the $-mi$ part is a constant added to every allowed k
 
 The only cost at all is memory. The plain causal mask is $L\times L$ and shared across heads. My biased mask differs per head (different $m$), so it's $n\times L\times L$. That's a slightly larger buffer — on the order of tens of megabytes in these models — and that's the entire price. No parameters, no extra matmuls, a negligible memory bump. Compare that to the relative-bias method's 2× slowdown, and this is exactly the efficient extrapolation I was after.
 
-Let me write it down, faithful to how it actually goes into the model: a function that produces the per-head slopes, and the construction that folds the linear penalty into the causal mask.
+At this point the code path is small: a function that produces the per-head slopes, and the construction that folds the linear penalty into the causal mask.
 
 ```python
 import math
@@ -80,9 +80,8 @@ import torch.nn.functional as F
 
 
 def get_slopes(n_heads):
-    # Per-head slopes m_h = 2^{-8h/n}, h = 1..n: a geometric sequence in (0,1)
-    # with start = ratio = 2^{-8/n}, so the slopes crowd toward 0 (many long-range
-    # heads finely spaced, few short-range heads). Fixed before training, never learned.
+    # For power-of-two head counts, m_h = 2^{-8h/n}, h = 1..n: a geometric
+    # sequence in (0,1) with start = ratio = 2^{-8/n}. Fixed before training.
     def slopes_power_of_2(n):
         start = 2 ** (-(2 ** -(math.log2(n) - 3)))   # = 2^{-8/n}
         ratio = start
@@ -90,8 +89,8 @@ def get_slopes(n_heads):
 
     if math.log2(n_heads).is_integer():
         return slopes_power_of_2(n_heads)
-    # n not a power of 2: take the nearest lower power-of-2's slopes, then interpolate
-    # extras from the next set (every other one) to keep the in-(0,1)-dense-near-0 shape.
+    # For other head counts, keep the lower power-of-2 set and append every other
+    # slope from the next power-of-2 set.
     closest = 2 ** math.floor(math.log2(n_heads))
     return (slopes_power_of_2(closest)
             + get_slopes(2 * closest)[0::2][: n_heads - closest])
@@ -171,4 +170,4 @@ def lm_loss(logits, targets):
     return F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1))
 ```
 
-So the causal chain, start to finish: a transformer trained at length $L$ breaks at length $>L$ when its position mechanism asks the model to interpret position states or phase relations it never had to handle during training, and learned position parameters deepen the temptation to specialize to $[0,L)$. The relative-bias method shows extrapolation is reachable by changing the position method, but it pays a heavy runtime tax. So I throw out position embeddings entirely and let position enter only as a fixed, non-learned, additive penalty on each query–key score that grows linearly with the relative distance, $-m(i-j)$, with a per-head slope. Because the penalty is a parameter-free monotone function of relative distance, its value at any new distance is the forced continuation of a line the model already rode rather than a new kind of position signal, and its growth gives a recency bias that gently suppresses far context instead of breaking on it. The slopes are a geometric sequence $2^{-8h/n}$, spread across $(0,1)$ and dense near $0$ so heads cover a range of effective windows; fixed once and reused, since the method is robust to the exact set. And because the penalty folds into the causal mask the model already adds before softmax, it costs no extra computation and only a per-head-sized mask of extra memory — efficient extrapolation, finally banked.
+So the causal chain, start to finish: a transformer trained at length $L$ breaks at length $>L$ when its position mechanism asks the model to interpret position states or phase relations it never had to handle during training, and learned position parameters deepen the temptation to specialize to $[0,L)$. The relative-bias method shows extrapolation is reachable by changing the position method, but it pays a heavy runtime tax. So I throw out position embeddings entirely and let position enter only as a fixed, non-learned, additive penalty on each query–key score that grows linearly with the relative distance, $-m(i-j)$, with a per-head slope. Because the penalty is a parameter-free monotone function of relative distance, its value at any new distance is the forced continuation of a line the model already rode rather than a new kind of position signal, and its growth gives a recency bias that gently suppresses far context instead of breaking on it. For power-of-two head counts, the slopes are a geometric sequence $2^{-8h/n}$, spread across $(0,1)$ and dense near $0$ so heads cover a range of effective windows; non-power-of-two counts use the explicit lower/next-power fallback. The slopes are fixed once and reused, since the method is robust to the exact set. And because the penalty folds into the causal mask the model already adds before softmax, it costs no extra computation and only a per-head-sized mask of extra memory — efficient extrapolation, finally banked.

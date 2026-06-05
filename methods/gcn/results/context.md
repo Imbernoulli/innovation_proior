@@ -46,7 +46,7 @@ The natural points of comparison split into Laplacian-regularization methods, gr
 
   g_{θ'} ⋆ x ≈ Σ_{k=0}^{K} θ'_k T_k(L̃) x ,
 
-evaluated through the Chebyshev recurrence on L̃ directly. Because this is a K-th-order polynomial in L, it depends only on each node's K-hop neighborhood (it is K-localized), costs O(K|E|), and needs no eigendecomposition; the free parameters drop from O(N) to K, and the filter is now a *function of the spectrum* that transfers across graphs. **Gap a new method can react to:** each filter still carries K coefficients θ', and K simultaneously controls both filter expressiveness *and* receptive-field radius; on graphs with very wide degree distributions a high-K filter reaches an enormous neighborhood around a hub and can overfit local structure. If one is willing to gain receptive field by stacking layers and gain expressiveness through nonlinearities, the per-layer parameterization is richer than necessary.
+evaluated through the Chebyshev recurrence on L̃ directly. Because this is a K-th-order polynomial in L, it depends only on each node's K-hop neighborhood (it is K-localized), costs O(K|E|), and needs no eigendecomposition; the free parameters drop from O(N) to K+1 coefficients, and the filter is now a *function of the spectrum* that transfers across graphs. **Gap a new method can react to:** each filter still carries θ'_0 through θ'_K, and K simultaneously controls both filter expressiveness *and* receptive-field radius; on graphs with very wide degree distributions a high-K filter reaches an enormous neighborhood around a hub and can overfit local structure. If one is willing to gain receptive field by stacking layers and gain expressiveness through nonlinearities, the per-layer parameterization is richer than necessary.
 
 **Other neural-networks-on-graphs.** Graph neural networks as recurrent fixed-point models (Gori et al., 2005; Scarselli et al., 2009) require repeatedly applying a *contraction map* to convergence — a straitjacket; Li et al. (2016) modernize this with gated recurrent updates. Duvenaud et al. (2015) introduce a convolution-like propagation for molecular fingerprints but use **degree-specific weight matrices** — a separate learned matrix for each distinct node degree — which does not scale to graphs with many distinct degrees and does not transfer. Atwood & Towsley (2016, diffusion-convolutional networks) report O(N²) complexity. Niepert et al. (2016) linearize local neighborhoods into sequences for an ordinary 1D CNN, which requires choosing a node ordering in preprocessing. **Common gap:** none gives a single weight matrix per layer that scales linearly in |E| while handling wide degree distributions through normalization alone.
 
@@ -61,74 +61,122 @@ The natural benchmarks for transductive node classification are three citation n
 
 # Code framework
 
-The implementation substrate is a deep-learning framework with automatic differentiation and GPU support (**TensorFlow**, Abadi et al., 2015, or PyTorch) together with **SciPy sparse matrices** for the graph, because the data is one large graph and we must never materialize a dense N×N matrix. The available primitives are: loading the graph and features as sparse/dense arrays; stacking layers, each a linear map of features followed by a point-wise nonlinearity; the standard training kit (Adam, dropout, Glorot initialization, cross-entropy); and the semi-supervised bookkeeping trick of computing outputs for **all** nodes while supervising only the labeled ones through a mask on the loss. The graph-specific transformation is represented by a generic `graph_layer(H, A, W)` stub.
+The implementation substrate is a deep-learning framework with automatic differentiation and GPU support (**TensorFlow**, Abadi et al., 2015) together with **SciPy sparse matrices** for the graph, because the data is one large graph and we must never materialize a dense N×N matrix. The available primitives are: loading the graph and features as sparse/dense arrays; converting SciPy sparse matrices to sparse tensors; stacking layers, each a linear map of features followed by a point-wise nonlinearity; the standard training kit (Adam, dropout, Glorot initialization, cross-entropy); and the semi-supervised bookkeeping trick of computing outputs for **all** nodes while supervising only the labeled ones through a mask on the loss. The graph-specific slots are the sparse graph support and the layer that applies it.
 
-**(1) Data loading.** The graph arrives as a sparse adjacency matrix, the features as a (possibly sparse) node-by-feature matrix, the labels as a one-hot matrix on a subset of nodes, and three boolean masks splitting nodes into train / validation / test.
+**(1) Sparse data loading and generic preprocessing.** The graph arrives as a sparse adjacency matrix, the features as a sparse node-by-feature matrix, the labels as one-hot matrices defined through masks, and three boolean masks splitting nodes into train / validation / test. Feature row-normalization and sparse tuple conversion are ordinary input plumbing.
 
 ```python
 import numpy as np
 import scipy.sparse as sp
+import tensorflow as tf
 
 def load_graph_data():
-    """Return (A, X, Y, train_mask, val_mask, test_mask):
+    """Return (A, X, y_train, y_val, y_test, train_mask, val_mask, test_mask):
     A          sparse N x N adjacency (binary/weighted, undirected),
     X          N x C node features (sparse bag-of-words or dense),
-    Y          N x F one-hot labels (rows defined only on labeled nodes),
-    *_mask     boolean length-N selectors of labeled / val / test nodes."""
+    y_*        N x F one-hot labels, zero outside each split,
+    *_mask     boolean length-N selectors."""
     A = sp.load_npz(...)            # raw adjacency, untouched
     X = sp.load_npz(...)            # node features
-    Y = np.load(...)                # labels
+    y_train, y_val, y_test = ...
     train_mask, val_mask, test_mask = ...   # node splits
-    return A, X, Y, train_mask, val_mask, test_mask
+    return A, X, y_train, y_val, y_test, train_mask, val_mask, test_mask
+
+def sparse_to_tuple(sparse_mx):
+    """Convert a scipy sparse matrix, or a list of them, to TensorFlow sparse tuples."""
+    def to_tuple(mx):
+        if not sp.isspmatrix_coo(mx):
+            mx = mx.tocoo()
+        coords = np.vstack((mx.row, mx.col)).transpose()
+        return coords, mx.data, mx.shape
+    return [to_tuple(mx) for mx in sparse_mx] if isinstance(sparse_mx, list) else to_tuple(sparse_mx)
+
+def preprocess_features(features):
+    """Row-normalize feature matrix and convert to tuple representation."""
+    rowsum = np.array(features.sum(1))
+    r_inv = np.power(rowsum, -1).flatten()
+    r_inv[np.isinf(r_inv)] = 0.
+    return sparse_to_tuple(sp.diags(r_inv).dot(features))
 ```
 
-The adjacency is passed through **raw**; the layer stub receives it directly.
-
-**(2) The per-layer graph operation.** Each layer should take the current node representations H, the graph A, and a learnable weight matrix W, and produce new node representations:
+**(2) The sparse graph support.** The raw adjacency is transformed once into the sparse operator used by every layer:
 
 ```python
-def graph_layer(H, A, W):
-    """One layer of a graph network: combine each node's representation with
-    its neighbours' (via A) and a learnable weight W, then a nonlinearity."""
-    # TODO: graph propagation
+def normalize_adj(adj):
+    """Choose and apply the degree normalization for the sparse graph operator."""
+    # TODO: graph normalization
+    pass
+
+def preprocess_adj(adj):
+    """Build the sparse graph support from the raw adjacency."""
+    # TODO: graph support construction
     pass
 ```
 
-**(3) The model — stack the layers.** The generic recipe stacks a few such layers with point-wise nonlinearities between them and dropout for regularization:
+**(3) The layer and model stack.** The layer owns one trainable matrix per sparse support, applies dropout, projects features, propagates through the sparse support, sums the terms, and applies a point-wise activation. The model stacks two such layers, with a linear output layer producing logits for every node:
 
 ```python
-class GraphModel:
-    """Stack of graph layers: H^{(0)} = X, H^{(l+1)} = nonlinearity(graph_layer(...)),
-    final layer outputs per-node class logits for ALL N nodes at once."""
-    def __init__(self, n_features, n_hidden, n_classes, dropout):
-        # TODO: instantiate the stacked graph_layer weights once the layer is fixed
+def glorot(shape, name=None):
+    init_range = np.sqrt(6.0 / (shape[0] + shape[1]))
+    initial = tf.random_uniform(shape, minval=-init_range, maxval=init_range,
+                                dtype=tf.float32)
+    return tf.Variable(initial, name=name)
+
+def sparse_dropout(x, keep_prob, noise_shape):
+    random_tensor = keep_prob + tf.random_uniform(noise_shape)
+    dropout_mask = tf.cast(tf.floor(random_tensor), dtype=tf.bool)
+    dropped = tf.sparse_retain(x, dropout_mask)
+    return dropped * (1. / keep_prob)
+
+def dot(x, y, sparse=False):
+    return tf.sparse_tensor_dense_matmul(x, y) if sparse else tf.matmul(x, y)
+
+class GraphLayer:
+    def __init__(self, input_dim, output_dim, support, act=tf.nn.relu,
+                 dropout=0., sparse_inputs=False, num_features_nonzero=None):
+        # TODO: allocate the weights once the graph support is fixed
         pass
 
-    def forward(self, X, A):
-        # TODO: H = X; for each layer: H = graph_layer(dropout(H), A, W); nonlinearity
-        #       return logits for every node
+    def __call__(self, x):
+        # TODO: dropout, feature projection, sparse graph propagation, activation
+        pass
+
+class GraphModel:
+    def __init__(self, placeholders, input_dim, hidden, num_classes):
+        # TODO: stack two GraphLayer instances and expose per-node logits
         pass
 ```
 
-**(4) Masked loss + full-batch training loop.** Because there is one graph, training is full-batch: compute logits for every node in one pass, but average the cross-entropy over the labeled nodes only, via a mask. This is generic semi-supervised bookkeeping and is independent of whatever the layer turns out to be:
+**(4) Masked loss + full-batch training loop.** Because there is one graph, training is full-batch: compute logits for every node in one pass, but average the cross-entropy over the labeled nodes only, via a mask. This bookkeeping is independent of the graph support chosen above:
 
 ```python
-import tensorflow as tf
-
-def masked_cross_entropy(logits, labels, mask):
+def masked_softmax_cross_entropy(logits, labels, mask):
     """Softmax cross-entropy averaged over the labeled nodes only."""
     loss = tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=labels)
     mask = tf.cast(mask, tf.float32)
     mask /= tf.reduce_mean(mask)        # renormalize so the average is over masked nodes
     return tf.reduce_mean(loss * mask)
 
-optimizer = tf.train.AdamOptimizer(learning_rate=0.01)  # Adam, full-batch
-# training loop (schematic):
-#   for epoch in range(num_epochs):
-#       logits = model.forward(X, A)                       # outputs for ALL nodes
-#       loss   = masked_cross_entropy(logits, Y, train_mask)  # supervise labeled only
-#       optimizer.minimize(loss)                           # one full-batch Adam step
-#       early-stop on masked_cross_entropy(..., val_mask)
+A, X, y_train, y_val, y_test, train_mask, val_mask, test_mask = load_graph_data()
+features = preprocess_features(X)
+support = [preprocess_adj(A)]
+num_supports = len(support)
+
+placeholders = {
+    'support': [tf.sparse_placeholder(tf.float32) for _ in range(num_supports)],
+    'features': tf.sparse_placeholder(tf.float32, shape=tf.constant(features[2], dtype=tf.int64)),
+    'labels': tf.placeholder(tf.float32, shape=(None, y_train.shape[1])),
+    'labels_mask': tf.placeholder(tf.int32),
+    'dropout': tf.placeholder_with_default(0., shape=()),
+    'num_features_nonzero': tf.placeholder(tf.int32),
+}
+
+model = GraphModel(placeholders, input_dim=features[2][1],
+                   hidden=16, num_classes=y_train.shape[1])
+loss = masked_softmax_cross_entropy(model.outputs, placeholders['labels'],
+                                    placeholders['labels_mask'])
+loss += 5e-4 * tf.add_n([tf.nn.l2_loss(W) for W in model.layers[0].weights])
+train_op = tf.train.AdamOptimizer(learning_rate=0.01).minimize(loss)
 ```
 
-This masking is the mechanism that lets a model whose outputs are computed for *all* N nodes train against labels on only the labeled subset, while node information can flow through `graph_layer` to the unlabeled ones. The model, the masked loss, the optimizer, and dropout stay generic.
+This masking is the mechanism that lets a model whose outputs are computed for *all* N nodes train against labels on only the labeled subset, while node information can flow through `GraphLayer` to the unlabeled ones. The model, the masked loss, the optimizer, and dropout stay generic.

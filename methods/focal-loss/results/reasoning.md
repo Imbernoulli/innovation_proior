@@ -30,7 +30,7 @@ FL(p_t) = −(1−p_t)^γ log p_t.
 
 Let me check the two ends, because this only earns its keep if it behaves right at both. Hard example, p_t small — say p_t = 0.1: the modulating factor (1−0.1)^γ = 0.9^γ ≈ 1 for moderate γ. The loss is essentially unchanged. Good — I keep full attention on hard examples. Misclassified example, p_t → 0: factor → 1, untouched. Easy example, p_t → 1: factor → 0, the loss is suppressed. Exactly the shape I argued for.
 
-Now the focusing parameter γ — let me pin down what it buys and put numbers on it, because "it down-weights easy examples" is only convincing if the magnitude is right. Take γ = 2. An easy example at p_t = 0.9: the factor is (1−0.9)^2 = (0.1)^2 = 0.01. So its loss is *100× smaller* than under plain CE. Push to p_t ≈ 0.968: (0.032)^2 ≈ 10^−3, a *1000× reduction. Now a hard example at p_t = 0.5: factor (0.5)^2 = 0.25 — only a 4× reduction, and for anything harder than that (p_t < 0.5) the down-weighting is at most 4×. So the well-classified examples get crushed by two or three orders of magnitude while the hard ones are still present. The *relative* weight of hard examples shoots up by orders of magnitude even though I never explicitly sampled or selected anything — the loss reweights itself, continuously, per example, every iteration. And γ = 0 recovers (1−p_t)^0 = 1, i.e. plain CE, so γ is a dial that smoothly turns the focusing on. Something around γ = 2 has the right scale: small enough that hard examples are not erased, large enough that the 10^5 easy negatives collapse to near-irrelevance.
+Now the focusing parameter γ — let me pin down what it buys and put numbers on it, because "it down-weights easy examples" is only convincing if the magnitude is right. Take γ = 2. An easy example at p_t = 0.9: the factor is (1−0.9)^2 = (0.1)^2 = 0.01. So its loss is 100× smaller than under plain CE. Push to p_t ≈ 0.968: (0.032)^2 ≈ 10^−3, a 1000× reduction. Now a hard example at p_t = 0.5: factor (0.5)^2 = 0.25 — only a 4× reduction, and for anything harder than that (p_t < 0.5) the down-weighting is at most 4×. So the well-classified examples get crushed by two or three orders of magnitude while the hard ones are still present. The *relative* weight of hard examples shoots up by orders of magnitude even though I never explicitly sampled or selected anything — the loss reweights itself, continuously, per example, every iteration. And γ = 0 recovers (1−p_t)^0 = 1, i.e. plain CE, so γ is a dial that smoothly turns the focusing on. Something around γ = 2 has the right scale: small enough that hard examples are not erased, large enough that the 10^5 easy negatives collapse to near-irrelevance.
 
 Hard example mining — OHEM — has the same *spirit*: it scores examples by loss, runs NMS, and builds the minibatch from the highest-loss ones, so it too pushes attention onto hard examples. But it does it by *selection*: it throws the easy examples away entirely. That discards whatever residual signal they carry, and it drags in machinery and knobs — batch size, NMS threshold, the 1:3 ratio — that I now have to tune. The focal loss is the continuous version of the same idea: instead of a hard keep/discard decision per minibatch, every example stays in, weighted by a smooth function of how hard it currently is. No sampling, no selection, applied to *all* ~10^5 anchors at once. That feels strictly cleaner.
 
@@ -68,6 +68,18 @@ dFL/dx = y(1−p_t)^γ(γ p_t log p_t + p_t − 1).
 
 Sanity check: set γ = 0 and it collapses to y(p_t − 1), the CE gradient — good. And the new structure is the (1−p_t)^γ prefactor sitting in front: for an easy example with p_t near 1, that prefactor is tiny, so the gradient contribution is tiny *on top of* whatever CE already did. The down-weighting happens in the gradient, not just the printed loss value — which is the only place it could matter. As soon as an example is on the right side and confident, its push on the weights collapses, and the optimizer's budget flows to the examples still getting it wrong.
 
+This also makes me less attached to the exact algebraic form. The real requirement is a loss whose derivative becomes small soon after the signed logit crosses onto the correct side. Let x_t = yx and p_t = σ(x_t). I can make a second family by steepening and shifting that signed logit before applying the ordinary log loss:
+
+p_t^* = σ(γ x_t + β),
+
+FL^* = −log(p_t^*) / γ.
+
+Different γ and β values change where the curve turns down and how sharp the turn is. Differentiate it to see the condition directly. Since d[−log σ(z)]/dz = σ(z) − 1 and z = γx_t + β, the outer division by γ cancels the γ from dz/dx_t; then dx_t/dx = y, so
+
+dFL^*/dx = y(p_t^* − 1).
+
+That derivative is the same CE-shaped derivative, but applied to the shifted, sharpened signed logit. If x_t is comfortably positive, p_t^* is close to 1 and the gradient is tiny; if x_t is negative, the gradient is still large. So the main loss is not a magic single expression. The design principle is: preserve pressure on wrong or ambiguous anchors and rapidly remove pressure from already-correct ones.
+
 One implementation note before architecture: computing p with a sigmoid and then feeding it into log can be numerically nasty at the extremes. I'll fuse the sigmoid and the loss into a single layer — compute the loss directly from the logits — so the log and the sigmoid cancel in a stable way. That's a standard binary-cross-entropy-with-logits underneath, with the modulating factor multiplied on.
 
 Now I need a detector to hang this on, and the whole point is that the *loss* is the contribution, so the network should be deliberately plain — no architectural cleverness to muddy the comparison. Build it dense and fully convolutional. For features, a single-resolution backbone won't cut it for multi-scale objects; I'll use a feature pyramid — a top-down pathway with lateral connections on top of a ResNet — so I get a stack of feature maps at several resolutions, each responsible for one band of object scales. Build pyramid levels P3 through P7 (P3–P5 from the corresponding ResNet stages via the top-down/lateral construction; P6 a strided conv on the last ResNet stage; P7 a ReLU then another strided conv on P6, which extends the reach to large objects and is cheap). All levels carry the same channel width, 256.
@@ -78,42 +90,17 @@ Two small subnets, one per task, attached to every pyramid level with weights sh
 
 Then the loss. This is the part that breaks from common practice: I apply the focal loss to *every* anchor in the image — all ~100k of them — not to a sampled subset of 256 the way RPN or OHEM or SSD's mining would. That's the whole bet: the loss is robust enough to imbalance that I don't need to sample at all. One catch on normalization: if I divide the summed focal loss by the *total* number of anchors, I'd be dividing by ~100k, almost all of which are easy negatives contributing near-zero loss under the modulating factor — that would make the per-example loss vanishingly small and scale-dependent on the image's anchor count. So normalize instead by the number of anchors *assigned to a ground-truth box* — the positives. That's the count of examples actually carrying signal, and it keeps the loss scale sane. Box regression rides along as a standard smooth-L1 on the positives. Train with SGD.
 
-Let me write the loss, which is the heart of all this.
-
-```python
-import torch
-from torch.nn import functional as F
-
-def sigmoid_focal_loss(inputs, targets, alpha=0.25, gamma=2.0, reduction="sum"):
-    # inputs: raw logits (one binary prediction per class per anchor)
-    # targets: 0/1 binary labels of the same shape
-    p = torch.sigmoid(inputs)
-    # cross entropy directly from logits, for numerical stability  ->  -log(p_t)
-    ce_loss = F.binary_cross_entropy_with_logits(inputs, targets, reduction="none")
-    # p_t: probability assigned to the correct class
-    p_t = p * targets + (1 - p) * (1 - targets)
-    # modulating factor (1 - p_t)^gamma : ~1 for hard (p_t->0), ->0 for easy (p_t->1)
-    loss = ce_loss * ((1 - p_t) ** gamma)
-    if alpha >= 0:
-        # alpha_t : positive-vs-negative balancing, composed with the modulating factor
-        alpha_t = alpha * targets + (1 - alpha) * (1 - targets)
-        loss = alpha_t * loss
-    if reduction == "mean":
-        loss = loss.mean()
-    elif reduction == "sum":
-        loss = loss.sum()
-    return loss
-```
-
-And the dense head, with separate class and box towers and the prior-π bias init that keeps the first iteration from exploding:
+Let me write the pieces so the implementation follows the same chain: dense heads first, then the per-entry classification loss, then the shared normalizer for classification and box regression.
 
 ```python
 import math
 import torch
 from torch import nn
+from torch.nn import functional as F
+
 
 class DenseHead(nn.Module):
-    def __init__(self, in_channels, num_anchors, num_classes, conv_dims=None, prior_prob=0.01):
+    def __init__(self, in_channels, num_anchors, num_classes, conv_dims=None, initial_prob=0.01):
         super().__init__()
         conv_dims = conv_dims or [in_channels] * 4
         cls_layers = []
@@ -134,9 +121,8 @@ class DenseHead(nn.Module):
                 if isinstance(layer, nn.Conv2d):
                     nn.init.normal_(layer.weight, mean=0, std=0.01)
                     nn.init.constant_(layer.bias, 0)
-        # ...except the output bias: start every anchor at foreground-prob = prior_prob,
-        # so sigma(b) = pi  =>  b = -log((1 - pi)/pi). Stops the 1st-iter background spike.
-        bias = -math.log((1 - prior_prob) / prior_prob)
+
+        bias = -math.log((1 - initial_prob) / initial_prob)
         nn.init.constant_(self.cls_score.bias, bias)
 
     def forward(self, features):
@@ -146,11 +132,31 @@ class DenseHead(nn.Module):
             logits.append(self.cls_score(self.cls_subnet(feature)))
             bbox_reg.append(self.bbox_pred(self.bbox_subnet(feature)))
         return logits, bbox_reg
-```
 
-And the classification loss over *all* valid anchors in the batch, normalized by the positive anchors. In a full detector I keep this normalizer as a short moving average, which is the same normalization target but avoids per-minibatch scale jitter:
 
-```python
+def dense_binary_loss(inputs, targets, loss_params, reduction="sum"):
+    inputs = inputs.float()
+    targets = targets.float()
+    loss_params = {"alpha": 0.25, "gamma": 2.0} if loss_params is None else loss_params
+    alpha = loss_params.get("alpha", -1)
+    gamma = loss_params.get("gamma", 2.0)
+
+    p = torch.sigmoid(inputs)
+    ce_loss = F.binary_cross_entropy_with_logits(inputs, targets, reduction="none")
+    p_t = p * targets + (1 - p) * (1 - targets)
+    loss = ce_loss * ((1 - p_t) ** gamma)
+
+    if alpha >= 0:
+        alpha_t = alpha * targets + (1 - alpha) * (1 - targets)
+        loss = alpha_t * loss
+
+    if reduction == "mean":
+        loss = loss.mean()
+    elif reduction == "sum":
+        loss = loss.sum()
+    return loss
+
+
 class PositiveAnchorNormalizer:
     def __init__(self, momentum=100):
         self.momentum = momentum
@@ -165,29 +171,35 @@ class PositiveAnchorNormalizer:
         return self.value
 
 
-def classification_loss(pred_logits, gt_labels, num_classes, normalizer=None, alpha=0.25, gamma=2.0):
-    # pred_logits: list of (N, H_i*W_i*A, K) tensors, one per feature level
+def classification_loss(pred_logits, gt_labels, num_classes, loss_normalizer, loss_params):
     logits = torch.cat(pred_logits, dim=1) if isinstance(pred_logits, (list, tuple)) else pred_logits
     gt_labels = torch.stack(gt_labels) if isinstance(gt_labels, (list, tuple)) else gt_labels
 
-    valid = gt_labels >= 0                        # drop the [0.4, 0.5) "ignore" anchors
-    pos = valid & (gt_labels != num_classes)
-    num_pos = pos.sum().item()
-    denom = normalizer.update(num_pos) if normalizer is not None else max(num_pos, 1)
+    valid_mask = gt_labels >= 0
+    pos_mask = valid_mask & (gt_labels != num_classes)
+    normalizer_value = loss_normalizer.update(pos_mask.sum().item())
 
-    # one-hot the labels, dropping the background column (background = all-zeros target)
-    target = F.one_hot(gt_labels[valid], num_classes + 1)[:, :-1].float()
-    loss_cls = sigmoid_focal_loss(
-        logits[valid], target.to(logits.dtype), alpha=alpha, gamma=gamma, reduction="sum"
+    targets = F.one_hot(gt_labels[valid_mask], num_classes + 1)[:, :-1]
+    loss_cls = dense_binary_loss(
+        logits[valid_mask], targets.to(logits.dtype), loss_params, reduction="sum"
     )
-    return loss_cls / denom
+    return loss_cls / normalizer_value, normalizer_value, pos_mask
 
 
 def detector_losses(anchors, pred_logits, pred_deltas, gt_labels, gt_boxes,
-                    num_classes, normalizer):
-    loss_cls = classification_loss(pred_logits, gt_labels, num_classes, normalizer)
-    loss_box = smooth_l1_loss(pred_deltas, encode_boxes(anchors, gt_boxes))
-    return {"loss_cls": loss_cls, "loss_box_reg": loss_box / normalizer.value}
+                    num_classes, loss_normalizer, loss_params):
+    loss_cls, normalizer_value, pos_mask = classification_loss(
+        pred_logits, gt_labels, num_classes, loss_normalizer, loss_params
+    )
+    deltas = torch.cat(pred_deltas, dim=1) if isinstance(pred_deltas, (list, tuple)) else pred_deltas
+    target_deltas = encode_boxes(anchors, gt_boxes)
+
+    if pos_mask.any():
+        loss_box = smooth_l1_loss(deltas[pos_mask], target_deltas[pos_mask], reduction="sum")
+    else:
+        loss_box = deltas.sum() * 0
+
+    return {"loss_cls": loss_cls, "loss_box_reg": loss_box / normalizer_value}
 ```
 
 So the whole chain, in one breath: one-stage dense detectors trail two-stage ones, and the reason isn't capacity — it's that the dense grid hands the loss a 1:1000 flood of easy background, and cross entropy's refusal to forget well-classified examples lets that flood dominate the gradient and produce a degenerate model. Class weighting α can't fix it because it can't tell easy from hard. So reshape the loss itself: multiply cross entropy by (1−p_t)^γ, a factor that's ~1 for hard or wrong examples and collapses toward zero — by 100× at p_t=0.9, 1000× at p_t≈0.97 for γ=2 — for the easy ones, which re-weights training toward the hard examples continuously and per-example without any sampling. Add α back for positive/negative balance, lower it as γ rises, fix the first-iteration explosion with a prior-π bias on the output layer, and hang the whole thing on the plainest dense detector I can build — a feature pyramid on ResNet, anchors, two small shared subnets — applying the focal loss to every one of the ~100k anchors and normalizing by the assigned positives. The loss is the contribution; the network is deliberately ordinary.

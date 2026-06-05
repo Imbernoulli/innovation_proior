@@ -89,9 +89,10 @@ class GlobalOperator2d(nn.Module):
 
 class OperatorNet2d(nn.Module):
     """Lift to channels, alternate global and pointwise linear maps, project back."""
-    def __init__(self, in_channels, out_channels, width, *operator_hparams):
+    def __init__(self, in_channels=1, out_channels=1, width=32, *operator_hparams, padding=0):
         super().__init__()
-        self.padding = 0
+        self.width = width
+        self.padding = padding
         self.fc0 = nn.Linear(in_channels + 2, width)  # lift P
         self.global0 = GlobalOperator2d(width, width, *operator_hparams)
         self.global1 = GlobalOperator2d(width, width, *operator_hparams)
@@ -141,13 +142,18 @@ def relative_l2(pred, target):
     return (diff / base).mean()
 
 
-def train(model, train_loader, epochs=500, lr=1e-3):
+def train(model, train_loader, y_normalizer=None, epochs=500, lr=1e-3):
     opt = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-4)
     sched = torch.optim.lr_scheduler.StepLR(opt, step_size=100, gamma=0.5)
     for _ in range(epochs):
         for a, u in train_loader:
             opt.zero_grad()
-            loss = relative_l2(model(a), u)
+            pred = model(a).reshape_as(u)
+            target = u
+            if y_normalizer is not None:
+                pred = y_normalizer.decode(pred)
+                target = y_normalizer.decode(target)
+            loss = relative_l2(pred, target)
             loss.backward()
             opt.step()
         sched.step()

@@ -24,7 +24,7 @@ i.e. an irreducible Bayes risk (the entropy of natural text), plus a function-ap
 
 ## Baselines
 
-**Kaplan et al. (2020) — power-law scaling of language models.** Establishes that loss is a power law in $N$, $D$, and $C$, and gives an allocation rule that favours growing the model far faster than the data ($N\propto C^{0.73}$, $D\propto C^{0.27}$). Core idea: fit loss as a function of size and compute from many runs, then extrapolate. The gap it leaves: its allocation makes large models compute-optimal only if you trust the loss estimates at intermediate token counts, which depend on the learning-rate schedule being matched to the horizon — and much of its data is from small models and from runs whose schedule was not matched. This is the result the present work reacts against and revises.
+**Kaplan et al. (2020) — power-law scaling of language models.** Establishes that loss is a power law in $N$, $D$, and $C$, and gives an allocation rule that favours growing the model far faster than the data ($N\propto C^{0.73}$, $D\propto C^{0.27}$). Core idea: fit loss as a function of size and compute from many runs, then extrapolate. The gap it leaves: its allocation makes large models compute-optimal only if you trust the loss estimates at intermediate token counts, which depend on the learning-rate schedule being matched to the horizon — and much of its data is from small models and from runs whose schedule was not matched. That makes the allocation rule the key target to re-estimate.
 
 **Single-method fits in general.** Any one estimation procedure — reading minima off training curves, or profiling loss across model sizes at fixed compute, or fitting a global parametric surface — carries its own biases (interpolation artifacts, the choice of curve to fit a parabola to, the functional form assumed). The gap: no single method is self-certifying. A trustworthy answer needs *multiple independent* estimators that agree.
 
@@ -38,6 +38,12 @@ The primitives that already exist: a numerically stable log-sum-exp, a Huber pen
 
 ```python
 import numpy as np
+
+def log_loss_pred(theta, logN, logD):
+    # TODO: evaluate the fitted log-loss stably from log-parameters and
+    #       logged model/data sizes.
+    pass
+
 
 def parametric_loss(N, D, params):
     # TODO: a closed-form model of final loss as a function of model size N
@@ -57,15 +63,15 @@ def optimal_allocation(C, params):
     pass
 
 
-def isoflop_optimum(runs_at_fixed_C):
-    # TODO: empirical estimator -- at a fixed compute budget, find the model
-    #       size that minimises final loss.
-    pass
-
-
 def envelope_optimum(C, run_curves):
     # TODO: empirical estimator -- the lowest-loss (N, D) on the FLOPs == C
     #       slice of the training-curve envelope.
+    pass
+
+
+def isoflop_optimum(runs_at_fixed_C):
+    # TODO: empirical estimator -- at a fixed compute budget, find the model
+    #       size that minimises final loss.
     pass
 
 

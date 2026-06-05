@@ -20,15 +20,15 @@ The precise problem: find a way to decorrelate and stabilize the stream of updat
 
 ## Baselines
 
-**Q-learning with a deep network and experience replay (DQN).** Represent the action-value function with a CNN, Q(s,a;θ). Learn by minimizing the squared TD error against a target network: L_i(θ) = E[(r + γ max_{a'} Q(s',a';θ⁻) − Q(s,a;θ))²], with transitions drawn uniformly from a large replay buffer and θ⁻ a periodically-copied frozen target. Core idea: replay decorrelates and stationarizes; the target network steadies the bootstrap. Gap it leaves: it is intrinsically off-policy and replay-bound, so on-policy methods cannot be plugged in; it needs a large memory and extra compute per step; and reaching strong results practically requires a GPU.
+**Q-learning with a deep network and experience replay (DQN).** Represent the action-value function with a CNN, Q(s,a;θ). Learn by minimizing the squared TD error against a target network: y = r for a terminal s' and y = r + γ max_{a'} Q(s',a';θ⁻) otherwise, with loss E[(y − Q(s,a;θ))²], transitions drawn uniformly from a large replay buffer, and θ⁻ a periodically-copied frozen target. Core idea: replay decorrelates and stationarizes; the target network steadies the bootstrap. Gap it leaves: it is intrinsically off-policy and replay-bound, so on-policy methods cannot be plugged in; it needs a large memory and extra compute per step; and reaching strong results practically requires a GPU.
 
 **Massively distributed asynchronous DQN (Gorila).** Replicate the DQN learner across many machines: each process has an actor in its own environment copy, its own replay memory, and a learner that samples from that memory and computes DQN-loss gradients; gradients go asynchronously to a central parameter server that updates a master copy, which is periodically pushed back to the actors. Core idea: scale DQN across ~130 machines for large speedups. Gap: it still keeps replay (hence still off-policy and memory-heavy) and depends on a substantial distributed cluster with parameter-server communication overhead.
 
-**One-step Q-learning (value-based, off-policy).** Update Q(s,a;θ) toward the one-step target r + γ max_{a'} Q(s',a';θ). Core idea: directly approximate Q*. Gap: a reward only directly affects the single state-action pair that led to it; other pairs are touched only indirectly through bootstrapping, so credit propagates slowly — many updates are needed to move a reward back to the actions responsible for it.
+**One-step Q-learning (value-based, off-policy).** Update Q(s,a;θ) toward r for a terminal next state and toward r + γ max_{a'} Q(s',a';θ) otherwise. Core idea: directly approximate Q*. Gap: a reward only directly affects the single state-action pair that led to it; other pairs are touched only indirectly through bootstrapping, so credit propagates slowly — many updates are needed to move a reward back to the actions responsible for it.
 
-**One-step Sarsa (value-based, on-policy).** Same as one-step Q-learning but the target is r + γ Q(s',a';θ) where a' is the action actually taken next, so it evaluates the behavior policy rather than the greedy one. Same slow one-step credit-assignment gap, and being on-policy it had no clean way to coexist with a replay buffer.
+**One-step Sarsa (value-based, on-policy).** Same as one-step Q-learning but, when the next state is non-terminal, the target is r + γ Q(s',a';θ) where a' is the action actually taken next, so it evaluates the behavior policy rather than the greedy one; at a terminal next state the target is just r. Same slow one-step credit-assignment gap, and being on-policy it had no clean way to coexist with a replay buffer.
 
-**n-step / multi-step Q-learning.** Update toward an n-step return r_t + γ r_{t+1} + … + γ^{n-1} r_{t+n-1} + γ^n max_a Q(s_{t+n},a). Core idea: a single reward directly affects n preceding state-action pairs, so credit propagates much faster, and bootstrapping after several real rewards trades the high bias of one-step targets against the high variance of full Monte-Carlo returns. Multi-step methods were classically implemented in the *backward view* via eligibility traces. Gap left open: how to use them stably with a deep, momentum-trained, possibly recurrent network — and, like the other on-policy variants, how to stabilize them at all without replay.
+**n-step / multi-step Q-learning.** Update toward an n-step return r_t + γ r_{t+1} + … + γ^{n-1} r_{t+n-1} + γ^n max_a Q(s_{t+n},a), with the bootstrap term replaced by 0 when the rollout ends in a terminal state. Core idea: a single reward directly affects n preceding state-action pairs, so credit propagates much faster, and bootstrapping after several real rewards trades the high bias of one-step targets against the high variance of full Monte-Carlo returns. Multi-step methods were classically implemented in the *backward view* via eligibility traces. Gap left open: how to use them stably with a deep, momentum-trained, possibly recurrent network — and, like the other on-policy variants, how to stabilize them at all without replay.
 
 **REINFORCE and actor-critic (policy-based, on-policy).** Parameterize the policy π(a|s;θ) directly and ascend E[R_t] via ∇_θ log π(a_t|s_t;θ) R_t; subtract a learned value baseline V(s_t) to get the lower-variance ∇_θ log π(a_t|s_t;θ)(R_t − V(s_t)), an advantage actor-critic update. Core idea: optimize the policy itself, with the critic supplying a variance-reducing baseline. Gap: high-variance gradients, and — decisively for the deep setting — being strictly on-policy, it was excluded from the replay-based stabilization that everything deep relied on, so it had no demonstrated stable deep-network recipe.
 
@@ -41,50 +41,95 @@ The natural yardstick is the Arcade Learning Environment (Atari 2600) over the s
 A deep-learning library supplies autodiff modules, optimizers, and shared-memory multiprocessing; an Atari environment wrapper supplies resized visual observations; and adaptive per-parameter optimizers supply running statistics that can be placed in shared memory.
 
 ```python
+import math
+import os
+import time
+from collections import deque
+
+import cv2
+import gym
+import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 import torch.multiprocessing as mp
+from gym.spaces.box import Box
 
 def create_atari_env(env_name):
-    # TODO: resize, grayscale, normalize, and expose a visual observation tensor
+    # TODO: wrap the environment and expose a normalized visual observation tensor
     pass
 
-class Policy(nn.Module):
+def _process_frame42(frame):
+    # TODO: crop, resize, grayscale, and scale a raw frame
+    pass
+
+class AtariRescale42x42(gym.ObservationWrapper):
+    def __init__(self, env=None):
+        super().__init__(env)
+        # TODO: declare the visual observation shape
+        pass
+
+    def _observation(self, observation):
+        # TODO: transform one observation frame
+        pass
+
+class NormalizedEnv(gym.ObservationWrapper):
+    def __init__(self, env=None):
+        super().__init__(env)
+        # TODO: initialize running observation statistics
+        pass
+
+    def _observation(self, observation):
+        # TODO: normalize one observation with running statistics
+        pass
+
+def normalized_columns_initializer(weights, std=1.0):
+    # TODO: initialize output layers with a controlled column norm
+    pass
+
+def weights_init(module):
+    # TODO: initialize convolutional and linear layers
+    pass
+
+class ActorCritic(nn.Module):
     def __init__(self, num_inputs, action_space):
         super().__init__()
-        # TODO: the perceptual body and whatever outputs the learning rule needs
+        # TODO: choose the visual/recurrent body and the policy/value outputs
         pass
+
     def forward(self, inputs):
-        # TODO: return whatever quantities the learning rule consumes
+        # TODO: return the value estimate, action logits, and recurrent state
         pass
 
-class SharedAdaptiveOptimizer(optim.Optimizer):
-    # an adaptive per-parameter optimizer whose running statistics
-    # can live in shared memory and be updated without locks
+class SharedAdam(optim.Adam):
+    def __init__(self, params, lr=1e-3, betas=(0.9, 0.999),
+                 eps=1e-8, weight_decay=0):
+        super().__init__(params, lr, betas, eps, weight_decay)
+        # TODO: initialize per-parameter adaptive state
+        pass
+
     def share_memory(self):
-        # TODO: move the optimizer's state tensors into shared memory
-        pass
-    def step(self, closure=None):
-        # TODO: apply one adaptive update
+        # TODO: move optimizer state tensors into shared memory
         pass
 
-def train(rank, args, shared_model, counter, lock, optimizer=None):
-    # TODO: turn one worker's experience into an update on shared parameters
+    def step(self, closure=None):
+        # TODO: apply one lock-free adaptive update
+        pass
+
+def ensure_shared_grads(local_model, shared_model):
+    # TODO: copy local worker gradients onto shared parameters
     pass
 
-if __name__ == '__main__':
-    shared_model = Policy(num_inputs, action_space)
-    shared_model.share_memory()
-    optimizer = SharedAdaptiveOptimizer(shared_model.parameters(), lr=args.lr)
-    optimizer.share_memory()
-    counter = mp.Value('i', 0)
-    lock = mp.Lock()
-    procs = []
-    for rank in range(num_workers):
-        p = mp.Process(target=train,
-                       args=(rank, args, shared_model, counter, lock, optimizer))
-        p.start(); procs.append(p)
-    for p in procs:
-        p.join()
+def train(rank, args, shared_model, counter, lock, optimizer=None):
+    # TODO: turn one worker's rollout into an update on shared parameters
+    pass
+
+def test(rank, args, shared_model, counter):
+    # TODO: periodically evaluate the shared parameters
+    pass
+
+def launch(args):
+    # TODO: create shared state and start evaluator and worker processes
+    pass
 ```

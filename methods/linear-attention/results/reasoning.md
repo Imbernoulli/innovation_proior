@@ -18,7 +18,7 @@ That reframing is liberating, but by itself it changes nothing about cost — I 
 
 The reason I can't pull $Q_i$ out and reuse work across the $N$ output positions is that $\exp(Q_i^T K_j)$ tangles $Q_i$ and $K_j$ together inside the nonlinearity — it does not factor into "something depending only on $Q_i$" times "something depending only on $K_j$". So every $(i,j)$ pair is its own irreducible computation.
 
-So suppose $\text{sim}$ *did* factor — suppose I could write $\text{sim}(q,k) = \phi(q)^T \phi(k)$ for some feature map $\phi$ mapping into a non-negative space (so the dot product is $\ge 0$ and it's a valid attention). This is exactly the trick people use to linearize the softmax in large-vocabulary classification: approximate $\exp(u^Tv)$ by $\phi(u)^T\phi(v)$ so the expensive normalization factors and can be handled cheaply. Let me just substitute it and see what happens to the sum:
+So suppose $\text{sim}$ *did* factor — suppose I could write $\text{sim}(q,k) = \phi(q)^T \phi(k)$ for some feature map $\phi$ whose outputs are non-negative, so the dot product is $\ge 0$ and it's a valid attention. This is exactly the trick people use to linearize the softmax in large-vocabulary classification: approximate $\exp(u^Tv)$ by $\phi(u)^T\phi(v)$ so the expensive normalization factors and can be handled cheaply. Let me just substitute it and see what happens to the sum:
 
 $$ V'_i = \frac{\sum_{j=1}^N \phi(Q_i)^T \phi(K_j)\, V_j}{\sum_{j=1}^N \phi(Q_i)^T \phi(K_j)} . $$
 
@@ -75,7 +75,7 @@ $$
 \end{aligned}
 $$
 
-This is an RNN. Literally — a model that takes an input, updates an internal state $(s, z)$, and emits an output, with the state of fixed dimension regardless of how long the sequence is. The "attention" I started from, once it's causal and linearized, *is* a recurrent network whose hidden state is the pair $(s, z)$: $s$ a running attention memory and $z$ a running normalizer memory. The recurrence is over *time*, the sequence index — not over depth. So the autoregressive cost problem I opened with just dissolves: generation is $\mathcal{O}(1)$ per step with constant memory, because all I keep between steps is $(s, z)$, the same way an LSTM keeps its cell. For every image the softmax model laboriously crawls through, this thing can stream out thousands, and it can do it on a CPU because each step is so cheap the bottleneck is just the unavoidable loop over positions. And note the recurrence is general — it never used anything about $\phi$ besides it being a feature map, so *any* attention, even softmax in principle, can be cast as this kind of recurrence; it's just that softmax's $\phi$ is infinite-dimensional so its state wouldn't be finite.
+This is an RNN. Literally — a model that takes an input, updates an internal state $(s, z)$, and emits an output, with the state of fixed dimension regardless of how long the sequence is. The "attention" I started from, once it's causal and linearized, *is* a recurrent network whose hidden state is the pair $(s, z)$: $s$ a running attention memory and $z$ a running normalizer memory. The recurrence is over *time*, the sequence index — not over depth. So the autoregressive cost problem I opened with just dissolves: generation is $\mathcal{O}(1)$ per step with constant memory, because all I keep between steps is $(s, z)$, the same way an LSTM keeps its cell. And note the recurrence is general — it never used anything about $\phi$ besides it being a feature map, so *any* attention, even softmax in principle, can be cast as this kind of recurrence; it's just that softmax's $\phi$ is infinite-dimensional so its state would not be finite.
 
 There's a genuine asymmetry worth holding onto between training and inference. At training time the whole ground-truth sequence is known, so I don't have to run the recurrence step by step — I can compute all the prefix sums in parallel across positions, the way teacher-forced transformers parallelize, and take full advantage of the accelerator. At inference, the output feeds the next input, so it's inherently sequential and I run the actual recurrence, $\mathcal{O}(1)$ a step. Best of both: parallel like a transformer to train, recurrent like an RNN to generate.
 
@@ -114,79 +114,99 @@ $$ \nabla_{K_i}\mathcal{L} = \left(\sum_{j=i}^N Q_j \left(\nabla_{\bar V_j}\math
 
 This sum runs from $i$ to $N$ — a *reverse* cumulative sum, accumulated from the end of the sequence backward, exactly like backpropagation through time in an RNN. And by the same bookkeeping the value gradient falls out from the same reverse running matrix:
 
-$$ \nabla_{V_i}\mathcal{L} = \left(\sum_{j=i}^N Q_j \left(\nabla_{\bar V_j}\mathcal{L}\right)^{\!T}\right)^{\!T} \phi(K_i), $$
+$$ \nabla_{V_i}\mathcal{L} = \left(\sum_{j=i}^N Q_j \left(\nabla_{\bar V_j}\mathcal{L}\right)^{\!T}\right)^{\!T} K_i, $$
 
-— $V_i$ contributes to $\bar V_{ie}$ for all $i \ge l$ in the same pattern as $K$, so it shares the reverse-cumsum matrix and just contracts the other way. So the picture is symmetric and clean: $\nabla_Q$ comes from a forward cumulative sum (sum $1\to N$), and $\nabla_K, \nabla_V$ come from a reverse cumulative sum (sum $N\to 1$). Two passes, each $\mathcal{O}(N)$, each holding only a running $D\times M$ matrix — never the full set of $S_i$. Constant memory in $N$ for the backward pass, matching the forward. Overall the causal layer is $\mathcal{O}(NCM)$ time and $\mathcal{O}(N\max(C,M))$ memory.
+— $V_i$ contributes to $\bar V_{ie}$ for all $i \ge l$ in the same pattern as $K$, so it shares the reverse-cumsum matrix and just contracts the other way. So the picture is symmetric and clean: $\nabla_Q$ comes from a forward cumulative sum (sum $1\to N$), and $\nabla_K, \nabla_V$ come from a reverse cumulative sum (sum $N\to 1$). Two passes, each $\mathcal{O}(N)$, each holding only a running $D\times M$ matrix — never the full set of $S_i$. The extra training memory no longer has an $NCM$ prefix-state stash. Overall the causal layer is $\mathcal{O}(NCM)$ time and $\mathcal{O}(N\max(C,M))$ memory.
 
-Let me write out the forward/backward as the explicit loops, because the structure is the whole point. Forward: keep a running $S$, and at each step add the rank-one update then read the numerator off.
-
-```
-S <- 0
-for i = 1..N:
-    S <- S + phi(K_i) V_i^T        # prefix-sum state, the S_i recurrence
-    Vbar_i <- phi(Q_i) S           # numerator at position i
-```
-
-Backward: first a forward sweep that rebuilds the same $S$ to get $\nabla_Q$, then a reverse sweep accumulating $\sum_{j\ge i}\phi(Q_j)G_j^T$ (with $G = \nabla_{\bar V}\mathcal{L}$) to get $\nabla_V$ and $\nabla_K$:
+Let me write out the forward/backward as the explicit loops, because the structure is the whole point. In these loops $Q$ and $K$ already mean the feature-mapped queries and keys. Forward: keep a running $S$, and at each step add the rank-one update then read the numerator off.
 
 ```
 S <- 0
 for i = 1..N:
-    S <- S + phi(K_i) V_i^T
-    grad_phiQ_i <- G_i S^T          # forward cumsum  -> eq for grad of Q
+    S <- S + K_i V_i^T             # prefix-sum state, the S_i recurrence
+    Vbar_i <- Q_i S                # numerator at position i
+```
+
+Backward: first a forward sweep that rebuilds the same $S$ to get $\nabla_Q$, then a reverse sweep accumulating $\sum_{j\ge i}Q_jG_j^T$ (with $G = \nabla_{\bar V}\mathcal{L}$) to get $\nabla_V$ and $\nabla_K$:
+
+```
+S <- 0
+for i = 1..N:
+    S <- S + K_i V_i^T
+    grad_Q_i <- G_i S^T             # forward cumsum  -> eq for grad of Q
 S <- 0
 for i = N..1:
-    S <- S + phi(Q_i) G_i^T          # reverse cumsum
-    grad_V_i   <- S^T phi(K_i)        # -> grad of V
-    grad_phiK_i <- S V_i              # -> grad of K
+    S <- S + Q_i G_i^T               # reverse cumsum
+    grad_V_i   <- S^T K_i            # -> grad of V
+    grad_K_i <- S V_i               # -> grad of K
 ```
 
-Both directions touch only a running matrix; nothing scales with $N$ in memory. In practice the inner rank-one updates and contractions are tight enough to write as a small custom kernel.
+Both directions touch only a running matrix beyond the input, output, and gradients; the prefix-state workspace itself does not scale with $N$. In practice the inner rank-one updates and contractions are tight enough to write as a small custom kernel.
 
-So, putting it together as code. Three pieces, matching how I derived them: the cheap positive feature map, the unmasked linear attention that just builds the two key/value sums once, and the causal version that runs the prefix-sum state (with the hand-derived gradient as a custom autograd op), plus the recurrent form for generation that is the same state updated one step at a time.
+So, putting it together as code. The implementation slots match the derivation: the cheap positive feature map, the unmasked attention that builds the two key-side sums once, the causal prefix product with the hand-derived backward pass, the causal attention that normalizes those prefix numerators, and the recurrent form that carries the same state one step at a time.
 
 ```python
 import torch
 from torch.nn import Module
 
-# phi(x) = elu(x) + 1 : non-negative (so phi(q).phi(k) >= 0 is valid
-# attention), O(D) cheap, keeps C = D, and unlike relu+1 its gradient is
-# alive for x < 0 instead of dead.
-def elu_feature_map(x):
-    return torch.nn.functional.elu(x) + 1
+
+class ActivationFunctionFeatureMap(Module):
+    def __init__(self, query_dimensions, activation_function):
+        super().__init__()
+        self.query_dimensions = query_dimensions
+        self.activation_function = activation_function
+
+    def new_feature_map(self, device):
+        return
+
+    def forward_queries(self, x):
+        return self.activation_function(x)
+
+    def forward_keys(self, x):
+        return self.activation_function(x)
+
+
+def elu_feature_map(query_dimensions):
+    # phi(x) = elu(x) + 1: positive, cheap, and gradient-alive for x < 0.
+    return ActivationFunctionFeatureMap(
+        query_dimensions,
+        lambda x: torch.nn.functional.elu(x) + 1,
+    )
 
 
 class LinearAttention(Module):
-    """Unmasked: V'_i = phi(Q_i)^T (sum_j phi(K_j) V_j^T) / (phi(Q_i)^T sum_j phi(K_j)).
-    The two key sums are computed once and reused for every query -> O(N)."""
-    def __init__(self, feature_map=elu_feature_map, eps=1e-6):
+    """Unmasked inner attention: build the key-side sums once and reuse them."""
+    def __init__(self, query_dimensions, feature_map=None, eps=1e-6):
         super().__init__()
-        self.feature_map = feature_map
+        self.feature_map = (
+            feature_map(query_dimensions) if feature_map else
+            elu_feature_map(query_dimensions)
+        )
         self.eps = eps
 
-    def forward(self, queries, keys, values):
-        Q = self.feature_map(queries)            # (N, L, H, D)
-        K = self.feature_map(keys)               # (N, S, H, D)
-        # KV = sum_j phi(K_j) V_j^T : the (D x M) state, formed once
+    def forward(self, queries, keys, values, attn_mask,
+                query_lengths, key_lengths):
+        self.feature_map.new_feature_map(queries.device)
+        Q = self.feature_map.forward_queries(queries)
+        K = self.feature_map.forward_keys(keys)
+        if not attn_mask.all_ones:
+            raise RuntimeError("LinearAttention only supports full masks")
+        K = K * key_lengths.float_matrix[:, :, None, None]
         KV = torch.einsum("nshd,nshm->nhmd", K, values)
-        # normalizer denom: phi(Q_i)^T sum_j phi(K_j)
         Z = 1 / (torch.einsum("nlhd,nhd->nlh", Q, K.sum(dim=1)) + self.eps)
-        # V'_i = phi(Q_i)^T KV * (1/denom)
         V = torch.einsum("nlhd,nhmd,nlh->nlhm", Q, KV, Z)
         return V.contiguous()
 
 
 class CausalDotProduct(torch.autograd.Function):
-    """Numerator of causal linear attention with the hand-derived
-    cumulative-sum gradients, so forward AND backward are O(N) time and
-    constant memory in N (never store every S_i)."""
+    """Causal numerator with cumulative-sum gradients; no stored S_i list."""
     @staticmethod
     def forward(ctx, Q, K, V):
         ctx.save_for_backward(Q, K, V)
         N, H, L, _ = Q.shape
         M = V.shape[-1]
         out = Q.new_zeros((N, H, L, M))
-        # forward sweep: S_i = S_{i-1} + phi(K_i) V_i^T ; Vbar_i = phi(Q_i) S_i
+        # forward sweep: S_i = S_{i-1} + K_i V_i^T ; Vbar_i = Q_i S_i
         for n in range(N):
             for h in range(H):
                 S = Q.new_zeros((Q.shape[-1], M))
@@ -208,62 +228,92 @@ class CausalDotProduct(torch.autograd.Function):
                 for i in range(L):
                     S = S + torch.ger(K[n, h, i], V[n, h, i])
                     gQ[n, h, i] = S.mv(G[n, h, i])
-                # reverse cumsum -> grads of K and V
                 S = Q.new_zeros((Q.shape[-1], V.shape[-1]))
                 for i in range(L - 1, -1, -1):
                     S = S + torch.ger(Q[n, h, i], G[n, h, i])
-                    gV[n, h, i] = S.t().mv(K[n, h, i])   # grad of V
-                    gK[n, h, i] = S.mv(V[n, h, i])       # grad of K
+                    gV[n, h, i] = S.t().mv(K[n, h, i])
+                    gK[n, h, i] = S.mv(V[n, h, i])
         return gQ, gK, gV
 
 
 def causal_linear(Q, K, V):
-    return CausalDotProduct.apply(Q, K, V)
+    Q = Q.permute(0, 2, 1, 3).contiguous()
+    K = K.permute(0, 2, 1, 3).contiguous()
+    V = V.permute(0, 2, 1, 3).contiguous()
+    V = CausalDotProduct.apply(Q, K, V)
+    return V.permute(0, 2, 1, 3).contiguous()
 
 
 class CausalLinearAttention(Module):
-    """Causal mask without ever forming the N x N matrix: prefix-sum state."""
-    def __init__(self, feature_map=elu_feature_map, eps=1e-6):
+    """Causal inner attention: lower-triangular masking through prefix sums."""
+    def __init__(self, query_dimensions, feature_map=None, eps=1e-6):
         super().__init__()
-        self.feature_map = feature_map
+        self.feature_map = (
+            feature_map(query_dimensions) if feature_map else
+            elu_feature_map(query_dimensions)
+        )
         self.eps = eps
 
-    def forward(self, queries, keys, values):
-        Q = self.feature_map(queries)
-        K = self.feature_map(keys)
-        Q = Q.permute(0, 2, 1, 3).contiguous()        # (N, H, L, D)
-        K = K.permute(0, 2, 1, 3).contiguous()
-        V = values.permute(0, 2, 1, 3).contiguous()
-        # denominator: phi(Q_i)^T Z_i with Z_i = cumsum of phi(K)
-        Z = 1 / (torch.einsum("nhli,nhli->nhl", Q, K.cumsum(2)) + self.eps)
-        Vbar = causal_linear(Q, K, V)                  # numerator, prefix-sum
-        out = Vbar * Z[:, :, :, None]
-        return out.permute(0, 2, 1, 3).contiguous()
+    def _make_sizes_compatible(self, Q, K):
+        N, L, H, E = Q.shape
+        _, S, _, _ = K.shape
+        if L == S:
+            return Q, K
+        if L < S:
+            return Q, K[:, :L, :, :]
+        return Q, torch.cat([K, K.new_zeros(N, L - S, H, E)], dim=1)
+
+    def forward(self, queries, keys, values, attn_mask,
+                query_lengths, key_lengths):
+        self.feature_map.new_feature_map(queries.device)
+        Q = self.feature_map.forward_queries(queries)
+        K = self.feature_map.forward_keys(keys)
+        if not attn_mask.lower_triangular:
+            raise RuntimeError("CausalLinearAttention requires a causal mask")
+        K = K * key_lengths.float_matrix[:, :, None, None]
+        Q, K = self._make_sizes_compatible(Q, K)
+        Z = 1 / (torch.einsum("nlhi,nlhi->nlh", Q, K.cumsum(1)) + self.eps)
+        V = causal_linear(Q, K, values)
+        return V * Z[:, :, :, None]
 
 
 class RecurrentLinearAttention(Module):
-    """The same causal mechanism as an RNN: carry (S, Z), update per step in
-    O(1), read off the output. This is the generation-time form."""
-    def __init__(self, feature_map=elu_feature_map, eps=1e-6):
+    """Generation-time form: carry the attention and normalizer memories."""
+    def __init__(self, query_dimensions, feature_map=None, eps=1e-6):
         super().__init__()
-        self.feature_map = feature_map
+        self.feature_map = (
+            feature_map(query_dimensions) if feature_map else
+            elu_feature_map(query_dimensions)
+        )
         self.eps = eps
 
-    def forward(self, query, key, value, state=None):
-        Q = self.feature_map(query)                    # (N, H, D)
-        K = self.feature_map(key)
+    def forward(self, query, key, value, state=None, memory=None):
+        if state is not None and memory is not None:
+            raise ValueError("Pass either state or memory, not both")
+        if state is None:
+            state = memory
+        if state is None:
+            self.feature_map.new_feature_map(query.device)
+        Q = self.feature_map.forward_queries(query)
+        K = self.feature_map.forward_keys(key)
         N, H, D = Q.shape
         M = value.shape[-1]
         if state is None:
-            S = query.new_zeros((N, H, D, M))          # attention memory s_i
-            Z = query.new_zeros((N, H, D))             # normalizer memory z_i
+            S = query.new_zeros((N, H, D, M))
+            Z = query.new_zeros((N, H, D))
         else:
             S, Z = state
-        Z = Z + K                                      # z_i = z_{i-1} + phi(K_i)
-        S = S + torch.einsum("nhd,nhm->nhdm", K, value)  # s_i = s_{i-1} + phi(K_i) V_i^T
+        if len(S) != N:
+            raise ValueError("The batch size changed during iteration")
+        if K.grad_fn is not None or value.grad_fn is not None:
+            Z = Z + K
+            S = S + torch.einsum("nhd,nhm->nhdm", K, value)
+        else:
+            Z += K
+            S += torch.einsum("nhd,nhm->nhdm", K, value)
         denom = 1 / (torch.einsum("nhd,nhd->nh", Q, Z) + self.eps)
         V = torch.einsum("nhd,nhdm,nh->nhm", Q, S, denom)
         return V, [S, Z]
 ```
 
-The chain end to end: softmax attention is quadratic and its autoregressive generation has no constant-cost step because it forms an $N\times N$ score matrix; reading attention as a kernel smoother shows the similarity need only be non-negative, not exponential; replacing $\exp(q^Tk)$ by a factored $\phi(q)^T\phi(k)$ lets associativity move the value sum next to the keys so the two key-side sums are computed once — linear time and memory; choosing $\phi = \text{elu}(\cdot)+1$ keeps it positive, cheap, and gradient-alive; causal masking turns the two sums into prefix sums with a one-step recurrence, which is exactly a fixed-size-state RNN running over time, giving $\mathcal{O}(1)$-per-step generation; and deriving the numerator's gradients as a forward and a reverse cumulative sum keeps even training at linear time and constant memory.
+The chain end to end: softmax attention is quadratic and its autoregressive generation has no constant-cost step because it forms an $N\times N$ score matrix; reading attention as a kernel smoother shows the similarity need only be non-negative, not exponential; replacing $\exp(q^Tk)$ by a factored $\phi(q)^T\phi(k)$ lets associativity move the value sum next to the keys so the two key-side sums are computed once — linear time and memory; choosing $\phi = \text{elu}(\cdot)+1$ keeps it positive, cheap, and gradient-alive; causal masking turns the two sums into prefix sums with a one-step recurrence, which is exactly a fixed-size-state RNN running over time, giving $\mathcal{O}(1)$-per-step generation; and deriving the numerator's gradients as a forward and a reverse cumulative sum keeps causal training linear without storing every prefix matrix.

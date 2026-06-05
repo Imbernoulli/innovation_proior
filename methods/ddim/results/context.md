@@ -28,7 +28,7 @@ Background pieces the construction leans on: a Gaussian product/marginalization 
 
 ## Baselines
 
-**Ancestral-sampling Gaussian diffusion (Sohl-Dickstein et al. 2015; Ho et al. 2020).** Fixed Gaussian forward Markov chain with the marginals above; learned Gaussian reverse chain trained by the variational bound, parameterized as noise prediction, optimized with the unweighted L_1 objective. The reverse step is x_{t-1} = (1/√(α_t/α_{t-1}))·(x_t − ((1−α_t/α_{t-1})/√(1−α_t)) ε_θ(x_t,t)) + σ_t z with fresh noise z each step. Gap: the generative chain is rigidly the reverse of the full-length forward chain — T sequential network passes per sample — and it is stochastic, so the terminal noise x_T is not a deterministic encoding of x_0 (the same x_T yields different images), which rules out latent-space interpolation and exact reconstruction.
+**Ancestral-sampling Gaussian diffusion (Sohl-Dickstein et al. 2015; Ho et al. 2020).** Fixed Gaussian forward Markov chain with the marginals above; learned Gaussian reverse chain trained by the variational bound, parameterized as noise prediction, optimized with the unweighted ε-MSE objective. The reverse step is x_{t-1} = (1/√(α_t/α_{t-1}))·(x_t − ((1−α_t/α_{t-1})/√(1−α_t)) ε_θ(x_t,t)) + σ_t z with fresh noise z each step. Gap: the generative chain is rigidly the reverse of the full-length forward chain — T sequential network passes per sample — and it is stochastic, so the terminal noise x_T is not a deterministic encoding of x_0 (the same x_T yields different images), which rules out latent-space interpolation and exact reconstruction.
 
 **Noise-conditional score networks with annealed Langevin sampling (Song & Ermon 2019).** One noise-conditional network learns the score at a geometric ladder of Gaussian noise scales via denoising score matching; sampling walks the ladder from high to low noise with Langevin updates x ← x + (δ/2)·s_θ(x,σ) + √δ z. Same denoising-over-noise-levels objective as Gaussian diffusion. Gap: sampling is many small Langevin steps whose step sizes and schedule are hand-tuned; as a discretized gradient flow it inherently needs many iterations, and there is no deterministic generative map.
 
@@ -40,7 +40,7 @@ Image datasets at several resolutions: CIFAR10 32×32 (unconditional), CelebA 64
 
 ## Code framework
 
-The machinery below already exists: a network that predicts the noise in a corrupted image conditioned on the timestep, the schedule of cumulative coefficients, the closed-form one-shot corruption x_t = √α_t x_0 + √(1−α_t) ε, the unweighted ε-MSE training loop, and the existing full-length sequential sampler. The open slot is a generative procedure that turns an initial noise tensor into samples from the trained noise predictor.
+The machinery below already exists: a network that predicts the noise in a corrupted image conditioned on the timestep, the schedule of cumulative coefficients, the closed-form one-shot corruption x_t = √α_t x_0 + √(1−α_t) ε, the unweighted ε-MSE training loop, and the existing full-length sequential sampler. The open slots are a generative procedure that turns an initial noise tensor into samples from the trained noise predictor, and a small helper for choosing which noise levels that procedure visits.
 
 ```python
 import torch
@@ -65,10 +65,13 @@ def training_loss(model, x0, alphas):
     return ((model(xt, t.float()) - eps) ** 2).mean()
 
 @torch.no_grad()
-def sample(model, alphas, x, **kwargs):
+def sample(model, alphas, x, seq, eta=0.0):
     # TODO: generative procedure that turns the initial noise tensor x into a sample
-    #       from the trained noise predictor. Free to choose how many steps it takes,
-    #       which noise levels it visits, and how stochastic it is.
+    #       from the trained noise predictor along the chosen sequence.
+    pass
+
+def make_seq(num_timesteps, num_sampling_steps, kind="uniform"):
+    # TODO: choose the noise-level indices for the generative procedure.
     pass
 
 # optimizer = torch.optim.Adam(model.parameters(), lr=2e-4)

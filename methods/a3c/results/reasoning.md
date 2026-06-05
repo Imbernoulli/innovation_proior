@@ -32,7 +32,7 @@ The same worker skeleton should be able to accept more than one update rule, so 
 
 Start with the simplest, one-step Q-learning. Each step the worker takes an ε-greedy action from Q(s,a;θ′), sees r and s′, forms the target y = r + γ max_{a'} Q(s', a'; θ⁻) — or just y = r if s′ is terminal — and accumulates the gradient of (y − Q(s,a;θ′))². I keep the DQN target network θ⁻, a slowly-copied frozen set of parameters refreshed every I_target steps, because the moving-target problem is orthogonal to the correlation problem and parallelism doesn't fix it; I still want a steady label for the bootstrap. And the exploration: I'll give each worker an ε drawn periodically from a distribution rather than a single shared schedule, so the workers genuinely differ — that's the diversity that's doing the decorrelating, and it also just explores better. Apply the accumulated gradient every I_AsyncUpdate steps or at episode end.
 
-One-step Sarsa is the same skeleton with one character changed in the target: instead of r + γ max_{a'} Q(s', a'; θ⁻), use r + γ Q(s', a'; θ⁻) where a′ is the action the worker *actually* takes next. So it evaluates the policy it's following rather than the greedy policy — on-policy. The fact that I can even *write* this with a deep net and expect it to train is the payoff of dropping replay. Same target network, same accumulation.
+One-step Sarsa is the same skeleton with one character changed in the target: instead of r + γ max_{a'} Q(s', a'; θ⁻), use r + γ Q(s', a'; θ⁻) where a′ is the action the worker *actually* takes next, and use just r when s' is terminal. So it evaluates the policy it's following rather than the greedy policy — on-policy. The fact that I can even *write* this with a deep net and expect it to train is the payoff of dropping replay. Same target network, same accumulation.
 
 Now I hit something that bugs me about both one-step methods, and it's not about stability, it's about speed of learning. When I finally get a reward r, the one-step update only moves Q(s,a) for the single state-action pair that immediately preceded r. Every earlier action that was actually responsible for getting there only feels the reward *indirectly*, one bootstrap hop at a time, on later updates. So a reward trickles backward one step per pass through that region. That's painfully slow credit assignment. I want a reward to reach the actions that earned it faster.
 
@@ -54,22 +54,187 @@ Another failure mode appears once I imagine the policy as a softmax. Suppose ear
 
 I can resist saturation by rewarding uncertainty directly. The entropy of the policy, H(π(·|s)) = −Σ_a π(a|s) log π(a|s), is maximal at the uniform distribution and goes to zero as π collapses onto one action. So add β H(π) to the objective I'm maximizing. Its gradient ∇_θ H pushes π back toward higher entropy — toward keeping some probability on the other actions — which directly counteracts the premature-collapse loop. β sets how hard I push; too small and it collapses anyway, too large and the policy stays mushy and never commits, so it's a smallish constant. In loss form the entropy appears with a minus sign, L_π = −log π(a_i|s_i;θ′) stopgrad(Â) − β H(π(·|s_i;θ′)), because the optimizer will minimize L_π. The advantage term does the learning; the entropy term keeps exploration alive while it learns.
 
-Last piece: the optimizer, because in the async setting it's not totally obvious. For the algorithmic update I want a non-centered RMSProp rule. Let Δθ be the accumulated gradient of the loss being minimized. Then, elementwise, g ← αg + (1−α)Δθ² and θ ← θ − η Δθ / √(g+ε). The async wrinkle: do the threads share the running statistic g, or does each keep its own? If g is per-thread, each thread adapts to its own little gradient history and they can disagree about scaling. If g is shared in memory and updated lock-free like the parameters themselves, all threads adapt to the aggregate gradient statistics and I save a per-thread copy of a parameter-sized vector, which is real memory. So shared adaptive statistics it is. In the PyTorch version, the same shared-state idea is implemented with Adam: shared first moments, shared second moments, and a lock-free step on the shared parameters.
+Last piece: the optimizer, because in the async setting it's not totally obvious. For the algorithmic update I want a non-centered RMSProp rule. Let Δθ be the accumulated gradient of the loss being minimized. Then, elementwise, g ← αg + (1−α)Δθ² and θ ← θ − η Δθ / √(g+ε). The async wrinkle: do the threads share the running statistic g, or does each keep its own? If g is per-thread, each thread adapts to its own little gradient history and they can disagree about scaling. If g is shared in memory and updated lock-free like the parameters themselves, all threads adapt to the aggregate gradient statistics and I save a per-thread copy of a parameter-sized vector, which is real memory. So shared adaptive statistics it is. In the code I write below, I use the same shared-state idea with Adam: shared first moments, shared second moments, and a lock-free step on the shared parameters.
 
-Let me write the per-worker loop for the actor-critic version. Each worker process holds a local copy of the shared model; loop forever — sync the local model from the shared model, roll out num_steps, bootstrap the return from the value of the last state (zero if the episode ended), walk backward accumulating value loss and policy loss with the entropy bonus, then backprop the combined loss into the local model, copy the local gradients onto the shared model's parameters, and step the shared optimizer.
+Now I can write the implementation. The environment wrapper turns pixels into a compact normalized tensor; the network shares the visual and recurrent body before splitting into the value and policy heads; each worker syncs a local model, rolls out several steps, bootstraps R from the last value when the episode has not ended, walks backward through the rollout, and sends the local gradients into the shared parameters before one shared optimizer step.
 
 ```python
+import math
+import os
+import time
+from collections import deque
+
+import cv2
+import gym
+import numpy as np
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+import torch.multiprocessing as mp
+from gym.spaces.box import Box
 
-def ensure_shared_grads(local_model, shared_model):
-    # Push the local worker gradients onto the shared parameters.
-    for param, shared_param in zip(local_model.parameters(),
+
+def create_atari_env(env_name):
+    env = gym.make(env_name)
+    env = AtariRescale42x42(env)
+    env = NormalizedEnv(env)
+    return env
+
+
+def _process_frame42(frame):
+    frame = frame[34:34 + 160, :160]
+    frame = cv2.resize(frame, (80, 80))
+    frame = cv2.resize(frame, (42, 42))
+    frame = frame.mean(2, keepdims=True)
+    frame = frame.astype(np.float32)
+    frame *= 1.0 / 255.0
+    frame = np.moveaxis(frame, -1, 0)
+    return frame
+
+
+class AtariRescale42x42(gym.ObservationWrapper):
+    def __init__(self, env=None):
+        super().__init__(env)
+        self.observation_space = Box(0.0, 1.0, [1, 42, 42])
+
+    def _observation(self, observation):
+        return _process_frame42(observation)
+
+
+class NormalizedEnv(gym.ObservationWrapper):
+    def __init__(self, env=None):
+        super().__init__(env)
+        self.state_mean = 0
+        self.state_std = 0
+        self.alpha = 0.9999
+        self.num_steps = 0
+
+    def _observation(self, observation):
+        self.num_steps += 1
+        self.state_mean = self.state_mean * self.alpha + \
+            observation.mean() * (1 - self.alpha)
+        self.state_std = self.state_std * self.alpha + \
+            observation.std() * (1 - self.alpha)
+
+        unbiased_mean = self.state_mean / (1 - pow(self.alpha, self.num_steps))
+        unbiased_std = self.state_std / (1 - pow(self.alpha, self.num_steps))
+        return (observation - unbiased_mean) / (unbiased_std + 1e-8)
+
+
+def normalized_columns_initializer(weights, std=1.0):
+    out = torch.randn(weights.size())
+    out *= std / torch.sqrt(out.pow(2).sum(1, keepdim=True))
+    return out
+
+
+def weights_init(m):
+    classname = m.__class__.__name__
+    if classname.find('Conv') != -1:
+        weight_shape = list(m.weight.data.size())
+        fan_in = np.prod(weight_shape[1:4])
+        fan_out = np.prod(weight_shape[2:4]) * weight_shape[0]
+        w_bound = np.sqrt(6. / (fan_in + fan_out))
+        m.weight.data.uniform_(-w_bound, w_bound)
+        m.bias.data.fill_(0)
+    elif classname.find('Linear') != -1:
+        weight_shape = list(m.weight.data.size())
+        fan_in = weight_shape[1]
+        fan_out = weight_shape[0]
+        w_bound = np.sqrt(6. / (fan_in + fan_out))
+        m.weight.data.uniform_(-w_bound, w_bound)
+        m.bias.data.fill_(0)
+
+
+class ActorCritic(nn.Module):
+    def __init__(self, num_inputs, action_space):
+        super().__init__()
+        self.conv1 = nn.Conv2d(num_inputs, 32, 3, stride=2, padding=1)
+        self.conv2 = nn.Conv2d(32, 32, 3, stride=2, padding=1)
+        self.conv3 = nn.Conv2d(32, 32, 3, stride=2, padding=1)
+        self.conv4 = nn.Conv2d(32, 32, 3, stride=2, padding=1)
+        self.lstm = nn.LSTMCell(32 * 3 * 3, 256)
+        self.critic_linear = nn.Linear(256, 1)
+        self.actor_linear = nn.Linear(256, action_space.n)
+
+        self.apply(weights_init)
+        self.actor_linear.weight.data = normalized_columns_initializer(
+            self.actor_linear.weight.data, 0.01)
+        self.actor_linear.bias.data.fill_(0)
+        self.critic_linear.weight.data = normalized_columns_initializer(
+            self.critic_linear.weight.data, 1.0)
+        self.critic_linear.bias.data.fill_(0)
+        self.lstm.bias_ih.data.fill_(0)
+        self.lstm.bias_hh.data.fill_(0)
+        self.train()
+
+    def forward(self, inputs):
+        inputs, (hx, cx) = inputs
+        x = F.elu(self.conv1(inputs))
+        x = F.elu(self.conv2(x))
+        x = F.elu(self.conv3(x))
+        x = F.elu(self.conv4(x))
+        x = x.view(-1, 32 * 3 * 3)
+        hx, cx = self.lstm(x, (hx, cx))
+        return self.critic_linear(hx), self.actor_linear(hx), (hx, cx)
+
+
+class SharedAdam(optim.Adam):
+    def __init__(self, params, lr=1e-3, betas=(0.9, 0.999),
+                 eps=1e-8, weight_decay=0):
+        super().__init__(params, lr, betas, eps, weight_decay)
+        for group in self.param_groups:
+            for p in group['params']:
+                state = self.state[p]
+                state['step'] = torch.zeros(1)
+                state['exp_avg'] = p.data.new().resize_as_(p.data).zero_()
+                state['exp_avg_sq'] = p.data.new().resize_as_(p.data).zero_()
+
+    def share_memory(self):
+        for group in self.param_groups:
+            for p in group['params']:
+                state = self.state[p]
+                state['step'].share_memory_()
+                state['exp_avg'].share_memory_()
+                state['exp_avg_sq'].share_memory_()
+
+    def step(self, closure=None):
+        loss = None
+        if closure is not None:
+            loss = closure()
+
+        for group in self.param_groups:
+            for p in group['params']:
+                if p.grad is None:
+                    continue
+                grad = p.grad.data
+                state = self.state[p]
+                exp_avg, exp_avg_sq = state['exp_avg'], state['exp_avg_sq']
+                beta1, beta2 = group['betas']
+                state['step'] += 1
+
+                if group['weight_decay'] != 0:
+                    grad = grad.add(p.data, alpha=group['weight_decay'])
+
+                exp_avg.mul_(beta1).add_(grad, alpha=1 - beta1)
+                exp_avg_sq.mul_(beta2).addcmul_(
+                    grad, grad, value=1 - beta2)
+                denom = exp_avg_sq.sqrt().add_(group['eps'])
+                bias_correction1 = 1 - beta1 ** state['step'].item()
+                bias_correction2 = 1 - beta2 ** state['step'].item()
+                step_size = group['lr'] * math.sqrt(
+                    bias_correction2) / bias_correction1
+                p.data.addcdiv_(exp_avg, denom, value=-step_size)
+        return loss
+
+
+def ensure_shared_grads(model, shared_model):
+    for param, shared_param in zip(model.parameters(),
                                    shared_model.parameters()):
         if shared_param.grad is not None:
             return
         shared_param._grad = param.grad
+
 
 def train(rank, args, shared_model, counter, lock, optimizer=None):
     torch.manual_seed(args.seed + rank)
@@ -108,7 +273,7 @@ def train(rank, args, shared_model, counter, lock, optimizer=None):
             action = prob.multinomial(num_samples=1).detach()
             log_prob = log_prob.gather(1, action)
 
-            state, reward, done, _ = env.step(action.item())
+            state, reward, done, _ = env.step(action.numpy())
             done = done or episode_length >= args.max_episode_length
             reward = max(min(reward, 1), -1)
 
@@ -118,11 +283,12 @@ def train(rank, args, shared_model, counter, lock, optimizer=None):
             if done:
                 episode_length = 0
                 state = env.reset()
-            state = torch.from_numpy(state)
 
+            state = torch.from_numpy(state)
             values.append(value)
             log_probs.append(log_prob)
             rewards.append(reward)
+
             if done:
                 break
 
@@ -140,54 +306,110 @@ def train(rank, args, shared_model, counter, lock, optimizer=None):
             value_loss = value_loss + 0.5 * advantage.pow(2)
 
             delta_t = rewards[i] + args.gamma * values[i + 1] - values[i]
-            # With lambda = 1, this recursion telescopes to the n-step R - V(s_i).
+            # With lambda = 1, this is the same finite n-step advantage.
             gae = gae * args.gamma * args.gae_lambda + delta_t
 
             policy_loss = policy_loss \
                 - log_probs[i] * gae.detach() \
                 - args.entropy_coef * entropies[i]
 
-        optimizer.zero_grad(set_to_none=True)
+        optimizer.zero_grad()
         (policy_loss + args.value_loss_coef * value_loss).backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
         ensure_shared_grads(model, shared_model)
         optimizer.step()
-```
 
-And the harness is just one shared model in shared memory, one shared adaptive optimizer, and worker processes applying those gradients lock-free:
 
-```python
-import os
-import torch.multiprocessing as mp
+def test(rank, args, shared_model, counter):
+    torch.manual_seed(args.seed + rank)
+    env = create_atari_env(args.env_name)
+    env.seed(args.seed + rank)
+    model = ActorCritic(env.observation_space.shape[0], env.action_space)
 
-os.environ['OMP_NUM_THREADS'] = '1'
-os.environ['CUDA_VISIBLE_DEVICES'] = ''
+    model.eval()
+    state = env.reset()
+    state = torch.from_numpy(state)
+    reward_sum = 0
+    done = True
+    start_time = time.time()
+    actions = deque(maxlen=100)
+    episode_length = 0
 
-env = create_atari_env(args.env_name)
-shared_model = ActorCritic(env.observation_space.shape[0], env.action_space)
-shared_model.share_memory()
+    while True:
+        episode_length += 1
+        if done:
+            model.load_state_dict(shared_model.state_dict())
+            cx = torch.zeros(1, 256)
+            hx = torch.zeros(1, 256)
+        else:
+            cx = cx.detach()
+            hx = hx.detach()
 
-if args.no_shared:
-    optimizer = None
-else:
-    optimizer = SharedAdam(shared_model.parameters(), lr=args.lr)
-    optimizer.share_memory()
+        with torch.no_grad():
+            value, logit, (hx, cx) = model((state.unsqueeze(0), (hx, cx)))
+        prob = F.softmax(logit, dim=-1)
+        action = prob.max(1, keepdim=True)[1].numpy()
 
-counter = mp.Value('i', 0)
-lock = mp.Lock()
-processes = []
-p = mp.Process(target=test, args=(args.num_processes, args,
-                                  shared_model, counter))
-p.start()
-processes.append(p)
+        state, reward, done, _ = env.step(action[0, 0])
+        done = done or episode_length >= args.max_episode_length
+        reward_sum += reward
 
-for rank in range(args.num_processes):
-    p = mp.Process(target=train,
-                   args=(rank, args, shared_model, counter, lock, optimizer))
+        actions.append(action[0, 0])
+        if actions.count(actions[0]) == actions.maxlen:
+            done = True
+
+        if done:
+            print("Time {}, num steps {}, FPS {:.0f}, episode reward {}, "
+                  "episode length {}".format(
+                      time.strftime("%Hh %Mm %Ss",
+                                    time.gmtime(time.time() - start_time)),
+                      counter.value,
+                      counter.value / (time.time() - start_time),
+                      reward_sum,
+                      episode_length))
+            reward_sum = 0
+            episode_length = 0
+            actions.clear()
+            state = env.reset()
+            time.sleep(60)
+
+        state = torch.from_numpy(state)
+
+
+def launch(args):
+    os.environ['OMP_NUM_THREADS'] = '1'
+    os.environ['CUDA_VISIBLE_DEVICES'] = ''
+
+    torch.manual_seed(args.seed)
+    env = create_atari_env(args.env_name)
+    shared_model = ActorCritic(env.observation_space.shape[0],
+                               env.action_space)
+    shared_model.share_memory()
+
+    if args.no_shared:
+        optimizer = None
+    else:
+        optimizer = SharedAdam(shared_model.parameters(), lr=args.lr)
+        optimizer.share_memory()
+
+    counter = mp.Value('i', 0)
+    lock = mp.Lock()
+    processes = []
+
+    p = mp.Process(target=test, args=(args.num_processes, args,
+                                      shared_model, counter))
     p.start()
     processes.append(p)
-for p in processes:
-    p.join()
+
+    for rank in range(args.num_processes):
+        p = mp.Process(target=train,
+                       args=(rank, args, shared_model, counter, lock,
+                             optimizer))
+        p.start()
+        processes.append(p)
+
+    for p in processes:
+        p.join()
 ```
 
 So the whole chain, end to end: online deep RL is unstable because a single agent's consecutive gradients are correlated and the bootstrap target moves; replay fixed that by mixing across stored time, but doing so forced off-policy learning, cost memory, and demanded a GPU or a cluster; the same decorrelation can come from many parallel actors exploring different states at once, averaging into something stationary just like a minibatch — so I drop replay entirely, run lock-free workers on one machine sharing parameters, and because the data is fresh enough for on-policy updates I get that family back; I plug in one-step Q, Sarsa, n-step Q, and finally advantage actor-critic, where the policy gradient with a learned value baseline gives an n-step advantage update, parameter-shared between actor and critic, with an entropy bonus to stop the softmax from collapsing too early — all optimized with shared adaptive state across the workers.

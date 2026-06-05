@@ -105,43 +105,13 @@ One more thing about `W`. The Fourier branch is periodic by construction — the
 
 Let me also reconsider whether `R` should depend on `a`, to mirror the original `κ(x,y,a(x),a(y))`. I can let `R` be a function `R(k, (F a)(k))` — a parametric map from the frequency and the input's Fourier coefficient to the multiplier. A linear dependence is possible, and a small network is possible too. But `Z^d` is a discrete, unstructured index set, so a network reading `k` directly has little smooth geometry to exploit; a linear dependence adds cost while the lifted representation `v_0 = P(a)` already carries the input into every layer. So the simplest thing — learn `R` directly per retained mode, with no explicit `a`-dependence — is the right default, and `a` enters through the lifting `P`.
 
-Now I can write the whole forward pass and it should match the architecture I reasoned to. Lift with `P`, run a few layers each of which adds the Fourier branch and the `W` branch and applies `σ` between layers, project with `Q`. Let me write the spectral layer first, in one spatial dimension to keep the indices clear. The input is real, so I use the real FFT, which returns the non-negative frequencies `0…⌊n/2⌋`; the inverse real FFT reconstructs the missing negative frequencies. I allocate a zero one-sided spectrum, fill in the first `modes` low-frequency slots with the multiplied values, and inverse-transform.
+Now I can write the whole forward pass and it should match the architecture I reasoned to. Lift with `P`, run a few layers each of which adds the Fourier branch and the `W` branch and applies `σ` between layers, project with `Q`. Let me write the two-dimensional layer because it shows the indexing issue that matters in practice. The input is real, so I use the real FFT; it halves only the last axis, while the first axis still stores both its low-positive and wrapped negative frequencies. I allocate a zero one-sided spectrum, fill the two retained corners with the multiplied values, and inverse-transform.
 
 ```python
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-class SpectralConv1d(nn.Module):
-    """The integral operator K, realized as: rfft -> keep retained modes ->
-    per-mode complex matmul by R -> irfft.  R is learned directly in Fourier space."""
-    def __init__(self, in_channels, out_channels, modes1):
-        super().__init__()
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.modes1 = modes1  # retained low modes; rfft has at most floor(n/2)+1
-        # R as a complex tensor (in, out, modes); scale keeps the representation norm ~constant
-        self.scale = 1 / (in_channels * out_channels)
-        self.weights1 = nn.Parameter(
-            self.scale * torch.rand(in_channels, out_channels, modes1, dtype=torch.cfloat))
-
-    def compl_mul1d(self, inp, weights):
-        # per mode x: (batch,in,x),(in,out,x) -> (batch,out,x)  == the sum_j R_{k,l,j}(Fv)_{k,j}
-        return torch.einsum("bix,iox->box", inp, weights)
-
-    def forward(self, x):
-        # x: (batch, channels, n)
-        x_ft = torch.fft.rfft(x)                       # F(v): (batch, channels, n//2+1)
-        out_ft = torch.zeros(x.size(0), self.out_channels, x.size(-1)//2 + 1,
-                             device=x.device, dtype=torch.cfloat)
-        out_ft[:, :, :self.modes1] = self.compl_mul1d( # multiply only the low modes by R
-            x_ft[:, :, :self.modes1], self.weights1)   # higher modes stay zero (truncated)
-        return torch.fft.irfft(out_ft, n=x.size(-1))   # F^{-1}: back to physical space, real
-```
-
-In two dimensions there's the indexing wrinkle I noted. The real FFT halves only the *last* axis (modes `0…s2//2`), but the first axis is full, so its negative frequencies sit at the high end of the array. The retained block is therefore two corners: low-positive on the first axis crossed with the low modes of the last axis, and high (= negative) on the first axis crossed with the low modes of the last axis. Two corners means two weight tensors.
-
-```python
 class SpectralConv2d(nn.Module):
     def __init__(self, in_channels, out_channels, modes1, modes2):
         super().__init__()
@@ -175,13 +145,17 @@ class SpectralConv2d(nn.Module):
         return torch.fft.irfft2(out_ft, s=(x.size(-2), x.size(-1)))
 ```
 
-And the full operator network: lift, four layers of (Fourier branch `+` pointwise `W`, then `σ` between them), project. The pointwise `W` is just a 1×1 convolution — a per-point linear map on channels. I concatenate the grid coordinates onto the input so the pointwise maps have positional information, and I can pad the domain when the boundary is non-periodic.
+Then I write the full operator network: lift, four layers of (Fourier branch `+` pointwise `W`, then `σ` between them), project. The pointwise `W` is just a 1×1 convolution — a per-point linear map on channels. I concatenate the grid coordinates onto the input so the pointwise maps have positional information, and I can pad the domain when the boundary is non-periodic.
 
 ```python
 class FNO2d(nn.Module):
-    def __init__(self, modes1, modes2, width):
+    def __init__(self, modes1, modes2, width, in_channels=1, out_channels=1, padding=9):
         super().__init__()
-        self.fc0 = nn.Linear(3, width)            # lift P: input is (a(x,y), x, y) -> width channels
+        self.modes1 = modes1
+        self.modes2 = modes2
+        self.width = width
+        self.padding = padding                    # pad if the domain is non-periodic
+        self.fc0 = nn.Linear(in_channels + 2, width)  # lift P: values plus (x, y) coordinates
         self.conv0 = SpectralConv2d(width, width, modes1, modes2)
         self.conv1 = SpectralConv2d(width, width, modes1, modes2)
         self.conv2 = SpectralConv2d(width, width, modes1, modes2)
@@ -191,14 +165,14 @@ class FNO2d(nn.Module):
         self.w2 = nn.Conv2d(width, width, 1)
         self.w3 = nn.Conv2d(width, width, 1)
         self.fc1 = nn.Linear(width, 128)          # projection Q
-        self.fc2 = nn.Linear(128, 1)
-        self.padding = 9                          # pad if the domain is non-periodic
+        self.fc2 = nn.Linear(128, out_channels)
 
     def forward(self, x):
         grid = self.get_grid(x.shape, x.device)   # append coordinates as channels
         x = torch.cat((x, grid), dim=-1)
         x = self.fc0(x).permute(0, 3, 1, 2)       # channels-first for the conv/FFT ops
-        x = F.pad(x, [0, self.padding, 0, self.padding])
+        if self.padding:
+            x = F.pad(x, [0, self.padding, 0, self.padding])
         for conv, w in [(self.conv0, self.w0), (self.conv1, self.w1),
                         (self.conv2, self.w2), (self.conv3, self.w3)]:
             x1 = conv(x)                          # K v: global Fourier branch
@@ -206,7 +180,8 @@ class FNO2d(nn.Module):
             x = x1 + x2
             if conv is not self.conv3:            # nonlinearity in physical space, not after the last
                 x = F.gelu(x)
-        x = x[..., :-self.padding, :-self.padding]
+        if self.padding:
+            x = x[..., :-self.padding, :-self.padding]
         x = x.permute(0, 2, 3, 1)
         x = F.gelu(self.fc1(x))                   # Q
         return self.fc2(x)
@@ -218,23 +193,28 @@ class FNO2d(nn.Module):
         return torch.cat((gx, gy), dim=-1)
 ```
 
-Training is unremarkable and that's the point — the operator is just a module. I fit it with a relative `L²` loss, which is the natural function-space error (norm of the difference over norm of the target), Adam, and a step-halving schedule.
+If I switch to one dimension, I keep only `out_ft[:, :, :modes1]`; if I move to space-time, I use `rfftn` and four retained corners because two axes remain full. Training is unremarkable and that's the point — the operator is just a module. I fit it with a relative `L²` loss, which is the natural function-space error (norm of the difference over norm of the target), Adam, and a step-halving schedule. When the fields are normalized, I decode both prediction and target before computing that relative norm, because the loss should measure error in the physical units of the function.
 
 ```python
 def relative_l2(pred, target):
     diff = (pred - target).reshape(pred.size(0), -1).norm(dim=1)
     return (diff / target.reshape(target.size(0), -1).norm(dim=1)).mean()
 
-model = FNO2d(modes1=12, modes2=12, width=32)
-opt = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-4)
-sched = torch.optim.lr_scheduler.StepLR(opt, step_size=100, gamma=0.5)
-for epoch in range(500):
-    for a, u in train_loader:
-        opt.zero_grad()
-        loss = relative_l2(model(a), u)
-        loss.backward()
-        opt.step()
-    sched.step()
+def train(model, train_loader, y_normalizer=None, epochs=500, lr=1e-3):
+    opt = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-4)
+    sched = torch.optim.lr_scheduler.StepLR(opt, step_size=100, gamma=0.5)
+    for _ in range(epochs):
+        for a, u in train_loader:
+            opt.zero_grad()
+            pred = model(a).reshape_as(u)
+            target = u
+            if y_normalizer is not None:
+                pred = y_normalizer.decode(pred)
+                target = y_normalizer.decode(target)
+            loss = relative_l2(pred, target)
+            loss.backward()
+            opt.step()
+        sched.step()
 ```
 
 The chain now hangs together. I wanted the solution operator of a family of PDEs, mesh-free and consistent across resolutions, because solving each instance from scratch on a fine mesh is the bottleneck. A map between function spaces needs a linear primitive that lives in the continuum; the kernel integral operator is exactly that, and it is the literal form of the solution operator for linear PDEs via the Green's function. Wrapping it with a pointwise nonlinearity and a pointwise linear map, and lifting to a channel space, gives a learnable nonlinear operator, but the integral is `O(n²)` and will not scale. Restricting the kernel to be translation invariant, `κ(x−y)`, which is what the Green's function looks like for constant-coefficient problems, turns the integral into a convolution, and the convolution theorem turns the convolution into a per-frequency multiply, `F⁻¹(R·F(v))`. Parameterizing `R` directly in Fourier space and truncating to a fixed low-mode block makes the operator a fixed-size, resolution-independent object, justified because the data's spectrum decays and because the physical-space nonlinearities between layers regenerate the high modes that truncation drops. The FFT computes the transforms in `O(n log n)`, so the whole layer is quasi-linear; and because the parameters live in Fourier space, the same operator resolves on any grid, giving discretization invariance and zero-shot super-resolution. The pointwise `W` branch carries the non-periodic and local content the periodic Fourier branch cannot, and the spectral layer drops into an ordinary training loop as just another module.

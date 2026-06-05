@@ -13,8 +13,8 @@ is the model when the recipe is tuned carefully?
 ## Key idea
 
 BERT was significantly undertrained. With the architecture and MLM objective
-unchanged, a handful of recipe changes make masked-LM pretraining competitive
-with (or better than) every method published after BERT:
+unchanged, a handful of recipe changes make masked-LM pretraining a properly
+tuned comparator for later objectives:
 
 1. **Dynamic masking** — generate the masking pattern freshly each time a
    sequence is fed, instead of a single static mask fixed at preprocessing time.
@@ -24,14 +24,15 @@ with (or better than) every method published after BERT:
    conflated removing the loss with shortening the input; with long contiguous
    input, NSP is redundant.
 3. **Large batches** — train with 8K sequences per batch (with a scaled-up
-   learning rate), which improves both MLM perplexity and end-task accuracy.
+   learning rate). Large-batch sweeps improve MLM perplexity and keep downstream
+   quality comparable or better while making distributed training efficient.
    Stabilize large-batch Adam by setting **β₂ = 0.98** (not 0.999) and turning
    gradient clipping off.
 4. **Byte-level BPE, 50K units** — a universal tokenizer that encodes any text
    with no unknown tokens and no language-specific preprocessing.
-5. **More data, longer training** — scale from 16GB to 160GB across five corpora
-   (BookCorpus+Wikipedia, CC-News, OpenWebText, Stories) and from 100K to 500K
-   steps, with the architecture frozen.
+5. **More data, longer training** — scale from 16GB to 160GB across BookCorpus,
+   Wikipedia, CC-News, OpenWebText, and Stories, and from 100K to 500K steps,
+   with the architecture frozen.
 
 ## Configuration
 
@@ -58,34 +59,51 @@ classify from the first-token representations.
 import torch, torch.nn as nn, torch.nn.functional as F
 
 # ---- tokenizer: byte-level BPE, ~50K units, no preprocessing, no UNK ----
-class ByteLevelBPE:
+class Tokenizer:
     def __init__(self, encoder_json, vocab_bpe):
         self.bpe = load_byte_bpe(encoder_json, vocab_bpe)
     def encode(self, text):
         return self.bpe.encode(text)
 
-# ---- FULL-SENTENCES packing (no segment pairs, no NSP) ----
-def build_full_sentences(documents, max_len=512, sep_id=2):
+# ---- full-sentences packing (no segment pairs, no NSP) ----
+def build_pretraining_inputs(documents, max_len=512, sep_id=2):
     seqs, buf = [], []
+    def flush():
+        nonlocal buf
+        if buf:
+            seqs.append(buf)
+            buf = []
     for doc in documents:
+        if buf:
+            if len(buf) + 1 > max_len:
+                flush()
+            else:
+                buf.append(sep_id)
         for sent in doc:
+            if len(sent) > max_len:
+                sent = sent[:max_len]
             if len(buf) + len(sent) > max_len:
-                seqs.append(buf); buf = []
-            buf += sent
-        buf += [sep_id]                       # separator between documents
-    if buf: seqs.append(buf)
+                flush()
+            buf.extend(sent)
+    flush()
     return seqs
 
 # ---- dynamic masking: fresh each feed; 80/10/10 split over 15% ----
-def dynamic_mask(tokens, mask_id, vocab_size, p=0.15):
-    out, labels = tokens.clone(), torch.full_like(tokens, -100)
-    sel = torch.rand_like(tokens, dtype=torch.float) < p
+def mask_tokens(tokens, mask_id, vocab_size, *, ignore_index=-100, p=0.15,
+                special_ids=()):
+    out, labels = tokens.clone(), torch.full_like(tokens, ignore_index)
+    eligible = torch.ones_like(tokens, dtype=torch.bool)
+    for special_id in special_ids:
+        eligible &= tokens.ne(special_id)
+    sel = (torch.rand(tokens.shape, device=tokens.device) < p) & eligible
     labels[sel] = tokens[sel]
-    r = torch.rand_like(tokens, dtype=torch.float)
+    r = torch.rand(tokens.shape, device=tokens.device)
     out[sel & (r < 0.8)] = mask_id                                  # 80% -> [MASK]
     rand = sel & (r >= 0.9)
-    out[rand] = torch.randint(vocab_size, (int(rand.sum()),), device=tokens.device)  # 10% random
-    return out, labels                                              # 10% unchanged
+    if rand.any():
+        out[rand] = torch.randint(vocab_size, (int(rand.sum().item()),),
+                                  device=tokens.device)             # 10% random
+    return out, labels, sel                                         # 10% unchanged
 
 # ---- masked-LM head ----
 class MLMHead(nn.Module):
@@ -95,13 +113,17 @@ class MLMHead(nn.Module):
         self.layer_norm = nn.LayerNorm(hidden)
         self.weight = embed_weight                       # tied to input embeddings
         self.bias = nn.Parameter(torch.zeros(vocab_size))
-    def forward(self, x):
-        x = self.layer_norm(F.gelu(self.dense(x)))
-        return x @ self.weight.t() + self.bias
+    def forward(self, features, masked_tokens=None):
+        if masked_tokens is not None:
+            features = features[masked_tokens]            # project only selected positions
+        x = self.layer_norm(F.gelu(self.dense(features)))
+        return F.linear(x, self.weight, self.bias)
 
-def mlm_loss(logits, labels):
-    return F.cross_entropy(logits.view(-1, logits.size(-1)),
-                           labels.view(-1), ignore_index=-100)
+def mlm_loss(logits, labels, masked_tokens=None):
+    if masked_tokens is not None:
+        labels = labels[masked_tokens]
+    return F.cross_entropy(logits.reshape(-1, logits.size(-1)),
+                           labels.reshape(-1), ignore_index=-100)
 
 # ---- finetuning head over the first token ----
 class ClassificationHead(nn.Module):
@@ -121,6 +143,7 @@ def make_optimizer(params, peak_lr=4e-4):
                             eps=1e-6, weight_decay=0.01)  # beta2=0.98; clipping off
 ```
 
-The model body is a standard bidirectional Transformer encoder (same as BERT); the
-RobertaLMHead reprojects masked positions to the vocabulary with a tied embedding,
-and a small classification head over the first token handles finetuning.
+The model body is a standard bidirectional Transformer encoder (same as BERT);
+the masked-LM head reprojects selected positions to the vocabulary with a tied
+embedding, and a small classification head over the first token handles
+finetuning.

@@ -2,42 +2,42 @@
 
 ## Research question
 
-Practitioners are forced into a trade-off when picking an optimizer. Adaptive methods like Adam converge fast in the early phases of training and are the de facto default for hard-to-stabilize settings such as GANs — but on standard supervised tasks (especially CNNs) they generalize *worse* than plain SGD. SGD with momentum generalizes well at the end but is slow early and brittle in complex settings. So the field is split: fast-but-worse-generalizing adaptive methods versus slow-but-better-generalizing SGD. The question is whether a single first-order optimizer can have all three desirable properties at once — fast convergence like an adaptive method, good final generalization like SGD, and training stability robust enough for things like GANs — ideally as a tiny, drop-in modification of Adam that introduces no new hyperparameters.
+Practitioners are forced into a trade-off when picking an optimizer. Adaptive methods like Adam converge fast in the early phases of training and are the de facto default for hard-to-stabilize settings such as GANs, but on standard supervised tasks, especially CNNs, they often generalize worse than plain SGD with momentum. SGD with momentum generalizes well at the end but is slow early and brittle in complex settings. The question is whether a single first-order optimizer can have all three desirable properties at once: fast convergence like an adaptive method, good final generalization like SGD, and training stability robust enough for volatile training dynamics, ideally as a small drop-in modification of Adam that introduces no new core hyperparameters.
 
 ## Background
 
-The workhorse adaptive optimizer is Adam (Kingma & Ba 2014). It keeps two exponential moving averages: of the gradient, mₜ = β₁mₜ₋₁ + (1−β₁)gₜ, and of the squared gradient, vₜ = β₂vₜ₋₁ + (1−β₂)gₜ², bias-corrects both, and steps by θₜ = θₜ₋₁ − α·m̂ₜ/(√v̂ₜ + ε). The denominator √vₜ gives every coordinate its own effective learning rate set by the gradient's recent *magnitude*: directions with large gradients get small steps, directions with small gradients get large steps. AdaGrad (Duchi et al. 2011) is the ancestor of this idea (accumulated squared gradients in the denominator), but its accumulation never decays, so the effective rate shrinks to zero; Adam's EMA fixes that.
+The workhorse adaptive optimizer is Adam (Kingma & Ba 2014). It keeps two exponential moving averages: of the gradient, m_t = beta_1 m_{t-1} + (1 - beta_1) g_t, and of the squared gradient, v_t = beta_2 v_{t-1} + (1 - beta_2) g_t^2. It bias-corrects both and steps by theta_t = theta_{t-1} - alpha mhat_t / (sqrt(vhat_t) + epsilon). The denominator sqrt(v_t) gives every coordinate its own effective learning rate set by the gradient's recent magnitude: directions with large gradients get small steps, directions with small gradients get large steps. AdaGrad (Duchi et al. 2011) is the ancestor of this idea, with accumulated squared gradients in the denominator; its accumulation never decays, so the effective rate can shrink too aggressively, while Adam's exponential average keeps the statistic local in time.
 
-A large body of work tries to patch Adam's weaknesses. AMSGrad (Reddi et al. 2018) takes the running maximum of vₜ to fix a flaw in Adam's convergence proof. Yogi (Zaheer et al. 2018) controls how vₜ reacts to minibatch size. RAdam (Liu et al. 2019) rectifies the high variance of the adaptive learning rate in the first steps with a warmup-like correction. MSVAG (Balles & Hennig 2018) dissects Adam into a sign update times a variance-dependent magnitude. AdaBound and SWATS (Luo et al. 2019; Keskar & Socher 2017) interpolate or switch from Adam toward SGD to recover generalization. AdamW (Loshchilov & Hutter 2019) decouples weight decay from the gradient step. Despite all these, the consistent finding (Wilson et al. 2017) is that adaptive methods still generalize worse than well-tuned SGD on large datasets like ImageNet, and many of these variants are empirically unstable when training GANs.
+A large body of work tries to patch Adam's weaknesses. AMSGrad (Reddi et al. 2018) takes the running maximum of v_t to fix a flaw in Adam's convergence proof. Yogi (Zaheer et al. 2018) controls how v_t reacts to minibatch size. RAdam (Liu et al. 2019) rectifies the high variance of the adaptive learning rate in the first steps with a warmup-like correction. MSVAG (Balles & Hennig 2018) dissects Adam into a sign update times a variance-dependent magnitude. AdaBound and SWATS (Luo et al. 2019; Keskar & Socher 2017) interpolate or switch from Adam toward SGD to recover generalization. AdamW (Loshchilov & Hutter 2019) decouples weight decay from the gradient step. Wilson et al. 2017 sharpen the concern that adaptive methods can converge quickly yet land at solutions that generalize worse than well-tuned SGD.
 
-The deeper diagnostic that motivates a different denominator is about *curvature*. An ideal optimizer should not simply take a large step where the gradient is large and a small step where it is small; it should take large steps in low-curvature directions and small steps in high-curvature directions (this is the second-order intuition). Adam's denominator √vₜ depends only on the gradient *magnitude*, so it cannot distinguish the two situations that motivate the whole construction:
-- A *flat region* (small gradient, small curvature): the ideal step is large; SGD stalls (step ∝ gradient), but a small-vₜ denominator lets Adam move.
-- A *steep, oscillating valley* (large gradient, large curvature): the ideal step is small; SGD overshoots, but a large-vₜ denominator damps Adam.
-- A *large-gradient-but-small-curvature* region (large gradient, but the gradient is barely *changing* step to step): the ideal step is large; here Adam *fails* — its denominator √vₜ is large because the gradient magnitude is large, so it takes a needlessly small step, even though the loss surface is locally gentle. SGD, taking step ∝ gradient, does the right thing here.
+The deeper diagnostic is about curvature. An ideal optimizer should not simply take a large step where the gradient is large and a small step where it is small; it should take large steps in low-curvature directions and small steps in high-curvature directions. Adam's denominator sqrt(v_t) depends on gradient magnitude, so it cannot distinguish the cases that matter:
+- A flat region, with small gradient and small curvature: the ideal step is large. SGD stalls because its step is proportional to the small gradient, while a small adaptive denominator lets Adam move.
+- A steep, oscillating valley, with large gradient and large curvature: the ideal step is small. SGD overshoots, while a large adaptive denominator damps Adam.
+- A large-gradient, small-curvature region, where the gradient is large but barely changing step to step: the ideal step is large. Adam's denominator is large because the gradient magnitude is large, so it takes a needlessly small step. SGD's step is proportional to the large gradient, so it behaves more appropriately here.
 
-So the magnitude-only denominator is right in the first two cases and wrong in the third, exactly the case where SGD's behavior is preferable. A 2D illustration sharpens this: on f(x,y) = |x| + |y|, where each gradient component is ±1, starting near the x-axis the trajectory keeps advancing in x (gradient always +1) while oscillating in y (gradient flips sign). One would want a *large* step in x (consistent progress) and a *small* step in y (oscillation). Adam computes vₓ ≈ E[gₓ²] = 1 and v_y ≈ E[g_y²] = 1 — equal, because squaring discards the sign — so Adam takes the *same* step in both directions. The quantity that separates the consistent direction from the oscillating one is not the magnitude but how much the gradient *deviates from its own running mean*: in x the gradient is constant so its deviation is ≈0, in y it flips so its deviation is large. That deviation is the gradient's variance, and it is the curvature-aware signal Adam is missing.
+So the magnitude-only denominator is right in the first two cases and wrong in the third, exactly where SGD's behavior is preferable. A 2D illustration sharpens the point: on f(x,y) = |x| + |y|, where each gradient component is +/-1, starting near the x-axis makes the trajectory keep advancing in x while oscillating in y. One wants a large step in x and a small step in y. Adam computes v_x approximately E[g_x^2] = 1 and v_y approximately E[g_y^2] = 1, equal because squaring discards the sign, so it takes the same-size step in both directions. The quantity that separates the consistent direction from the oscillating one is how much the gradient deviates from its own running mean: near zero in x and large in y. That deviation is the gradient's variance, and it is the curvature-aware signal missing from a raw second-moment denominator.
 
 ## Baselines
 
-**Adam (Kingma & Ba 2014).** mₜ, vₜ EMAs of gₜ and gₜ²; bias-corrected; θ ← θ − α·m̂/(√v̂ + ε). Fast early convergence, default for GANs. Gap: magnitude-only denominator → wrong (too-small) step in large-gradient/low-curvature directions; generalizes worse than SGD on large datasets.
+**Adam (Kingma & Ba 2014).** Adam keeps EMAs of g_t and g_t^2, bias-corrects them, and updates theta by subtracting alpha mhat_t / (sqrt(vhat_t) + epsilon). It is fast early and widely used in unstable settings. Its gap is the magnitude-only denominator: it shrinks steps in large-gradient, low-curvature directions even when the gradient is stable and reliable.
 
-**SGD with momentum.** v ← βv + g; θ ← θ − αv. Step magnitude ∝ |momentum|. Generalizes best on many vision tasks; correctly takes large steps in the large-gradient/low-curvature case. Gap: no curvature adaptation, slow early, can overshoot in steep narrow valleys, unstable for GANs.
+**SGD with momentum.** Momentum keeps a velocity-like moving average of gradients and steps in that direction. It often generalizes well on vision tasks and correctly takes large steps in the large-gradient, low-curvature case. Its gap is the lack of per-coordinate curvature or variance adaptation, which makes it slow in flat regions and prone to overshooting in steep narrow valleys.
 
-**AMSGrad (Reddi et al. 2018).** Uses max over time of vₜ in the denominator to guarantee non-increasing effective rates and fix Adam's convergence proof. Still magnitude-based; same curvature blind spot. (A natural robustness add-on, not a fix for the third case.)
+**AMSGrad (Reddi et al. 2018).** AMSGrad replaces the current second-moment denominator with a running maximum so the effective adaptive rate does not increase. This repairs an Adam convergence issue but remains tied to the squared-gradient magnitude.
 
-**RAdam (Liu et al. 2019).** Rectifies the variance of the adaptive learning rate during early training via a closed-form term that effectively warms up the adaptive denominator. Addresses early-training instability, not the magnitude-vs-deviation issue.
+**RAdam (Liu et al. 2019).** RAdam rectifies the early-stage variance of the adaptive denominator. When the estimated degrees of freedom are too low, it falls back toward a momentum-style update; when the statistic is reliable enough, it uses an adaptive denominator. This addresses early-training instability rather than the magnitude-versus-deviation issue.
 
-**MSVAG (Balles & Hennig 2018).** Decomposes Adam into a sign component and a variance-adaptive magnitude. Closest in spirit in that it brings *variance* into the picture, but does not replace the denominator with a centered second moment.
+**MSVAG (Balles & Hennig 2018).** MSVAG analyzes Adam as a sign component with a variance-adaptive magnitude. It is close in spirit because it points toward variance as the meaningful reliability signal, but it does not replace Adam's denominator with a centered second moment.
 
-**AdamW (Loshchilov & Hutter 2019).** Decoupled weight decay. Orthogonal improvement; combinable.
+**AdamW (Loshchilov & Hutter 2019).** AdamW applies weight decay directly to the parameters instead of folding it into the gradient. This is orthogonal to the denominator choice and can be combined with any Adam-family update.
 
 ## Evaluation settings
 
-Pre-existing yardsticks: image classification on CIFAR-10/100 (ResNet, DenseNet, VGG) and ImageNet (ResNet-18, top-1 accuracy), measuring both convergence speed (training loss/accuracy vs epochs) and final test accuracy to expose the convergence-vs-generalization trade-off; language modeling with LSTMs on Penn Treebank (1/2/3-layer, perplexity); and GAN training (DCGAN / a small WGAN on CIFAR-10) measured by FID and by whether training stays stable at all, since instability is the failure mode adaptive variants exhibit there. Standard data augmentation and learning-rate schedules. The optimizer hyperparameters are held at Adam's defaults (α = 1e-3, β = (0.9, 0.999), ε = 1e-8) so the comparison isolates the update rule.
+Natural yardsticks include image classification on CIFAR-10/100 with ResNet, DenseNet, and VGG, ImageNet classification with ResNet-18 and top-1 accuracy, language modeling with LSTMs on Penn Treebank measured by perplexity, and GAN training on CIFAR-10 with WGAN or WGAN-GP measured by FID and training stability. These settings expose the convergence-versus-generalization trade-off and the instability of adversarial training. Standard data augmentation, learning-rate schedules, weight decay choices, and optimizer hyperparameter searches are part of the protocol.
 
 ## Code framework
 
-The substrate is PyTorch's `torch.optim.Optimizer`: per-parameter `state`, `param_groups` carrying `lr`, `betas`, `eps`, `weight_decay`, and a `step()` that reads each parameter's `.grad`. An Adam-family optimizer keeps a first-moment buffer and a second-statistic buffer per parameter, does bias correction, and divides. The open slot is *which* second statistic goes in the denominator.
+The substrate is PyTorch's `torch.optim.Optimizer`: per-parameter `state`, `param_groups` carrying learning-rate and decay options, optional running maxima, optional rectified early-step behavior, and a `step()` method that reads each parameter's `.grad`. An Adam-family optimizer already has the first-moment buffer, bias correction, weight-decay placement, and optional RAdam/AMSGrad-style branches. The open slot is the denominator statistic and the update that uses it.
 
 ```python
 import math
@@ -45,34 +45,79 @@ import torch
 from torch.optim.optimizer import Optimizer
 
 
-class AdaptiveDenomOptimizer(Optimizer):
-    def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-8, weight_decay=0):
-        defaults = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay)
-        super().__init__(params, defaults)
+class AdaptiveFirstOrderOptimizer(Optimizer):
+    def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-16,
+                 weight_decay=0, amsgrad=False, weight_decouple=True,
+                 fixed_decay=False, rectify=True, degenerated_to_sgd=True):
+        if not 0.0 <= lr:
+            raise ValueError("Invalid learning rate: {}".format(lr))
+        if not 0.0 <= eps:
+            raise ValueError("Invalid epsilon value: {}".format(eps))
+        if not 0.0 <= betas[0] < 1.0:
+            raise ValueError("Invalid beta parameter at index 0: {}".format(betas[0]))
+        if not 0.0 <= betas[1] < 1.0:
+            raise ValueError("Invalid beta parameter at index 1: {}".format(betas[1]))
 
-    @torch.no_grad()
+        if isinstance(params, (list, tuple)) and len(params) > 0 and isinstance(params[0], dict):
+            for param_group in params:
+                if 'betas' in param_group and param_group['betas'] != betas:
+                    param_group['buffer'] = [[None, None, None] for _ in range(10)]
+
+        defaults = dict(
+            lr=lr,
+            betas=betas,
+            eps=eps,
+            weight_decay=weight_decay,
+            amsgrad=amsgrad,
+            buffer=[[None, None, None] for _ in range(10)],
+        )
+        super().__init__(params, defaults)
+        self.weight_decouple = weight_decouple
+        self.fixed_decay = fixed_decay
+        self.rectify = rectify
+        self.degenerated_to_sgd = degenerated_to_sgd
+
     def step(self, closure=None):
+        loss = None
+        if closure is not None:
+            loss = closure()
+
         for group in self.param_groups:
             beta1, beta2 = group['betas']
             for p in group['params']:
                 if p.grad is None:
                     continue
-                grad = p.grad
+                grad = p.grad.data
+                if grad.is_sparse:
+                    raise RuntimeError('adaptive denominator optimizers do not support sparse gradients')
+
                 state = self.state[p]
                 if len(state) == 0:
                     state['step'] = 0
-                    state['exp_avg'] = torch.zeros_like(p.data)       # first moment m_t
-                    state['exp_avg_2'] = torch.zeros_like(p.data)     # the denominator statistic
-                exp_avg, exp_avg_2 = state['exp_avg'], state['exp_avg_2']
+                    state['exp_avg'] = torch.zeros_like(p.data)
+                    state['denom_stat'] = torch.zeros_like(p.data)
+                    if group['amsgrad']:
+                        state['max_denom_stat'] = torch.zeros_like(p.data)
+
+                if self.weight_decouple:
+                    if not self.fixed_decay:
+                        p.data.mul_(1.0 - group['lr'] * group['weight_decay'])
+                    else:
+                        p.data.mul_(1.0 - group['weight_decay'])
+                elif group['weight_decay'] != 0:
+                    grad.add_(p.data, alpha=group['weight_decay'])
+
+                exp_avg = state['exp_avg']
+                denom_stat = state['denom_stat']
                 state['step'] += 1
                 bias_correction1 = 1 - beta1 ** state['step']
                 bias_correction2 = 1 - beta2 ** state['step']
 
-                exp_avg.mul_(beta1).add_(grad, alpha=1 - beta1)       # m_t = EMA of gradient
+                exp_avg.mul_(beta1).add_(grad, alpha=1 - beta1)
 
-                # TODO: form the second statistic that goes in the denominator,
-                #       update exp_avg_2 as its EMA, and step
-                #       theta <- theta - lr * mhat / (sqrt(2nd-stat-hat) + eps)
+                # TODO: fill the denominator-statistic slot, keep the same
+                #       AMSGrad and rectification branches, and apply the step.
                 pass
-        return None
+
+        return loss
 ```

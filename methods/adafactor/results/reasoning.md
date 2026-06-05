@@ -186,7 +186,7 @@ Now assemble everything into one rule. For a matrix parameter `X ∈ ℝ^{n×m}`
   `Û_t = U_t / max(1, RMS(U_t)/d)`
   `X_t = X_{t-1} − α_t Û_t`.
 
-A couple of details I want to be deliberate about. The `ε₁` (take it tiny, `10⁻³⁰`) is added *inside* the accumulator, to the squared gradient, purely so `V̂` can't be exactly zero and blow up the division — it's a floor on the second moment, not the additive-`ε` outside a square root that Adam uses. There's no `1/(1−β̂₂ᵗ)` bias-correction factor anywhere, because the `β̂₂_1 = 0` schedule already made the estimate unbiased — that's the payoff from the increasing-decay derivation. And `β̂₂_t = 1 − t^{-c}` with `c = 0.8`.
+A couple of details I want to be deliberate about. The `ε₁` (take it tiny, `10⁻³⁰`) is added *inside* the accumulator, to the squared gradient, purely so `V̂` can't be exactly zero and blow up the division — it's a floor on the second moment, not the additive-`ε` outside a square root that Adam uses. There's no separate bias-correction factor anywhere, because the `β̂₂_1 = 0` schedule already made the estimate unbiased — that's the payoff from the increasing-decay derivation. And `β̂₂_t = 1 − t^{-c}` with `c = 0.8`.
 
 For a parameter that's a vector or scalar there's nothing to factor — keep the ordinary unfactored second moment, but everything else (relative step, increasing decay, update clipping) carries over:
 
@@ -312,7 +312,8 @@ class Adafactor(Optimizer):
                     update = v.rsqrt().mul_(grad)
 
                 # update clipping: cap RMS(U) at d, leave it alone if already below
-                update.div_((self._rms(update) / group["clip_threshold"]).clamp_(min=1.0))
+                if group["clip_threshold"] is not None:
+                    update.div_((self._rms(update) / group["clip_threshold"]).clamp_(min=1.0))
                 update.mul_(lr)                                       # alpha_t * U_hat
 
                 if use_first_moment:                                 # optional momentum on the clipped update

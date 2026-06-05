@@ -64,14 +64,12 @@ be a *worse* starting point than a random one, an effect already observed when
 transferring policies across related games (Parisotto et al. 2016). So "just
 pretrain and fine-tune" is a real option on the table, and a known-weak one.
 
-A second background fact that matters for the method's feasibility: by this time
-automatic differentiation libraries (TensorFlow; Abadi et al. 2016) could
+Automatic differentiation libraries (TensorFlow; Abadi et al. 2016) could
 differentiate *through* a gradient computation, computing Hessian-vector
-products with an extra backward pass — so an objective that itself contains a
-gradient step is, in principle, trainable. And a known property of ReLU networks
-(Goodfellow et al. 2015) is that they are locally almost linear, i.e. their
-second derivatives are small in most regions — a fact that will matter for how
-expensive the method has to be.
+products with an extra backward pass. ReLU networks were also known to behave
+nearly linearly in many local neighborhoods (Goodfellow et al. 2015), suggesting
+that some second-order curvature corrections may be modest in practice, though
+not guaranteed to vanish.
 
 ## Baselines
 
@@ -160,57 +158,51 @@ measure performance on held-out tasks after $K$-shot adaptation.
 
 ## Code framework
 
-The pieces that already exist before the method: a data pipeline that samples a
-task and, for that task, a small support batch and a query batch; a parametric
-model whose forward pass can be run on a supplied set of weights; standard
-losses; a standard optimizer; and an autodiff engine that can differentiate
-through a gradient computation.
+The pieces that already exist: a data pipeline that samples a task and, for that
+task, a small support batch and a query batch; a parametric model whose forward
+pass can be run on a supplied set of weights; standard losses; a standard
+optimizer; and an autodiff engine that can differentiate through a gradient
+computation.
 
 ```python
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 
-# --- task sampler: one task -> (support, query) split ---
-def sample_task_batch(meta_batch_size, k_support, k_query):
-    """Sample a batch of tasks; for each, a K-shot support set and a query set.
-       Support drives adaptation; query measures generalization. Returns
-       (x_s, y_s, x_q, y_q) per task."""
-    pass  # TODO: domain-specific (sinusoid / Omniglot / MiniImagenet / MDP)
 
-# --- model: forward pass parameterized by an explicit weight dict, so we can
-#     run it on weights other than the ones stored on the module ---
-class Learner(torch.nn.Module):
-    def __init__(self, ...):
+class Learner(nn.Module):
+    def __init__(self, dim_in, hidden, dim_out):
         super().__init__()
-        # TODO: define parameters (MLP / conv stack); plain GD-trainable model
-        pass
+        self.params = nn.ParameterDict()
+        self.n_layers = 0
+        pass  # TODO: define the plain trainable network parameters
 
-    def forward(self, x, params=None):
-        """Run the network using `params` if given, else self's own params.
-           Functional forward is what lets adaptation produce a *new* set of
-           weights without mutating the originals."""
-        pass  # TODO
+    def functional_forward(self, x, weights):
+        pass  # TODO: run the network on an explicit weight dictionary
 
-def loss_fn(pred, y):
-    pass  # TODO: MSE for regression, cross-entropy for classification
+    def init_weights(self):
+        pass  # TODO: return the current trainable weights as a dictionary
 
-# --- the adaptation + meta-objective: THE SLOT THE METHOD FILLS ---
-def adapt_and_evaluate(model, x_s, y_s, x_q, y_q):
-    """Given a task's support and query sets, produce the per-task contribution
-       to the meta-objective. This is the empty slot the method defines:
-       how prior parameters turn into task-adapted behavior, and what signal
-       trains the prior."""
-    pass  # TODO: the contribution of this work
 
-# --- outer loop ---
-def meta_train(model, meta_opt, steps):
+def mse_loss(pred, y):
+    pass  # TODO: regression loss
+
+
+def adapt_parameters(model, loss_fn, x_s, y_s, alpha, n_steps, first_order=False):
+    pass  # TODO: turn current weights into task-adapted weights
+
+
+def meta_update_step(model, loss_fn, meta_opt, tasks, alpha,
+                     n_steps=1, first_order=False, grad_clip=None):
+    pass  # TODO: compute the query loss after adaptation and update the prior
+
+
+def meta_train(model, sample_tasks, steps=70000, alpha=0.01, meta_lr=1e-3,
+               n_steps=1, first_order=False):
+    meta_opt = torch.optim.Adam(model.parameters(), lr=meta_lr)
     for _ in range(steps):
-        meta_opt.zero_grad()
-        tasks = sample_task_batch(...)
-        meta_loss = 0.0
-        for (x_s, y_s, x_q, y_q) in tasks:
-            meta_loss = meta_loss + adapt_and_evaluate(model, x_s, y_s, x_q, y_q)
-        meta_loss = meta_loss / len(tasks)
-        meta_loss.backward()
-        meta_opt.step()
+        tasks = sample_tasks()
+        meta_update_step(model, mse_loss, meta_opt, tasks, alpha,
+                         n_steps=n_steps, first_order=first_order)
+    return model
 ```

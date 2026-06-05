@@ -64,9 +64,9 @@ of pairwise Hessian-eigenvalue sums.
 training label at every step of an over-parameterized `ℓ₂`-regression problem. On the
 zero-loss manifold this makes the gradient-noise covariance proportional to the
 Hessian, `Σ(ζ) = α ∇²L(ζ)`. Under this condition SGD's slow dynamics degenerates from
-a stochastic process to a deterministic flow whose fixed points minimize `tr(∇²L)`
-along `Γ` (shown by fixed-point analysis, by the slow-SDE reduction, and by implicit
-gradient regularization — three independent routes agreeing).
+a stochastic process to a deterministic flow whose fixed points are stationary points
+of `tr(∇²L)` along `Γ` (shown by fixed-point analysis, by the slow-SDE reduction, and
+by implicit gradient regularization — three independent routes agreeing).
 
 **Diagnostic settings where the sharpness target matters.** Two over-parameterized
 problems make the *form* of the reduced sharpness measure observable. (i) *Sparse
@@ -158,7 +158,7 @@ this.
 
 ## Evaluation settings
 
-**Toy manifolds (illustration only).** A 2-D elliptical `ℓ₂` loss with `±0.5` label
+**Toy manifolds.** A 2-D elliptical `ℓ₂` loss with `±0.5` label
 noise, used to visualize that a stochastic optimizer first converges to the minimizer
 curve and then drifts along it toward flatter regions; a 1-D manifold cartoon
 contrasting "track the whole iteration" (conventional SDE) with "track the projection
@@ -176,79 +176,68 @@ hyperparameters.
 (`L = 2, 5`), product `W_L⋯W_1` fit by MSE to linear measurements of a low-rank
 ground-truth matrix `M*`, Gaussian label noise per step. Tracked quantities over
 training: `tr(H)`, `tr(Diag(H)^{1/2})`, and the train/test MSE. Standard adaptive
-hyperparameters `β1=0.9`, `β2=0.999`, lr `1e-3`; SGD configured to a published
+hyperparameters `β1=0.9`, `β2=0.999`, lr `1e-3`; SGD configured to a standard
 matrix-factorization protocol.
 
 ## Code framework
 
-The scaffold is a generic stochastic-optimizer training loop plus an
-analysis harness. Two slots are empty: the optimizer's per-coordinate update rule, and
-the continuous-time object that is meant to describe the optimizer's slow behavior on
-the manifold. The optimizers that already exist are SGD and momentum-SGD; the
-preconditioned update and the manifold-phase description are what will be filled in.
+The runnable scaffold is a small stochastic-optimizer harness for the diagonal-network
+diagnostic. The open slots are the coordinate-rescaled update rule and the optimizer
+factory that will choose between the existing SGD baseline and the new rescaled rule.
 
 ```python
 import torch
 
-# ---- already exists: plain / momentum SGD -----------------------------------
-class SGD(torch.optim.Optimizer):
-    def __init__(self, params, lr, momentum=0.0):
-        super().__init__(params, dict(lr=lr, momentum=momentum))
-    @torch.no_grad()
-    def step(self):
-        for grp in self.param_groups:
-            lr, mu = grp["lr"], grp["momentum"]
-            for p in grp["params"]:
-                if p.grad is None: continue
-                if mu:
-                    st = self.state[p]
-                    buf = st.setdefault("buf", torch.zeros_like(p))
-                    buf.mul_(mu).add_(p.grad)
-                    p.add_(buf, alpha=-lr)
-                else:
-                    p.add_(p.grad, alpha=-lr)
-
-# ---- TODO: the optimizer whose implicit bias we want to understand ----------
-# A stochastic update that, beyond momentum, rescales each coordinate's step by
-# a running statistic of the gradient. We do not yet know the right way to write
-# this rescaling, nor which family of rules to allow.
-class PreconditionedOptimizer(torch.optim.Optimizer):
-    def __init__(self, params, lr, **hparams):
-        raise NotImplementedError  # TODO: first/second moment + per-coord rescaling
+class CoordinateRescaledOptimizer(torch.optim.Optimizer):
+    def __init__(self, params, lr=1e-3, beta1=0.9, beta2=0.999,
+                 eps=1e-8, exponent=0.5):
+        pass  # TODO: first moment, second statistic, and coordinate rescaling
 
     @torch.no_grad()
-    def step(self):
-        raise NotImplementedError  # TODO: m, "second moment", and θ -= η · (rescale) · m
+    def step(self, closure=None):
+        pass  # TODO: update state and apply the rescaled stochastic step
 
-# ---- TODO: continuous-time description of the slow, on-manifold motion -------
-# Conventional first-order SDEs track only the convergence phase. We need an
-# object that describes the projection onto the minimizer manifold over the long
-# O(η^{-2}) horizon. Its exact drift/diffusion — and what role the rescaling
-# statistic plays in them — is unknown at this point.
-def slow_dynamics_on_manifold(*args, **kwargs):
-    raise NotImplementedError  # TODO: drift + diffusion of the projected state
+def make_optimizer(name, params, lr, exponent=0.5):
+    pass  # TODO: choose SGD or the coordinate-rescaled optimizer
 
-# ---- already exists: diagnostic landscapes ----------------------------------
 def make_diagonal_net(d, kappa, seed=0):
     g = torch.Generator().manual_seed(seed)
-    w_star = torch.zeros(d); idx = torch.randperm(d, generator=g)[:kappa]
+    w_star = torch.zeros(d)
+    idx = torch.randperm(d, generator=g)[:kappa]
     w_star[idx] = torch.randn(kappa, generator=g)
     u = torch.full((d,), 0.1, requires_grad=True)
     v = torch.full((d,), 0.1, requires_grad=True)
-    predict = lambda z: (z * (u**2 - v**2)).sum()   # ŵ = u² - v²
-    return (u, v), predict, w_star
+
+    def predict(z):
+        return (z * (u.square() - v.square())).sum()
+
+    return [u, v], predict, w_star
 
 def label_noise_step(predict, z, y_clean, delta, opt, gen):
     noisy = y_clean + delta * (2 * torch.randint(0, 2, (1,), generator=gen).item() - 1)
     loss = 0.5 * (predict(z) - noisy) ** 2
-    opt.zero_grad(); loss.backward(); opt.step()
+    opt.zero_grad()
+    loss.backward()
+    opt.step()
     return loss.item()
 
-# ---- already exists: generic training loop ----------------------------------
-def train(params, predict, data, opt, delta, steps, gen):
-    Z, y = data
+def run_diagnet(opt_name, n_train, d=10000, kappa=50, delta=0.1,
+                steps=20000, lr=1e-2, exponent=0.5, seed=0):
+    gen = torch.Generator().manual_seed(seed + 1)
+    params, predict, w_star = make_diagonal_net(d, kappa, seed)
+    Z = (torch.randint(0, 2, (n_train, d), generator=gen) * 2 - 1).float()
+    y = Z @ w_star
+    Ztest = (torch.randint(0, 2, (2000, d), generator=gen) * 2 - 1).float()
+    ytest = Ztest @ w_star
+    opt = make_optimizer(opt_name, params, lr, exponent)
+
     for _ in range(steps):
-        i = torch.randint(0, len(Z), (1,), generator=gen).item()
+        i = torch.randint(0, n_train, (1,), generator=gen).item()
         label_noise_step(predict, Z[i], y[i], delta, opt, gen)
-    return params
+
+    with torch.no_grad():
+        u, v = params
+        w_hat = u.square() - v.square()
+        test_loss = 0.5 * ((Ztest @ w_hat - ytest) ** 2).mean()
+    return test_loss.item()
 ```

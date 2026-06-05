@@ -10,9 +10,9 @@ The recent improvements to SGD fall into two camps. Adaptive methods — AdaGrad
 
 A separate and older thread is *averaging the iterates themselves* rather than reshaping the gradient. Ruppert (1988) and Polyak & Juditsky (1992) showed that for stochastic approximation, the arithmetic average of the iterates converges with optimal asymptotic variance — better statistical efficiency than the last iterate — because averaging cancels the per-step noise. This is tail averaging: you run the iteration and average the late iterates. In deep learning this resurfaced as Stochastic Weight Averaging (Izmailov et al. 2018), which averages the weights visited by SGD under a cyclical or high constant learning rate and finds flatter, wider optima that generalize better. SWA has two notable features: it uses an *equal-weight arithmetic* average, and it requires choosing *when to start* averaging — begin too early and you fold in bad early models, too late and you average too few points. It also produces a final averaged model; it does not feed the average back into the optimization trajectory. Martens (2014) had observed, in the context of stochastic optimization, that an exponentially-decayed moving average of iterates "typically works much better in practice" than a plain Polyak average, because it emphasizes recent, better proposals.
 
-The relevant theoretical lens for *why* averaging helps is the noisy quadratic model (Schaul et al. 2013; Wu et al. 2018), a tractable proxy for neural-network optimization. Take a diagonal quadratic with a noisy optimum, L̂(x) = ½(x−c)ᵀA(x−c) with c ~ N(x*, Σ), A and Σ diagonal. The expected loss decomposes into a bias term (squared mean iterate), a variance term, and an irreducible noise floor: E[L̂] = ½ Σᵢ aᵢ(E[θᵢ]² + V[θᵢ] + σᵢ²). Under SGD with learning rate γ the per-coordinate mean contracts as E[x⁽ᵗ⁺¹⁾] = (I−γA)E[x⁽ᵗ⁾] while the variance follows V[x⁽ᵗ⁺¹⁾] = (I−γA)²V[x⁽ᵗ⁾] + γ²A²Σ, so it relaxes to a nonzero steady-state variance V*_SGD = γ²A²Σ / (I−(I−γA)²). That steady-state variance is what keeps the loss above its floor; it grows with the learning rate. The bias, by contrast, contracts fastest at *large* learning rates. So there is a genuine tension: large γ kills the bias quickly but inflates the variance, and short-horizon analyses (Wu et al. 2018) show SGD is biased toward exactly the large-γ regime when only a few steps are looked ahead. A method that reduces the steady-state variance without forcing γ down would let one keep the fast bias contraction of a large learning rate.
+The relevant theoretical lens for *why* averaging helps is the noisy quadratic model (Schaul et al. 2013; Wu et al. 2018), a tractable proxy for neural-network optimization. Take a diagonal quadratic with a noisy optimum, L̂(x) = ½(x−c)ᵀA(x−c) with c ~ N(x*, Σ), then translate coordinates so x* = 0 and every coordinate evolves independently. The expected loss decomposes into a bias term (squared mean iterate), a variance term, and an irreducible noise floor: E[L̂] = ½ Σᵢ aᵢ(E[θᵢ]² + V[θᵢ] + σᵢ²). Under SGD with learning rate γ the per-coordinate mean contracts as E[x⁽ᵗ⁺¹⁾] = (I−γA)E[x⁽ᵗ⁾] while the variance follows V[x⁽ᵗ⁺¹⁾] = (I−γA)²V[x⁽ᵗ⁾] + γ²A²Σ, so it relaxes to a nonzero steady-state variance V*_SGD = γ²A²Σ / (I−(I−γA)²). That steady-state variance is what keeps the loss above its floor; it grows with the learning rate throughout the stable scalar range 0 < γaᵢ < 2. Increasing γ speeds mean contraction in a coordinate only until γaᵢ reaches 1; beyond that, the mean sign-flips and oscillates even though the variance keeps rising. So there is a genuine tension: a large useful γ can reduce bias quickly but also inflates variance and can overshoot sharp directions, and short-horizon analyses (Wu et al. 2018) show SGD is biased toward exactly the large-γ regime when only a few steps are looked ahead. A mechanism that reduces the steady-state variance without forcing γ down would let one keep the fast bias contraction of a large learning rate.
 
-Empirically, the diagnostic that motivates the whole construction is visible inside training: if one applies the inner optimizer for several steps and watches the loss after *every* step, the within-window iterates degrade task performance — they oscillate and overshoot in high-curvature directions — and it is the act of pulling back toward a smoothed point that restores the performance. The fast iterates explore; left alone they are high-variance.
+The same tension is visible in training diagnostics before committing to any new mechanism: repeated high-learning-rate minibatch updates can make successive within-window iterates oscillate and overshoot in high-curvature directions. That behavior is exactly the high-variance trajectory the noisy quadratic model predicts.
 
 ## Baselines
 
@@ -30,22 +30,32 @@ The natural yardsticks, all pre-existing: image classification on CIFAR-10 and C
 
 ## Code framework
 
-The primitives that already exist: PyTorch's `torch.optim.Optimizer` base class with `param_groups`, per-parameter `state`, and a `step(closure)` contract; concrete inner optimizers like `torch.optim.SGD` and `torch.optim.Adam`; a standard training loop. A method that wraps an existing optimizer slots in as a subclass of `Optimizer` that holds a reference to the inner one.
+The primitives that already exist: PyTorch's `torch.optim.Optimizer` base class with `param_groups`, per-parameter `state`, and a `step(closure)` contract; concrete inner optimizers like `torch.optim.SGD` and `torch.optim.Adam`; a standard training loop. An outer optimizer can wrap an existing optimizer by holding a reference to the inner one and forwarding the ordinary optimizer interface.
 
 ```python
 import torch
 from torch.optim.optimizer import Optimizer
 from collections import defaultdict
 
-class OuterWrapper(Optimizer):
-    """Wraps an existing inner optimizer. Pre-method skeleton:
-    the mechanism that decides how/when to combine iterates is the open slot."""
+class OuterOptimizer(Optimizer):
+    """Wraps an existing inner optimizer and leaves the outer update unspecified."""
 
-    def __init__(self, optimizer, ...):
+    def __init__(self, optimizer, sync_steps=5, blend=0.8, state_policy="keep"):
         self.optimizer = optimizer
+        self._outer_step = 0
+        self.blend = blend
+        self._total_outer_steps = sync_steps
+        assert state_policy in ["reset", "interpolate", "keep"]
+        self.state_policy = state_policy
         self.state = defaultdict(dict)
-        # TODO: per-parameter bookkeeping the method will need
-        #       (e.g. a cached copy of the parameters, a step counter)
+        for group in optimizer.param_groups:
+            for p in group["params"]:
+                param_state = self.state[p]
+                # TODO: initialize any per-parameter outer state.
+                pass
+
+    def __getstate__(self):
+        # TODO: include the wrapper fields needed for serialization.
         pass
 
     @property
@@ -55,22 +65,39 @@ class OuterWrapper(Optimizer):
     def zero_grad(self):
         self.optimizer.zero_grad()
 
+    def get_outer_step(self):
+        return self._outer_step
+
+    def state_dict(self):
+        return self.optimizer.state_dict()
+
+    def load_state_dict(self, state_dict):
+        self.optimizer.load_state_dict(state_dict)
+
     def step(self, closure=None):
         loss = self.optimizer.step(closure)   # let the inner optimizer take its step
-        # TODO: the method's contribution — periodically combine the inner
-        #       optimizer's iterate with the cached state and commit the result
+        self._outer_step += 1
+        if self._outer_step >= self._total_outer_steps:
+            self._outer_step = 0
+            for group in self.optimizer.param_groups:
+                for p in group["params"]:
+                    param_state = self.state[p]
+                    # TODO: combine the live parameters with the outer state,
+                    #       then update any inner-optimizer state policy.
+                    pass
         return loss
 
     def _backup_and_load_cache(self):
-        # TODO: optionally expose a smoothed set of weights for evaluation
+        # TODO: optionally swap in the outer state for evaluation.
         pass
 
     def _clear_and_load_backup(self):
+        # TODO: restore the live parameters after evaluation.
         pass
 
-# Usage scaffold (already-known training loop):
+# Usage:
 # base = torch.optim.SGD(model.parameters(), lr=0.1, momentum=0.9)
-# opt  = OuterWrapper(base, ...)
+# opt  = OuterOptimizer(base, ...)
 # for x, y in loader:
 #     opt.zero_grad(); loss = criterion(model(x), y); loss.backward(); opt.step()
 ```

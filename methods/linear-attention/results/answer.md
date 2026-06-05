@@ -57,7 +57,7 @@ $$
 $$
 \nabla_{K_i}\mathcal{L} = \Big(\sum_{j\ge i}Q_j(\nabla_{\bar V_j}\mathcal{L})^T\Big)V_i,
 \qquad
-\nabla_{V_i}\mathcal{L} = \Big(\sum_{j\ge i}Q_j(\nabla_{\bar V_j}\mathcal{L})^T\Big)^{\!T}\phi(K_i)
+\nabla_{V_i}\mathcal{L} = \Big(\sum_{j\ge i}Q_j(\nabla_{\bar V_j}\mathcal{L})^T\Big)^{\!T}K_i
 \;\;(\text{reverse cumsum}).
 $$
 Forward and backward are both $\mathcal{O}(NCM)$ time, $\mathcal{O}(N\max(C,M))$
@@ -66,24 +66,24 @@ memory.
 ## Algorithm (causal numerator)
 
 ```
-forward(phi(Q), phi(K), V):
+forward(Q, K, V):                            # Q and K are feature-mapped
     S <- 0
     for i = 1..N:
-        S <- S + phi(K_i) V_i^T          # S_i recurrence
-        Vbar_i <- phi(Q_i) S
+        S <- S + K_i V_i^T
+        Vbar_i <- Q_i S
     return Vbar
 
-backward(phi(Q), phi(K), V, G):           # G = dL/dVbar
+backward(Q, K, V, G):                       # G = dL/dVbar
     S <- 0
     for i = 1..N:                          # forward cumsum -> grad Q
-        S <- S + phi(K_i) V_i^T
-        grad_phiQ_i <- G_i S^T
+        S <- S + K_i V_i^T
+        grad_Q_i <- G_i S^T
     S <- 0
     for i = N..1:                          # reverse cumsum -> grad K, V
-        S <- S + phi(Q_i) G_i^T
-        grad_V_i    <- S^T phi(K_i)
-        grad_phiK_i <- S V_i
-    return grad_phiQ, grad_phiK, grad_V
+        S <- S + Q_i G_i^T
+        grad_V_i    <- S^T K_i
+        grad_K_i <- S V_i
+    return grad_Q, grad_K, grad_V
 ```
 
 ## Code
@@ -93,31 +93,55 @@ import torch
 from torch.nn import Module
 
 
-def elu_feature_map(x):
-    # phi(x) = elu(x) + 1 : positive, O(D), gradient alive for x < 0
-    return torch.nn.functional.elu(x) + 1
+class ActivationFunctionFeatureMap(Module):
+    def __init__(self, query_dimensions, activation_function):
+        super().__init__()
+        self.query_dimensions = query_dimensions
+        self.activation_function = activation_function
+
+    def new_feature_map(self, device):
+        return
+
+    def forward_queries(self, x):
+        return self.activation_function(x)
+
+    def forward_keys(self, x):
+        return self.activation_function(x)
+
+
+def elu_feature_map(query_dimensions):
+    return ActivationFunctionFeatureMap(
+        query_dimensions,
+        lambda x: torch.nn.functional.elu(x) + 1,
+    )
 
 
 class LinearAttention(Module):
     """Unmasked O(N) attention: form the key/value sums once, reuse per query."""
-    def __init__(self, feature_map=elu_feature_map, eps=1e-6):
+    def __init__(self, query_dimensions, feature_map=None, eps=1e-6):
         super().__init__()
-        self.feature_map = feature_map
+        self.feature_map = (
+            feature_map(query_dimensions) if feature_map else
+            elu_feature_map(query_dimensions)
+        )
         self.eps = eps
 
-    def forward(self, queries, keys, values):
-        Q = self.feature_map(queries)                 # (N, L, H, D)
-        K = self.feature_map(keys)                    # (N, S, H, D)
-        KV = torch.einsum("nshd,nshm->nhmd", K, values)          # sum_j phi(K_j) V_j^T
+    def forward(self, queries, keys, values, attn_mask,
+                query_lengths, key_lengths):
+        self.feature_map.new_feature_map(queries.device)
+        Q = self.feature_map.forward_queries(queries)
+        K = self.feature_map.forward_keys(keys)
+        if not attn_mask.all_ones:
+            raise RuntimeError("LinearAttention only supports full masks")
+        K = K * key_lengths.float_matrix[:, :, None, None]
+        KV = torch.einsum("nshd,nshm->nhmd", K, values)
         Z = 1 / (torch.einsum("nlhd,nhd->nlh", Q, K.sum(dim=1)) + self.eps)
         V = torch.einsum("nlhd,nhmd,nlh->nlhm", Q, KV, Z)
         return V.contiguous()
 
 
 class CausalDotProduct(torch.autograd.Function):
-    """Causal numerator with the cumulative-sum gradients (O(N), constant
-    memory in N). The double loop here is the reference semantics; in practice
-    it is a fused CUDA/C++ kernel."""
+    """Causal numerator with cumulative-sum gradients; no stored S_i list."""
     @staticmethod
     def forward(ctx, Q, K, V):
         ctx.save_for_backward(Q, K, V)
@@ -128,8 +152,8 @@ class CausalDotProduct(torch.autograd.Function):
             for h in range(H):
                 S = Q.new_zeros((Q.shape[-1], M))
                 for i in range(L):
-                    S = S + torch.ger(K[n, h, i], V[n, h, i])   # S_i = S_{i-1} + phi(K_i)V_i^T
-                    out[n, h, i] = S.t().mv(Q[n, h, i])         # Vbar_i = phi(Q_i)^T S_i
+                    S = S + torch.ger(K[n, h, i], V[n, h, i])   # S_i = S_{i-1} + K_i V_i^T
+                    out[n, h, i] = S.t().mv(Q[n, h, i])         # Vbar_i = Q_i^T S_i
         return out
 
     @staticmethod
@@ -152,36 +176,65 @@ class CausalDotProduct(torch.autograd.Function):
 
 
 def causal_linear(Q, K, V):
-    return CausalDotProduct.apply(Q, K, V)
+    Q = Q.permute(0, 2, 1, 3).contiguous()
+    K = K.permute(0, 2, 1, 3).contiguous()
+    V = V.permute(0, 2, 1, 3).contiguous()
+    V = CausalDotProduct.apply(Q, K, V)
+    return V.permute(0, 2, 1, 3).contiguous()
 
 
 class CausalLinearAttention(Module):
     """Causal O(N) attention via prefix-sum state (no N x N matrix)."""
-    def __init__(self, feature_map=elu_feature_map, eps=1e-6):
+    def __init__(self, query_dimensions, feature_map=None, eps=1e-6):
         super().__init__()
-        self.feature_map = feature_map
+        self.feature_map = (
+            feature_map(query_dimensions) if feature_map else
+            elu_feature_map(query_dimensions)
+        )
         self.eps = eps
 
-    def forward(self, queries, keys, values):
-        Q = self.feature_map(queries).permute(0, 2, 1, 3).contiguous()   # (N,H,L,D)
-        K = self.feature_map(keys).permute(0, 2, 1, 3).contiguous()
-        V = values.permute(0, 2, 1, 3).contiguous()
-        Z = 1 / (torch.einsum("nhli,nhli->nhl", Q, K.cumsum(2)) + self.eps)
-        Vbar = causal_linear(Q, K, V)
-        out = Vbar * Z[:, :, :, None]
-        return out.permute(0, 2, 1, 3).contiguous()
+    def _make_sizes_compatible(self, Q, K):
+        N, L, H, E = Q.shape
+        _, S, _, _ = K.shape
+        if L == S:
+            return Q, K
+        if L < S:
+            return Q, K[:, :L, :, :]
+        return Q, torch.cat([K, K.new_zeros(N, L - S, H, E)], dim=1)
+
+    def forward(self, queries, keys, values, attn_mask,
+                query_lengths, key_lengths):
+        self.feature_map.new_feature_map(queries.device)
+        Q = self.feature_map.forward_queries(queries)
+        K = self.feature_map.forward_keys(keys)
+        if not attn_mask.lower_triangular:
+            raise RuntimeError("CausalLinearAttention requires a causal mask")
+        K = K * key_lengths.float_matrix[:, :, None, None]
+        Q, K = self._make_sizes_compatible(Q, K)
+        Z = 1 / (torch.einsum("nlhi,nlhi->nlh", Q, K.cumsum(1)) + self.eps)
+        V = causal_linear(Q, K, values)
+        return V * Z[:, :, :, None]
 
 
 class RecurrentLinearAttention(Module):
     """Generation-time RNN form: carry (S, Z), update per step in O(1)."""
-    def __init__(self, feature_map=elu_feature_map, eps=1e-6):
+    def __init__(self, query_dimensions, feature_map=None, eps=1e-6):
         super().__init__()
-        self.feature_map = feature_map
+        self.feature_map = (
+            feature_map(query_dimensions) if feature_map else
+            elu_feature_map(query_dimensions)
+        )
         self.eps = eps
 
-    def forward(self, query, key, value, state=None):
-        Q = self.feature_map(query)                   # (N, H, D)
-        K = self.feature_map(key)
+    def forward(self, query, key, value, state=None, memory=None):
+        if state is not None and memory is not None:
+            raise ValueError("Pass either state or memory, not both")
+        if state is None:
+            state = memory
+        if state is None:
+            self.feature_map.new_feature_map(query.device)
+        Q = self.feature_map.forward_queries(query)
+        K = self.feature_map.forward_keys(key)
         N, H, D = Q.shape
         M = value.shape[-1]
         if state is None:
@@ -189,8 +242,14 @@ class RecurrentLinearAttention(Module):
             Z = query.new_zeros((N, H, D))
         else:
             S, Z = state
-        Z = Z + K
-        S = S + torch.einsum("nhd,nhm->nhdm", K, value)
+        if len(S) != N:
+            raise ValueError("The batch size changed during iteration")
+        if K.grad_fn is not None or value.grad_fn is not None:
+            Z = Z + K
+            S = S + torch.einsum("nhd,nhm->nhdm", K, value)
+        else:
+            Z += K
+            S += torch.einsum("nhd,nhm->nhdm", K, value)
         denom = 1 / (torch.einsum("nhd,nhd->nh", Q, Z) + self.eps)
         V = torch.einsum("nhd,nhdm,nh->nhm", Q, S, denom)
         return V, [S, Z]

@@ -87,9 +87,9 @@ Now the graph-level readout. Theorem says I need it injective over the multiset 
 
 with READOUT a sum. This is the jumping-knowledge idea — let the final representation reach back to every depth. Each per-layer sum-readout is injective on its multiset, the concatenation keeps all of them, and because a node's height-k feature is a learned embedding of a height-k rooted subtree, summing them is the learnable analogue of counting subtrees — exactly what the WL subtree kernel does by hand, except here the subtrees are embedded into a continuous space so *similar* subtrees can land near each other (something the one-hot WL labels can never do). So this readout provably generalizes both WL and the WL subtree kernel.
 
-Let me sanity-check the whole chain once more against the upper bound. I proved no message-passing GNN beats WL. I then built a GNN whose neighbor-aggregation is injective (sum of MLP-encoded features, center tagged by 1+ε), whose combine is injective (the MLP applied to that injective code), and whose readout is injective (sum-pool, concatenated over layers). By the equivalence theorem that makes it *as powerful as* WL — it sits exactly at the ceiling, the most expressive a neighborhood-aggregation network can be. Everything that's less — mean instead of sum, max instead of sum, one linear layer instead of an MLP — I can now point to a specific pair of graphs it provably confuses and a specific kind of information (counts, distribution, support) it throws away. The design wasn't a guess; each piece is forced by an injectivity requirement.
+Let me sanity-check the whole chain once more against the upper bound. I now have that no message-passing GNN beats WL. I also have a GNN whose neighbor aggregation is injective (sum of MLP-encoded features, center tagged by 1+ε), whose combine is injective (the MLP applied to that injective code), and whose readout is injective (sum-pool, concatenated over layers). By the equivalence theorem that makes it *as powerful as* WL — it sits exactly at the ceiling, the most expressive a neighborhood-aggregation network can be. Everything that's less — mean instead of sum, max instead of sum, one linear layer instead of an MLP — I can now point to a specific pair of graphs it provably confuses and a specific kind of information (counts, distribution, support) it throws away. The design is not a guess; each piece is forced by an injectivity requirement.
 
-Now let me write it as real code. The transform is a small MLP (Linear → BatchNorm → ReLU stack, with a plain Linear if I degrade it to one layer for the ablation). The graph net stacks these layers; the neighbor-sum is a sparse matrix multiply against a (possibly self-looped) adjacency; the center weighting is the (1+ε) reweight, with ε either a learned parameter or fixed; the readout sum-pools each layer and the per-layer pooled vectors get pushed through linear heads whose scores are summed — that's the concatenate-across-layers idea realized as a sum of per-layer linear predictions.
+Now let me write it as real code. The transform is a small MLP (Linear → BatchNorm → ReLU stack, with a plain Linear if I degrade it to one layer for the ablation). The graph net stacks these layers; sum and average pooling become sparse matrix multiplies over a block-diagonal batch adjacency, max pooling uses padded neighbor lists, and the center weighting is the (1+ε) reweight, with ε either a learned parameter or fixed by putting self-loops into the pooled neighborhood. The expressive setting uses sum for both neighbor aggregation and graph pooling; the average and max branches stay in the class because I need them as controlled ablations. The readout pools every layer and pushes each pooled vector through its own linear head; summing those scores is the implementation form of concatenating all depths and then applying one linear classifier.
 
 ```python
 import torch
@@ -98,14 +98,17 @@ import torch.nn.functional as F
 
 
 class MLP(nn.Module):
-    """The transform that plays the role of f / phi. >=2 layers because a single
-    Linear+ReLU is not a universal approximator of multiset functions (it
-    degenerates to summing then a linear map). num_layers==1 is the ablation."""
+    """The transform that plays the role of f / phi.
+    num_layers == 1 is the linear ablation; num_layers >= 2 is the MLP case.
+    """
     def __init__(self, num_layers, input_dim, hidden_dim, output_dim):
         super().__init__()
         self.num_layers = num_layers
-        if num_layers == 1:
-            self.linear_or_not = True            # degrades to a 1-layer perceptron
+        self.linear_or_not = True
+
+        if num_layers < 1:
+            raise ValueError("number of layers should be positive")
+        elif num_layers == 1:
             self.linear = nn.Linear(input_dim, output_dim)
         else:
             self.linear_or_not = False
@@ -127,18 +130,21 @@ class MLP(nn.Module):
         return self.linears[self.num_layers - 1](h)
 
 
-class GraphIsomorphismNetwork(nn.Module):
+class GraphCNN(nn.Module):
     def __init__(self, num_layers, num_mlp_layers, input_dim, hidden_dim,
-                 output_dim, final_dropout, learn_eps, device):
+                 output_dim, final_dropout, center_weighting,
+                 graph_pooling_type, neighbor_pooling_type, device):
         super().__init__()
         self.num_layers = num_layers
-        self.learn_eps = learn_eps               # learn eps, or fix it to 0
         self.final_dropout = final_dropout
+        self.center_weighting = center_weighting
+        self.graph_pooling_type = graph_pooling_type
+        self.neighbor_pooling_type = neighbor_pooling_type
         self.device = device
-        # one (1+eps) weight per message-passing layer; tags center vs neighbors
+
+        # one learned eps per message-passing layer when the center is kept separate
         self.eps = nn.Parameter(torch.zeros(self.num_layers - 1))
 
-        # one MLP per layer: models f^{(k+1)} o phi^{(k)} via composition
         self.mlps = nn.ModuleList()
         self.batch_norms = nn.ModuleList()
         for layer in range(self.num_layers - 1):
@@ -146,48 +152,130 @@ class GraphIsomorphismNetwork(nn.Module):
             self.mlps.append(MLP(num_mlp_layers, in_dim, hidden_dim, hidden_dim))
             self.batch_norms.append(nn.BatchNorm1d(hidden_dim))
 
-        # one linear head per layer; their summed scores realize the
-        # concatenate-readout-across-all-depths (jumping-knowledge) idea
         self.linears_prediction = nn.ModuleList()
         for layer in range(num_layers):
             in_dim = input_dim if layer == 0 else hidden_dim
             self.linears_prediction.append(nn.Linear(in_dim, output_dim))
 
-    def next_layer(self, h, layer, Adj_block):
-        # SUM over neighbors = sparse adjacency matmul (the injective aggregator)
-        pooled = torch.spmm(Adj_block, h)
-        if not self.learn_eps:
-            # eps fixed to 0: equivalent to summing over {self} U neighbors,
-            # i.e. a self-loop is already baked into Adj_block
-            pass
+    def preprocess_neighbors_for_maxpool(self, batch_graph):
+        max_deg = max(graph.max_neighbor for graph in batch_graph)
+        padded_neighbor_list = []
+        start_idx = [0]
+
+        for i, graph in enumerate(batch_graph):
+            start_idx.append(start_idx[i] + len(graph.g))
+            for j, neighbors in enumerate(graph.neighbors):
+                pad = [n + start_idx[i] for n in neighbors]
+                pad.extend([-1] * (max_deg - len(pad)))
+                if not self.center_weighting:
+                    # eps fixed to 0: pool the center together with its neighbors.
+                    pad.append(j + start_idx[i])
+                padded_neighbor_list.append(pad)
+
+        return torch.LongTensor(padded_neighbor_list).to(self.device)
+
+    def preprocess_neighbors_for_matrix_pool(self, batch_graph):
+        edge_mat_list = []
+        start_idx = [0]
+        for i, graph in enumerate(batch_graph):
+            start_idx.append(start_idx[i] + len(graph.g))
+            edge_mat_list.append(graph.edge_mat + start_idx[i])
+
+        Adj_block_idx = torch.cat(edge_mat_list, 1)
+        Adj_block_elem = torch.ones(Adj_block_idx.shape[1])
+
+        if not self.center_weighting:
+            num_node = start_idx[-1]
+            self_loop = torch.arange(num_node, dtype=torch.long)
+            self_loop_edge = torch.stack([self_loop, self_loop])
+            Adj_block_idx = torch.cat([Adj_block_idx, self_loop_edge], 1)
+            Adj_block_elem = torch.cat([Adj_block_elem, torch.ones(num_node)], 0)
+
+        Adj_block = torch.sparse.FloatTensor(
+            Adj_block_idx, Adj_block_elem,
+            torch.Size([start_idx[-1], start_idx[-1]]))
+        return Adj_block.to(self.device)
+
+    def preprocess_graph_pool(self, batch_graph):
+        start_idx = [0]
+        for i, graph in enumerate(batch_graph):
+            start_idx.append(start_idx[i] + len(graph.g))
+
+        idx, elem = [], []
+        for i, graph in enumerate(batch_graph):
+            if self.graph_pooling_type == "average":
+                elem.extend([1.0 / len(graph.g)] * len(graph.g))
+            else:
+                elem.extend([1.0] * len(graph.g))
+            idx.extend([[i, j] for j in range(start_idx[i], start_idx[i + 1])])
+
+        idx = torch.LongTensor(idx).transpose(0, 1)
+        elem = torch.FloatTensor(elem)
+        graph_pool = torch.sparse.FloatTensor(
+            idx, elem, torch.Size([len(batch_graph), start_idx[-1]]))
+        return graph_pool.to(self.device)
+
+    def maxpool(self, h, padded_neighbor_list):
+        # Padded -1 indices select this dummy row, which cannot affect the max.
+        dummy = torch.min(h, dim=0)[0]
+        h_with_dummy = torch.cat([h, dummy.reshape(1, -1).to(self.device)])
+        return torch.max(h_with_dummy[padded_neighbor_list], dim=1)[0]
+
+    def next_layer_with_center_weighting(self, h, layer,
+                                         padded_neighbor_list=None, Adj_block=None):
+        if self.neighbor_pooling_type == "max":
+            pooled = self.maxpool(h, padded_neighbor_list)
         else:
-            # tag the center node by (1+eps) so the root is never confused
-            # with its neighborhood multiset
-            pooled = pooled + (1 + self.eps[layer]) * h
-        pooled_rep = self.mlps[layer](pooled)            # MLP transform
-        h = F.relu(self.batch_norms[layer](pooled_rep))  # stabilize + nonlinearity
-        return h
+            pooled = torch.spmm(Adj_block, h)
+            if self.neighbor_pooling_type == "average":
+                degree = torch.spmm(
+                    Adj_block, torch.ones((Adj_block.shape[0], 1)).to(self.device))
+                pooled = pooled / degree
 
-    def forward(self, batch_graph, Adj_block, graph_pool):
-        # Adj_block: block-diagonal (optionally self-looped) adjacency of the batch
-        # graph_pool: sparse (num_graphs x num_nodes) sum/mean pooling matrix
-        X_concat = torch.cat([g.node_features for g in batch_graph], 0).to(self.device)
+        pooled = pooled + (1 + self.eps[layer]) * h
+        pooled_rep = self.mlps[layer](pooled)
+        return F.relu(self.batch_norms[layer](pooled_rep))
 
-        hidden_rep = [X_concat]      # keep features from EVERY depth, k = 0..K
+    def next_layer(self, h, layer, padded_neighbor_list=None, Adj_block=None):
+        if self.neighbor_pooling_type == "max":
+            pooled = self.maxpool(h, padded_neighbor_list)
+        else:
+            pooled = torch.spmm(Adj_block, h)
+            if self.neighbor_pooling_type == "average":
+                degree = torch.spmm(
+                    Adj_block, torch.ones((Adj_block.shape[0], 1)).to(self.device))
+                pooled = pooled / degree
+
+        pooled_rep = self.mlps[layer](pooled)
+        return F.relu(self.batch_norms[layer](pooled_rep))
+
+    def forward(self, batch_graph):
+        X_concat = torch.cat([graph.node_features for graph in batch_graph], 0).to(self.device)
+        graph_pool = self.preprocess_graph_pool(batch_graph)
+
+        padded_neighbor_list, Adj_block = None, None
+        if self.neighbor_pooling_type == "max":
+            padded_neighbor_list = self.preprocess_neighbors_for_maxpool(batch_graph)
+        else:
+            Adj_block = self.preprocess_neighbors_for_matrix_pool(batch_graph)
+
+        hidden_rep = [X_concat]
         h = X_concat
         for layer in range(self.num_layers - 1):
-            h = self.next_layer(h, layer, Adj_block)
+            if self.center_weighting:
+                h = self.next_layer_with_center_weighting(
+                    h, layer, padded_neighbor_list, Adj_block)
+            else:
+                h = self.next_layer(h, layer, padded_neighbor_list, Adj_block)
             hidden_rep.append(h)
 
-        # readout: sum-pool node features per layer, push each through its head,
-        # sum the per-layer scores (= concatenate-across-layers then classify)
         score_over_layer = 0
         for layer, h in enumerate(hidden_rep):
-            pooled_h = torch.spmm(graph_pool, h)         # SUM-pool over the graph
+            pooled_h = torch.spmm(graph_pool, h)
             score_over_layer += F.dropout(
                 self.linears_prediction[layer](pooled_h),
                 self.final_dropout, training=self.training)
         return score_over_layer
 ```
 
-The causal chain, end to end: I wanted to know the ceiling on what a message-passing GNN can distinguish, recognized the loop is structurally the WL test, and proved no such GNN can beat WL; the proof leaked power exactly where lossy functions collapse distinct inputs, so reaching WL requires the aggregation, combine, and readout to be *injective on multisets*; sum is the unique one of {sum, mean, max} that's injective (mean keeps only the distribution, max only the support, each with an explicit confusing-graph pair), and a sum of learned features is universal over multisets; a single linear+ReLU degenerates to a plain sum and underfits, so the transform must be a real MLP; merging the center with its neighbors loses the root, so I tag the center with (1+ε) — learned or fixed at 0 — which stays injective for irrational ε; and pooling each layer's sum and concatenating across depths gives an injective, WL-and-subtree-kernel-generalizing graph readout. Sum aggregation, MLP transform, (1+ε) center tag, multi-layer sum readout — every piece pinned by injectivity, landing on the network above.
+The causal chain, end to end: I start by asking for the ceiling on what a message-passing GNN can distinguish, recognize that the loop is structurally the WL test, and get the upper bound that no such GNN beats WL. The proof leaks power exactly where lossy functions collapse distinct inputs, so reaching WL requires aggregation, combine, and readout to be injective on multisets. Sum is the one of {sum, mean, max} that keeps the full multiset; mean keeps only the distribution, max only the support, and each failure has an explicit confusing pair. A sum of learned features is universal over bounded multisets; a single linear+ReLU degenerates to a plain sum and underfits, so the transform has to be a real MLP. Merging the center with its neighbors loses the root, so I tag the center with (1+ε), which is injective for irrational ε and becomes a practical learned parameter or a fixed-zero self-loop variant. Pooling each layer and combining all depths gives the graph readout. Sum aggregation, MLP transform, center weighting, and multi-layer readout are all doing one job: preserve every distinction that WL preserves, while letting the embeddings become learned continuous features instead of hard hashes.

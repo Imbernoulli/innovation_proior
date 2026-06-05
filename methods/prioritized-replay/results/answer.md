@@ -24,11 +24,11 @@ P(i) = p_i^α / Σ_k p_k^α.
 ```
 w_i = ( (1/N) · 1/P(i) )^β = ( N · P(i) )^{-β},
 ```
-since at `β = 1`, `E_{i∼P}[w_i δ_i ∇Q_i] = Σ_i P(i) · (1/(N P(i))) · δ_i ∇Q_i = (1/N) Σ_i δ_i ∇Q_i`. Use `w_i δ_i` in place of `δ_i` (weighted IS). Normalize by `1/max_j w_j` so weights only scale updates **downward** (stability). Anneal `β` linearly from `β_0` to `1`: leave the bias mostly uncorrected early (training is non-stationary anyway, and aggressive prioritization buys speed) and fully correct near convergence.
+since at `β = 1`, `E_{i∼P}[w_i δ_i ∇Q_i] = Σ_i P(i) · (1/(N P(i))) · δ_i ∇Q_i = (1/N) Σ_i δ_i ∇Q_i`. Use `w_i δ_i` in place of `δ_i` (weighted IS). Normalize by `1/max_l w_l` over the replay memory so weights only scale updates **downward** (stability). Anneal `β` linearly from `β_0` to `1`: leave the bias mostly uncorrected early (training is non-stationary anyway, and aggressive prioritization buys speed) and fully correct near convergence.
 
-**Bookkeeping.** New transitions enter at maximal priority (seen at least once). After replaying transition `j`, set `p_j ← |δ_j|`. Cut the step-size `η` by ~4× vs. the uniform baseline, because prioritization raises typical gradient magnitudes. Built on Double DQN: target `y = R + γ Q_target(S', argmax_a Q(S', a))`.
+**Bookkeeping.** New transitions enter at maximal priority (seen at least once). For the proportional variant, after replaying transition `i`, set `p_i ← |δ_i| + ε`. Cut the step-size `η` by ~4× vs. the uniform baseline, because prioritization raises typical gradient magnitudes. Built on Double DQN: target `y = R + γ Q_target(S', argmax_a Q(S', a))`.
 
-**Efficient sampling.** A **sum-tree** (internal node = sum of children, leaves = `p_i^α`) gives `O(log N)` priority update and `O(log N)` sampling via prefix-sum descent. For a minibatch of `k`, split `[0, p_total]` into `k` equal segments and draw one sample per segment (stratified). A parallel **min-tree** supplies `min_k p_k^α` for the weight normalizer. (Rank-based instead uses an array heap as an approximately-sorted array, re-sorted rarely, with a precomputed `k`-segment power-law CDF.) Typical hyperparameters: rank-based `α=0.7, β_0=0.5`; proportional `α=0.6, β_0=0.4`.
+**Efficient sampling.** A **sum-tree** (internal node = sum of children, leaves = `p_i^α`) gives `O(log N)` priority update and `O(log N)` sampling via prefix-sum descent. For a minibatch of `k`, split `[0, p_total]` into `k` equal segments and draw one sample per segment (stratified). A parallel **min-tree** supplies `min_i p_i^α` for the weight normalizer. (Rank-based instead uses an array heap as an approximately-sorted array, re-sorted rarely, with a precomputed `k`-segment power-law CDF.) Typical hyperparameters: rank-based `α=0.7, β_0=0.5`; proportional `α=0.6, β_0=0.4`.
 
 ### Algorithm (Double DQN with proportional prioritization)
 
@@ -41,11 +41,11 @@ for t = 1 to T:
     store (S_{t-1}, A_{t-1}, R_t, γ_t, S_t) in H with priority p_t = max_{i<t} p_i
     if t ≡ 0 mod K:
         for j = 1 to k:
-            sample j ∼ P(j) = p_j^α / Σ_i p_i^α
-            w_j = (N · P(j))^{-β} / max_i w_i
-            δ_j = R_j + γ_j Q_target(S_j, argmax_a Q(S_j, a)) − Q(S_{j-1}, A_{j-1})
-            p_j ← |δ_j|
-            Δ ← Δ + w_j · δ_j · ∇_θ Q(S_{j-1}, A_{j-1})
+            sample index i_j ∼ P(i) = p_i^α / Σ_l p_l^α
+            w_{i_j} = (N · P(i_j))^{-β} / max_l w_l
+            δ_{i_j} = R_{i_j} + γ_{i_j} Q_target(S_{i_j}, argmax_a Q(S_{i_j}, a)) − Q(S_{i_j-1}, A_{i_j-1})
+            p_{i_j} ← |δ_{i_j}| + ε
+            Δ ← Δ + w_{i_j} · δ_{i_j} · ∇_θ Q(S_{i_j-1}, A_{i_j-1})
         θ ← θ + η · Δ ; Δ = 0
         from time to time: θ_target ← θ
     choose A_t ∼ π_θ(S_t)
@@ -121,76 +121,103 @@ class MinSegmentTree(SegmentTree):
         return super().reduce(start, end)
 ```
 
-Prioritized replay buffer (proportional variant):
+Replay buffer with score-based proportional sampling:
 
 ```python
-class PrioritizedReplayBuffer:
-    def __init__(self, size, alpha):
-        self._storage, self._maxsize, self._next_idx = [], size, 0
-        self._alpha = alpha
-        cap = 1
-        while cap < size: cap *= 2
-        self._it_sum = SumSegmentTree(cap)
-        self._it_min = MinSegmentTree(cap)
-        self._max_priority = 1.0
+class ReplayBuffer:
+    def __init__(self, size):
+        self._storage = []
+        self._maxsize = size
+        self._next_idx = 0
 
     def __len__(self): return len(self._storage)
 
     def add(self, obs_t, action, reward, obs_tp1, done):
-        idx = self._next_idx
         data = (obs_t, action, reward, obs_tp1, done)
-        if idx >= len(self._storage): self._storage.append(data)
-        else: self._storage[idx] = data
+        if self._next_idx >= len(self._storage): self._storage.append(data)
+        else: self._storage[self._next_idx] = data
         self._next_idx = (self._next_idx + 1) % self._maxsize
-        self._it_sum[idx] = self._max_priority ** self._alpha   # new -> max priority
-        self._it_min[idx] = self._max_priority ** self._alpha
-
-    def _sample_proportional(self, batch_size):
-        res = []
-        p_total = self._it_sum.sum(0, len(self._storage) - 1)
-        seg = p_total / batch_size
-        for i in range(batch_size):                              # stratified
-            mass = random.random() * seg + i * seg
-            res.append(self._it_sum.find_prefixsum_idx(mass))
-        return res
-
-    def sample(self, batch_size, beta):
-        idxes = self._sample_proportional(batch_size)
-        p_min = self._it_min.min() / self._it_sum.sum()
-        max_weight = (p_min * len(self._storage)) ** (-beta)     # (N * P_min)^(-beta)
-        weights = []
-        for idx in idxes:
-            p_sample = self._it_sum[idx] / self._it_sum.sum()    # P(i)
-            w = (p_sample * len(self._storage)) ** (-beta)       # (N * P(i))^(-beta)
-            weights.append(w / max_weight)                       # normalize, w <= 1
-        return self._encode_sample(idxes), np.array(weights), idxes
-
-    def update_priorities(self, idxes, priorities):
-        for idx, priority in zip(idxes, priorities):
-            assert priority > 0
-            self._it_sum[idx] = priority ** self._alpha
-            self._it_min[idx] = priority ** self._alpha
-            self._max_priority = max(self._max_priority, priority)
 
     def _encode_sample(self, idxes):
         obs, act, rew, obs2, done = [], [], [], [], []
         for i in idxes:
             o, a, r, o2, d = self._storage[i]
-            obs.append(np.array(o, copy=False)); act.append(a); rew.append(r)
-            obs2.append(np.array(o2, copy=False)); done.append(d)
+            obs.append(np.asarray(o)); act.append(a); rew.append(r)
+            obs2.append(np.asarray(o2)); done.append(d)
         return (np.array(obs), np.array(act), np.array(rew),
                 np.array(obs2), np.array(done))
+
+    def sample(self, batch_size):
+        idxes = [random.randint(0, len(self._storage) - 1)
+                 for _ in range(batch_size)]
+        return self._encode_sample(idxes)
+
+
+class WeightedReplayBuffer(ReplayBuffer):
+    def __init__(self, size, score_exponent):
+        super().__init__(size)
+        assert score_exponent >= 0
+        self._score_exponent = score_exponent
+        cap = 1
+        while cap < size: cap *= 2
+        self._it_sum = SumSegmentTree(cap)
+        self._it_min = MinSegmentTree(cap)
+        self._max_score = 1.0
+
+    def add(self, *args, **kwargs):
+        idx = self._next_idx
+        super().add(*args, **kwargs)
+        weighted_score = self._max_score ** self._score_exponent
+        self._it_sum[idx] = weighted_score     # new -> max score
+        self._it_min[idx] = weighted_score
+
+    def _sample_weighted(self, batch_size):
+        res = []
+        total = self._it_sum.sum(0, len(self._storage))
+        seg = total / batch_size
+        for i in range(batch_size):                              # stratified
+            mass = random.random() * seg + i * seg
+            res.append(self._it_sum.find_prefixsum_idx(mass))
+        return res
+
+    def sample(self, batch_size, correction_exponent):
+        idxes = self._sample_weighted(batch_size)
+        total = self._it_sum.sum(0, len(self._storage))
+        p_min = self._it_min.min(0, len(self._storage)) / total
+        max_weight = (p_min * len(self._storage)) ** (-correction_exponent)
+        weights = []
+        for idx in idxes:
+            p_sample = self._it_sum[idx] / total                 # P(i)
+            w = (p_sample * len(self._storage)) ** (-correction_exponent)
+            weights.append(w / max_weight)                       # normalize, w <= 1
+        return self._encode_sample(idxes), np.array(weights, dtype=np.float32), idxes
+
+    def update_scores(self, idxes, scores):
+        assert len(idxes) == len(scores)
+        for idx, score in zip(idxes, scores):
+            assert score > 0
+            assert 0 <= idx < len(self._storage)
+            weighted_score = score ** self._score_exponent
+            self._it_sum[idx] = weighted_score
+            self._it_min[idx] = weighted_score
+            self._max_score = max(self._max_score, score)
 ```
 
 Training step (Double-DQN target, IS-weighted update, priority write-back):
 
 ```python
-def train_step(buffer, online_net, target_net, opt, batch_size, beta, gamma, eps=1e-6):
-    (obs, act, rew, obs2, done), weights, idxes = buffer.sample(batch_size, beta)
-    next_a = online_net(obs2).argmax(axis=1)
-    y = rew + (1.0 - done) * gamma * target_net(obs2)[range(batch_size), next_a]
-    delta = y - online_net(obs)[range(batch_size), act]
-    loss = (weights * huber(delta)).mean()           # w_j * delta_j
+def td_error(batch, online_net, target_net, gamma):
+    s, a, r, s2, done = batch
+    next_a = online_net(s2).argmax(axis=1)
+    y = r + (1.0 - done) * gamma * target_net(s2)[range(len(s2)), next_a]
+    return y - online_net(s)[range(len(s)), a]
+
+
+def train_step(buffer, online_net, target_net, opt, batch_size,
+               correction_exponent, gamma, score_floor=1e-6):
+    batch, weights, idxes = buffer.sample(batch_size, correction_exponent)
+    delta = td_error(batch, online_net, target_net, gamma)
+    loss = (weights * huber(delta)).mean()           # gradient gets the w_i factor
     opt.zero_grad(); loss.backward(); opt.step()      # eta ~ baseline/4
-    buffer.update_priorities(idxes, np.abs(delta) + eps)   # p_j = |delta_j| + eps
+    buffer.update_scores(idxes, np.abs(delta) + score_floor)
 ```

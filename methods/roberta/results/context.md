@@ -1,6 +1,4 @@
-# Context: how much of a masked-language-model's quality comes from the recipe, not the objective
-
-## Research question
+# Research question
 
 A wave of self-training methods — ELMo (Peters et al. 2018), GPT (Radford et al.
 2018), BERT (Devlin et al. 2018), cross-lingual LM pretraining (Lample & Conneau
@@ -14,12 +12,11 @@ idea (a new pretraining objective, a new architecture) or from mundane,
 under-reported choices: how long the model trains, how big the batches are, how
 much and which data it sees, how the masking is generated, how the input is
 formatted. A solution would isolate these factors under a single, controlled,
-well-tuned implementation, and determine whether a carefully trained version of
-the *original* masked-language-model recipe is already competitive with the
-methods published after it — i.e. whether the field has been comparing
-under-trained baselines against well-trained successors.
+well-tuned implementation and make the original masked-language-model recipe a
+properly tuned comparator, so the field can stop comparing under-trained
+baselines against well-trained successors.
 
-## Background
+# Background
 
 **Masked language modeling as a pretraining objective.** The dominant
 understanding-pretraining recipe takes a Transformer (Vaswani et al. 2017),
@@ -71,7 +68,7 @@ the CommonCrawl News collection (Nagel 2016), an open recreation of the WebText
 corpus from Reddit-shared URLs with at least three upvotes (Gokaslan & Cohen
 2019), and a CommonCrawl subset filtered to a story-like style (Trinh & Le 2018).
 
-## Baselines
+# Baselines
 
 **BERT (Devlin et al. 2018).** A deep bidirectional Transformer pretrained with
 MLM + NSP on 16GB of text, then finetuned per task with a small head. Base is
@@ -97,7 +94,7 @@ entity-aware pretraining (Sun et al. 2019), span-based masking (Joshi et al.
 2019) each report improvements. Across these, bigger models on more data is a
 recurring driver of gains, raising the same attribution problem.
 
-## Evaluation settings
+# Evaluation settings
 
 Three benchmarks are the natural yardstick. GLUE (Wang et al. 2019) is nine
 language-understanding datasets framed as single-sentence or sentence-pair
@@ -113,61 +110,61 @@ contexts; each question has four candidate answers and the system picks one.
 Finetuning uses Adam with linear warmup and decay; metrics are accuracy
 (GLUE/RACE) and exact-match/F1 (SQuAD).
 
-## Code framework
+# Code framework
 
-The substrate is a sequence-modeling toolkit (data pipeline, Transformer encoder,
-Adam optimizer, mixed-precision training, distributed data-parallel with
-gradient accumulation). The Transformer encoder, embeddings, and finetuning heads
-already exist; what is *not* yet decided is how the pretraining data is masked and
-batched, which losses are attached, and which tokenizer is used. The scaffold
-leaves those as the empty slots.
+The substrate is a sequence-modeling toolkit: a data pipeline, a bidirectional
+Transformer encoder, Adam, mixed-precision training, and distributed
+data-parallel with gradient accumulation. The encoder and training machinery are
+available; the remaining choices are text encoding, sequence construction, token
+masking, the masked-token projection head, and the optimizer settings.
 
 ```python
-# --- existing primitives ---
 import torch, torch.nn as nn, torch.nn.functional as F
 
 class TransformerEncoder(nn.Module):
-    """Stack of bidirectional self-attention blocks (exists)."""
+    """Stack of bidirectional self-attention blocks."""
     def __init__(self, vocab_size, n_layers, hidden, n_heads, ffn, dropout): ...
     def forward(self, tokens):  # -> per-token hidden states [B, T, H]
         ...
 
-def adam(params):  # Adam optimizer (exists); betas/eps/weight-decay to be set
+def adam(params, *, lr, betas, eps, weight_decay):
     ...
 
-def linear_warmup_decay(step, warmup, total, peak_lr):  # LR schedule (exists)
+def linear_warmup_decay(step, warmup, total, peak_lr):
     ...
 
-# --- tokenizer: TO DECIDE ---
 class Tokenizer:
-    # TODO: which subword scheme + vocab size encodes the pretraining corpora
-    #       cleanly (handling arbitrary web text)?
+    def __init__(self, encoder_json, vocab_bpe):
+        # TODO: choose the subword scheme and vocabulary.
+        pass
     def encode(self, text): pass
 
-# --- pretraining data: TO DECIDE ---
-def build_pretraining_inputs(documents, max_len):
-    # TODO: how are documents segmented/packed into <=max_len sequences?
-    # TODO: when (and how often) is the mask generated?
-    # TODO: which auxiliary objective(s), if any, beyond token-level masking?
+def build_pretraining_inputs(documents, max_len=512, sep_id=2):
+    # TODO: decide how documents are segmented and packed.
     pass
 
-def pretraining_loss(model, batch):
-    # TODO: masked-token cross-entropy; plus any auxiliary loss decided above
+def mask_tokens(tokens, mask_id, vocab_size, *, ignore_index=-100, p=0.15,
+                special_ids=()):
+    # TODO: decide when masks are sampled and how selected tokens are corrupted.
     pass
 
-# --- pretraining model + heads ---
 class MLMHead(nn.Module):
-    """Project hidden state back to the vocabulary for masked positions."""
-    def __init__(self, hidden, vocab_size, embed_weight): ...
-    def forward(self, features): ...
+    """Project hidden states back to the vocabulary for selected positions."""
+    def __init__(self, hidden, vocab_size, embed_weight):
+        pass
+    def forward(self, features, masked_tokens=None):
+        pass
+
+def mlm_loss(logits, labels, masked_tokens=None):
+    # TODO: masked-token cross-entropy.
+    pass
 
 class ClassificationHead(nn.Module):
     """Finetuning head over the first-token representation."""
     def __init__(self, hidden, inner, n_classes, dropout): ...
     def forward(self, features): ...
 
-# --- training loop (exists) ---
-def pretrain(model, data, *, batch_size, total_steps, warmup, peak_lr):
-    # TODO: batch size, step count, warmup, peak LR — all to be set by the recipe
+def make_optimizer(params, peak_lr):
+    # TODO: set Adam's betas, epsilon, weight decay, and clipping policy.
     pass
 ```

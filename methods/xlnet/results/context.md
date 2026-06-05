@@ -1,5 +1,3 @@
-# Context: generalized self-supervised pretraining for language understanding
-
 ## Research question
 
 We have unlabeled text in essentially unlimited quantity and a small amount of labeled data for each downstream natural language understanding (NLU) task — classification, natural language inference, reading comprehension, span-extraction question answering, document ranking. The dominant recipe is to *pretrain* a deep neural network on the raw text with a self-supervised objective, then *finetune* it on each task. The open question is: **what self-supervised objective should we pretrain with?**
@@ -48,7 +46,7 @@ where m_t = 1 marks a masked position and H_θ maps the length-T sequence to a s
 
 ## Evaluation settings
 
-The natural yardsticks, all pre-existing:
+The natural yardsticks:
 - **GLUE** (Wang et al. 2019): a suite of nine NLU tasks (e.g. MNLI, SST-2, QNLI, QQP, RTE, MRPC, CoLA), evaluated via a held-out submission server; single-task and multi-task, single-model and ensemble protocols.
 - **Reading comprehension:** RACE (Lai et al. 2017), ~100K questions from English exams with long passages (avg >300 tokens), a long-context test; SQuAD 1.1 (Rajpurkar et al. 2016, always-answerable) and SQuAD 2.0 (Rajpurkar et al. 2018, with unanswerable questions, needing a joint answerability + span-extraction loss).
 - **Text classification:** IMDB, Yelp-2/5, DBpedia, AG, Amazon-2/5 (following Zhang et al. 2015).
@@ -57,70 +55,62 @@ The natural yardsticks, all pre-existing:
 
 ## Code framework
 
-The pre-existing primitives: a token-embedding lookup, a relative-positional-encoding Transformer-XL layer (multi-head relative attention + position-wise FFN + residual/LayerNorm, with a segment-recurrence memory), a softmax cross-entropy head, an Adam optimizer with warmup + linear decay. The data pipeline yields token-id sequences and segment ids. What does *not* yet exist is the self-supervised objective and whatever masking / representation it requires — that is the one empty slot.
+The available primitives are a token-embedding lookup, a Transformer-XL relative-attention block (multi-head relative attention + position-wise FFN + residual/LayerNorm, with segment-recurrence memory), a tied-embedding softmax cross-entropy head, and Adam with warmup + linear decay. The data pipeline yields token-id sequences, next-token targets, segment ids, and a boolean candidate-selection vector. The open slot is the self-supervised objective: how to choose prediction positions, convert the generic streams into attention controls and auxiliary inputs, route representations through relative attention, and compute the loss.
 
 ```python
 import tensorflow as tf
-
-# --- existing primitives ---
 
 def embedding_lookup(x, n_token, d_embed, initializer):
     table = tf.get_variable('lookup_table', [n_token, d_embed], initializer=initializer)
     return tf.nn.embedding_lookup(table, x), table
 
+def head_projection(h, d_model, n_head, d_head, initializer, name):
+    # Existing Transformer-XL projection primitive.
+    pass
+
+def post_attention(h, attn_vec, d_model, n_head, d_head, dropout,
+                   is_training, initializer, residual=True):
+    # Existing Transformer-XL output projection, residual, dropout, LayerNorm.
+    pass
+
+def rel_shift(x, klen=-1):
+    # Existing Transformer-XL relative-position alignment primitive.
+    pass
+
+def rel_attn_core(q_head, k_head_h, v_head_h, k_head_r, seg_embed, seg_mat,
+                  r_w_bias, r_r_bias, r_s_bias, attn_mask, dropatt,
+                  is_training, scale):
+    # Relative attention score core; the objective can decide whether any
+    # auxiliary pairwise term is needed.
+    pass
+
 def positionwise_ffn(inp, d_model, d_inner, dropout, kernel_initializer,
-                     activation, is_training):
-    h = tf.layers.dense(inp, d_inner, activation=activation, kernel_initializer=kernel_initializer)
-    h = tf.layers.dropout(h, dropout, training=is_training)
-    h = tf.layers.dense(h, d_model, kernel_initializer=kernel_initializer)
-    h = tf.layers.dropout(h, dropout, training=is_training)
-    return tf.contrib.layers.layer_norm(h + inp, begin_norm_axis=-1)
-
-def rel_attn_core(q_head, k_head_h, v_head_h, k_head_r, r_w_bias, r_r_bias,
-                  attn_mask, scale):
-    # Transformer-XL relative attention logit = content term + relative-position term
-    ac = tf.einsum('ibnd,jbnd->ijbn', q_head + r_w_bias, k_head_h)   # content-to-content
-    bd = tf.einsum('ibnd,jbnd->ijbn', q_head + r_r_bias, k_head_r)   # content-to-rel-position
-    bd = rel_shift(bd, klen=tf.shape(ac)[1])
-    attn_score = (ac + bd) * scale
-    if attn_mask is not None:
-        attn_score = attn_score - 1e30 * attn_mask
-    attn_prob = tf.nn.softmax(attn_score, 1)
-    return tf.einsum('ijbn,jbnd->ibnd', attn_prob, v_head_h)
-
-def rel_multihead_attn(h, r, r_w_bias, r_r_bias, attn_mask, mems,
-                       d_model, n_head, d_head, dropout, is_training, kernel_initializer):
-    # standard single-stream relative multi-head attention over [mems, h]; pass
+                     activation, is_training, reuse=None):
+    # Existing Transformer-XL feed-forward sublayer.
     pass
 
-def _create_causal_mask(qlen, mlen):
-    # upper-triangular mask for fixed forward order; pass
+def cache_mem(curr_out, prev_mem, mem_len, reuse_len=None):
+    # Existing segment-recurrence cache.
     pass
 
-def cache_mem(curr_out, prev_mem, mem_len):
-    # cache content states as read-only memory for segment recurrence; pass
+def build_pretraining_inputs(inputs, targets, is_selected, perm_size, seq_len,
+                             sep_id, cls_id, num_predict=None):
+    """Create objective-specific masks, stream inputs, targets, and optional
+    compact prediction mapping from the generic token stream.
+    TODO: fill in the self-supervised objective."""
     pass
 
-
-# --- the slot the objective will fill ---
-
-def build_pretraining_inputs(tokens, ...):
-    """Turn a raw token sequence into whatever inputs the self-supervised
-    objective needs (which tokens to predict, which attention pattern to use).
-    TODO: this is the contribution."""
+def objective_attention_layer(h, g, r, mems, r_w_bias, r_r_bias,
+                              seg_mat, r_s_bias, seg_embed,
+                              attn_mask_h, attn_mask_g, target_mapping,
+                              d_model, n_head, d_head, dropout, dropatt,
+                              is_training, kernel_initializer, scope='rel_attn'):
+    """Fill the objective-specific attention slot inside one Transformer-XL layer.
+    TODO: decide what representations the objective needs and how they attend."""
     pass
 
-def pretraining_tower(inp, n_token, n_layer, d_model, n_head, d_head, d_inner,
-                      dropout, mems, initializer, is_training, **objective_inputs):
-    """Run the Transformer-XL stack to produce the representation(s) the
-    objective scores its predictions from.
-    TODO: depends on the objective; for a fixed-order AR LM this is just the
-    causal-masked single-stream stack producing one hidden state per position."""
+def pretraining_loss(hidden, target, target_mask, lookup_table, n_token,
+                     d_model, initializer, use_tpu=False):
+    """Tied-embedding cross-entropy over the selected prediction positions."""
     pass
-
-def pretraining_loss(hidden, target, target_mask, n_token, d_model, initializer):
-    logits = tf.einsum('ibd,nd->ibn', hidden, tf.get_variable(
-        'softmax_w', [n_token, d_model], initializer=initializer))
-    per_tok = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=target, logits=logits)
-    return tf.reduce_sum(per_tok * target_mask) / tf.reduce_sum(target_mask)
 ```

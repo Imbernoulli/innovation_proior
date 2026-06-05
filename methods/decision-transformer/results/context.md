@@ -54,53 +54,71 @@ It has no Bellman backup, target network, or learned critic, so it is stable. It
 
 ## Code framework
 
-Available engineering pieces include PyTorch modules, a causal GPT-style Transformer that accepts input embeddings, an offline trajectory dataset, AdamW, learning-rate warmup, masking for padded timesteps, and a supervised training loop. The open design slot is how to represent a trajectory prefix for a causal sequence model and how to turn the model output into a control action.
+Available engineering pieces include PyTorch modules, NumPy preprocessing, a causal GPT-style Transformer that accepts input embeddings, an offline trajectory dataset, AdamW, learning-rate warmup, masking for padded timesteps, and a supervised training loop. The open design slot is how to represent a trajectory prefix for a causal sequence model, how to construct the conditioning labels from logged rewards, and how to turn model outputs into control actions.
 
 ```python
+import numpy as np
 import torch
 import torch.nn as nn
+
+
+class TrajectoryModel(nn.Module):
+    def __init__(self, state_dim, act_dim, max_length=None):
+        super().__init__()
+        self.state_dim = state_dim
+        self.act_dim = act_dim
+        self.max_length = max_length
+
+    def forward(self, states, actions, rewards, conditioning, timesteps, attention_mask=None):
+        raise NotImplementedError
+
+    def get_action(self, states, actions, rewards, conditioning, timesteps, **kwargs):
+        raise NotImplementedError
 
 
 class CausalTransformer(nn.Module):
     """Stacked causal self-attention blocks over embedded sequences."""
     def __init__(self, hidden_size, n_layer, n_head, max_tokens):
         super().__init__()
-        # existing GPT-style implementation
+        pass
 
     def forward(self, inputs_embeds, attention_mask=None):
-        # returns hidden states shaped (B, L, hidden_size)
         raise NotImplementedError
 
 
-class TrajectoryModel(nn.Module):
-    def __init__(self, state_dim, act_dim, hidden_size, max_length=None):
-        super().__init__()
-        self.state_dim = state_dim
-        self.act_dim = act_dim
+class ConditionedTrajectoryModel(TrajectoryModel):
+    def __init__(self, state_dim, act_dim, hidden_size, max_length=None, max_ep_len=4096, **kwargs):
+        super().__init__(state_dim, act_dim, max_length=max_length)
         self.hidden_size = hidden_size
-        self.max_length = max_length
-        self.backbone = CausalTransformer(hidden_size, n_layer=..., n_head=..., max_tokens=...)
+        self.transformer = CausalTransformer(hidden_size, n_layer=..., n_head=..., max_tokens=...)
         # TODO: choose the trajectory-prefix tokenization and input embeddings
         # TODO: choose the conditioning signal used for controllable generation
-        # TODO: choose which hidden positions produce action predictions
+        # TODO: choose prediction heads and the hidden positions that feed them
 
-    def forward(self, states, actions, rewards, timesteps, conditioning=None, attention_mask=None):
-        # TODO: embed a trajectory prefix, run the causal backbone, and predict actions
+    def forward(self, states, actions, rewards, conditioning, timesteps, attention_mask=None):
+        # TODO: embed a trajectory prefix, run the causal transformer, and predict actions
         raise NotImplementedError
 
-    def get_action(self, states, actions, rewards, timesteps, conditioning=None):
+    def get_action(self, states, actions, rewards, conditioning, timesteps, **kwargs):
         # TODO: crop/pad history and return the next action for deployment
         raise NotImplementedError
 
 
-def train_step(model, batch, optimizer, loss_fn):
-    states, actions, rewards, dones, timesteps, mask = batch
-    # TODO: build any derived conditioning labels from the logged trajectory
+def build_future_conditioning(rewards, gamma):
+    # TODO: construct a per-timestep future-outcome label from logged rewards
+    raise NotImplementedError
+
+
+def train_step(model, get_batch, optimizer, batch_size):
+    states, actions, rewards, dones, conditioning, timesteps, attention_mask = get_batch(batch_size)
     # TODO: compute a masked supervised action loss and update the model
     raise NotImplementedError
 
 
-def rollout(env, model, target, max_ep_len):
+def evaluate_conditioned_episode(
+    env, state_dim, act_dim, model, max_ep_len, scale,
+    state_mean, state_std, device, target_conditioning, mode="normal"
+):
     state = env.reset()
     # TODO: maintain the trajectory prefix and update the conditioning variable online
     raise NotImplementedError

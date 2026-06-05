@@ -48,12 +48,14 @@ representation that are *different from* "just agree": components should be info
 components should not duplicate each other's information.
 
 **Information-theoretic framing.** The Information Bottleneck (Tishby, Pereira & Bialek 2000; Tishby &
-Zaslavsky 2015) formalizes "keep what matters, drop the nuisance" as a trade-off between two mutual
-informations, `I(Z, target) - beta I(Z, input)`. For a deterministic encoder, `H(Z|input)=0`, and
-under a Gaussian model the entropy of a representation is `(1/2)log|Cov|`. Decorrelating units
-(driving the covariance toward diagonal/identity) is then a tractable proxy for maximizing this
-Gaussian entropy — and a *parametric* one, unlike non-parametric entropy estimators which suffer the
-curse of dimensionality and need many samples.
+Zaslavsky 2015) formalizes "keep what matters, drop the nuisance" as a trade-off between mutual
+informations. In the two-view setting, with original image `X`, distorted view `Y`, and representation
+`Z = f(Y)`, minimizing `I(Z,Y) - beta I(Z,X)` penalizes information about the distorted input while
+rewarding information about the underlying sample. For a deterministic encoder, `H(Z|Y)=0`, and under
+a Gaussian model the entropy of a representation is `(1/2)log|Cov|`. Decorrelating units (driving the
+covariance toward diagonal/identity) is then a tractable proxy for maximizing this Gaussian entropy —
+and a *parametric* one, unlike non-parametric entropy estimators which suffer the curse of
+dimensionality and need many samples.
 
 **Whitening.** Classical whitening (ZCA, Cholesky-based) transforms features to have identity
 covariance — zero mean, unit variance, zero cross-correlation. A representation whose batch covariance
@@ -64,11 +66,11 @@ training is one route to "non-redundant" features.
 
 **SimCLR / InfoNCE (Chen et al. 2020; van den Oord et al. 2018; He et al. 2019 — MoCo).** Contrastive
 learning. With feature-normalized embeddings (cosine similarity), the InfoNCE loss for a positive pair
-`(z^A_b, z^B_b)` scored against the candidate set `{z^B_b'}` is
+`(z^A_b, z^B_b)` scored against the other examples in the opposite-view batch is
 
 ```
 L_infoNCE = - sum_b  <z^A_b, z^B_b> / (tau ||z^A_b|| ||z^B_b||)
-            + sum_b  log sum_{b'} exp( <z^A_b, z^B_b'> / (tau ||z^A_b|| ||z^B_b'||) )
+            + sum_b  log sum_{b' != b} exp( <z^A_b, z^B_b'> / (tau ||z^A_b|| ||z^B_b'||) )
 ```
 
 a *similarity term* pulling positives together and a *contrastive term* pushing each sample away from
@@ -102,8 +104,8 @@ only by balance constraints / careful engineering; needs to store features when 
 
 **Hard whitening — W-MSE (Ermolov et al. 2020, concurrent).** Differentiably whiten each batch of
 embeddings (Cholesky) so their covariance is the identity, then take cosine similarity between the
-whitened views. **Gap:** a hard per-batch whitening operation; not demonstrated to scale to ImageNet
-(reported ~66% linear-probe).
+whitened views. **Gap:** the whitening constraint is enforced as an explicit matrix operation on every
+batch rather than as a soft penalty inside a simple scalar objective.
 
 **IMAX (Becker & Hinton 1992; Zemel & Hinton 1990).** An early twin-network objective
 `log|Cov(Z^A - Z^B)| - log|Cov(Z^A + Z^B)|` that maximizes information between the two
@@ -133,39 +135,77 @@ normalization, the LARS optimizer, the two-view augmentation pipeline, and a sta
 training loop. The open slot is the scalar objective computed from the two projected views.
 
 ```python
+import random
+
 import torch
 import torch.nn as nn
 import torchvision
+from PIL import Image, ImageFilter, ImageOps
+from torchvision import transforms
 
-class TwoViewTransform:
-    """Two stochastic augmentations of an image -> (y1, y2). Standard SSL pipeline."""
+
+class GaussianBlur:
+    def __init__(self, p):
+        self.p = p
+
+    def __call__(self, img):
+        # existing image augmentation primitive
+        pass
+
+
+class Solarization:
+    def __init__(self, p):
+        self.p = p
+
+    def __call__(self, img):
+        # existing image augmentation primitive
+        pass
+
+
+class Transform:
     def __init__(self):
-        self.t  = build_augmentation(blur_p=1.0, solarize_p=0.0)
-        self.t2 = build_augmentation(blur_p=0.1, solarize_p=0.2)
+        # TODO: instantiate the two stochastic view pipelines.
+        pass
+
     def __call__(self, x):
-        return self.t(x), self.t2(x)
+        # TODO: return one transformed image from each pipeline.
+        pass
+
+
+def build_projector(projector):
+    # TODO: choose the projector depth, width, normalization, and nonlinearity.
+    pass
+
+
+def off_diagonal(x):
+    # TODO: return the off-diagonal entries if the objective uses a square feature matrix.
+    pass
+
+
+def pairwise_feature_objective(z1, z2, normalizer, batch_size, weight):
+    # TODO: combine the two projected batches into one scalar self-supervised loss.
+    pass
+
 
 class TwinEmbeddingModel(nn.Module):
-    """Shared encoder and projector applied to two stochastic views."""
-    def __init__(self, projector_dims, batch_size):
+    def __init__(self, projector="TODO", objective_weight=1.0, batch_size=2048):
         super().__init__()
+        self.objective_weight = objective_weight
         self.batch_size = batch_size
         self.backbone = torchvision.models.resnet50(zero_init_residual=True)
         self.backbone.fc = nn.Identity()
-        self.projector = build_mlp([2048] + projector_dims)  # widths/depth: TODO
-        # TODO: any per-feature normalization or buffers required by the objective
+        self.projector = build_projector(projector)
+        self.feature_normalizer = None  # TODO: fill only if the objective needs one.
 
     def forward(self, y1, y2):
         z1 = self.projector(self.backbone(y1))
         z2 = self.projector(self.backbone(y2))
-        # TODO: combine the two projected views into a scalar loss
-        raise NotImplementedError
+        return pairwise_feature_objective(
+            z1, z2, self.feature_normalizer, self.batch_size, self.objective_weight
+        )
 
-def train_loop(loader, model, optimizer):
-    for x in loader:
-        y1, y2 = x  # two views, collated
-        loss = model(y1, y2)
-        loss.backward()
-        optimizer.step()
-        optimizer.zero_grad()
+
+def train_step(model, optimizer, y1, y2):
+    # TODO: add the ordinary optimization step around the model loss.
+    pass
 ```

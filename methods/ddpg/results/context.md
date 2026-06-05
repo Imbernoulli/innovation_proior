@@ -2,7 +2,7 @@
 
 How do we learn a control policy over a **continuous, possibly high-dimensional, real-valued action space** — joint torques on a robot arm, steering/throttle on a car, the actuators of a walking biped — directly from a model-free reinforcement-learning signal, with training that is stable and that does not require a per-timestep optimization over actions? Deep value functions already give a workable recipe for high-dimensional observations when the action set is small and discrete. The open problem is the action side: a continuous action vector cannot be enumerated, and the greedy maximization used by value-based control becomes an expensive nonlinear optimization problem.
 
-A solution has to (1) act in real time with one cheap forward pass per timestep; (2) scale to action vectors with many dimensions; (3) remain stable when the value function is a large nonlinear neural network; (4) learn off-policy so that old exploratory data can be reused; and ideally (5) keep the same core implementation across a wide range of physical-control tasks.
+A solution has to (1) act in real time with one cheap forward pass per timestep; (2) scale to action vectors with many dimensions; (3) remain stable when the value function is a large nonlinear neural network; (4) learn off-policy so that old exploratory data can be reused; and ideally (5) keep the same core training loop across a wide range of physical-control tasks.
 
 ## Background
 
@@ -38,13 +38,18 @@ The natural benchmarks are simulated continuous-control tasks in physics engines
 
 ## Code framework
 
-The available primitives are an autodiff deep-learning library, MLP layers, ReLU and `tanh` nonlinearities, Adam, NumPy arrays, and an environment with `reset()`, `step(a)`, `observation_space`, and continuous `action_space`. The scaffold leaves one big slot for the learned components, with the standard off-policy plumbing (a transition store, an interaction loop, an update step) sketched around it.
+The available primitives are an autodiff deep-learning library, MLP layers, ReLU and `tanh` nonlinearities, Adam, NumPy arrays, and an environment with `reset()`, `step(a)`, `observation_space`, and continuous `action_space`. The scaffold leaves the learned policy, the state-action value function, the replay store, the bootstrap target, and the update rule as empty slots inside a standard off-policy interaction loop.
 
 ```python
+from copy import deepcopy
 import numpy as np
 import torch
 import torch.nn as nn
 from torch.optim import Adam
+
+def combined_shape(length, shape=None):
+    # TODO
+    pass
 
 def mlp(sizes, activation, output_activation=nn.Identity):
     layers = []
@@ -53,13 +58,9 @@ def mlp(sizes, activation, output_activation=nn.Identity):
         layers += [nn.Linear(sizes[j], sizes[j + 1]), act()]
     return nn.Sequential(*layers)
 
-def combined_shape(length, shape=None):
-    # TODO
-    pass
-
-class Policy(nn.Module):
+class MLPActor(nn.Module):
     # Maps a state to a real-valued action vector within the action bounds.
-    def __init__(self, obs_dim, act_dim, hidden_sizes, act_limit):
+    def __init__(self, obs_dim, act_dim, hidden_sizes, activation, act_limit):
         super().__init__()
         # TODO: the policy network we will design
         pass
@@ -67,9 +68,9 @@ class Policy(nn.Module):
         # TODO
         pass
 
-class ValueFunction(nn.Module):
+class MLPQFunction(nn.Module):
     # Estimates expected return for a (state, action) pair.
-    def __init__(self, obs_dim, act_dim, hidden_sizes):
+    def __init__(self, obs_dim, act_dim, hidden_sizes, activation):
         super().__init__()
         # TODO: the value network we will design
         pass
@@ -77,9 +78,10 @@ class ValueFunction(nn.Module):
         # TODO
         pass
 
-class Controller(nn.Module):
+class MLPActorCritic(nn.Module):
     # Holds the learned policy and value modules and exposes an action method.
-    def __init__(self, observation_space, action_space, hidden_sizes):
+    def __init__(self, observation_space, action_space,
+                 hidden_sizes=(256, 256), activation=nn.ReLU):
         super().__init__()
         # TODO
         pass
@@ -87,7 +89,7 @@ class Controller(nn.Module):
         # TODO
         pass
 
-class TransitionBuffer:
+class ReplayBuffer:
     # FIFO store of (s, a, r, s', done) for off-policy minibatch sampling.
     def __init__(self, obs_dim, act_dim, size):
         # TODO
@@ -99,30 +101,26 @@ class TransitionBuffer:
         # TODO
         pass
 
-def value_loss(data):
-    # TODO: how do we form a regression target for a continuous-action value
-    #       function, and what does the policy contribute to it?
-    pass
-
-def policy_loss(data):
-    # TODO: how do we improve a continuous-action policy against the value function?
-    pass
-
-def select_action(obs, exploring):
-    # TODO: deterministic action plus some exploration mechanism
-    pass
-
-def update_step(data):
-    # TODO: update the value function, update the policy, then update any
-    #       auxiliary copies used by the bootstrap target.
-    pass
-
-def train(env_fn, controller=Controller, controller_kwargs=dict(), seed=0,
+def train(env_fn, actor_critic=MLPActorCritic, ac_kwargs=dict(), seed=0,
           steps_per_epoch=4000, epochs=100, replay_size=int(1e6),
-          gamma=0.99, pi_lr=1e-4, q_lr=1e-3, batch_size=64, max_ep_len=1000):
-    # Standard off-policy loop: act -> store -> sample minibatch -> update.
-    # TODO: instantiate the networks, optimizers, and any auxiliary copies the
-    #       learner needs; fill in the update and the target-forming machinery,
-    #       plus whatever exploration schedule and update cadence the method needs.
+          gamma=0.99, polyak=0.995, pi_lr=1e-3, q_lr=1e-3,
+          batch_size=100, start_steps=10000, update_after=1000,
+          update_every=50, act_noise=0.1, max_ep_len=1000):
+    # TODO: instantiate the live modules, auxiliary bootstrap copies,
+    #       replay buffer, and optimizers.
+    def compute_loss_q(data):
+        # TODO: form the value regression target.
+        pass
+    def compute_loss_pi(data):
+        # TODO: improve the policy against the value function.
+        pass
+    def update(data):
+        # TODO: update the value function, update the policy, then update
+        #       auxiliary bootstrap copies.
+        pass
+    def get_action(obs, noise_scale):
+        # TODO: choose an action and add the behavior exploration signal.
+        pass
+    # TODO: run the off-policy loop: act -> store -> sample minibatch -> update.
     pass
 ```

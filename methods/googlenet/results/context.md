@@ -1,5 +1,3 @@
-# Context
-
 ## Research question
 
 Convolutional networks have, over a few years, become the dominant tool for large-scale image classification, and the recipe driving the gains is blunt: make the network bigger. Bigger means deeper (more levels of feature abstraction) and wider (more units per level), and with a large labeled dataset this is the easy, safe way to a better model.
@@ -87,32 +85,34 @@ class SideHead(nn.Module):
 
 
 class Net(nn.Module):
-    def __init__(self, num_classes=1000):
+    def __init__(self, num_classes=1000, aux=True):
         super().__init__()
+        self.aux = aux
+
         # A conventional stem: a few plain convs, pooling, response norm.
-        self.stem = nn.Sequential(
-            ConvUnit(3, 64, kernel_size=7, stride=2, padding=3),
-            nn.MaxPool2d(3, stride=2, ceil_mode=True),
-            nn.LocalResponseNorm(5, alpha=1e-4, beta=0.75, k=1.0),
-            ConvUnit(64, 64, kernel_size=1),
-            ConvUnit(64, 192, kernel_size=3, padding=1),
-            nn.LocalResponseNorm(5, alpha=1e-4, beta=0.75, k=1.0),
-            nn.MaxPool2d(3, stride=2, ceil_mode=True),
-        )
+        self.conv1 = ConvUnit(3, 64, kernel_size=7, stride=2, padding=3)
+        self.pool1 = nn.MaxPool2d(3, stride=2, ceil_mode=True)
+        self.lrn1 = nn.LocalResponseNorm(5, alpha=1e-4, beta=0.75, k=1.0)
+        self.conv2 = ConvUnit(64, 64, kernel_size=1)
+        self.conv3 = ConvUnit(64, 192, kernel_size=3, padding=1)
+        self.lrn2 = nn.LocalResponseNorm(5, alpha=1e-4, beta=0.75, k=1.0)
+        self.pool2 = nn.MaxPool2d(3, stride=2, ceil_mode=True)
 
         # The body: a stack of the building block, with pooling to reduce
         # resolution between stages. Widths/arrangement TODO once the block
         # is designed.
         self.body = nn.ModuleList()  # TODO: fill with FeatureBlock(...) stages
-        # TODO: any training-time side heads (SideHead) on intermediate stages.
+        self.side_heads = nn.ModuleDict()  # TODO: any training-time side heads.
 
         # The head: how to turn the final feature maps into class scores
         # without an overfitting-prone fully-connected stack is itself a
         # choice to make.
+        self.final_pool = None  # TODO
         self.classifier = None  # TODO
 
     def forward(self, x):
-        x = self.stem(x)
+        x = self.lrn1(self.pool1(self.conv1(x)))
+        x = self.pool2(self.lrn2(self.conv3(self.conv2(x))))
         # TODO: run the body (and side heads during training), then the head.
         pass
 

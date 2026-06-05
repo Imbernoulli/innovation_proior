@@ -1,5 +1,3 @@
-# Context: contextual word representations for NLP
-
 ## Research question
 
 Across nearly every neural NLP system, the first thing that happens to a sentence is that each word is looked
@@ -121,9 +119,10 @@ normalization (Ba et al., 2016), CRF decoding (Lafferty et al., 2001).
 
 ## Code framework
 
-Available scaffold: a character-CNN token encoder, stacked LSTM layers, and a softmax LM head — the standard
-neural-language-model stack — plus downstream task models that consume a per-token feature. The empty slot is a
-generic adapter from a frozen sentence encoder's layer activations to one feature per token.
+Available scaffold: a character-CNN token encoder, projected LSTM language-model layers, and downstream task
+models that consume per-token features. The open slot is a reusable feature extractor: it must decide how to
+train a bidirectional sentence encoder, expose its internal activations, collapse those activations into one
+token feature, and concatenate that feature into a supervised model.
 
 ```python
 import torch
@@ -131,11 +130,19 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+class Highway(nn.Module):
+    def __init__(self, size, num_layers, activation=F.relu):
+        super().__init__()
+        self.layers = nn.ModuleList([nn.Linear(size, 2 * size) for _ in range(num_layers)])
+        self.activation = activation
+
+    def forward(self, x):
+        # TODO: combine transformed and carried paths.
+        pass
+
+
 class CharacterCNNEncoder(nn.Module):
-    """Map a word's character ids to a context-independent token
-    vector. Char embeddings -> parallel Conv1d of several widths -> max-pool over
-    characters -> concat -> highway layers -> linear projection. Exists for any
-    string, in or out of vocabulary (Kim 2015, Jozefowicz 2016)."""
+    """Map each token's character ids to a context-independent token vector."""
     def __init__(self, n_chars, char_dim, filters, n_highway, proj_dim):
         super().__init__()
         self.char_emb = nn.Embedding(n_chars, char_dim)
@@ -147,54 +154,75 @@ class CharacterCNNEncoder(nn.Module):
 
     def forward(self, char_ids):
         # char_ids: (batch, seq_len, max_chars)
-        ...  # embed, convolve per width, max over chars, concat, highway, project
-        return token_repr  # (batch, seq_len, proj_dim)
+        # TODO: embed characters, convolve, max-pool, highway, project, and return a mask.
+        pass
 
 
-class StackedLSTM(nn.Module):
-    """L LSTM layers producing a hidden state per token per layer."""
-    def __init__(self, input_dim, hidden_dim, proj_dim, n_layers):
+class StackedProjectedLSTM(nn.Module):
+    """L projected LSTM layers producing one sequence output per layer."""
+    def __init__(self, input_dim, cell_dim, proj_dim, n_layers, residual=True):
         super().__init__()
-        # ... standard projected LSTM layers with residual connections ...
+        self.layers = nn.ModuleList()
+        self.projections = nn.ModuleList()
+        self.residual = residual
+        # TODO: create projected recurrent layers.
 
     def forward(self, x):
-        # returns the per-layer hidden states, not just the top one
-        ...
-        return layer_outputs  # list of length n_layers
+        # TODO: return every layer output, not just the top one.
+        pass
 
 
-class LanguageModel(nn.Module):
-    """A neural LM. Char-CNN input -> stacked LSTM -> softmax over
-    the vocabulary on the top layer. Trained by maximum likelihood on raw text."""
-    def __init__(self, ...):
+class BidirectionalLanguageModel(nn.Module):
+    """A sentence encoder trained by left-to-right and right-to-left language modeling."""
+    def __init__(self, n_layers, proj_dim, cell_dim, vocab_size):
         super().__init__()
-        # TODO: decide how to train a sentence encoder and expose its useful internals
-        # as reusable token features.
+        # TODO: decide how to parameterize the two directions, the token encoder,
+        # the output softmax, and the exposed internal activations.
         pass
 
     def forward(self, char_ids):
+        # TODO: run both language-model directions and return every layer activation plus a mask.
+        pass
+
+    def lm_loss(self, char_ids, targets_forward, targets_backward):
+        # TODO: train by the sum of left-to-right and right-to-left language-model losses.
         pass
 
 
-class ContextualTokenFeature(nn.Module):
-    """Given a pretrained sentence encoder's per-layer activations
-    for each token, produce a SINGLE per-token vector to hand to a downstream model.
-    What combination of the encoder's internal layers should this be?"""
-    def __init__(self, ...):
+class LayerCombination(nn.Module):
+    """Collapse a list of same-shaped layer activations into one tensor."""
+    def __init__(self, mixture_size, do_layer_norm=False,
+                 initial_scalar_parameters=None, trainable=True):
         super().__init__()
-        # TODO: choose the layer-combination rule
+        # TODO: choose the layer-combination rule and any scale parameters.
         pass
 
-    def forward(self, per_layer_activations):
-        # per_layer_activations: list over layers of (batch, seq_len, dim)
-        # TODO: collapse into (batch, seq_len, out_dim)
+    def forward(self, tensors, mask=None):
+        # TODO: collapse the layer tensors into one tensor with the same shape.
         pass
 
 
-def add_feature_to_task_model(task_token_repr, contextual_feature):
-    """A downstream model forms a token representation x_k and a
-    context-sensitive h_k via biRNN/CNN. A new pretrained feature is concatenated
-    into x_k (and optionally h_k). The encoder providing the feature is frozen."""
-    # TODO: decide where to inject the feature in the task model
-    return torch.cat([task_token_repr, contextual_feature], dim=-1)
+class ContextualFeatureExtractor(nn.Module):
+    """Run a frozen sentence encoder once and produce one or more token features."""
+    def __init__(self, bilm, num_output_representations=1,
+                 do_layer_norm=False, dropout=0.5, freeze_bilm=True):
+        super().__init__()
+        # TODO: decide whether the sentence encoder is frozen, how many features
+        # to expose, and how each feature combines encoder layers.
+        pass
+
+    def forward(self, char_ids):
+        # TODO: get encoder activations and produce one feature per requested insertion point.
+        pass
+
+    def weight_regularization(self, coefficient):
+        # TODO: expose a regularization term for the layer-combination parameters.
+        pass
+
+
+def add_feature_to_task_model(task_token_repr, contextual_input,
+                              task_context_repr=None, contextual_output=None):
+    """Attach reusable token features to a supervised model's input and, if supplied, output."""
+    # TODO: decide which insertion points should receive the feature.
+    pass
 ```

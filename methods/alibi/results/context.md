@@ -1,5 +1,3 @@
-# Context: efficient length extrapolation for transformer language models
-
 ## Research question
 
 When a transformer language model is built, one design number dominates cost: the training input length, call it $L$. The self-attention sublayer compares every token with every other token in its input, so both compute and memory scale quadratically in $L$. Longer inputs give each prediction more left context and lower its loss, but they make every training step dramatically more expensive. The natural wish is to have it both ways: train on short subsequences (cheap), then at inference feed sequences *longer* than $L$ and still predict well.
@@ -44,7 +42,7 @@ The ladder, then: extrapolation is demonstrably reachable by swapping the positi
 
 ## Code framework
 
-The pre-existing pieces are a decoder-only (causal) transformer LM and its training/eval harness. The empty slot is the positional mechanism: the scaffold currently has only the ordinary causal mask, and the new design will decide where position information belongs.
+The pre-existing pieces are a decoder-only (causal) transformer LM and its training/eval harness. The open slot is the additive attention mask: it already enforces causality, and the design work is to decide whether that same score-level object can also carry the missing order information.
 
 ```python
 import torch, torch.nn as nn, torch.nn.functional as F
@@ -83,8 +81,9 @@ class DecoderLayer(nn.Module):
         return x
 
 def build_attn_mask(seq_len, n_heads, device=None):
-    # TODO: decide how the model receives positional information.
-    return torch.triu(torch.full((seq_len, seq_len), float("-inf"), device=device), diagonal=1)
+    causal = torch.triu(torch.full((seq_len, seq_len), float("-inf"), device=device), diagonal=1)
+    # TODO: decide whether the additive score mask should contain any order signal.
+    return causal
 
 class LMModel(nn.Module):
     def __init__(self, vocab, d_model, n_heads, d_ff, n_layers):

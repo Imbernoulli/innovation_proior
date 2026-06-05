@@ -1,4 +1,4 @@
-# Scaling Laws for Neural Language Models
+# Scaling Laws
 
 ## Problem
 
@@ -18,10 +18,12 @@ Overfitting is governed by $N^{\alpha_N/\alpha_D}/D$, so to stay data-constraine
 **Training-time law** (infinite data, additive — a capacity floor plus an optimization gap):
 $$L(N,S_{\min}) = (N_c/N)^{\alpha_N} + (S_c/S_{\min})^{\alpha_S},\quad \alpha_S\approx0.76.$$
 Batch effects are standardized through the critical batch size $B_{\text{crit}}(L)=B_*/L^{1/\alpha_B}$ ($\alpha_B\approx0.21$), with $S_{\min}=S/(1+B_{\text{crit}}/B)$ and $C_{\min}=C/(1+B/B_{\text{crit}})$.
+Finite-data early stopping follows by matching the optimization gap to the finite-data penalty:
+$$S_{\text{stop}}(N,D)\gtrsim S_c\ /\ \left[L(N,D)-L(N,\infty)\right]^{1/\alpha_S}.$$
 
-**Compute-optimal allocation.** Minimizing $L(N,S_{\min})$ at fixed $C_{\min}=6NB\,S_{\min}$:
-$$\alpha_C^{\min} = \frac{1}{1/\alpha_N + 1/\alpha_S + 1/\alpha_B}\approx0.05,\qquad N\propto C^{\alpha_C^{\min}/\alpha_N}\approx C^{0.71}\ (\text{empirically } C^{0.73}),$$
-with $B\propto C^{0.24}$, $S\propto C^{0.03}$ (nearly flat), and $D=BS\propto C^{0.27}$. Extra compute should go predominantly into a **bigger model**; data and serial steps grow slowly. (The $L(C_{\min})$ and $L(D)$ extrapolations eventually cross, marking where the simple picture must break down.)
+**Compute-optimal allocation.** Minimizing $L(N,S_{\min})$ at fixed $C_{\min}=6NB_{\text{crit}}(L)S_{\min}$ gives
+$$\alpha_C^{\min} = \frac{1}{1/\alpha_N + 1/\alpha_S + 1/\alpha_B}.$$
+With rounded component exponents $(0.077,0.76,0.21)$ this gives $\alpha_C^{\min}\approx0.052$, $N\propto C^{0.68}$, $B\propto C^{0.25}$, $S\propto C^{0.07}$, and $D=BS\propto C^{0.32}$. The direct compute-frontier fits are about $N\propto C^{0.73}$, $B\propto C^{0.24}$, $S\propto C^{0.03}$, $D\propto C^{0.27}$. The robust allocation is the same: extra compute goes predominantly into a **bigger model**, while data and serial steps grow slowly. (The $L(C_{\min})$ and $L(D)$ extrapolations eventually cross, marking where the simple picture must break down.)
 
 ## Code
 
@@ -55,6 +57,7 @@ def joint_loss(N, D, params):
 
 def fit_joint_loss(runs):
     from scipy.optimize import curve_fit
+    runs = np.asarray(runs, dtype=float)
     N, D, L = runs[:, 0], runs[:, 1], runs[:, 2]
 
     def model(ND, alpha_N, alpha_D, log_Nc, log_Dc):
@@ -67,13 +70,21 @@ def fit_joint_loss(runs):
     return a_N, a_D, np.exp(lNc), np.exp(lDc)
 
 
+def early_stopping_lower_bound(N, D, params, S_c, alpha_S):
+    alpha_N, alpha_D, N_c, D_c = params
+    finite_data_loss = joint_loss(N, D, params)
+    infinite_data_loss = (N_c / N) ** alpha_N
+    gap = finite_data_loss - infinite_data_loss
+    return S_c / np.maximum(gap, np.finfo(float).tiny) ** (1.0 / alpha_S)
+
+
 def compute_optimal_exponents(alpha_N, alpha_S, alpha_B):
     alpha_C = 1.0 / (1.0 / alpha_N + 1.0 / alpha_S + 1.0 / alpha_B)
     return {
-        "alpha_C_min": alpha_C,                    # ~0.05
-        "N_exp": alpha_C / alpha_N,                 # ~0.71
-        "B_exp": alpha_C / alpha_B,                 # ~0.24
-        "S_exp": alpha_C / alpha_S,                 # ~0.03
-        "D_exp": alpha_C / alpha_B + alpha_C / alpha_S,  # ~0.27
+        "alpha_C_min": alpha_C,
+        "N_exp": alpha_C / alpha_N,
+        "B_exp": alpha_C / alpha_B,
+        "S_exp": alpha_C / alpha_S,
+        "D_exp": alpha_C / alpha_B + alpha_C / alpha_S,
     }
 ```

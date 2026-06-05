@@ -102,7 +102,7 @@ pulling `v_t(x)` (constant in `x_1`) inside and swapping integration order. So t
 L_FM(θ) = L_CFM(θ) + const ,   and   ∇_θ L_FM = ∇_θ L_CFM .
 ```
 
-That's the whole game. Optimizing the tractable per-example loss is *exactly* optimizing the intractable global one. I never need the marginal path or the marginal field — I only need to design good conditional paths `p_t(x|x_1)` and write down their conditional fields `u_t(x|x_1)`. And notice the cancellation in the cross term is the *same* `1/p_t` algebra that made the marginal field generate the marginal path; it's one identity doing double duty.
+That is the leverage I needed. Optimizing the tractable per-example loss is *exactly* optimizing the intractable global one. I never need the marginal path or the marginal field — I only need to design good conditional paths `p_t(x|x_1)` and write down their conditional fields `u_t(x|x_1)`. And notice the cancellation in the cross term is the *same* `1/p_t` algebra that made the marginal field generate the marginal path; it's one identity doing double duty.
 
 So now everything reduces to: choose a conditional path, and get its conditional field. Let me make the conditional path Gaussian — that's the family I can sample from trivially and where I'll have closed forms:
 
@@ -186,7 +186,7 @@ Combine over the common denominator: the numerator is `-(1-σ_min)(x - t x_1) + 
 u_t(x|x_1) = ( x_1 - (1-σ_min) x ) / ( 1 - (1-σ_min) t ) ,
 ```
 
-defined for *all* `t∈[0,1]` (the diffusion field, by contrast, blows up where `1-e^{-T(1-t)}→0`). And in the cleaner `x_0` parameterization, where `x = ψ_t(x_0) = (1-(1-σ_min)t)x_0 + t x_1`, the target collapses even further. Substitute: `x_1 - (1-σ_min)x = x_1 - (1-σ_min)[(1-(1-σ_min)t)x_0 + t x_1]`. The denominator `1-(1-σ_min)t` divides out of the `x_0` term cleanly, and after simplifying the whole thing equals
+defined for *all* `t∈[0,1]` (the diffusion field, by contrast, blows up where `1-e^{-T(1-t)}→0`). And in the cleaner `x_0` parameterization, where `x = ψ_t(x_0) = (1-(1-σ_min)t)x_0 + t x_1`, the target collapses even further. Substitute: `x_1 - (1-σ_min)x = x_1 - (1-σ_min)[(1-(1-σ_min)t)x_0 + t x_1]`. If I write `c=1-σ_min`, this numerator is `(1-ct)x_1 - c(1-ct)x_0 = (1-ct)(x_1-cx_0)`, so the same factor as the denominator cancels and the whole thing equals
 
 ```
 u_t(ψ_t(x_0)|x_1) = x_1 - (1-σ_min) x_0 ,
@@ -209,10 +209,27 @@ So the recipe is settled. I never construct a global path or field; I never simu
 ```python
 import torch
 
-# v_theta(x, t): time-conditioned velocity network (e.g. a U-Net). Same net at sampling time.
+
+def pad_t_like_x(t, x):
+    """Reshape a batch of scalar times so it broadcasts over x."""
+    if isinstance(t, (float, int)):
+        return t
+    return t.reshape(-1, *([1] * (x.dim() - 1)))
+
 
 def sample_prior_like(x):
     return torch.randn_like(x)
+
+
+@torch.no_grad()
+def odeint(field, x0, t0, t1, steps=100):
+    x = x0
+    dt = (t1 - t0) / steps
+    n = x0.shape[0]
+    for i in range(steps):
+        t = torch.full((n,), t0 + i * dt, device=x.device, dtype=x.dtype)
+        x = x + field(x, t) * dt
+    return x
 
 
 class TrainingPairBuilder:
@@ -222,19 +239,25 @@ class TrainingPairBuilder:
     def __init__(self, sigma_min: float = 1e-4):
         self.sigma_min = sigma_min
 
-    def _pad(self, t, x):                      # broadcast t (bs,) over x (bs, *dim)
-        return t.reshape(-1, *([1] * (x.dim() - 1)))
+    def compute_mu_t(self, x0, x1, t):
+        del x0
+        t = pad_t_like_x(t, x1)
+        return t * x1
+
+    def compute_sigma_t(self, t):
+        return 1 - (1 - self.sigma_min) * t
 
     def sample_xt(self, x0, x1, t):
-        # x_t = psi_t(x0) = (1 - (1 - sigma_min) t) x0 + t x1   ~  N(t x1, sigma_t^2 I)
-        t = self._pad(t, x1)
-        return (1 - (1 - self.sigma_min) * t) * x0 + t * x1
+        # x0 is the standard-normal draw; xt ~ N(t*x1, sigma_t^2 I).
+        mu_t = self.compute_mu_t(x0, x1, t)
+        sigma_t = pad_t_like_x(self.compute_sigma_t(t), x1)
+        return mu_t + sigma_t * x0
 
     def compute_conditional_flow(self, x0, x1, t, xt):
         # u_t(x_t|x1) = (x1 - (1 - sigma_min) x_t) / sigma_t.
         # For xt from sample_xt this is x1 - (1 - sigma_min) x0, constant along the line.
         del x0
-        t = self._pad(t, x1)
+        t = pad_t_like_x(t, x1)
         return (x1 - (1 - self.sigma_min) * xt) / (1 - (1 - self.sigma_min) * t)
 
     def sample_location_and_conditional_flow(self, x0, x1, t=None):
@@ -246,21 +269,16 @@ class TrainingPairBuilder:
 
 def train_step(pair_builder, v_theta, opt, x1):
     x0 = sample_prior_like(x1)                 # prior sample
-    t  = torch.rand(x1.shape[0], device=x1.device, dtype=x1.dtype)
+    t = torch.rand(x1.shape[0], device=x1.device, dtype=x1.dtype)
     t, xt, ut = pair_builder.sample_location_and_conditional_flow(x0, x1, t)
     loss = ((v_theta(xt, t) - ut) ** 2).mean() # the CFM objective
     opt.zero_grad(); loss.backward(); opt.step()
-    return loss.item()
+    return loss
 
-@torch.no_grad()
 def sample(v_theta, n, shape, steps=100, device="cpu"):
     # integrate dx/dt = v_theta(x, t) from noise (t=0) to data (t=1); straight paths -> few steps suffice
     x = torch.randn(n, *shape, device=device)
-    dt = 1.0 / steps
-    for i in range(steps):
-        t = torch.full((n,), i * dt, device=device)
-        x = x + v_theta(x, t) * dt             # Euler; any off-the-shelf ODE solver works
-    return x
+    return odeint(lambda x, t: v_theta(x, t), x, 0.0, 1.0, steps=steps)
 ```
 
 The causal chain, end to end: I wanted to train a continuous flow without solving its ODE in the loop, so I tried regressing the network field onto the true generating field (flow matching) — but the true marginal field is an intractable integral over the data. I rescued the path by building it as a mixture of per-example Gaussian conditionals, proved (via the continuity equation) that the posterior-average of conditional fields generates that mixture, and then proved (via expanding the squared loss and watching the marginal density cancel in the cross term) that regressing on the *conditional* field has the identical gradient — so I can train per-example with closed-form targets, unbiased, one network call, no simulation. Choosing Gaussian conditionals with a canonical affine flow gave a one-line formula for the conditional field; plugging in the diffusion schedules recovers diffusion as a special case, while choosing the mean and std to move linearly gives a constant-direction field whose straight, constant-speed trajectories are the optimal-transport interpolant — easier to fit and far cheaper to integrate at sampling time.

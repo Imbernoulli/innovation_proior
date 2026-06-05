@@ -18,7 +18,7 @@ That's the crack I want to pry open. In this clean case, normalizing the *activa
 
     w = (g / ‖v‖) · v,
 
-where v is the trainable direction-carrying vector, g is a separate trainable scalar, and I do SGD directly in v and g (and the bias) rather than in w. Then ‖w‖ = ‖(g/‖v‖)v‖ = g·‖v‖/‖v‖ = g, exactly, independent of v. The length of the effective weight is owned solely by g; the direction of the effective weight, w/‖w‖ = v/‖v‖, is owned solely by v. I've torn the magnitude and the direction apart into two parameters that no longer fight over the same coordinate. The pre-activation becomes w·x = g·(v·x)/‖v‖, which is exactly g times the deterministic normalized quantity from the whitened-input calculation. So I get the rescaling effect of batch norm, deterministically, per example, with no batch coupling and no injected noise — precisely the five problems gone — as long as this actually improves conditioning. That last clause is the thing I have to check, not assume.
+where v is the trainable direction-carrying vector, g is a separate trainable scalar, and I do SGD directly in v and g (and the bias) rather than in w. If I treat g as the positive scale, then ‖w‖ = ‖(g/‖v‖)v‖ = g·‖v‖/‖v‖ = g; if the unconstrained scalar ever crosses zero, the norm is |g| and the sign just flips the direction. Either way, the length scale is owned solely by g and the direction of the effective weight is owned by v/‖v‖. I've torn the magnitude and the direction apart into two parameters that no longer fight over the same coordinate. The pre-activation becomes w·x = g·(v·x)/‖v‖, which is exactly g times the deterministic normalized quantity from the whitened-input calculation. So I get the rescaling effect of batch norm, deterministically, per example, with no batch coupling and no injected noise — precisely the five problems gone — as long as this actually improves conditioning. That last clause is the thing I have to check, not assume.
 
 A note before I go on, because someone has normalized weight norms before. The max-norm idea (Srebro & Shraibman) constrains ‖w‖, but it keeps optimizing in w and just projects the norm back after each SGD step. That is a completely different animal: the optimizer still sees the plain gradient in w; the projection is an afterthought that doesn't change the geometry the step is taken in. What I'm proposing is to *reparameterize the model* and take the gradient steps in v and g themselves. The geometry the optimizer experiences is the new one. So I need to actually differentiate through w = (g/‖v‖)v and see what gradient the optimizer gets — that's where any conditioning benefit has to show up, and it's where I'll find out if this was a good idea.
 
@@ -49,7 +49,7 @@ Let me read this. The first term is just the ordinary weight gradient, scaled by
 
     ∇_v L = (g/‖v‖)·[ ∇_w L − ((∇_w L · v)/‖v‖²)·v ].
 
-The bracket is ∇_w L minus its orthogonal projection onto v — i.e. the component of ∇_w L *perpendicular* to v. And since v points along w (they share a direction), v/‖v‖ = w/‖w‖, so I can write the projection with w just as well:
+The bracket is ∇_w L minus its orthogonal projection onto v — i.e. the component of ∇_w L *perpendicular* to v. And since v is collinear with w, with any sign of g disappearing in the outer product, I can write the projection with w just as well:
 
     ∇_v L = (g/‖v‖) · M_w · ∇_w L,   with   M_w = I − (w w')/‖w‖².
 
@@ -67,15 +67,15 @@ And there's a second, sneakier benefit hiding in the projection that I didn't go
 
 Since √(1+c²) ≥ 1, the norm of v grows monotonically with every update. That's not a bug — watch what it does to the effective scale. The factor multiplying the direction in the forward pass is g/‖v‖. As ‖v‖ grows, that factor shrinks, which means the effective learning rate on the direction shrinks. And the growth rate of ‖v‖ is governed by c, the relative size of the update, which is large exactly when the gradients are noisy. So: noisy gradients → big c → ‖v‖ shoots up → effective step on the direction is throttled down. Quiet gradients → c ≈ 0 → √(1+c²) ≈ 1 → ‖v‖ stops growing → the step stabilizes. The parameterization self-regulates its own effective learning rate, automatically damping when things are noisy. That's why I'd expect a network in these coordinates to tolerate a wide range of learning rates: pick one too large and ‖v‖ just inflates until the effective rate is sane again, then holds there. Interesting that batch-normalized nets are also famously robust to learning rate — this analysis says it's the same mechanism, a norm that grows to soak up an oversized step. Strictly the monotonic-growth argument is for plain steepest descent; with momentum or a per-parameter optimizer like Adam (which I'll use), ‖v‖ can grow or shrink, so it doesn't hold exactly, but qualitatively the same self-stabilizing pull is there.
 
-So the core reparameterization checks out: w = (g/‖v‖)v, SGD in (g, v, b), decoupling length from direction, with a scale-and-project gradient that whitens the noise and a self-stabilizing effective rate. Let me also sanity-check that g doesn't need to be anything fancier than a scalar. I could parameterize it on a log scale, g = e^s, learning s instead — that's more natural in that it lets g roam over many orders of magnitude with bounded steps. Worth a thought, but I don't see it changing conditioning; it just reshapes how g moves, and I'd expect it to wash out. (If I try it, I'd bet test performance is a wash and optimization maybe a touch slower, so I'll keep the plain g.)
+So the core reparameterization checks out: w = (g/‖v‖)v, SGD in (g, v, b), decoupling length from direction, with a scale-and-project gradient that whitens the noise and a self-stabilizing effective rate. Let me also sanity-check that g doesn't need to be anything fancier than a scalar. I could parameterize it on a log scale, g = e^s, learning s instead — that's more natural in that it keeps the scale positive and lets it roam over many orders of magnitude with bounded steps. But the conditioning argument came from separating direction and scale, not from curving the scale coordinate again; unless the scalar range itself becomes the bottleneck, the direct g coordinate is the simpler thing to optimize.
 
-Now, what did I lose relative to batch norm that I have to put back by hand? Batch norm, beyond the conditioning effect, also pins the *scale* of every layer's features to roughly unit variance, which is what makes it forgiving of bad weight initializations — if one layer's outputs come out ten times too big, batch norm divides it back down before it compounds through the next layer. My reparameterization does not do that. ‖w‖ = g, and g is just initialized to some value; nothing guarantees that the pre-activations of layer five aren't exploding because the scales compounded. The analytic init schemes (Glorot; He) try to set scales right under distributional assumptions, but those assumptions only hold at init and drift immediately. So I need to fix the initial scales empirically, and I have all the pieces to do it cheaply.
+Now, what did I lose relative to batch norm that I have to put back by hand? Batch norm, beyond the conditioning effect, also pins the *scale* of every layer's features to roughly unit variance, which is what makes it forgiving of bad weight initializations — if one layer's outputs come out ten times too big, batch norm divides it back down before it compounds through the next layer. My reparameterization does not do that. The effective scale is controlled by g, and g is just initialized to some value; nothing guarantees that the pre-activations of layer five aren't exploding because the scales compounded. The analytic init schemes (Glorot; He) try to set scales right under distributional assumptions, but those assumptions only hold at init and drift immediately. So I need to fix the initial scales empirically, and I have all the pieces to do it cheaply.
 
 Here's the move. Initialize the direction vectors v from a simple fixed-scale distribution — say each entry drawn from a normal with mean 0 and standard deviation 0.05 — and don't worry about getting their scale exactly right, because g and b are going to absorb it. Then, before training, push *one* minibatch X through the network. At each neuron compute the normalized pre-activation t = (v·x)/‖v‖ on this batch, and measure its mean μ[t] and standard deviation σ[t] over the examples. Now I want the neuron's output to start out standardized, y = φ((t − μ[t])/σ[t]). But (t − μ[t])/σ[t] = (g·t + b) exactly when I pick
 
     g ← 1/σ[t],   b ← −μ[t]/σ[t],
 
-because then g·t + b = t/σ[t] − μ[t]/σ[t] = (t − μ[t])/σ[t]. So a single feed-forward pass, computing the running mean and std of each neuron's normalized pre-activation and setting that neuron's g and b from them, makes every pre-activation in the network start at zero mean and unit variance — exactly the good starting point batch norm would give, but baked into the initial g and b and then left to train freely. It only holds for the minibatch I used, and later batches drift, but it puts every layer on the same footing at step zero, which is the thing that was missing. This is the same data-dependent initialization idea that LSUV (Mishkin & Matas) and Krähenbühl et al. arrived at around the same time, just applied to the (v, g) coordinates. One caveat: this init needs a feed-forward pass with a meaningful batch, so it doesn't transfer to recurrent nets, where I'll fall back to standard initialization — but for those the whole appeal was that the reparameterization is trivial to apply anyway.
+because then g·t + b = t/σ[t] − μ[t]/σ[t] = (t − μ[t])/σ[t]. So a single feed-forward pass, computing the sample mean and population standard deviation of each neuron's normalized pre-activation and setting that neuron's g and b from them, makes every pre-activation in the network start at zero mean and unit variance — exactly the good starting point batch norm would give, but baked into the initial g and b and then left to train freely. It only holds for the minibatch I used, and later batches drift, but it puts every layer on the same footing at step zero, which is the thing that was missing. This is the same data-dependent initialization idea that LSUV (Mishkin & Matas) and Krähenbühl et al. arrived at around the same time, just applied to the (v, g) coordinates. One caveat: this init needs a feed-forward pass with a meaningful batch, so it doesn't transfer to recurrent nets, where I'll fall back to standard initialization — but for those the whole appeal was that the reparameterization is trivial to apply anyway.
 
 There's still one asymmetry nagging me. The reparameterization fixes the *scale* of activations to be roughly independent of v — that's the σ side of batch norm. But the *mean* of the activations still depends on v, because nothing in w = (g/‖v‖)v centers the pre-activation; I only controlled its length. Batch norm subtracts μ[t] every step; I don't. So if I want to recover the mean-centering benefit too, but without dragging the noisy variance estimate back in, I can do a stripped-down batch norm that subtracts the minibatch mean and *nothing else*:
 
@@ -85,60 +85,64 @@ with μ[t] the minibatch mean of the pre-activation, running-averaged during tra
 
     ∇_t L = ∇_{t̃} L − μ[∇_{t̃} L],
 
-i.e. the backpropagated gradient gets its minibatch mean subtracted off — it's *centered*. That's the whole effect: forward it centers the activations, backward it centers the gradients, and that's cheap. It does still inject some noise, since μ[t] is estimated — but only the *mean* is estimated now, and by the central limit theorem a minibatch mean is approximately Gaussian, so the injected noise is light-tailed. Compare that to full batch norm, whose noise comes from the minibatch *variance* estimate, which is highly kurtotic — heavy-tailed, occasional big spikes. So mean-only batch norm gives me a gentle, near-Gaussian regularizing noise on top of the clean conditioning from the weight reparameterization, instead of the harsh noise of the full thing. I'd expect the combination — reparameterized weights for conditioning, mean-only batch norm for a touch of benign regularizing noise — to be the sweet spot, and to beat mean-only batch norm bolted onto the plain weight parameterization, because that version has the noise but not the conditioning. That's the hypothesis I'd want to validate.
+i.e. the backpropagated gradient gets its minibatch mean subtracted off — it's *centered*. That's the whole effect: forward it centers the activations, backward it centers the gradients, and that's cheap. It does still inject some noise, since μ[t] is estimated — but only the *mean* is estimated now, and by the central limit theorem a minibatch mean is approximately Gaussian, so the injected noise is light-tailed. Compare that to full batch norm, whose noise comes from the minibatch *variance* estimate, which is highly kurtotic — heavy-tailed, occasional big spikes. So mean-only batch norm gives me a gentle, near-Gaussian regularizing noise on top of the clean conditioning from the weight reparameterization, instead of the harsh noise of the full thing. The important separation is that the reparameterized weights supply the conditioning, while the mean-only centering supplies only the centering and a mild regularizing noise; bolting centering onto the old coordinates would not create the scale-and-project gradient I just derived.
 
-Let me also pin down the cheapness claim, since it's part of why this beats full batch norm in practice. A convolutional layer has far fewer weights than it has pre-activations — one filter is reused across every spatial location and every example. Full batch norm has to compute statistics over all those pre-activations every step; my reparameterization only touches the weights, computing ‖v‖ once per filter. And ‖v‖ is non-stochastic, a deterministic function of the parameters, so there's no variance in it at all, versus μ[t] and σ[t] which carry the full variance of a minibatch estimate. So weight normalization is a cheaper, deterministic, lower-variance stand-in for batch normalization — exactly equivalent in the single-whitened-layer case I worked out, an approximation in deep nets, but one that keeps much of the speed-up while dropping the batch coupling, the inference-time discrepancy, the recurrent incompatibility, and the heavy gradient noise.
+Let me also pin down the cheapness claim. A convolutional layer has far fewer weights than it has pre-activations — one filter is reused across every spatial location and every example. Full batch norm has to compute statistics over all those pre-activations every step; my reparameterization only touches the weights, computing ‖v‖ once per filter. And ‖v‖ is non-stochastic, a deterministic function of the parameters, so there's no variance in it at all, versus μ[t] and σ[t] which carry the full variance of a minibatch estimate. So weight normalization is a cheaper, deterministic, lower-variance stand-in for batch normalization — exactly equivalent in the single-whitened-layer case I worked out, an approximation in deep nets, but one that keeps the conditioning mechanism while dropping the batch coupling, the inference-time discrepancy, the recurrent incompatibility, and the heavy gradient noise.
 
-Now let me land this in code. The forward side is a hook that, before each forward pass, rebuilds the effective weight from its two parts. Concretely I keep the direction vector as a parameter (call it the weight's "v" part) and the scalar magnitudes as a per-output-channel parameter (the "g" part), and recompute w = g · v / ‖v‖ where the norm is taken over every dimension except the output-channel dimension (each output neuron has its own weight vector and its own g). Then the layer's forward uses that w as usual. The data-dependent init is a separate one-shot pass: run a batch, for each parameterized layer measure the mean and the standard deviation of its pre-activations over the batch and the spatial axes, set g to one over that std and b to minus mean over that std. Here it is, mirroring how a standard library wires it up — the magnitude/direction split implemented as a pre-forward hook on an ordinary layer, plus the init routine.
+Now let me land this in code. The forward side is a hook that, before each forward pass, rebuilds the effective weight from its two parts. Concretely I keep the direction vector as a parameter (call it the weight's "v" part) and the scalar magnitudes as a per-output-channel parameter (the "g" part), and recompute w = g · v / ‖v‖ where the norm is taken over every dimension except the output-channel dimension (each output neuron has its own weight vector and its own g). Then the layer's forward uses that w as usual. The data-dependent init is a separate one-shot pass: run a batch, for each parameterized layer measure the mean and the population standard deviation of its pre-activations over the batch and the spatial axes, set g to one over that std and b to minus mean over that std. The optional centering block is just another ordinary module on the pre-activation tensor, so the training loop stays unchanged.
 
 ```python
 import torch
 import torch.nn as nn
 
 
-# --- the reparameterization: w = g * v / ||v||, taken over all dims but the
-#     output-channel dim. Implemented as a pre-forward hook that rebuilds the
-#     layer's `weight` from a direction `weight_v` and a magnitude `weight_g`
-#     before every forward. SGD then runs in (weight_v, weight_g). ---
+# --- w = g * v / ||v||, with one g per output channel by default. The
+#     pre-forward hook rebuilds the layer's public `weight` tensor before each
+#     call, while the optimizer sees only weight_g and weight_v. ---
 
 def _norm_except_dim(v, dim):
-    # Euclidean norm of v over every dimension except `dim` (one norm per
-    # output channel). Keepdim so it broadcasts back against v.
+    # dim=None uses one global norm; otherwise keep one norm per selected axis.
+    if dim is None:
+        dim = -1
     if dim == -1:
         return v.norm()
+    if dim < 0:
+        dim += v.dim()
     perm = [dim] + [d for d in range(v.dim()) if d != dim]
     flat = v.permute(*perm).reshape(v.size(dim), -1)
-    n = flat.norm(dim=1)
+    n = flat.norm(2, dim=1)
     shape = [1] * v.dim()
     shape[dim] = v.size(dim)
     return n.reshape(shape)
 
 
-def _compute_weight(module, name, dim):
+def _compute_effective_weight(module, name, dim):
     g = getattr(module, name + "_g")           # scalar magnitude per output channel
     v = getattr(module, name + "_v")           # direction vector
-    return g * (v / _norm_except_dim(v, dim))  # w = g * v / ||v||
+    return v * (g / _norm_except_dim(v, dim))  # w = g * v / ||v||
 
 
-class _WeightNorm:
+class _WeightReparameterization:
     def __init__(self, name, dim):
         self.name, self.dim = name, dim
 
     def __call__(self, module, _inputs):       # runs right before forward()
-        setattr(module, self.name, _compute_weight(module, self.name, self.dim))
+        setattr(module, self.name, _compute_effective_weight(module, self.name, self.dim))
 
 
-def weight_norm(module, name="weight", dim=0):
+def reparameterize_weight(module, name="weight", dim=0):
     """Reparameterize module.<name> as magnitude (<name>_g) x direction (<name>_v).
-    dim=0 keeps a separate magnitude per output channel."""
+    dim=0 keeps a separate magnitude per output channel; dim=None uses one scalar."""
+    if dim is None:
+        dim = -1
     w = getattr(module, name)
     del module._parameters[name]               # the raw weight is no longer a parameter
     g = _norm_except_dim(w, dim).data          # initialize g = ||w||  (so w is unchanged)
     v = w.data                                 # initialize v = w
     module.register_parameter(name + "_g", nn.Parameter(g))
     module.register_parameter(name + "_v", nn.Parameter(v))
-    setattr(module, name, _compute_weight(module, name, dim))
-    module.register_forward_pre_hook(_WeightNorm(name, dim))
+    setattr(module, name, _compute_effective_weight(module, name, dim))
+    module.register_forward_pre_hook(_WeightReparameterization(name, dim))
     return module
 
 
@@ -147,7 +151,7 @@ def weight_norm(module, name="weight", dim=0):
 #     b <- -mean/std, measured on the normalized pre-activation t = (v.x)/||v||. ---
 
 @torch.no_grad()
-def data_dependent_init(layer, x, dim=0):
+def data_dependent_init(layer, x):
     # forward with the current (unit-magnitude) direction, g = 1, b = 0
     g = getattr(layer, "weight_g"); g.fill_(1.0)
     if layer.bias is not None:
@@ -155,10 +159,12 @@ def data_dependent_init(layer, x, dim=0):
     t = layer(x)                               # pre-activation on this minibatch
     reduce = [d for d in range(t.dim()) if d != 1]   # over batch (+ spatial), per channel
     mean = t.mean(dim=reduce)
-    std = t.std(dim=reduce) + 1e-10
+    shape = [1, -1] + [1] * (t.dim() - 2)
+    centered = t - mean.reshape(shape)
+    std = (centered.pow(2).mean(dim=reduce) + 1e-10).sqrt()
     g.copy_((1.0 / std).reshape(g.shape))      # g <- 1/std
     if layer.bias is not None:
-        layer.bias.copy_(-mean / std)          # b <- -mean/std
+        layer.bias.copy_((-mean / std).reshape(layer.bias.shape))
     return layer
 
 
@@ -166,14 +172,14 @@ def data_dependent_init(layer, x, dim=0):
 #     pre-activation (running-averaged for test), no variance division. The
 #     backward pass then centers the gradient: grad_t = grad_tt - mean(grad_tt). ---
 
-class MeanOnlyBatchNorm(nn.Module):
+class ActivationTransform(nn.Module):
     def __init__(self, num_features, momentum=0.1):
         super().__init__()
         self.bias = nn.Parameter(torch.zeros(num_features))
         self.register_buffer("running_mean", torch.zeros(num_features))
         self.momentum = momentum
 
-    def forward(self, t):                      # t = w . x, weight-normalized weight
+    def forward(self, t):                      # t = w . x, before the nonlinearity
         reduce = [d for d in range(t.dim()) if d != 1]
         if self.training:
             mu = t.mean(dim=reduce)
@@ -184,8 +190,9 @@ class MeanOnlyBatchNorm(nn.Module):
         return t - mu.reshape(shape) + self.bias.reshape(shape)
 
 
-# --- using it: a weight-normalized conv layer ---
-conv = weight_norm(nn.Conv2d(3, 96, 3, padding=1), name="weight", dim=0)
+# --- using it: a reparameterized conv layer plus the optional centering layer ---
+conv = reparameterize_weight(nn.Conv2d(3, 96, 3, padding=1), name="weight", dim=0)
+center = ActivationTransform(96)
 # data_dependent_init(conv, first_minibatch)   # one-shot, before training
 # then train with Adam in the usual way; the hook rebuilds `weight` each forward.
 ```

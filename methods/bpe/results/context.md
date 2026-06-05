@@ -1,0 +1,156 @@
+## Research question
+
+Neural machine translation models operate over a fixed, closed vocabulary —
+typically the 30,000–50,000 most frequent word types — and represent every other
+word with a single `UNK` symbol. But translation is an open-vocabulary problem:
+test text constantly contains names, numbers, compounds, loanwords, and inflected
+forms that never appeared (or appeared too rarely) in training. The pain is sharpest
+for morphologically productive languages (German compounding, Russian/agglutinative
+inflection), where a single lemma spawns dozens of surface forms and new words are
+formed compositionally at will. Can a neural translation system translate and even
+*generate* words it has never seen — without bolting on a separate back-off
+dictionary — by working below the word level, while keeping the network vocabulary
+small enough that the output softmax and embedding tables stay affordable?
+
+The constraint that makes this hard: the softmax over the target vocabulary is the
+dominant cost in training and decoding, and sequence length drives the cost of the
+recurrent encoder/decoder, so any sub-word scheme must trade vocabulary size against
+text length sensibly. A good solution needs (i) a fixed, compact symbol set that (ii)
+can represent *any* string with no out-of-vocabulary symbols, while (iii) keeping
+sequences from blowing up in length.
+
+## Background
+
+**Why rare words are translatable below the word level.** Many word classes are
+transparent to a competent translator even when the whole word is novel: named
+entities can be copied or transliterated character-by-character (Barack Obama →
+Барак Обама); cognates and loanwords differ in regular, near-character-level ways
+(claustrophobia → Klaustrophobie); morphologically complex words can be translated
+morpheme-by-morpheme (solar system → Sonnensystem = Sonne + System). A diagnostic
+count of 100 rare tokens in German training data finds the majority are translatable
+through smaller units — roughly 56 compounds, 21 names, a handful of loanwords and
+transparent affixations. This is the pre-method observation that motivates segmenting
+rare words into sub-word units: the information needed to translate them is present
+at the sub-word level.
+
+**The encoder-decoder with attention.** The translation model is an RNN
+encoder-decoder with attention. A bidirectional GRU encoder reads the source
+`x = (x_1,…,x_m)` into annotation vectors `h_j`; an RNN decoder predicts the target
+`y = (y_1,…,y_n)`, each `y_i` from a hidden state `s_i`, the previous word `y_{i-1}`,
+and a context vector `c_i = Σ_j α_{ij} h_j`, where the alignment weights `α_{ij}`
+come from a small feedforward alignment model trained jointly. The vocabulary enters
+in two places: the input embedding lookup and the output softmax. A variable-length
+sub-word representation is appealing precisely because attention can then place its
+weight on different sub-word units at each decoding step, instead of being forced to
+attend to a single fixed-length word vector.
+
+**The byte pair encoding compression algorithm.** Byte pair encoding (Gage, 1994) is
+a simple data-compression scheme: repeatedly find the most frequent pair of adjacent
+bytes in a sequence and replace every occurrence with a new, unused byte, recording
+the replacement. Iterating builds a table of merges that compresses the data; the
+table can be replayed to decompress. Its salient property for this problem is that
+the number of new symbols introduced equals the number of merge operations — a single
+knob that directly sets the final symbol-table size.
+
+## Baselines
+
+**Word-level NMT with `UNK` (WUnk).** Limit the vocabulary to the top ~30k–50k types;
+every other word becomes `UNK`. Core idea: keep the softmax tractable. Gap: the model
+can neither translate nor produce any out-of-vocabulary word, and rare in-vocabulary
+words are badly modeled because their embeddings are undertrained.
+
+**Word-level NMT with a back-off dictionary (WDict; Jean et al. 2015; Luong et al.
+2015).** Same closed vocabulary, but at test time `UNK` outputs are replaced via a
+separately trained bilingual dictionary / alignment back-off (e.g. fast-align), often
+copying the aligned source word. Core idea: handle OOVs outside the network. Gaps: it
+assumes a 1-to-1 source↔target word correspondence that fails for compounds and
+differing degrees of morphological synthesis; copying works for names within a shared
+alphabet but cannot transliterate across alphabets (English→Russian) or generate
+genuinely new compound forms; and it adds a separate, non-end-to-end component.
+
+**Large-vocabulary tricks (Jean et al. 2015).** Push the vocabulary up (e.g. to
+500k) with importance-sampling approximations to the softmax. Core idea: cover more
+words directly. Gap: the vocabulary is still finite and the long tail (rank
+>500k, frequency ≤ 2) is precisely where the model degrades; words remain sparse and
+their embeddings undertrained.
+
+**Character n-gram segmentation.** Represent words as overlapping/contiguous
+character n-grams (unigrams, bigrams, trigrams), optionally leaving a shortlist of the
+k most frequent words unsegmented. Core idea: trade sequence length against vocabulary
+size by choosing n. Only the unigram (pure character) representation is truly
+open-vocabulary; it has the smallest vocabulary (~3k) but the longest sequences
+(~550m tokens vs ~100m words). Bigrams/trigrams shorten sequences but reintroduce a
+small number of unknown symbols. Gap: characters give very long sequences (slow, long
+dependencies), and fixed-n n-grams are a blunt instrument — they split frequent and
+rare strings with the same granularity.
+
+**SMT morphological segmenters (compound splitting — Koehn & Knight 2003; Morfessor —
+Creutz & Lagus 2002; rule-based hyphenation — Liang 1983).** Linguistically motivated
+segmenters from phrase-based SMT. Core idea: split words at morpheme/compound
+boundaries. Gaps: they are conservative splitters that only moderately shrink the
+vocabulary, and crucially they still leave unknown words — they do not solve the
+open-vocabulary problem, so a back-off model is still needed.
+
+## Evaluation settings
+
+WMT 2015 shared translation task, English→German (4.2M sentence pairs, ~100M tokens)
+and English→Russian (2.6M pairs, ~50M tokens). Data tokenized and truecased with
+Moses scripts. Development set newstest2013; test sets newstest2014 and newstest2015.
+Network: bidirectional GRU encoder-decoder with attention (Groundhog), hidden size
+1000, embedding size 620, output softmax/shortlist of τ=30000 words, Adadelta,
+minibatch 80, gradient clipping, beam search (beam 12) with length-normalized
+probabilities. Metrics: BLEU (mteval-v13a.pl) and chrF3 (character n-gram F3); for the
+specific claim about rare/unseen words, unigram F1 (harmonic mean of clipped unigram
+precision and recall), reported separately for all words, rare words (not in the top
+50k of training), and OOVs (absent from training). Corpus statistics — number of
+tokens, number of types, number of `UNK` symbols on the dev set — characterize each
+segmentation. No outcome numbers are part of these settings.
+
+## Code framework
+
+The segmentation layer sits *before* the translation network: it learns a fixed set
+of operations on the training text, then rewrites both training and test text into
+symbol sequences that feed the existing embedding → encoder-decoder → softmax
+pipeline unchanged. The harness below has the frequency counting and the encoder-decoder
+in place; the segmentation learner and the test-time segmenter are the empty slots.
+
+```python
+import re, collections
+
+def get_word_frequencies(corpus_lines):
+    """Whitespace-tokenize the training text and count word frequencies."""
+    freqs = collections.Counter()
+    for line in corpus_lines:
+        for word in line.split():
+            freqs[word] += 1
+    return freqs
+
+def learn_segmentation(word_freqs, num_operations):
+    # TODO: from a frequency table over words, learn a fixed-size set of
+    # operations that builds a compact symbol vocabulary covering any string.
+    pass
+
+def segment_word(word, learned_operations):
+    # TODO: rewrite a single (possibly unseen) word into a sequence of symbols
+    # using the learned operations.
+    pass
+
+def apply_segmentation(corpus_lines, learned_operations):
+    out = []
+    for line in corpus_lines:
+        out.append(' '.join(segment_word(w, learned_operations) for w in line.split()))
+    return out
+
+# --- existing translation stack (unchanged) ---
+class AttentionEncoderDecoder:
+    """Bidirectional GRU encoder + attention decoder over a fixed symbol set.
+    Embedding lookup and output softmax are sized by len(symbol_vocab)."""
+    def train_step(self, src_ids, tgt_ids):
+        pass
+    def translate(self, src_ids, beam_size=12):
+        pass
+
+def build_symbol_vocab(segmented_corpus, min_count):
+    vocab = collections.Counter(tok for line in segmented_corpus for tok in line.split())
+    return {s for s, c in vocab.items() if c >= min_count}
+```

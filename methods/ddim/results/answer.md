@@ -14,7 +14,7 @@ depends on the inference process **only through the marginals** q(x_t|x_0) = N(�
 
   q_σ(x_{t-1}|x_t,x_0) = N( √α_{t-1} x_0 + √(1−α_{t-1}−σ_t²)·(x_t − √α_t x_0)/√(1−α_t) , σ_t² I ),
 
-where the mean coefficients are forced by requiring q_σ(x_t|x_0) to stay N(√α_t x_0, (1−α_t)I) for all t (proved by downward induction; the residual term vanishes at the mean of x_t, and σ_t² + (1−α_{t-1}−σ_t²) = 1−α_{t-1}). For t>1 the equal-covariance Gaussian KL has mean-difference scalar λ_t = √α_{t-1} − √α_t√(1−α_{t-1}−σ_t²)/√(1−α_t), so its ε-MSE weight is γ_t = λ_t²(1−α_t)/(2α_tσ_t²), with γ_1 = (1−α_1)/(2α_1σ_1²) for the decoder term (divide by dimension when the loss uses mean rather than summed squared error). Thus, for positive σ, J_σ = L_γ + C for some positive γ, and it is solved by the same unweighted L_1 already trained.
+where the mean coefficients are forced by requiring q_σ(x_t|x_0) to stay N(√α_t x_0, (1−α_t)I) for all t (proved by downward induction; the residual term vanishes at the mean of x_t, and σ_t² + (1−α_{t-1}−σ_t²) = 1−α_{t-1}). For t>1 the equal-covariance Gaussian KL has mean-difference scalar λ_t = √α_{t-1} − √α_t√(1−α_{t-1}−σ_t²)/√(1−α_t), so its ε-MSE weight is γ_t = λ_t²(1−α_t)/(2α_tσ_t²), with γ_1 = (1−α_1)/(2α_1σ_1²) for the decoder term (divide by dimension when the loss uses mean rather than summed squared error). Thus, for positive σ, J_σ = L_γ + C for some positive γ, and it is solved by the same unweighted ε-MSE already trained.
 
 The generative process predicts x_0 from x_t via f_θ(x_t) = (x_t − √(1−α_t) ε_θ(x_t,t))/√α_t and plugs it into q_σ, giving the sampling step
 
@@ -27,7 +27,7 @@ Two free choices, both applied to a fixed network:
 
 At η = 0 with small steps, (★) is Euler integration of the ODE dx̄ = ε_θ(x̄/√(σ²+1)) dσ in coordinates x̄ = x/√α, σ = √((1−α)/α); fewer steps = coarser discretization (hence "consistency": same x_T → same high-level image at any S), and running it backward encodes x_0 → x_T. With the optimal ε_θ this ODE is the probability-flow ODE of the variance-exploding diffusion, with score ∇_{x̄} log p_t = -ε_θ/σ and g(t)^2 = dσ^2/dt, differing from the score-based sampler only in taking Euler steps in dσ rather than dt.
 
-The same marginal-preserving construction also works for one-hot categorical data. With q(x_t|x_0)=Cat(α_t x_0+(1−α_t)1_K), choose q(x_{t-1}|x_t,x_0)=Cat(σ_t x_t+(α_{t-1}−σ_tα_t)x_0+((1−α_{t-1})−(1−α_t)σ_t)1_K), with nonnegative mixture weights. Marginalizing x_t recovers Cat(α_{t-1}x_0+(1−α_{t-1})1_K), and replacing x_0 by f_θ gives categorical KL terms upper-bounded by (α_{t-1}−σ_tα_t)·KL(Cat(x_0)‖Cat(f_θ)), a reweighted classification loss.
+The same marginal-preserving construction also works for one-hot categorical data, where 1_K is the uniform vector. With q(x_t|x_0)=Cat(α_t x_0+(1−α_t)1_K), choose q(x_{t-1}|x_t,x_0)=Cat(σ_t x_t+(α_{t-1}−σ_tα_t)x_0+((1−α_{t-1})−(1−α_t)σ_t)1_K), with nonnegative mixture weights. Marginalizing x_t recovers Cat(α_{t-1}x_0+(1−α_{t-1})1_K), and replacing x_0 by f_θ gives categorical KL terms upper-bounded by (α_{t-1}−σ_tα_t)·KL(Cat(x_0)‖Cat(f_θ)), a classification loss with a σ-dependent weight and the same target.
 
 ## Algorithm
 
@@ -35,7 +35,7 @@ Training: unchanged — the unweighted ε-MSE at T = 1000. Sampling: pick τ (le
 
 ## Code
 
-The sampler below keeps the cumulative-α convention while matching the `generalized_steps` loop: build `seq_next`, predict ε, form x_0, then combine the x_0 term, the direction term, and the η-scaled noise. Training is the standard diffusion ε-MSE.
+The sampler below keeps the cumulative-α convention: build `seq_next`, predict ε, form x_0, then combine the x_0 term, the direction term, and the η-scaled noise. Training is the standard diffusion ε-MSE.
 
 ```python
 import torch
@@ -89,9 +89,11 @@ def make_seq(num_timesteps, num_sampling_steps, kind="uniform"):
     if kind == "uniform":
         skip = max(num_timesteps // num_sampling_steps, 1)
         return list(range(0, num_timesteps, skip))
-    return [int(s) for s in (
-        torch.linspace(0, (0.8 * num_timesteps) ** 0.5, num_sampling_steps) ** 2
-    ).tolist()]
+    if kind == "quad":
+        return [int(s) for s in (
+            torch.linspace(0, (0.8 * num_timesteps) ** 0.5, num_sampling_steps) ** 2
+        ).tolist()]
+    raise NotImplementedError(kind)
 
 # x_T = torch.randn(batch, C, H, W)
 # xs, x0_preds = sample(model, alphas, x_T, make_seq(1000, 50), eta=0.0)

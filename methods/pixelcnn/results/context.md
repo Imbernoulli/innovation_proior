@@ -1,5 +1,3 @@
-# Context
-
 ## Research question
 
 How can we model the distribution `p(x)` of natural images so that, all at once, we can (a) compute
@@ -11,10 +9,10 @@ This is the expressive/tractable/scalable trilemma of generative image modeling.
 high-dimensional (a 32×32 RGB image already has 3072 strongly-correlated integer values) and highly
 structured, so the model must capture long-range and highly nonlinear dependencies. Yet the most
 expressive families of the time pay for that expressiveness with intractable likelihoods: you cannot
-say how probable a given image is under the model, which makes them impossible to compare on a common
+say how probable a given image is under the model, which makes them hard to compare on a common
 yardstick and hard to use for tasks like inpainting, compression, or density estimation. A method
 that delivered an exact, comparable likelihood **and** stayed expressive enough to produce sharp,
-globally coherent samples — and that kept improving as it was made larger — would resolve the
+globally coherent samples — and that could benefit from larger capacity — would resolve the
 trilemma. The question is what functional form `p(x)` should take, and what neural architecture can
 realize it without smuggling in independence assumptions between pixels.
 
@@ -61,7 +59,7 @@ all conditionals at once. On the continuous side, RNADE (Uria et al., 2013) and 
 RIDE model (Theis & Bethge, 2015) use a recurrent net to emit, per pixel, the parameters of a
 **continuous** density — a Gaussian or a mixture of Gaussian scale mixtures.
 
-**The discrete-vs-continuous tension (a diagnostic fact about existing systems).** Pixel intensities
+**Pixels are discrete values, not continuous measurements.** Pixel intensities
 are genuinely discrete: integers in `{0, ..., 255}`. The prevailing autoregressive image models place
 a *continuous* density on them, which forces a choice of parametric shape (a mixture is only as
 multimodal as its number of components), leaks probability mass outside `[0, 255]`, and assumes
@@ -109,9 +107,10 @@ signal-propagation problem with extra gates.
   to large-scale training.
 
 - **NICE / deep GMMs / deep diffusion (Dinh et al., 2014; van den Oord & Schrauwen, 2014;
-  Sohl-Dickstein et al., 2015).** Other exact- or near-exact-likelihood models for natural images,
-  reported on CIFAR-10 in bits/dim, but at the time trailing the best recurrent autoregressive models
-  and not demonstrated to scale or to produce sharp samples.
+  Sohl-Dickstein et al., 2015).** Other exact- or near-exact-likelihood models for natural images
+  reported on CIFAR-10 in bits/dim. They establish likelihood-based image modeling as a meaningful
+  benchmark, but they do not yet combine exact likelihood, strong local image structure, and a
+  scalable conditional predictor.
 
 - **Latent / undirected generators (VAE, DBM, DBN, DLGM, DRAW; Kingma & Welling 2013; Salakhutdinov &
   Hinton 2009; Rezende et al. 2014; Gregor et al. 2015).** Strong representational models and, for
@@ -138,10 +137,10 @@ signal-propagation problem with extra gates.
 
 ## Code framework
 
-The primitives that already exist: a data pipeline that yields integer-valued image tensors, a
-convolution layer, an LSTM cell, residual addition, a categorical cross-entropy loss, and an
-optimizer + training loop. The slot to be filled is the architecture that maps an image to a
-per-position conditional distribution while never letting position `i` depend on positions `≥ i`.
+Available building blocks: a data pipeline that yields integer-valued image tensors, convolution
+layers, LSTM-style gates, residual addition, categorical cross-entropy, and an optimizer plus a
+training loop. The empty slot is the image-to-conditionals architecture: it must emit a categorical
+distribution at every position while ensuring that position `i` never depends on positions `≥ i`.
 
 ```python
 import torch
@@ -150,7 +149,6 @@ from torch import nn, optim
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 
-# ---- known primitives -------------------------------------------------------
 # integer pixel targets in {0, ..., 255} (or {0,1} for binarized MNIST)
 train_loader = DataLoader(
     datasets.MNIST("data", train=True, download=True, transform=transforms.ToTensor()),
@@ -160,10 +158,10 @@ train_loader = DataLoader(
 # A convolution whose receptive field must be restricted so position i never
 # reads positions >= i. The mechanism that enforces this is the open problem.
 class OrderedConv2d(nn.Conv2d):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, mask_type, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # TODO: build and apply the connectivity restriction that makes a
-        #       spatial conv respect the chosen variable ordering.
+        # TODO: build and apply the connectivity restriction. The mask_type slot
+        #       will distinguish the raw-input layer from later feature layers.
         pass
 
     def forward(self, x):
@@ -171,37 +169,57 @@ class OrderedConv2d(nn.Conv2d):
         return super().forward(x)
 
 
-# The full image model: stack of ordered layers -> per-position distribution.
-class ImageDensityModel(nn.Module):
-    def __init__(self, n_values=256):
+class GatedActivation(nn.Module):
+    def forward(self, x):
+        # TODO: decide whether the conditional predictor needs a multiplicative gate.
+        pass
+
+
+class OrderedImageLayer(nn.Module):
+    def __init__(self, in_ch, out_ch, kernel_size=3, first_layer=False):
         super().__init__()
-        # TODO: the architecture we will design (how to combine ordered layers,
-        #       whether/how to add recurrence, residual connections, and how to
-        #       emit a distribution over the n_values intensities per channel).
+        # TODO: fill the ordered layer. It may be a simple ordered convolution or a
+        #       split spatial computation, but it must preserve the variable order.
+        pass
+
+    def forward(self, above_state, row_state):
+        # TODO: return updated states plus any layer-to-output contribution.
+        pass
+
+
+# The full image model: ordered layers -> per-position distribution.
+class ImageDensityModel(nn.Module):
+    def __init__(self, in_ch=1, n_values=256, n_layers=10, channels=64,
+                 split_state=True, head_channels=64):
+        super().__init__()
+        # TODO: choose and stack the ordered layers, then emit n_values logits per
+        #       position for the categorical conditional.
         pass
 
     def forward(self, x):
-        # TODO: return logits of shape (batch, n_values, ...) = the conditional
-        #       p(x_i | x_{<i}) at every position.
+        # TODO: return logits of shape (batch, n_values, H, W).
         pass
 
 
 def nll_loss(logits, target_pixels):
-    # exact negative log-likelihood = sum of per-position categorical losses
-    return F.cross_entropy(logits, target_pixels)
+    # TODO: exact negative log-likelihood = sum of per-position categorical losses.
+    pass
+
+
+def train_step(model, x, opt):
+    # TODO: one stochastic update on a batch of images.
+    pass
 
 
 def train(model):
     opt = optim.RMSprop(model.parameters())
     for x, _ in train_loader:
-        target = (x[:, 0] * 255).long()           # integer intensities
-        loss = nll_loss(model(x), target)
-        opt.zero_grad(); loss.backward(); opt.step()
+        train_step(model, x, opt)
 
 
 @torch.no_grad()
-def sample(model, shape):
-    img = torch.zeros(shape)
+def sample(model, n, H, W, n_values=256):
+    img = torch.zeros(n, 1, H, W)
     # TODO: sequential generation — for each position in raster order, run the
     #       model, read off p(x_i | x_{<i}), sample, write it back, continue.
     pass

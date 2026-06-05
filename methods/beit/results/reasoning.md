@@ -14,9 +14,9 @@ So what do I actually want? I want the masked-prediction game, because the *game
 
 So the thing I'm missing is a vocabulary for images. A finite set of, say, a few thousand "visual words," and a way to map any patch (or any small image region) to one of them. If I had that, the port becomes exact: tokenize the image into this visual vocabulary to get a grid of discrete codes; mask some patches of the *input*; predict the discrete code at the masked positions with a softmax over the vocabulary. Two representations of the same image, then — the continuous patches as *input*, and the discrete codes as the *prediction target*.
 
-Where do I get such a vocabulary? I'm not going to hand-design "visual words." But I recall that generative image models already solved exactly this sub-problem for a different reason. To model images as sequences, people learned a *discrete* autoencoder: an encoder (call it a "tokenizer") `q_φ(z|x)` that maps an image to a grid of indices into a learned codebook of size `|V|`, and a decoder `p_ψ(x|z)` that reconstructs the image from those indices. It's trained just by reconstruction — maximize `E_{z∼q_φ(z|x)}[log p_ψ(x|z)]` — so that the codes have to carry enough about the image to rebuild it. The codes are discrete, so the sampling step isn't differentiable; that's handled with a Gumbel-softmax relaxation (a continuous, temperature-controlled surrogate for categorical sampling) during training, and a uniform prior is placed over the codes. The two-stage idea — first learn a discrete code space, then learn a model over those codes — is exactly the VQ-VAE recipe. And there's a tokenizer of this kind already trained at scale, with a codebook of `8192` entries, that downsamples its input image by a factor of 8.
+Where do I get such a vocabulary? I'm not going to hand-design "visual words." But I recall that generative image models already solved exactly this sub-problem for a different reason. To model images as sequences, people learned a *discrete* autoencoder: an encoder (call it a "tokenizer") `q_φ(z|x)` that maps an image to a grid of indices into a learned codebook of size `|V|`, and a decoder `p_ψ(x|z)` that reconstructs the image from those indices. The main pressure is reconstruction — maximize `E_{z∼q_φ(z|x)}[log p_ψ(x|z)]` — with a uniform-prior regularizer so the discrete code space remains usable. The codes are discrete, so the sampling step isn't differentiable; that's handled with a Gumbel-softmax relaxation (a continuous, temperature-controlled surrogate for categorical sampling) during training. The two-stage idea — first learn a discrete code space, then learn a model over those codes — is exactly the VQ-VAE recipe. And there's a tokenizer of this kind already trained at scale, with a codebook of `8192` entries, that downsamples its input image by a factor of 8.
 
-This is the missing piece. That codebook *is* my visual vocabulary. The tokenizer maps an image to a grid of discrete codes drawn from `{1, …, 8192}`, and because those codes were learned to reconstruct the image through a bottleneck, each one summarizes a region into a high-level abstraction rather than storing its raw pixels. So I don't predict pixels; I predict *which codebook entry* each masked region corresponds to. That's a classification over `8192` classes — BERT's objective, recovered exactly.
+This is the missing piece. That codebook *is* my visual vocabulary. The tokenizer maps an image to a grid of discrete labels from an `8192`-entry codebook, and because those codes were learned to reconstruct the image through a bottleneck, each one summarizes a region into a high-level abstraction rather than storing its raw pixels. So I don't predict pixels; I predict *which codebook entry* each masked region corresponds to. That's a classification over `8192` classes — BERT's objective, recovered exactly.
 
 Let me check the geometry lines up. My ViT splits a `224×224` patch view into a `14×14` grid of `16×16` patches, so `N = 196`. The tokenizer downsamples by 8, so I should not feed it the same 224-pixel tensor if I want the grids to match; I feed it the same crop resized to `112×112`, and the tokenizer emits `112/8 = 14` codes along each side. Now the number of visual tokens equals the number of image patches, and there's a clean one-to-one spatial correspondence: patch `i` (input) ↔ visual token `z_i` (target). That's important — it means at masked position `i` I have exactly one discrete label `z_i` to predict.
 
@@ -30,42 +30,43 @@ And I train to maximize the log-likelihood of the *correct* visual tokens at the
 
 That's it — masked image modeling. Input = continuous patches (so the encoder still sees raw pixels and learns fine-grained features), target = discrete visual tokens (so the objective abstracts away pixel detail and stays a clean classification). The two views of the image are doing complementary jobs.
 
-Now a couple of design questions I glossed over. How much do I mask, and *which* positions? In language ~15% works. But think about images: patches are far more locally redundant than words. If I mask isolated single patches scattered around, the model can fill each one in almost perfectly from its four immediate neighbors — it slides right back into the short-range-copying failure mode I was trying to escape, just with discrete targets instead of pixels. To make the task force *global* reasoning, two things help. First, mask a lot — around 40% of the patches, not 15% — so that there isn't enough surviving local context to interpolate from. Second, don't mask isolated patches; mask contiguous *blocks*. If I knock out a whole rectangular region, the model can't recover the codes in its interior by copying a neighbor, because the neighbors are gone too; it has to use the rest of the image. This is the same instinct as masking spans/n-grams instead of independent tokens in the language models that refined BERT — block out a chunk so prediction can't be solved locally.
+How much do I mask, and *which* positions? In language ~15% works. But think about images: patches are far more locally redundant than words. If I mask isolated single patches scattered around, the model can fill each one in almost perfectly from its four immediate neighbors — it slides right back into the short-range-copying failure mode I was trying to escape, just with discrete targets instead of pixels. I need to mask a lot — around 40% of the patches, not 15% — so that there isn't enough surviving local context to interpolate from. I also need to remove contiguous *blocks*. If I knock out a whole rectangular region, the model can't recover the codes in its interior by copying a neighbor, because the neighbors are gone too; it has to use the rest of the image. This is the same instinct as masking spans/n-grams instead of independent tokens in the language models that refined BERT — block out a chunk so prediction can't be solved locally.
 
-Let me make blockwise masking concrete as a procedure on the `h×w` grid. I build up `M` block by block until I've masked about `0.4·N` patches. For each block I sample an area `s` (with a floor — a block shouldn't be a single patch; set a minimum like 16 patches) and an aspect ratio `r` (sampled so wide and tall blocks are equally likely — uniform in log-space between `0.3` and `1/0.3`). From area and aspect I get the block's height and width, `a = round(√(s·r))`, `b = round(√(s/r))`, place its top-left corner uniformly at random inside the grid, and set those patches masked. Repeat, adding blocks (allowing them to overlap, just counting the newly-masked patches) until `|M| > 0.4N`. On a `14×14` grid that's masking roughly 75 of the 196 patches. So:
+Let me make blockwise masking concrete as a procedure on the `h×w` grid. I build up `M` block by block until I've masked about `0.4·N` patches. For each block I sample an area `s` (with a floor — a block shouldn't be a single patch; set a minimum like 16 patches) and an aspect ratio `r`. Sampling `log r` uniformly between `log 0.3` and `log(1/0.3)` keeps tall and wide rectangles balanced instead of over-concentrating the sampler near one shape. From area and aspect I get the block's height and width, `a = round(√(s·r))`, `b = round(√(s/r))`, place its top-left corner uniformly at random inside the grid, and set those patches masked. Repeat, adding blocks (allowing them to overlap, just counting the newly-masked patches) until I reach the target number of masked positions. On a `14×14` grid that's masking roughly 75 of the 196 patches. So:
 
 ```
 M ← {}
 repeat
     s ← Rand(16, 0.4N − |M|)          # block area, at least 16 patches
-    r ← Rand(0.3, 1/0.3)             # aspect ratio (log-uniform)
+    log r ← Rand(log 0.3, log(1/0.3))
+    r ← exp(log r)                   # aspect ratio
     a ← √(s·r) ;  b ← √(s/r)         # block height, width
     t ← Rand(0, h − a) ; l ← Rand(0, w − b)   # top-left corner
     M ← M ∪ { (i,j) : i∈[t,t+a), j∈[l,l+b) }
-until |M| > 0.4N
+until |M| reaches the target count
 ```
 
 Should I predict the visual tokens at *all* positions or only the masked ones? Only the masked ones — that's what makes it a denoising task. If I also ask the model to reproduce the codes at the *visible* positions, that's mostly a trivial copy of information it can already see, and it dilutes the gradient that's supposed to teach in-filling. So the cross-entropy is summed over `i ∈ M` only.
 
 The whole method hinges on the discrete-target choice, so let me pin down exactly why it should beat pixel regression. Pixel regression pours capacity into locally-predictable high-frequency detail; the discrete codes, by contrast, were learned through a reconstruction bottleneck, so they've already thrown that detail away and kept the abstraction. The codebook is the prediction *bottleneck* that keeps the objective semantic — predicting a code forces the model to name *what's there* rather than reproduce its texture. That's the load-bearing idea, and it holds together.
 
-Now, is there a principled reason this two-view, tokenize-then-predict setup is the right thing, or did I just stumble into it? Let me see if it falls out of a variational objective, because that would tell me the pieces aren't arbitrary. What I'm really doing is recovering the original image `x` from its corrupted version `x̃` (corrupted = the masked patch sequence). So consider the log-likelihood `log p(x | x̃)` and lower-bound it with the discrete codes `z` as latent variables — a standard evidence lower bound. Introduce the tokenizer `q_φ(z|x)` as the variational posterior over codes given the *clean* image:
+Is there a principled reason this two-view, tokenize-then-predict setup is the right thing, or did I just stumble into it? If it falls out of a variational objective, then the pieces aren't arbitrary. What I'm really doing is recovering the original image `x` from its corrupted version `x̃` (corrupted = the masked patch sequence). So consider the log-likelihood `log p(x | x̃)` and lower-bound it with the discrete codes `z` as latent variables — a standard evidence lower bound. Introduce the tokenizer `q_φ(z|x)` as the variational posterior over codes given the *clean* image:
 
 `log p(x | x̃) ≥ E_{z∼q_φ(z|x)}[ log p_ψ(x | z) ] − KL[ q_φ(z|x) ‖ p_θ(z | x̃) ]`.
 
 Let me read off the three distributions. `q_φ(z|x)` is the tokenizer — codes from the clean image. `p_ψ(x|z)` is the decoder — rebuild the image from codes; the first term is image reconstruction through visual tokens. And `p_θ(z|x̃)` is a model that predicts the codes from the *corrupted* image — which is exactly my masked-image-modeling network. So MIM is precisely the term that makes the variational posterior over codes (given the clean image) and the prior-from-corruption (given the masked image) agree. The architecture wasn't arbitrary; the encoder I'm training is the `p_θ(z|x̃)` factor of an ELBO.
 
-Optimizing all of that jointly is awkward, so split it the way VQ-VAE-style models do, into two stages. Stage 1: learn the tokenizer `q_φ` and decoder `p_ψ` by reconstruction alone — minimize `−E_{z∼q_φ(z|x)}[log p_ψ(x|z)]` with a uniform prior over codes. That's just training (or, in practice, *reusing* an already-trained) discrete autoencoder. Stage 2: freeze `q_φ` and `p_ψ`, and learn `p_θ`. The simplification that collapses the bound into my clean classification loss is to replace the soft posterior `q_φ(z|x)` with a one-point distribution at its mode, `ẑ = argmax_z q_φ(z|x)` — i.e. just take the most-likely code grid the tokenizer assigns. With `q_φ` a delta at `ẑ`, the expectation in the reconstruction term is fixed for `θ`, and the `KL[q_φ ‖ p_θ]` against a delta is `log 1 − log p_θ(ẑ | x̃) = −log p_θ(ẑ | x̃)`. So the lower bound, summed over image pairs rather than over patch positions, becomes
+Optimizing all of that jointly is awkward, so split it the way VQ-VAE-style models do, into two stages. Stage 1: learn the tokenizer `q_φ` and decoder `p_ψ` with the discrete-autoencoder objective: minimize the negative reconstruction term `−E_{z∼q_φ(z|x)}[log p_ψ(x|z)]` while regularizing codes toward a uniform prior. That's just training (or, in practice, *reusing* an already-trained) discrete autoencoder. Stage 2: freeze `q_φ` and `p_ψ`, and learn `p_θ`. The simplification that collapses the bound into my clean classification loss is to replace the soft posterior `q_φ(z|x)` with a one-point distribution at its mode, `ẑ = argmax_z q_φ(z|x)` — i.e. just take the most-likely code grid the tokenizer assigns. With `q_φ` a delta at `ẑ`, the expectation in the reconstruction term is fixed for `θ`, and the `KL[q_φ ‖ p_θ]` against a delta is `log 1 − log p_θ(ẑ | x̃) = −log p_θ(ẑ | x̃)`. So the lower bound, summed over image pairs rather than over patch positions, becomes
 
 `Σ_{(x,x̃)∈D} ( E_{z∼q_φ(z|x)}[log p_ψ(x|z)]  +  log p_θ(ẑ | x̃) )`.
 
-If I factorize `p_θ(ẑ | x̃)` over the selected patch positions as `∏_{j∈M} p_MIM(ẑ_j | x^M)`, its log is exactly `Σ_{j∈M} log p_MIM(ẑ_j | x^M)`. The "take the argmax code as the hard label and do cross-entropy" recipe isn't a hack; it's the stage-2 ELBO under a one-point posterior. The reasoning closes the loop.
+If I factorize `p_θ(ẑ | x̃)` over the selected patch positions as `∏_{j∈M} p_MIM(ẑ_j | x^M)`, its log is exactly `Σ_{j∈M} log p_MIM(ẑ_j | x^M)`. The "take the argmax code as the hard label and do cross-entropy" recipe is the stage-2 ELBO under a one-point posterior.
 
-Time to nail down the encoder and the head. I keep the backbone a *standard* Transformer so results are comparable to supervised ViT — no architectural tricks in the contribution. Base size: 12 layers, hidden `D = 768`, 12 heads, FFN inner size 3072, patch `16×16`; the large version is the same recipe at 24 layers, hidden 1024, 16 heads. Input is the sequence of linearly-projected patch embeddings `E·x_i^p`, with a prepended pooling token `[S]` and position information on the patch grid. The MIM head is a single linear layer `R^D → R^{|V|}` (the softmax classifier over the `8192` codes); I only run it on the masked positions' outputs.
+The encoder can stay a standard Transformer so results are comparable to supervised ViT — no architectural tricks in the contribution. Base size: 12 layers, hidden `D = 768`, 12 heads, FFN inner size 3072, patch `16×16`; the large version is the same recipe at 24 layers, hidden 1024, 16 heads. Input is the sequence of linearly-projected patch embeddings `E·x_i^p`, with a prepended pooling token `[S]` and position information on the patch grid. The MIM head is a single linear layer `R^D → R^{|V|}` (the softmax classifier over the `8192` codes); I only run it on the masked positions' outputs.
 
 The one non-obvious training detail is initialization. Deep Transformers are touchy at the start of large-scale pretraining — the residual stream's variance compounds across layers and things blow up or stall. I initialize weights in a small range, implemented as a truncated normal with standard deviation `0.02` and bounds `±0.02`, and then, for the `l`-th block, I rescale the *output* projections — the last linear in the self-attention sublayer and the last linear in the FFN — by `1/√(2l)`. The intuition: each block adds two sublayer outputs back into the residual stream, so without damping the cumulative residual variance grows roughly with depth; scaling the `l`-th block's two output projections by `1/√(2l)` prevents linear depth-wise growth from dominating the first optimization steps. The factor of 2 is for the two residual sublayers per block. I also leave room for learnable residual gates initialized below one (`0.1` for base, much smaller for large) because they let each block start as a conservative perturbation and then grow if the optimizer needs it. Without these damping choices, deep/large models are hard to get off the ground; with them, training is stable.
 
-Now let me write the real thing. There are four pieces, and they map one-to-one onto the slots I left open: the blockwise mask generator; the data pipeline that produces two views of the image plus a mask; the encoder that substitutes a mask embedding at masked positions and emits code-logits there; and the training step that pulls the target codes out of the frozen tokenizer and does cross-entropy on the masked positions.
+The code has four moving parts: the blockwise patch-grid mask generator; the data pipeline that produces two views of the image plus a mask; the encoder that substitutes a mask embedding at masked positions and emits code-logits there; and the training step that pulls the target codes out of the frozen tokenizer and does cross-entropy on the masked positions.
 
 ```python
 import math, random
@@ -77,8 +78,8 @@ from timm.models.layers import trunc_normal_ as _trunc_normal
 def trunc_normal_(tensor, std=0.02):
     return _trunc_normal(tensor, std=std, a=-std, b=std)
 
-# ---- 1. Blockwise masking on the h×w patch grid (Algorithm above) ----
-class MaskingGenerator:
+# ---- 1. Blockwise masking on the h×w patch grid ----
+class PatchGridMaskGenerator:
     def __init__(self, input_size, num_masking_patches,
                  min_num_patches=16, max_num_patches=None,
                  min_aspect=0.3, max_aspect=None):
@@ -122,7 +123,7 @@ class MaskingGenerator:
         return mask                                             # (h, w) boolean grid
 
 # ---- 2. Two views of each image + a mask: patches (input) and a tokenizer view (target source) ----
-class DataAugmentationForPretraining:
+class TwoViewPretrainingTransform:
     def __init__(self, args):
         mean = IMAGENET_INCEPTION_MEAN if not args.imagenet_default_mean_and_std else IMAGENET_DEFAULT_MEAN
         std = IMAGENET_INCEPTION_STD if not args.imagenet_default_mean_and_std else IMAGENET_DEFAULT_STD
@@ -140,12 +141,14 @@ class DataAugmentationForPretraining:
         ])
         if args.discrete_vae_type == "dall-e":
             self.visual_token_transform = transforms.Compose([transforms.ToTensor(), map_pixels])
-        else:
+        elif args.discrete_vae_type == "customized":
             self.visual_token_transform = transforms.Compose([
                 transforms.ToTensor(),
                 transforms.Normalize(mean=IMAGENET_INCEPTION_MEAN, std=IMAGENET_INCEPTION_STD),
             ])
-        self.masked_position_generator = MaskingGenerator(
+        else:
+            raise NotImplementedError()
+        self.masked_position_generator = PatchGridMaskGenerator(
             args.window_size, num_masking_patches=args.num_mask_patches,  # e.g. 14x14 grid, ~75 masked
             max_num_patches=args.max_mask_patches_per_block,
             min_num_patches=args.min_mask_patches_per_block)
@@ -157,7 +160,7 @@ class DataAugmentationForPretraining:
                 self.masked_position_generator())             # which patches are corrupted
 
 # ---- 3. The ViT encoder for masked image modeling ----
-class VisionTransformerForMaskedImageModeling(nn.Module):
+class PatchSequencePretrainer(nn.Module):
     def __init__(self, img_size=224, patch_size=16, in_chans=3, vocab_size=8192,
                  embed_dim=768, depth=12, num_heads=12, mlp_ratio=4.,
                  qkv_bias=True, qk_scale=None, drop_rate=0., attn_drop_rate=0.,

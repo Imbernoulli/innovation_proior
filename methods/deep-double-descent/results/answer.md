@@ -42,16 +42,17 @@ width depends on D and T) where more complexity can hurt.
 ## Three corollaries (three ways to cross EMC ≈ n)
 
 - **Model-wise double descent:** fix a large #steps, vary model width. Test error: classical U, peak
-  at the size that first interpolates the train set, then a second descent. Realistic regimes where
-  *bigger models are worse*. Label noise, data augmentation, and more samples raise the interpolation
-  threshold and shift the peak toward larger models.
+  at the size that first interpolates the train set, then a second descent. The hypothesis predicts
+  regimes where *bigger models are worse*. Label noise, data augmentation, and more samples raise the
+  interpolation threshold and shift the peak toward larger models.
 - **Epoch-wise double descent:** fix a large model, vary training time (training longer raises EMC, so
   the model goes under→over-parameterized within one run). Test error: decreases, increases near
   interpolation, decreases again — *training longer can correct overfitting*. Medium models follow the
   classical U (early stopping best); small models decrease monotonically.
 - **Sample-wise non-monotonicity:** fix model + procedure, vary n (this crosses EMC ≈ n from the other
   side). More data shrinks error overall but shifts the peak right; near the critical regime these
-  cancel (more data doesn't help) and can combine so that *more data hurts*.
+  cancel (more data doesn't help) and can combine so that the hypothesis predicts *more data can
+  hurt*.
 
 Optimal early stopping removes the phenomena — consistent with the hypothesis, since stopping before
 ≈0 train error keeps EMC below n.
@@ -76,43 +77,52 @@ import numpy as np
 EPS = 0.1  # "approximately zero" train error
 
 def add_label_noise(labels, p, num_classes, rng):
-    flip = rng.random(len(labels)) < p           # each label kept w.p. (1-p)
+    flip = rng.random(len(labels)) < p           # corrupt w.p. p; otherwise keep original label
     noisy = labels.copy()
-    noisy[flip] = rng.integers(0, num_classes, size=int(flip.sum()))   # else uniform random label
+    replacement = rng.integers(0, num_classes - 1, size=int(flip.sum()))
+    original = labels[flip]
+    noisy[flip] = replacement + (replacement >= original)              # else uniform wrong label
     return noisy                                 # drawn ONCE, fixed across epochs
 
-def make_model(width):
-    # ResNet18 conv widths [k,2k,4k,8k] (k=64 standard); 5-layer CNN [k,2k,4k,8k]+FC;
-    # Transformer d_model with d_ff=4*d_model; or RFF width d.
-    ...
+def make_model(width, fixed):
+    # Existing factory: ResNet18 [k,2k,4k,8k], 5-layer CNN [k,2k,4k,8k]+FC,
+    # Transformer d_model with d_ff=4*d_model, or RFF width d.
+    return fixed.make_model(width)
 
-def train(model, x, noisy_y, test_x, test_y, optimizer, num_steps, record_every=None):
-    # cross-entropy (vision) / label-smoothed CE (Transformer);
-    # Adam lr 1e-4 for 4K epochs, or SGD lr ∝ 1/√T for 500K steps.
-    ...
-    return train_error, test_error, history
+def train(model, train_data, test_data, optimizer, num_steps, fixed, record_every=None):
+    # Existing training loop: cross-entropy for vision, label-smoothed CE for Transformers, MSE for RFF.
+    return fixed.train(model, train_data, test_data, optimizer, num_steps, record_every=record_every)
 
-def effective_model_complexity(procedure, distribution, sample_grid):
+def effective_complexity(procedure, distribution, sample_grid, trials, epsilon=EPS):
     emc = 0
     for n in sorted(sample_grid):
         if np.mean([procedure(distribution.sample(n)).train_error()
-                    for _ in range(distribution.num_trials)]) <= EPS:
+                    for _ in range(trials)]) <= epsilon:
             emc = n
     return emc
 
-def model_wise_sweep(widths, x, y, test_x, test_y, p, num_classes, rng, optimizer, steps):
-    noisy_y = add_label_noise(y, p, num_classes, rng)
-    return [(w, *train(make_model(w), x, noisy_y, test_x, test_y, optimizer, steps)[:2]) for w in widths]
-
-def epoch_wise_sweep(width, x, y, test_x, test_y, p, num_classes, rng, optimizer, steps):
-    noisy_y = add_label_noise(y, p, num_classes, rng)
-    return train(make_model(width), x, noisy_y, test_x, test_y, optimizer, steps, record_every=1)[2]
-
-def sample_wise_sweep(width, sizes, dataset, test_x, test_y, p, num_classes, rng, optimizer, steps):
+def model_size_sweep(widths, fixed):
+    noisy_y = add_label_noise(fixed.y, fixed.p, fixed.num_classes, fixed.rng)
     out = []
-    for n in sizes:
-        x, y = dataset.subset(n)
-        noisy_y = add_label_noise(y, p, num_classes, rng)
-        out.append((n, train(make_model(width), x, noisy_y, test_x, test_y, optimizer, steps)[1]))
+    for w in widths:
+        m = make_model(w, fixed)
+        out.append((w, *train(m, (fixed.train_x, noisy_y), (fixed.test_x, fixed.test_y),
+                              fixed.make_optimizer(m), fixed.num_steps, fixed)[:2]))
+    return out
+
+def training_time_sweep(width, step_budget, fixed):
+    noisy_y = add_label_noise(fixed.y, fixed.p, fixed.num_classes, fixed.rng)
+    m = make_model(width, fixed)
+    return train(m, (fixed.train_x, noisy_y), (fixed.test_x, fixed.test_y),
+                 fixed.make_optimizer(m), step_budget, fixed, record_every=1)[2]
+
+def sample_count_sweep(width, sample_sizes, fixed):
+    out = []
+    for n in sample_sizes:
+        x, y = fixed.dataset.subset(n)
+        noisy_y = add_label_noise(y, fixed.p, fixed.num_classes, fixed.rng)
+        m = make_model(width, fixed)
+        out.append((n, train(m, (x, noisy_y), (fixed.test_x, fixed.test_y),
+                             fixed.make_optimizer(m), fixed.num_steps, fixed)[1]))
     return out
 ```

@@ -50,7 +50,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-class BasicConv2d(nn.Module):
+class ConvUnit(nn.Module):
     """Conv -> ReLU. Every conv in the network (including the 1x1 reducers
     and projections) is followed by a rectified linear activation."""
     def __init__(self, in_channels, out_channels, **kwargs):
@@ -61,28 +61,29 @@ class BasicConv2d(nn.Module):
         return F.relu(self.conv(x), inplace=True)
 
 
-class Inception(nn.Module):
-    """One Inception module: four parallel branches covering several scales,
-    concatenated on the channel axis. The 1x1 convs in branches 2/3 and after
-    the pool are the dimension reducers that keep the cost bounded."""
-    def __init__(self, in_ch, ch1, ch3red, ch3, ch5red, ch5, poolproj):
+class FeatureBlock(nn.Module):
+    """Four parallel dense branches covering several scales, concatenated on
+    the channel axis. The 1x1 convs in branches 2/3 and after the pool are the
+    dimension reducers that keep the cost bounded."""
+    def __init__(self, in_channels, *widths):
         super().__init__()
+        ch1, ch3red, ch3, ch5red, ch5, poolproj = widths
         # branch 1: a single 1x1 conv (the tightest, most local clusters)
-        self.branch1 = BasicConv2d(in_ch, ch1, kernel_size=1)
+        self.branch1 = ConvUnit(in_channels, ch1, kernel_size=1)
         # branch 2: 1x1 reduce -> 3x3 (cut channels before the bigger kernel)
         self.branch2 = nn.Sequential(
-            BasicConv2d(in_ch, ch3red, kernel_size=1),
-            BasicConv2d(ch3red, ch3, kernel_size=3, padding=1),
+            ConvUnit(in_channels, ch3red, kernel_size=1),
+            ConvUnit(ch3red, ch3, kernel_size=3, padding=1),
         )
         # branch 3: 1x1 reduce -> 5x5 (the expensive kernel, run at low width)
         self.branch3 = nn.Sequential(
-            BasicConv2d(in_ch, ch5red, kernel_size=1),
-            BasicConv2d(ch5red, ch5, kernel_size=5, padding=2),
+            ConvUnit(in_channels, ch5red, kernel_size=1),
+            ConvUnit(ch5red, ch5, kernel_size=5, padding=2),
         )
         # branch 4: 3x3 max-pool -> 1x1 project (cap the pool's channel count)
         self.branch4 = nn.Sequential(
             nn.MaxPool2d(kernel_size=3, stride=1, padding=1),
-            BasicConv2d(in_ch, poolproj, kernel_size=1),
+            ConvUnit(in_channels, poolproj, kernel_size=1),
         )
 
     def forward(self, x):
@@ -92,14 +93,14 @@ class Inception(nn.Module):
         )
 
 
-class InceptionAux(nn.Module):
+class SideHead(nn.Module):
     """Auxiliary classifier hung off an intermediate module during training.
     Adds gradient signal deep in the net and acts as a regularizer; discarded
     at inference."""
-    def __init__(self, in_ch, num_classes):
+    def __init__(self, in_channels, num_classes):
         super().__init__()
         self.avgpool = nn.AvgPool2d(kernel_size=5, stride=3)
-        self.conv = BasicConv2d(in_ch, 128, kernel_size=1)
+        self.conv = ConvUnit(in_channels, 128, kernel_size=1)
         self.fc1 = nn.Linear(128 * 4 * 4, 1024)
         self.fc2 = nn.Linear(1024, num_classes)
         self.dropout = nn.Dropout(0.7)
@@ -113,79 +114,73 @@ class InceptionAux(nn.Module):
         return self.fc2(x)
 
 
-class GoogLeNet(nn.Module):
-    def __init__(self, num_classes=1000, aux_logits=True):
+class Net(nn.Module):
+    def __init__(self, num_classes=1000, aux=True):
         super().__init__()
-        self.aux_logits = aux_logits
+        self.aux = aux
 
         # Stem: plain convs + pooling + local response normalization.
-        self.conv1 = BasicConv2d(3, 64, kernel_size=7, stride=2, padding=3)
-        self.maxpool1 = nn.MaxPool2d(3, stride=2, ceil_mode=True)
+        self.conv1 = ConvUnit(3, 64, kernel_size=7, stride=2, padding=3)
+        self.pool1 = nn.MaxPool2d(3, stride=2, ceil_mode=True)
         self.lrn1 = nn.LocalResponseNorm(5, alpha=1e-4, beta=0.75, k=1.0)
-        self.conv2 = BasicConv2d(64, 64, kernel_size=1)
-        self.conv3 = BasicConv2d(64, 192, kernel_size=3, padding=1)
+        self.conv2 = ConvUnit(64, 64, kernel_size=1)
+        self.conv3 = ConvUnit(64, 192, kernel_size=3, padding=1)
         self.lrn2 = nn.LocalResponseNorm(5, alpha=1e-4, beta=0.75, k=1.0)
-        self.maxpool2 = nn.MaxPool2d(3, stride=2, ceil_mode=True)
+        self.pool2 = nn.MaxPool2d(3, stride=2, ceil_mode=True)
 
-        # Stage 3
-        self.inception3a = Inception(192, 64, 96, 128, 16, 32, 32)
-        self.inception3b = Inception(256, 128, 128, 192, 32, 96, 64)
-        self.maxpool3 = nn.MaxPool2d(3, stride=2, ceil_mode=True)
-        # Stage 4
-        self.inception4a = Inception(480, 192, 96, 208, 16, 48, 64)
-        self.inception4b = Inception(512, 160, 112, 224, 24, 64, 64)
-        self.inception4c = Inception(512, 128, 128, 256, 24, 64, 64)
-        self.inception4d = Inception(512, 112, 144, 288, 32, 64, 64)
-        self.inception4e = Inception(528, 256, 160, 320, 32, 128, 128)
-        self.maxpool4 = nn.MaxPool2d(3, stride=2, ceil_mode=True)
-        # Stage 5
-        self.inception5a = Inception(832, 256, 160, 320, 32, 128, 128)
-        self.inception5b = Inception(832, 384, 192, 384, 48, 128, 128)
+        self.body = nn.ModuleList([
+            FeatureBlock(192, 64, 96, 128, 16, 32, 32),       # 3a
+            FeatureBlock(256, 128, 128, 192, 32, 96, 64),     # 3b
+            nn.MaxPool2d(3, stride=2, ceil_mode=True),
+            FeatureBlock(480, 192, 96, 208, 16, 48, 64),      # 4a
+            FeatureBlock(512, 160, 112, 224, 24, 64, 64),     # 4b
+            FeatureBlock(512, 128, 128, 256, 24, 64, 64),     # 4c
+            FeatureBlock(512, 112, 144, 288, 32, 64, 64),     # 4d
+            FeatureBlock(528, 256, 160, 320, 32, 128, 128),   # 4e
+            nn.MaxPool2d(3, stride=2, ceil_mode=True),
+            FeatureBlock(832, 256, 160, 320, 32, 128, 128),   # 5a
+            FeatureBlock(832, 384, 192, 384, 48, 128, 128),   # 5b
+        ])
 
-        if aux_logits:
-            self.aux1 = InceptionAux(512, num_classes)   # off 4a
-            self.aux2 = InceptionAux(528, num_classes)   # off 4d
+        self.side_heads = nn.ModuleDict()
+        if aux:
+            self.side_heads["aux1"] = SideHead(512, num_classes)  # off 4a
+            self.side_heads["aux2"] = SideHead(528, num_classes)  # off 4d
 
         # Head: global average pooling -> dropout -> single linear.
-        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.dropout = nn.Dropout(0.4)
-        self.fc = nn.Linear(1024, num_classes)
+        self.final_pool = nn.AdaptiveAvgPool2d((1, 1))
+        self.classifier = nn.Sequential(
+            nn.Dropout(0.4),
+            nn.Linear(1024, num_classes),
+        )
 
     def forward(self, x):
-        x = self.conv1(x)
-        x = self.lrn1(self.maxpool1(x))
-        x = self.conv2(x)
-        x = self.conv3(x)
-        x = self.maxpool2(self.lrn2(x))
+        x = self.lrn1(self.pool1(self.conv1(x)))
+        x = self.pool2(self.lrn2(self.conv3(self.conv2(x))))
+        x = self.body[0](x)
+        x = self.body[1](x)
+        x = self.body[2](x)
+        x = self.body[3](x)
+        aux1 = self.side_heads["aux1"](x) if (self.aux and self.training) else None
+        x = self.body[4](x)
+        x = self.body[5](x)
+        x = self.body[6](x)
+        aux2 = self.side_heads["aux2"](x) if (self.aux and self.training) else None
+        x = self.body[7](x)
+        x = self.body[8](x)
+        x = self.body[9](x)
+        x = self.body[10](x)
+        x = torch.flatten(self.final_pool(x), 1)
+        x = self.classifier(x)
 
-        x = self.inception3a(x)
-        x = self.inception3b(x)
-        x = self.maxpool3(x)
-
-        x = self.inception4a(x)
-        aux1 = self.aux1(x) if (self.aux_logits and self.training) else None
-        x = self.inception4b(x)
-        x = self.inception4c(x)
-        x = self.inception4d(x)
-        aux2 = self.aux2(x) if (self.aux_logits and self.training) else None
-        x = self.inception4e(x)
-        x = self.maxpool4(x)
-
-        x = self.inception5a(x)
-        x = self.inception5b(x)
-
-        x = self.avgpool(x)
-        x = torch.flatten(x, 1)
-        x = self.dropout(x)
-        x = self.fc(x)
-
-        if self.aux_logits and self.training:
+        if self.aux and self.training:
             return x, aux2, aux1
         return x
 
 
-def total_loss(outputs, target, aux_weight=0.3):
+def compute_loss(outputs, target):
     """L = L_main + 0.3 * (L_aux1 + L_aux2) during training."""
+    aux_weight = 0.3
     if isinstance(outputs, tuple):
         main, aux2, aux1 = outputs
         return (F.cross_entropy(main, target)

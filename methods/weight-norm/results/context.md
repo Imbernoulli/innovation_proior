@@ -96,8 +96,8 @@ method to a particular optimizer rather than improving the model itself.
 **Output-reparameterization (Raiko et al. 2012).** Core idea: transform neuron outputs to
 zero average value and zero average slope, approximately diagonalizing the Fisher. Gap: it
 operates on the outputs and centers around average behaviour; it does not directly
-decouple the magnitude of a weight vector from its direction, which (as becomes clear) is
-the axis along which the conditioning is worst.
+decouple the magnitude of a weight vector from its direction, leaving that source of
+coordinate coupling untouched.
 
 **Norm-constrained weights (max-norm; Srebro & Shraibman 2005).** Core idea: keep the norm
 of each weight vector controlled. Gap: the optimization is still carried out in the
@@ -129,64 +129,65 @@ Natural yardsticks of the time, spanning the domains where the block appears:
 
 ## Code framework
 
-The primitives that already exist, and the empty slots a new method would fill. A layer
-stores its own raw weight tensor and bias and exposes a forward; an optimizer (SGD with
-momentum, or Adam/Adamax) steps the registered parameters; a loss and a training loop
-already work. The two open slots: a hook that may *recompute* a layer's effective weight
-from some other set of trainable parameters before each forward, and a one-shot routine
-that may *set* parameters from the statistics of a single minibatch passed through the
-network before training begins.
+The ordinary `nn.Module` layer, optimizer, loss, and training loop are already enough: a
+layer stores a raw weight tensor and bias, the optimizer steps whatever parameters the
+layer registers, and a forward hook can replace the tensor used by the layer before each
+call. The slots below are the exact places a parameterization-level change can occupy:
+one tensor-shaping helper, one effective-weight computation, one pre-forward hook, one
+parameter replacement function, one one-batch initialization routine, and one optional
+pre-activation transform.
 
 ```python
 import torch
 import torch.nn as nn
 
-# ---- existing primitives -------------------------------------------------
 
-class Linear(nn.Module):
-    """A standard affine layer: y = phi(W x + b). Owns its raw weight and bias."""
-    def __init__(self, in_features, out_features, act=None):
+def _norm_except_dim(tensor, dim):
+    # TODO: compute a norm over all tensor dimensions except one channel axis,
+    #       or over the full tensor when no channel axis is requested.
+    pass
+
+
+def _compute_effective_weight(module, name, dim):
+    # TODO: rebuild module.<name> from the trainable parameters that replace
+    #       the original raw weight tensor.
+    pass
+
+
+class _WeightReparameterization:
+    def __init__(self, name, dim):
+        self.name = name
+        self.dim = dim
+
+    def __call__(self, module, _inputs):
+        # TODO: refresh the effective weight just before module.forward().
+        pass
+
+
+def reparameterize_weight(module, name="weight", dim=0):
+    # TODO: remove module.<name> from the parameter list, register the new
+    #       trainable pieces, install _WeightReparameterization, and leave the
+    #       layer's public forward API unchanged.
+    pass
+
+
+@torch.no_grad()
+def data_dependent_init(layer, x):
+    # TODO: use one minibatch to set the newly registered scale and the layer
+    #       bias from measured pre-activation mean and population standard
+    #       deviation.
+    pass
+
+
+class ActivationTransform(nn.Module):
+    def __init__(self, num_features, momentum=0.1):
         super().__init__()
-        self.weight = nn.Parameter(torch.empty(out_features, in_features))
-        self.bias = nn.Parameter(torch.zeros(out_features))
-        nn.init.kaiming_normal_(self.weight)
-        self.act = act
+        # TODO: register any per-channel offset and running statistic needed
+        #       by the transform.
+        pass
 
-    def effective_weight(self):
-        # TODO: by default the effective weight IS the stored weight.
-        #       This is the slot where a weight reparameterization will plug in.
-        return self.weight
-
-    def forward(self, x):
-        y = x @ self.effective_weight().t() + self.bias
-        return self.act(y) if self.act is not None else y
-
-
-def reparameterize_weight(layer):
-    # TODO: replace a layer's single weight Parameter by an equivalent set of
-    #       trainable parameters, and make effective_weight() rebuild the weight
-    #       from them on every forward. Empty for now.
-    pass
-
-
-def data_dependent_init(model, x_init):
-    # TODO: run one minibatch x_init through the model and set per-layer
-    #       scale/offset parameters from the measured pre-activation statistics
-    #       so pre-activations start standardized. Empty for now.
-    pass
-
-
-def make_optimizer(params, lr):
-    return torch.optim.Adam(params, lr=lr)
-
-
-def train(model, data, lr, epochs):
-    opt = make_optimizer(model.parameters(), lr)
-    loss_fn = nn.CrossEntropyLoss()
-    for _ in range(epochs):
-        for x, y in data:
-            opt.zero_grad()
-            loss = loss_fn(model(x), y)
-            loss.backward()
-            opt.step()
+    def forward(self, t):
+        # TODO: transform a pre-activation tensor without changing the caller's
+        #       training loop.
+        pass
 ```

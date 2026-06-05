@@ -63,6 +63,13 @@ biasing a gate so it starts near 1 — is a known way to make a gated update beg
 is the default optimizer; the importance-weighted bound (Burda et al. 2015) gives a tighter likelihood
 estimator for evaluation.
 
+**Deep stochastic-layer optimization.** Deep VAEs with many latent groups can settle into a
+zero-information state q(z|x) ≈ p(z), especially early in training when the likelihood signal is weak.
+Then the KL terms are small, the stochastic layers are unused, and encoder gradients have poor
+signal-to-noise for escaping. KL annealing in sentence VAEs and ladder-style VAEs is one known way
+to avoid over-penalizing latent information too early; the general requirement is an objective or
+schedule that prevents immediate collapse to an unused-latent solution.
+
 # Baselines
 
 **Diagonal-Gaussian VAE.** q(z|x) = N(μ(x), σ²(x)) with μ, σ nonlinear functions of x, reparameterized
@@ -105,50 +112,60 @@ include prior latent-variable models and autoregressive image models.
 
 # Code framework
 
-The primitives exist already: a masked autoregressive network that, in one pass, maps a vector to
-per-coordinate parameters obeying the autoregressive property (output i depends only on inputs 1..i−1);
-an encoder network; a standard Gaussian to reparameterize; and Adam. The open slots are the refining
-transformation applied to the initial sample, how it accumulates the log-density, and how it plugs into
-the variational bound.
+The primitives exist already: masked linear layers, autoregressive networks that map a vector to
+per-coordinate parameters obeying the autoregressive property, encoder networks, a standard Gaussian
+reparameterization, and Adam. A VAE posterior harness can therefore be written with a generic
+placeholder transformation after the initial sample and a generic density accumulator.
 
 ```python
+import math
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+
+class MaskedLinear(nn.Linear):
+    def __init__(self, in_features, out_features, mask):
+        super().__init__(in_features, out_features)
+        # TODO: store and apply the fixed autoregressive mask.
+        pass
+    def forward(self, x):
+        pass
 
 class AutoregressiveNN(nn.Module):
-    """One pass: maps z (and optional context h) to per-coordinate outputs obeying the
-    autoregressive property — output i depends only on z_{1:i-1}."""
-    def __init__(self, dim, hidden, context_dim, n_out):
+    """One pass: output i depends only on z_{1:i-1} and on context h."""
+    def __init__(self, dim, hidden, context_dim):
         super().__init__()
-        # TODO: masked layers enforcing autoregression; add a context projection of h.
+        # TODO: build masked layers and an unconstrained context projection.
         pass
     def forward(self, z, h):
         pass
 
 class Encoder(nn.Module):
     """Maps x to the parameters of an initial simple posterior and an extra context vector."""
-    def __init__(self, x_dim, z_dim, context_dim):
+    def __init__(self, x_dim, z_dim, context_dim, hidden):
         super().__init__()
         pass
     def forward(self, x):
-        # TODO: return (mu0, sigma0, h)
+        # TODO: return (mu0, log_sigma0, h)
         pass
 
 class RefiningStep(nn.Module):
     """One invertible refinement of the latent sample, conditioned on context, with a tractable
-    log-determinant. The slot the contribution fills."""
-    def __init__(self, dim, hidden, context_dim):
+    log-determinant."""
+    def __init__(self, dim, hidden, context_dim, forget_bias=1.5):
         super().__init__()
-        self.net = AutoregressiveNN(dim, hidden, context_dim, n_out=2 * dim)
+        self.net = AutoregressiveNN(dim, hidden, context_dim)
+        self.forget_bias = forget_bias
     def forward(self, z, h):
-        # TODO: transform z invertibly; return (z_new, log_det_contribution).
+        # TODO: transform z invertibly; return (z_new, log_density_delta).
         pass
 
 class FlexiblePosterior(nn.Module):
-    def __init__(self, x_dim, z_dim, context_dim, n_steps, hidden):
+    def __init__(self, x_dim, z_dim, context_dim, n_steps, hidden, reverse_between_steps=True):
         super().__init__()
-        self.encoder = Encoder(x_dim, z_dim, context_dim)
+        self.encoder = Encoder(x_dim, z_dim, context_dim, hidden)
         self.steps = nn.ModuleList()  # TODO: n_steps RefiningStep layers
+        self.reverse_between_steps = reverse_between_steps
     def sample_and_log_prob(self, x):
         # TODO: draw the initial sample, refine through the steps, accumulate log q(z|x).
         pass

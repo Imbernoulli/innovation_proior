@@ -26,7 +26,7 @@ In natural language, one self-supervised recipe — masked-token denoising — d
 
 - **Patchify-and-Transformer for images (ViT; Dosovitskiy et al., 2021).** Establishes the patch-embedding interface and shows a plain Transformer can match CNNs given enough labeled data. Includes a preliminary self-supervised attempt: predict the (3-bit, mean) color of masked patches. **Gap:** data-hungry under supervised training; the masked-patch color-prediction objective is a coarse regression target that was reported to lag behind, leaving open what the *right* prediction target is.
 
-- **Pixel-level masked auto-encoding (the regression baseline).** Mask patches, regress their raw pixels with an L1/L2 reconstruction loss. Core math: `Σ_{i∈M} ‖x_i − x̂_i‖²` on masked patches. **Gap:** the loss is dominated by locally-predictable high-frequency detail; capacity goes to short-range pixel correlations instead of semantics. This is the alternative the method must beat.
+- **Pixel-level masked auto-encoding (the regression baseline).** Mask patches, regress their raw pixels with an L1/L2 reconstruction loss. Core math: `Σ_{i∈M} ‖x_i − x̂_i‖²` on masked patches. **Gap:** the loss is dominated by locally-predictable high-frequency detail; capacity goes to short-range pixel correlations instead of semantics. This is the failure mode a denoising solution would have to avoid.
 
 - **Discrete VAE image tokenizer (dVAE; Ramesh et al., 2021, building on VQ-VAE, van den Oord et al., 2017).** Learns `q_φ(z|x)` (pixels → grid of `8192`-way codes) and `p_ψ(x|z)` (codes → image) by maximizing reconstruction likelihood with a Gumbel-softmax relaxation and a uniform code prior. **Gap (as used here it is a *component*, not a competitor):** it is a generative/compression model; on its own it provides a discrete code space but no representation-learning objective for a downstream encoder. It supplies the missing "vocabulary" for images.
 
@@ -45,50 +45,65 @@ In natural language, one self-supervised recipe — masked-token denoising — d
 
 ## Code framework
 
-The primitives below already exist: a patchify-and-Transformer encoder, positional-signal modules, a pretrained discrete image tokenizer that maps an image to a grid of codebook indices, an image data pipeline, and an AdamW training loop. What does **not** yet exist is the pretraining objective and the pieces it needs: the corruption procedure on the patch grid, the paired image views consumed by the pipeline, how the corrupted input is formed and consumed by the encoder, what target is predicted, and the head that predicts it.
+The scaffold starts from a patchify-and-Transformer encoder, positional-signal modules, a pretrained discrete image tokenizer that maps an image to a grid of codebook indices, an image data pipeline, and an AdamW training loop. The open slots are the patch-grid corruption procedure, the paired image views consumed by the pipeline, how the corrupted input is formed and consumed by the encoder, what target is predicted, and the head that predicts it.
 
 ```python
 import torch, torch.nn as nn
 
-# --- existing: patchify + Transformer encoder (the backbone interface) ---
+# --- patchify + Transformer encoder (the backbone interface) ---
 class PatchEmbed(nn.Module):
-    """Conv stem: image -> (N = (H/P)*(W/P)) patch embeddings of dim D. Exists."""
+    """Conv stem: image -> (N = (H/P)*(W/P)) patch embeddings of dim D."""
     def __init__(self, img_size=224, patch_size=16, in_chans=3, embed_dim=768): ...
     def forward(self, x): ...  # -> (B, N, D)
 
 class Block(nn.Module):
-    """Standard Transformer block: MSA + MLP with residuals/norm. Exists."""
+    """Standard Transformer block: MSA + MLP with residuals/norm."""
     def forward(self, x, rel_pos_bias=None): ...
 
 class RelativePositionBias(nn.Module):
-    """Optional position-bias module for a patch grid. Exists."""
+    """Optional position-bias module for a patch grid."""
     def forward(self): ...
 
-# --- existing: a pretrained discrete image tokenizer (frozen) ---
+# --- pretrained discrete image tokenizer (frozen) ---
 class DiscreteImageTokenizer:
-    """Maps pixels -> grid of discrete codebook indices in {1..|V|}.
+    """Maps pixels -> a grid of integer codebook labels.
     Trained separately by reconstruction; used here only for inference."""
     @torch.no_grad()
     def get_codebook_indices(self, images):  # -> (B, h, w) longs in [0, |V|)
         ...
 
-# --- TODO: how to corrupt the patch grid (which positions to drop) ---
-class MaskGenerator:
-    # TODO: produce a boolean mask over the N patches selecting ~? of them.
-    # open question: random per-patch, or something structured?
+# --- TODO: how to corrupt the patch grid ---
+class PatchGridMaskGenerator:
+    def __init__(self, input_size, num_masking_patches,
+                 min_num_patches=None, max_num_patches=None,
+                 min_aspect=None, max_aspect=None):
+        # TODO: decide the masking ratio, the spatial structure of masked regions,
+        #       and how overlapping regions should count.
+        pass
+    def _mask(self, mask, max_mask_patches):
+        # TODO: add one region to an existing h-by-w mask.
+        pass
     def __call__(self):
+        # TODO: return an h-by-w boolean mask over patch positions.
         pass
 
 # --- TODO: turn one image into the inputs the objective needs ---
-class DataAugmentationForPretraining:
+class TwoViewPretrainingTransform:
+    def __init__(self, args):
+        self.common_transform = ...
+        self.patch_transform = ...
+        # TODO: define the target-producing view and the patch-grid mask generator.
+        pass
     # TODO: produce the paired views/targets the pretraining objective consumes,
     # plus a corruption mask. The target shape is part of the contribution.
     def __call__(self, image):
         pass
 
 # --- TODO: the self-supervised encoder + prediction head ---
-class EncoderForPretraining(nn.Module):
-    def __init__(self, ...):
+class PatchSequencePretrainer(nn.Module):
+    def __init__(self, img_size=224, patch_size=16, in_chans=3,
+                 vocab_size=None, embed_dim=768, depth=12,
+                 num_heads=12, mlp_ratio=4., **kwargs):
         self.patch_embed = PatchEmbed(...)
         self.cls_token = nn.Parameter(...)
         self.pos_drop = nn.Dropout(...)
@@ -96,13 +111,22 @@ class EncoderForPretraining(nn.Module):
         self.blocks = nn.ModuleList([Block(...) for _ in range(12)])
         self.norm = nn.LayerNorm(768)
         # TODO: what replaces a corrupted patch in the input sequence?
-        # TODO: what head predicts the target, and over what output space?
+        # TODO: what prediction head is needed, and over what target space?
         pass
-    def forward_features(self, x, mask):
+    def fix_init_weight(self):
+        # TODO: define any depth-aware stabilization needed at initialization.
+        pass
+    def _init_weights(self, m):
+        # TODO: initialize linear, convolutional, and normalization layers.
+        pass
+    @torch.jit.ignore
+    def no_weight_decay(self):
+        pass
+    def forward_features(self, x, bool_masked_pos):
         # TODO: embed patches; substitute corrupted positions; run encoder;
         #       return contextual patch outputs.
         pass
-    def forward(self, x, mask, return_all_tokens=False):
+    def forward(self, x, bool_masked_pos, return_all_tokens=False):
         # TODO: emit predictions at the corrupted positions unless all are requested.
         pass
 
@@ -112,7 +136,7 @@ def train_one_step(model, tokenizer, batch, optimizer):
     #       view plus corruption mask; compute the loss at selected positions; step.
     pass
 
-# --- existing: optimizer / schedule ---
+# --- optimizer / schedule ---
 def build_optimizer(model):
     return torch.optim.AdamW(model.parameters(), lr=1.5e-3,
                              betas=(0.9, 0.999), weight_decay=0.05)

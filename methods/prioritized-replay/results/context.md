@@ -32,11 +32,56 @@ The natural yardstick is the Arcade Learning Environment (Bellemare et al., 2012
 
 ## Code framework
 
-The primitives below already exist: a sliding-window replay buffer with uniform sampling, a value network with a target copy, the Double-DQN target, and an SGD-style training loop. The contribution will occupy the sampling rule, an importance-weight return, and a priority-update hook — left as stubs.
+The existing pieces are a sliding-window replay buffer with uniform sampling, a value network with a target copy, the Double-DQN target, and an SGD-style training loop. The skeleton keeps those interfaces and leaves fast score-based sampling, per-sample correction weights, and a score-update hook empty.
 
 ```python
+import operator
 import numpy as np
 import random
+
+class SegmentTree:
+    def __init__(self, capacity, operation, neutral_element):
+        # TODO: allocate an array-backed tree for an associative operation.
+        pass
+
+    def _reduce_helper(self, start, end, node, node_start, node_end):
+        # TODO: recursive helper for a range reduction.
+        pass
+
+    def reduce(self, start=0, end=None):
+        # TODO: reduce values over the half-open interval [start, end).
+        pass
+
+    def __setitem__(self, idx, val):
+        # TODO: point-update one leaf and repair its ancestors.
+        pass
+
+    def __getitem__(self, idx):
+        # TODO: return the value stored at one leaf.
+        pass
+
+
+class SumSegmentTree(SegmentTree):
+    def __init__(self, capacity):
+        super().__init__(capacity, operator.add, 0.0)
+
+    def sum(self, start=0, end=None):
+        # TODO: return the sum over [start, end).
+        pass
+
+    def find_prefixsum_idx(self, prefixsum):
+        # TODO: turn a sampled cumulative mass into a leaf index.
+        pass
+
+
+class MinSegmentTree(SegmentTree):
+    def __init__(self, capacity):
+        super().__init__(capacity, min, float("inf"))
+
+    def min(self, start=0, end=None):
+        # TODO: return the minimum over [start, end).
+        pass
+
 
 class ReplayBuffer:
     """Sliding-window memory, uniform sampling. (Lin 1992 / DQN.)"""
@@ -58,7 +103,7 @@ class ReplayBuffer:
 
     def _encode_sample(self, idxes):
         # gather (obs, act, rew, next_obs, done) batches by index
-        ...
+        pass
 
     def sample(self, batch_size):
         idxes = [random.randint(0, len(self._storage) - 1)
@@ -66,9 +111,8 @@ class ReplayBuffer:
         return self._encode_sample(idxes)
 
 
-# --- the slot the method will fill: a non-uniform sampler over the buffer ---
 class WeightedReplayBuffer(ReplayBuffer):
-    def __init__(self, size, *params):
+    def __init__(self, size, score_exponent):
         super().__init__(size)
         # TODO: data structure(s) that store a per-transition scalar score and
         #       allow O(log N) sampling proportional to it and O(log N) update
@@ -78,7 +122,11 @@ class WeightedReplayBuffer(ReplayBuffer):
         # TODO: insert new transition with a default (maximal) score
         pass
 
-    def sample(self, batch_size, *params):
+    def _sample_weighted(self, batch_size):
+        # TODO: draw indices non-uniformly from the stored scores
+        pass
+
+    def sample(self, batch_size, correction_exponent):
         # TODO: draw indices non-uniformly from the stored scores;
         #       also return a per-sample correction weight + the indices
         pass
@@ -96,7 +144,8 @@ def td_error(batch, online_net, target_net, gamma):
     return y - online_net(s)[range(len(s)), a]
 
 
-def train_step(buffer, online_net, target_net, opt, batch_size, gamma):
+def train_step(buffer, online_net, target_net, opt, batch_size,
+               correction_exponent, gamma, score_floor=1e-6):
     # TODO: sample (possibly non-uniformly) -> compute td_error
     #       -> apply per-sample correction weight to the update
     #       -> step optimizer -> write updated scores back to the buffer

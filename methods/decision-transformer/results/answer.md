@@ -28,7 +28,7 @@ $$p_\theta(a_t\mid \widehat{R}_1,s_1,a_1,\ldots,\widehat{R}_t,s_t).$$
 
 **Training.** Sample length-$K$ sub-trajectories. Compute undiscounted returns-to-go with $\gamma=1$, keep one extra return label in the batch, and feed the first $K$ return tokens alongside the $K$ states and actions. Predict actions from state-token hidden states and minimize MSE for continuous actions or cross-entropy for discrete actions, masked over non-padding positions.
 
-**Generation.** Start from a target return-to-go and the initial state. Repeatedly append an action placeholder, query the model for the last action, execute it, append the reward and next state, and update the target return-to-go by subtracting the observed reward. Crop or left-pad to the context length $K$.
+**Generation.** Start from a target return-to-go and the initial state. Repeatedly append an action placeholder, query the model for the last action, execute it, append the reward and next state, and update the target return-to-go by subtracting the observed reward. Crop or left-pad to the context length $K$. In the delayed-reward evaluation variant, keep the target unchanged until the delayed reward is observed.
 
 ## Code
 
@@ -248,7 +248,7 @@ def evaluate_episode_rtg(
 
 The data loader computes returns-to-go as `discount_cumsum(rewards, gamma=1.0)` and divides them by a fixed `scale` before embedding. The calling evaluation code passes `target_return / scale`, so the online update subtracts `reward / scale`.
 
-For discrete actions and image states, replace the state linear layer with a convolutional encoder, replace the action linear embedding with an action lookup table, and train logits with cross-entropy. The token order, timestep embeddings, state-token action head, and return-to-go recursion stay the same.
+For discrete actions and image states, replace the state linear layer with a convolutional encoder, replace the action linear embedding with an action lookup table, and train logits with cross-entropy. The minGPT-style image model uses a global timestep embedding plus a local token-position embedding; the return/state/action order, state-token action head, and return-to-go recursion stay the same.
 
 ## Why It Works
 

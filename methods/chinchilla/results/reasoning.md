@@ -26,7 +26,7 @@ There's a numerical wrinkle: $\log\hat L = \log\big(E + A N^{-\alpha} + B D^{-\b
 $$\log\hat L = \operatorname{LSE}\big(a-\alpha\log N,\ b-\beta\log D,\ e\big),$$
 the log-sum-exp of three terms — numerically stable, smooth, and easy to autodiff. So I optimize over $(a,b,e,\alpha,\beta)$, then recover $A,B,E=\exp(a),\exp(b),\exp(e)$. The objective is non-convex, so I run L-BFGS from a grid of initializations and keep the best, checking the winner isn't on the grid boundary. Fitting this out gives
 $$L(N,D) = 1.69 + \frac{406.4}{N^{0.34}} + \frac{410.7}{D^{0.28}},$$
-so $E=1.69$, $A=406.4$, $B=410.7$, $\alpha=0.34$, $\beta=0.28$ — both exponents below $1/2$, as expected.
+so $E=1.69$, $A=406.4$, $B=410.7$, $\alpha=0.34$, $\beta=0.28$ — both exponents below $1/2$, as expected. For any large extrapolated point I should keep the unrounded optimizer output, roughly $E=e^{0.5267228}$, $A=e^{6.0073404}$, $B=e^{6.0179186}$, $\alpha=0.33917084$, $\beta=0.2849083$, because rounding the exponents moves the frontier noticeably.
 
 Now the payoff of having a closed form: I can solve the allocation analytically instead of reading it off a grid. Minimize $\hat L = E + A N^{-\alpha} + B D^{-\beta}$ subject to $6ND=C$. Substitute $D=C/(6N)$ so it's one variable:
 $$g(N) = E + A N^{-\alpha} + B\Big(\frac{6N}{C}\Big)^{\beta}.$$
@@ -38,13 +38,13 @@ Divide both sides by $N^{\beta-1}$ and by $\beta B (6/C)^\beta$:
 $$N^{-\alpha-1-(\beta-1)} = N^{-(\alpha+\beta)} = \frac{\beta B}{\alpha A}\Big(\frac{6}{C}\Big)^{\beta} \quad\Longrightarrow\quad N^{\alpha+\beta} = \frac{\alpha A}{\beta B}\Big(\frac{C}{6}\Big)^{\beta}.$$
 Take the $(\alpha+\beta)$-th root:
 $$\boxed{\,N_{\text{opt}}(C) = \Big(\frac{\alpha A}{\beta B}\Big)^{\frac{1}{\alpha+\beta}} \Big(\frac{C}{6}\Big)^{\frac{\beta}{\alpha+\beta}} = G\,\Big(\frac{C}{6}\Big)^{a},\quad G=\Big(\frac{\alpha A}{\beta B}\Big)^{\frac{1}{\alpha+\beta}},\quad a=\frac{\beta}{\alpha+\beta}.}$$
-And then $D$ falls straight out of the constraint, $D_{\text{opt}}=\dfrac{C/6}{N_{\text{opt}}} = G^{-1}\big(C/6\big)^{1-a}=G^{-1}\big(C/6\big)^{b}$ with $b=\dfrac{\alpha}{\alpha+\beta}$. Notice $a+b = \dfrac{\beta+\alpha}{\alpha+\beta}=1$ identically — whatever the exponents, the optimal $N$ and $D$ split the compute so their log-exponents sum to one. The structure forces near-balanced scaling; the only question is the exact split, set by the ratio of $\alpha$ to $\beta$.
+And then $D$ falls straight out of the constraint, $D_{\text{opt}}=\dfrac{C/6}{N_{\text{opt}}} = G^{-1}\big(C/6\big)^{1-a}=G^{-1}\big(C/6\big)^{b}$ with $b=\dfrac{\alpha}{\alpha+\beta}$. Notice $a+b = \dfrac{\beta+\alpha}{\alpha+\beta}=1$ identically — whatever the exponents, the optimal $N$ and $D$ split the compute so their log-exponents sum to one. The near-balance is not automatic; it appears because the fitted $\alpha$ and $\beta$ are close.
 
 Plug in the fit: $\alpha+\beta = 0.34+0.28 = 0.62$, so $a = \beta/(\alpha+\beta) = 0.28/0.62 = 0.46$ and $b = \alpha/(\alpha+\beta) = 0.34/0.62 = 0.54$. So this third, completely different method — a parametric surface fit and an analytic minimization — says $N_{\text{opt}}\propto C^{0.46}$, $D_{\text{opt}}\propto C^{0.54}$. (It tilts very slightly toward more tokens than the first two, because the Huber loss downweights the low-compute runs and the frontier has a touch of negative curvature, pulling $N_{\text{opt}}$ down a bit at large $C$.)
 
 Line them up. Method one (training-curve envelope): $a=0.50,\ b=0.50$. Method two (iso-FLOP valleys): $a=0.49,\ b=0.51$. Method three (parametric fit, solved in closed form): $a=0.46,\ b=0.54$. Three independent methodologies, three different sets of runs and fits, and they all land on the same place: $N$ and $D$ should grow in *equal* proportion with compute, exponents clustered around one-half — flatly contradicting the prevailing $0.73/0.27$ that grows the model nearly three times as fast as the data. The agreement across methods is what makes me believe it; no single one is self-certifying, but their consensus is.
 
-What does this say concretely? It says current large models are badly mis-allocated — far too big for the number of tokens they saw. Take a model trained at a large budget, on the order of $5.76\times10^{23}$ FLOPs, sitting at 280B parameters on ~300B tokens. Run it through $N_{\text{opt}}$: equal scaling says the optimal model at that budget is roughly $4\times$ smaller — about 70B parameters — and correspondingly trained on roughly $4\times$ more tokens, on the order of 1.4 trillion. The same compute, re-allocated, predicts a much smaller model trained much longer. And a smaller model is not just predicted to be better at that budget — it's cheaper to *serve* afterward, since inference cost scales with $N$. So the allocation error has been costing on both ends.
+What does this say concretely? It says current large models are badly mis-allocated — far too big for the number of tokens they saw. Take a model trained at a large budget, on the order of $5.76\times10^{23}$ FLOPs, sitting at 280B parameters on ~300B tokens. The envelope estimate puts that budget near 67B parameters and about 1.5T tokens; the iso-FLOP estimate is in the same broad region; the parametric fit is more aggressive, around 40B parameters with substantially more tokens when I use the unrounded coefficients. The exact large-scale point differs, but the direction does not: the same compute should move from hundreds of billions of parameters toward tens of billions, with far more data. If I need one full-scale allocation under extrapolation uncertainty, I choose the larger end of that predicted range, around 70B parameters and roughly 1.4T tokens. A smaller model is not just predicted to be better at that budget — it's cheaper to *serve* afterward, since inference cost scales with $N$. So the allocation error has been costing on both ends.
 
 Let me write the method as code, grounded in how the parametric fit and the closed-form solve are actually done. The loss model first — three terms, evaluated stably via log-sum-exp so it can be fit in log space:
 
@@ -56,7 +56,7 @@ from scipy.special import logsumexp, huber
 
 def log_loss_pred(theta, logN, logD):
     # theta = (a, b, e, alpha, beta) with A,B,E = exp(a),exp(b),exp(e).
-    # log L_hat = LSE(a - alpha*logN, b - beta*logD, e)  ==  log(E + A/N^a + B/D^b)
+    # log L_hat = LSE(a - alpha*logN, b - beta*logD, e)  ==  log(E + A/N^alpha + B/D^beta)
     a, b, e, alpha, beta = theta
     terms = np.stack([a - alpha * logN, b - beta * logD, np.full_like(logN, e)], axis=0)
     return logsumexp(terms, axis=0)
@@ -72,6 +72,7 @@ The fit: minimize the Huber penalty between predicted and observed *log* loss, o
 ```python
 def fit_parametric(runs, delta=1e-3):
     # runs: array of (N_i, D_i, L_i)
+    runs = np.asarray(runs, dtype=float)
     N, D, L = runs[:, 0], runs[:, 1], runs[:, 2]
     logN, logD, logL = np.log(N), np.log(D), np.log(L)
 
@@ -82,7 +83,7 @@ def fit_parametric(runs, delta=1e-3):
     best = None
     for alpha0 in [0., 0.5, 1.0, 1.5, 2.0]:              # grid of inits
         for beta0 in [0., 0.5, 1.0, 1.5, 2.0]:
-            for e0 in [-1., 0., 1.]:
+            for e0 in [-1., -0.5, 0., 0.5, 1.]:
                 for a0 in [0., 5., 10., 15., 20., 25.]:
                     for b0 in [0., 5., 10., 15., 20., 25.]:
                         res = minimize(objective, [a0, b0, e0, alpha0, beta0],
@@ -106,11 +107,30 @@ def optimal_allocation(C, params):
     return N_opt, D_opt
 ```
 
-And the two empirical estimators, which read the optimum straight off runs and corroborate the parametric one — the iso-FLOP valley (fit a parabola in log-space, take the vertex) and a power-law fit of the optima against compute:
+And the empirical estimators read the optimum straight off runs and corroborate the parametric one. The training-curve envelope interpolates each already-smoothed curve at the same compute budget and keeps the lowest loss; the iso-FLOP valley fits a parabola in log-space and takes the vertex; the power-law fit turns the resulting optima into scaling exponents:
 
 ```python
+def envelope_optimum(C, run_curves):
+    # run_curves: iterable of {"N": scalar, "flops": array, "loss": smoothed array}
+    best = None
+    logC = np.log(C)
+    for curve in run_curves:
+        flops = np.asarray(curve["flops"], dtype=float)
+        if C < flops[0] or C > flops[-1]:
+            continue
+        N = float(curve["N"])
+        loss = float(np.interp(logC, np.log(flops), curve["loss"]))
+        D = C / (6.0 * N)
+        if best is None or loss < best[2]:
+            best = (N, D, loss)
+    if best is None:
+        raise ValueError("no curve covers the requested compute budget")
+    return best
+
+
 def isoflop_optimum(runs_at_fixed_C):
     # at one compute budget: loss is a valley in log-N; vertex of the parabola is N_opt.
+    runs_at_fixed_C = np.asarray(runs_at_fixed_C, dtype=float)
     logN = np.log(runs_at_fixed_C[:, 0])
     loss = runs_at_fixed_C[:, 2]
     c2, c1, c0 = np.polyfit(logN, loss, 2)               # loss ~ parabola in log N
@@ -124,4 +144,4 @@ def fit_power_law(Cs, values):
     return np.exp(intercept), slope                      # (coeff, exponent a or b)
 ```
 
-The causal chain, start to end: a single fixed compute budget couples model size and data through $C\approx 6ND$, so the real decision is where on the hyperbola $ND=C/6$ to sit — and the prevailing answer (grow $N$ as $C^{0.73}$, data only $C^{0.27}$) rests on intermediate-horizon losses measured without matching the cosine schedule to the token count, which biases the frontier toward big-$N$/small-$D$. Matching the schedule to each run's horizon and then estimating the frontier three independent ways — the lower envelope of training curves ($a,b\approx 0.50,0.50$), iso-FLOP valleys ($0.49,0.51$), and a parametric surface $\hat L = E + A/N^\alpha + B/D^\beta$ minimized in closed form under $6ND=C$ to give $N_{\text{opt}}=G(C/6)^{\beta/(\alpha+\beta)}$, $D_{\text{opt}}=G^{-1}(C/6)^{\alpha/(\alpha+\beta)}$ with $\alpha=0.34,\beta=0.28$ yielding $(0.46,0.54)$ — all agree that $N$ and $D$ should scale in equal proportion. The consequence is that the era's large models are several times too big for their token counts; re-allocating a large budget predicts a model about $4\times$ smaller trained on about $4\times$ more tokens, which is both better at that compute and cheaper to serve.
+The causal chain, start to end: a single fixed compute budget couples model size and data through $C\approx 6ND$, so the real decision is where on the hyperbola $ND=C/6$ to sit — and the prevailing answer (grow $N$ as $C^{0.73}$, data only $C^{0.27}$) rests on intermediate-horizon losses measured without matching the cosine schedule to the token count, which biases the frontier toward big-$N$/small-$D$. Matching the schedule to each run's horizon and then estimating the frontier three independent ways — the lower envelope of training curves ($a,b\approx 0.50,0.50$), iso-FLOP valleys ($0.49,0.51$), and a parametric surface $\hat L = E + A/N^\alpha + B/D^\beta$ minimized in closed form under $6ND=C$ to give $N_{\text{opt}}=G(C/6)^{\beta/(\alpha+\beta)}$, $D_{\text{opt}}=G^{-1}(C/6)^{\alpha/(\alpha+\beta)}$ with $\alpha=0.34,\beta=0.28$ yielding $(0.46,0.54)$ — all agree that $N$ and $D$ should scale in nearly equal proportion. The consequence is that the era's large models are several times too big for their token counts; re-allocating a large budget points to tens of billions of parameters and trillion-token training rather than hundreds of billions of parameters on about 300B tokens, which is both better at that compute and cheaper to serve.

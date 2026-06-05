@@ -30,12 +30,14 @@ $$\min_\theta \sum_{\mathcal{T}_i \sim p(\mathcal{T})} \mathcal{L}_{\mathcal{T}_
 
 Meta-gradient (chain rule through the inner step), per task:
 $$\nabla_\theta\, \mathcal{L}_{\mathcal{T}_i}^{\text{qry}}(f_{\theta_i'})
-= \left(I - \alpha\, \nabla_\theta^2\, \mathcal{L}_{\mathcal{T}_i}^{\text{sup}}(f_\theta)\right)
+= \left(I - \alpha\, \nabla_\theta^2\, \mathcal{L}_{\mathcal{T}_i}^{\text{sup}}(f_\theta)\right)^{\!\top}
 \nabla_{\theta'}\mathcal{L}_{\mathcal{T}_i}^{\text{qry}}(f_{\theta_i'}).$$
 The Hessian is of the **support** loss at $\theta$; the gradient is of the
-**query** loss at the adapted point $\theta_i'$. It is a Hessian-vector product —
-one extra backward pass, no Hessian materialized — and is produced automatically
-by differentiating through an inner step that is kept in the autodiff graph.
+**query** loss at the adapted point $\theta_i'$. The transpose is the chain-rule
+Jacobian transpose; for smooth scalar losses the Hessian factor is symmetric.
+The product is computed as a Hessian-vector product, so no Hessian is
+materialized, and autodiff produces it by differentiating through an inner step
+kept in the graph.
 
 **Pseudocode.** Random init $\theta$; while not done: sample tasks
 $\mathcal{T}_i\sim p(\mathcal{T})$; for each, compute $\theta_i'$ from a $K$-shot
@@ -46,25 +48,29 @@ $\theta \leftarrow \theta - \beta\nabla_\theta\sum_i \mathcal{L}^{\text{qry}}_{\
 ($\partial\theta_i'/\partial\theta \approx I$):
 $$\nabla_\theta\, \mathcal{L}_{\mathcal{T}_i}^{\text{qry}}(f_{\theta_i'}) \approx \nabla_{\theta'}\mathcal{L}_{\mathcal{T}_i}^{\text{qry}}(f_{\theta_i'}).$$
 Still evaluate the query gradient at the **post-update** $\theta_i'$ (evaluating
-at $\theta$ would reduce to ordinary joint pretraining). Because ReLU networks
-are locally near-linear, the support-loss Hessian is small, so $(I-\alpha H)\approx I$
-and accuracy is nearly unchanged while one backward pass is saved.
+at $\theta$ would reduce to ordinary joint pretraining). The approximation is
+reasonable when $\alpha H^\top v$ is small for
+$v=\nabla_{\theta'}\mathcal{L}^{\text{qry}}$, a condition often plausible for
+locally near-linear ReLU networks but not guaranteed by ReLUs alone. It saves the
+extra backward pass while keeping the post-adaptation query signal.
 
 **Domains.** Supervised: $\mathcal{L}$ is MSE (regression) or cross-entropy
-(classification), $H=1$. Reinforcement learning: $\mathcal{L}$ is negative
-expected return; both the inner and meta gradients use the policy-gradient
-(REINFORCE) estimator, the outer step uses a trust region (TRPO), and
-Hessian-vector products use finite differences to avoid third derivatives.
+(classification), $H=1$. Reinforcement learning: if
+$J_i(\phi)=\mathbb{E}_{\tau\sim\pi_\phi,q_i}[\sum_t r_i(x_t,a_t)]$, then
+$\mathcal{L}_i(\phi)=-J_i(\phi)$ and the inner loss step is reward ascent,
+$\theta_i'=\theta+\alpha\nabla_\theta J_i(\theta)$. Both inner and outer
+gradients use the policy-gradient estimator, query trajectories are sampled
+on-policy from the adapted policy, the outer step uses a trust region (TRPO),
+and Hessian-vector products use finite differences to avoid third derivatives.
 
 ## Code
 
 The one model requirement is a *functional forward* that runs on an explicitly
 supplied weight dict, so adaptation can produce a fresh $\theta_i'$ without
-mutating $\theta$. Faithful to the canonical implementation (`cbfinn/maml`): a
-manual weight dict, an inner step `fast_weights = weights - alpha * grad`, the
-meta-loss evaluated through `forward(query, fast_weights)`, and a
-`first_order` flag that detaches the inner gradient (the `stop_gradient` path in
-the original).
+mutating $\theta$. The code keeps the operational structure: a manual weight
+dict, an inner step `fast_weights = weights - alpha * grad`, the meta-loss
+evaluated through `functional_forward(query, fast_weights)`, and a
+`first_order` flag that detaches the inner gradient.
 
 ```python
 import torch
@@ -73,7 +79,6 @@ import torch.nn.functional as F
 
 
 class Learner(nn.Module):
-    """A plain GD-trainable model with a functional forward over a weight dict."""
     def __init__(self, dim_in, hidden, dim_out):
         super().__init__()
         sizes = [dim_in] + hidden + [dim_out]
@@ -96,19 +101,19 @@ class Learner(nn.Module):
         return {k: v for k, v in self.params.items()}
 
 
-def mse(pred, y):
+def mse_loss(pred, y):
     return ((pred - y) ** 2).mean()
 
 
-def inner_adapt(model, loss_fn, x_s, y_s, alpha, n_steps, first_order=False):
-    """theta'_i via n_steps of gradient descent on the support set."""
+def adapt_parameters(model, loss_fn, x_s, y_s, alpha, n_steps, first_order=False):
     fast_weights = model.init_weights()
     for _ in range(n_steps):
-        loss_sup = loss_fn(model.functional_forward(x_s, fast_weights), y_s)
+        support_pred = model.functional_forward(x_s, fast_weights)
+        support_loss = loss_fn(support_pred, y_s)
         # create_graph=True keeps the inner step in the graph so the meta-grad
-        # picks up (I - alpha * H); first_order detaches to drop the Hessian.
+        # includes the Hessian-vector term; first_order drops that path.
         grads = torch.autograd.grad(
-            loss_sup, fast_weights.values(), create_graph=not first_order)
+            support_loss, fast_weights.values(), create_graph=not first_order)
         fast_weights = {
             name: w - alpha * (g.detach() if first_order else g)
             for (name, w), g in zip(fast_weights.items(), grads)
@@ -116,43 +121,38 @@ def inner_adapt(model, loss_fn, x_s, y_s, alpha, n_steps, first_order=False):
     return fast_weights
 
 
-def maml_step(model, loss_fn, meta_opt, tasks, alpha,
-              n_steps=1, first_order=False, grad_clip=None):
-    """One outer meta-update over a batch of tasks.
-       tasks: list of (x_s, y_s, x_q, y_q)."""
+def meta_update_step(model, loss_fn, meta_opt, tasks, alpha,
+                     n_steps=1, first_order=False, grad_clip=None):
     meta_opt.zero_grad()
     meta_loss = 0.0
     for x_s, y_s, x_q, y_q in tasks:
-        fast_weights = inner_adapt(model, loss_fn, x_s, y_s,
-                                   alpha, n_steps, first_order)
-        q_pred = model.functional_forward(x_q, fast_weights)  # eval at theta'_i
-        meta_loss = meta_loss + loss_fn(q_pred, y_q)          # query = meta signal
+        fast_weights = adapt_parameters(model, loss_fn, x_s, y_s,
+                                        alpha, n_steps, first_order)
+        query_pred = model.functional_forward(x_q, fast_weights)
+        meta_loss = meta_loss + loss_fn(query_pred, y_q)
     meta_loss = meta_loss / len(tasks)
-    meta_loss.backward()  # yields (I - alpha*H) . grad_{theta'} L^qry, summed
-    if grad_clip is not None:                                  # used on MiniImagenet
+    meta_loss.backward()
+    if grad_clip is not None:
         torch.nn.utils.clip_grad_value_(model.parameters(), grad_clip)
-    meta_opt.step()       # theta <- theta - beta * meta-grad (Adam supplies beta)
-    return meta_loss.item()
+    meta_opt.step()
+    return meta_loss.detach().item()
 
 
-# --- meta-training loop (sinusoid regression instantiation) ---
 def meta_train(model, sample_tasks, steps=70000, alpha=0.01,
                meta_lr=1e-3, n_steps=1, first_order=False):
-    meta_opt = torch.optim.Adam(model.parameters(), lr=meta_lr)  # beta
+    meta_opt = torch.optim.Adam(model.parameters(), lr=meta_lr)
     for _ in range(steps):
-        tasks = sample_tasks()  # each: (x_support, y_support, x_query, y_query)
-        maml_step(model, mse, meta_opt, tasks, alpha,
-                  n_steps=n_steps, first_order=first_order)
+        tasks = sample_tasks()
+        meta_update_step(model, mse_loss, meta_opt, tasks, alpha,
+                         n_steps=n_steps, first_order=first_order)
     return model
 ```
 
-Notes on fidelity to the canonical implementation: weights are an explicit dict
-(not stored module state) so the inner step can produce $\theta_i'$ functionally;
-the inner update is `w - update_lr * grad`; the meta-loss is the query loss
-through the adapted weights; `first_order` mirrors the original `stop_grad` flag
-(detach the inner gradient → FOMAML); Adam is the supervised meta-optimizer; and
-gradient clipping is applied for the deeper MiniImagenet conv model. For
-classification, swap `mse` for cross-entropy and `Learner` for the four-block
-conv stack (conv → batch norm → ReLU → $2\times2$ pool); for RL, replace the
-supervised loss with the policy-gradient surrogate and the Adam outer step with
-a trust-region update.
+Weights are explicit dictionaries so the inner step can produce $\theta_i'$
+functionally; the inner update is `w - alpha * grad`; the meta-loss is the query
+loss through the adapted weights; `first_order` detaches the inner gradient; Adam
+drives the supervised outer loop; and optional gradient clipping is available for
+deeper convolutional models. For classification, swap `mse_loss` for cross-entropy
+and use the four-block conv stack (conv, batch norm, ReLU, pooling); for RL,
+replace the supervised loss with the policy-gradient surrogate and the Adam
+outer step with a trust-region update.

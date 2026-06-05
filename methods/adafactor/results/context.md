@@ -1,5 +1,3 @@
-# Context: low-memory adaptive optimization for large neural networks
-
 ## Research question
 
 Adaptive gradient methods divide each parameter's step by a running estimate of the magnitude of that parameter's recent gradients. This per-coordinate rescaling is what makes them robust on the badly-conditioned, heterogeneous objectives that arise when training deep networks — different parameters see gradients of wildly different scales, and dividing each by its own gradient history puts them all on a common footing. It is the reason these methods empirically outperform plain SGD on language and translation models.
@@ -65,9 +63,18 @@ class LowMemoryAdaptiveOptimizer(Optimizer):
     """
 
     def __init__(self, params, lr=None, eps=None,
-                 clip_threshold=None, decay_rate=None, beta1=None):
+                 clip_threshold=None, decay_rate=None, beta1=None,
+                 scale_parameter=None, relative_step=None,
+                 warmup_init=None):
+        if lr is not None and relative_step:
+            raise ValueError("manual lr cannot be combined with an internal step schedule")
+        if warmup_init and not relative_step:
+            raise ValueError("warmup initialization requires an internal step schedule")
         defaults = dict(lr=lr, eps=eps, clip_threshold=clip_threshold,
-                        decay_rate=decay_rate, beta1=beta1)
+                        decay_rate=decay_rate, beta1=beta1,
+                        scale_parameter=scale_parameter,
+                        relative_step=relative_step,
+                        warmup_init=warmup_init)
         super().__init__(params, defaults)
 
     @staticmethod
@@ -93,14 +100,22 @@ class LowMemoryAdaptiveOptimizer(Optimizer):
                 if p.grad is None:
                     continue
                 grad = p.grad
+                if grad.is_sparse:
+                    raise RuntimeError("This optimizer expects dense gradients")
+                if grad.dtype in {torch.float16, torch.bfloat16}:
+                    grad = grad.float()
                 state = self.state[p]
+                factored = grad.dim() >= 2
+                use_first_moment = group["beta1"] is not None
                 # TODO: initialize per-parameter state -- a representation of
                 #       the second-moment statistic whose size is sublinear in
-                #       the size of a matrix-shaped parameter
+                #       the size of a matrix-shaped parameter, plus optional
+                #       first-moment state if that configuration is enabled
                 # TODO: update that statistic from grad**2
                 # TODO: reconstruct the per-coordinate denominator and form the
                 #       rescaled update direction from grad
-                # TODO: turn the direction into the actual step and apply it
+                # TODO: turn the direction into the actual step, optionally clip
+                #       that direction, optionally smooth it, and apply it
                 pass
         return loss
 

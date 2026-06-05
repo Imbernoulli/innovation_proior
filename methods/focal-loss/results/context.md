@@ -10,7 +10,7 @@ The dense, single-stage family is appealing — simpler, faster, no separate pro
 
 **The two families and the accuracy gap.** Two-stage detection has been the dominant paradigm since R-CNN. The first stage (selective search, EdgeBoxes, or a learned Region Proposal Network) reduces the near-infinite space of possible boxes to one or two thousand candidates that are *likely* to be objects; the second stage runs a classifier on those. Single-stage detectors skip the proposal step and predict directly over a fixed, dense sampling of the image — typically on the order of 10^4–10^5 candidate locations per image once positions, scales, and aspect ratios are enumerated. They are faster but less accurate, and prior speed/accuracy studies found the gap persists even when the two-stage detector is handicapped (smaller input, fewer proposals) so that compute is comparable.
 
-**Foreground–background class imbalance (the diagnostic finding that sets up the problem).** A dense detector evaluates 10^4–10^5 candidate locations per image, but only a few of them contain an object. The overwhelming majority are background. This extreme foreground-to-background imbalance — on the order of 1:1000 — is present in classic dense detectors (boosted cascades, deformable part models) and in modern single-stage networks alike. It causes two concrete failures during training. First, training is *inefficient*: most locations are easy negatives — clearly-not-an-object patches that the model already classifies correctly — and they contribute essentially no learning signal. Second, and more damaging, *en masse* these easy negatives can overwhelm the loss and the gradient: even though each easy negative carries a tiny per-example loss, there are so many of them that their sum dwarfs the contribution of the rare informative examples, and the model drifts toward a degenerate solution. This imbalance is the property of the dense-detection setting that any successful method must confront.
+**Foreground–background class imbalance.** A dense detector evaluates 10^4–10^5 candidate locations per image, but only a few of them contain an object. The overwhelming majority are background. This extreme foreground-to-background imbalance — on the order of 1:1000 — is present in classic dense detectors (boosted cascades, deformable part models) and in modern single-stage networks alike. It causes two concrete failures during training. First, training is *inefficient*: most locations are easy negatives — clearly-not-an-object patches that the model already classifies correctly — and they contribute essentially no learning signal. Second, and more damaging, *en masse* these easy negatives can overwhelm the loss and the gradient: even though each easy negative carries a tiny per-example loss, there are so many of them that their sum dwarfs the contribution of the rare informative examples, and the model drifts toward a degenerate solution. This imbalance is the property of the dense-detection setting that any successful method must confront.
 
 **Why two-stage detectors do not feel this pain.** The proposal stage is itself a near-perfect imbalance filter: it throws away the vast majority of easy background before the classifier ever sees it, leaving ~1–2k candidates that are disproportionately real objects. The second stage then trains on minibatches built with biased sampling — e.g. a fixed 1:3 positive-to-negative ratio — which acts as an implicit class-balancing factor. So the two-stage cascade addresses imbalance *architecturally and by sampling*, before the loss is ever computed.
 
@@ -37,43 +37,68 @@ The natural yardstick is the COCO detection benchmark (Lin et al. 2014). Trainin
 The available primitives are a convolutional backbone with a multi-scale feature pyramid (a top-down/lateral construction over ResNet stages), an anchor generator, a smooth-L1 box-regression loss, and an SGD training loop. What remains open is the dense head attached to each pyramid level, the classification loss applied to its outputs, the classification-output bias initialization, and the classification-loss normalizer.
 
 ```python
+import math
 import torch
 from torch import nn
 from torch.nn import functional as F
 
-# --- available primitives ---
 # backbone_fpn(image) -> list of feature maps, one per pyramid level (C channels each)
 # anchor_generator(features) -> reference boxes per level
-# smooth_l1_loss(pred_deltas, gt_deltas) -> box regression loss
+# smooth_l1_loss(pred_deltas, gt_deltas, reduction="sum") -> box regression loss
 # match_anchors_to_gt(anchors, gt) -> per-anchor label in {bg, ignore, class_k} + matched box
+# encode_boxes(anchors, gt_boxes) -> box-regression targets
 
 
 class DenseHead(nn.Module):
     """Shared per-level dense head for class scores and box offsets."""
-    def __init__(self, in_channels, num_anchors, num_classes, conv_dims, initial_cls_bias):
+    def __init__(self, in_channels, num_anchors, num_classes, conv_dims=None, initial_prob=None):
         super().__init__()
         # TODO: build the class-score subnet from small convolutional blocks
         # TODO: build the box-offset subnet from small convolutional blocks
         # TODO: build the final class-score and box-offset convolutions
-        # TODO: choose the class-score output-bias initialization
+        # TODO: choose and apply the class-score output-bias initialization
         pass
 
     def forward(self, features):
         raise NotImplementedError
 
 
-def classification_loss(pred_logits, gt_labels, num_classes, loss_normalizer):
-    """Loss on the dense per-anchor class predictions, summed over ALL anchors in
-    the image and normalized."""
-    # TODO: turn gt_labels into per-class binary targets (drop the background column)
-    # TODO: choose the per-anchor classification loss under dense imbalance
-    # TODO: choose the normalization factor
+def dense_binary_loss(inputs, targets, loss_params, reduction="sum"):
+    """Per-entry binary classification loss before dense-anchor normalization."""
+    # TODO: choose the loss shape for dense class imbalance
     raise NotImplementedError
 
 
-def detector_losses(anchors, pred_logits, pred_deltas, gt, num_classes, loss_normalizer):
-    gt_labels, gt_boxes = match_anchors_to_gt(anchors, gt)            # existing
-    loss_cls = classification_loss(pred_logits, gt_labels, num_classes, loss_normalizer)
-    loss_box = smooth_l1_loss(pred_deltas, encode_boxes(anchors, gt_boxes))  # existing
-    return {"loss_cls": loss_cls, "loss_box_reg": loss_box}
+class PositiveAnchorNormalizer:
+    def __init__(self, momentum=100):
+        self.momentum = momentum
+        self.value = None
+
+    def update(self, num_pos):
+        # TODO: choose how the positive-anchor count normalizes the losses
+        raise NotImplementedError
+
+
+def classification_loss(pred_logits, gt_labels, num_classes, loss_normalizer, loss_params):
+    """Loss on the dense per-anchor class predictions, summed over ALL anchors in
+    the image and normalized. Also returns the shared normalizer and positive mask."""
+    # TODO: turn gt_labels into per-class binary targets (drop the background column)
+    # TODO: choose the per-anchor classification loss under dense imbalance
+    # TODO: choose the normalization factor from the positive anchors
+    raise NotImplementedError
+
+
+def detector_losses(anchors, pred_logits, pred_deltas, gt_labels, gt_boxes,
+                    num_classes, loss_normalizer, loss_params):
+    loss_cls, normalizer_value, pos_mask = classification_loss(
+        pred_logits, gt_labels, num_classes, loss_normalizer, loss_params
+    )
+    deltas = torch.cat(pred_deltas, dim=1) if isinstance(pred_deltas, (list, tuple)) else pred_deltas
+    target_deltas = encode_boxes(anchors, gt_boxes)
+    # TODO: apply the box regression loss only on foreground anchors
+    if pos_mask.any():
+        loss_box = smooth_l1_loss(deltas[pos_mask], target_deltas[pos_mask], reduction="sum")
+    else:
+        loss_box = deltas.sum() * 0
+    return {"loss_cls": loss_cls, "loss_box_reg": loss_box / normalizer_value}
 ```

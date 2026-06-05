@@ -45,45 +45,65 @@ i.e. every such process has a deterministic ODE ("probability-flow") counterpart
 
 # Code framework
 
-The pieces that already exist: a data pipeline yielding batches `x1`, a standard Gaussian prior to draw `x0`, a time-conditioned network `v_θ(x, t)` (e.g. a U-Net), the Adam optimizer, an MSE primitive, and off-the-shelf ODE integrators. The open component is a sampler that turns a clean data sample, prior-shaped noise, and a time into an intermediate point and the velocity target for that point.
+The pieces that already exist: a data pipeline yielding batches `x1`, a standard Gaussian prior to draw `x0`, a time-conditioned network `v_θ(x, t)` (e.g. a U-Net), the Adam optimizer, an MSE primitive, and off-the-shelf ODE integrators. The open component is a path builder that turns a clean data sample, prior-shaped noise, and a time into an intermediate point and the velocity target for that point.
 
 ```python
 import torch
 
+
+def pad_t_like_x(t, x):
+    """Reshape a batch of scalar times so it broadcasts over x."""
+    if isinstance(t, (float, int)):
+        return t
+    return t.reshape(-1, *([1] * (x.dim() - 1)))
+
+
 def sample_prior_like(x):
-    return torch.randn_like(x)                # x0 ~ N(0, I), same shape/device as data
+    return torch.randn_like(x)
 
-velocity_net = VelocityNet()                  # v_theta(x, t), e.g. a time-conditioned U-Net
-opt = torch.optim.Adam(velocity_net.parameters(), lr=1e-4)
 
-def odeint(field, x0, t0, t1):
+def odeint(field, x0, t0, t1, steps=100):
     """Off-the-shelf adaptive ODE integrator (the sampling/likelihood tool)."""
     ...
+
 
 class TrainingPairBuilder:
     """Given a data sample x1 (and prior noise x0, time t), produce the point
     x_t to feed the network and the regression target the network should output."""
 
+    def __init__(self, sigma_min: float = 1e-4):
+        self.sigma_min = sigma_min
+
+    def compute_mu_t(self, x0, x1, t):
+        pass  # TODO: mean of the intermediate conditional distribution
+
+    def compute_sigma_t(self, t):
+        pass  # TODO: standard deviation of the intermediate conditional distribution
+
     def sample_xt(self, x0, x1, t):
-        pass  # TODO: intermediate point on the path
+        pass  # TODO: sample the intermediate point
 
     def compute_conditional_flow(self, x0, x1, t, xt):
-        pass  # TODO: what v_theta(xt, t) should match
+        pass  # TODO: conditional velocity target
 
-    def sample_location_and_conditional_flow(self, x0, x1, t):
+    def sample_location_and_conditional_flow(self, x0, x1, t=None):
+        if t is None:
+            t = torch.rand(x1.shape[0], device=x1.device, dtype=x1.dtype)
         xt = self.sample_xt(x0, x1, t)
         ut = self.compute_conditional_flow(x0, x1, t, xt)
         return t, xt, ut
 
-def train_step(pair_builder: TrainingPairBuilder, x1):
+
+def train_step(pair_builder: TrainingPairBuilder, v_theta, opt, x1):
     x0 = sample_prior_like(x1)
-    t  = torch.rand(x1.shape[0], device=x1.device, dtype=x1.dtype)
+    t = torch.rand(x1.shape[0], device=x1.device, dtype=x1.dtype)
     t, xt, ut = pair_builder.sample_location_and_conditional_flow(x0, x1, t)
-    loss = ((velocity_net(xt, t) - ut) ** 2).mean()
+    loss = ((v_theta(xt, t) - ut) ** 2).mean()
     opt.zero_grad(); loss.backward(); opt.step()
     return loss
 
-def sample(n, shape):
-    x0 = torch.randn(n, *shape)
-    return odeint(lambda x, t: velocity_net(x, t), x0, 0.0, 1.0)
+
+def sample(v_theta, n, shape, steps=100, device="cpu"):
+    x0 = torch.randn(n, *shape, device=device)
+    return odeint(lambda x, t: v_theta(x, t), x0, 0.0, 1.0, steps=steps)
 ```

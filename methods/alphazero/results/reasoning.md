@@ -2,7 +2,7 @@ OK, let me think this through from scratch. I want a program that plays a hard g
 
 Let me look at what the strong programs in these games actually do, because the answer to "what's better than the current policy" might be hiding in plain sight. In chess and shogi the recipe is a handcrafted linear evaluation `v(s,w) = φ(s)^T w` — features designed by grandmasters, weights tuned over decades — wrapped in a deep alpha-beta search with a quiescence search, transposition tables, and a tower of pruning and move-ordering heuristics. The thing searches tens of millions of positions a second and plays beautifully. But it's a monument to human knowledge about *one game*; nothing in it transfers, and I've sworn off all of it — both the features and the heuristics are exactly what I'm refusing to write. In Go the recipe is different: train a policy network by imitating millions of human moves, train a value network, then run Monte-Carlo tree search whose leaf value mixes the value net with the result of a random rollout to the end of the game. Closer to what I want — there are networks doing the evaluating — but it's bootstrapped from human games, it uses two separate networks, and it leans on rollouts inside the search.
 
-The second recipe has one piece I need to stare at, because it is the only thing in either system that smells like the better-than-current signal I need: the *search* itself. Forget how the leaf is evaluated for a second. MCTS takes a position, simulates many trajectories, and the visit counts at the root concentrate on the strong moves. Empirically, the move the search recommends is much stronger than the move the raw network would pick on its own. So the search is doing *something* to the policy — taking a network's first guess and improving on it by looking ahead. If that's true, then I have my better-than-current signal: run the search, and its output is a stronger player than the network that drives it. Train the network toward the search. Then the search, now driven by a stronger network, is stronger still. That's the loop. The bootstrap problem dissolves if the search is genuinely a policy-improvement operator — let me hold that thought, because I'll have to actually believe it, not just hope it.
+The second recipe has one piece I need to stare at, because it is the only thing in either system that smells like the better-than-current signal I need: the *search* itself. Forget how the leaf is evaluated for a second. MCTS takes a position, simulates many trajectories, and the visit counts at the root are not just the network's first guess; they are that guess corrected by looking ahead. If the lookahead has any value, the search output can be a stronger policy than the raw network that drives it. Then I have my better-than-current signal: run the search, and train the network toward the search. Then the search, now driven by a stronger network, is stronger still. That's the loop. The bootstrap problem dissolves if the search is genuinely a policy-improvement operator — let me hold that thought, because I'll have to actually believe it, not just hope it.
 
 So the plan has the shape of policy iteration: improvement (the search produces a better policy than the network), then evaluation/projection (fit the network back onto what the search did), repeat. Now I have to design the three pieces concretely: what the network predicts, how the search uses it, and what exactly the network is trained toward.
 
@@ -12,19 +12,19 @@ Now the search. I want MCTS, but I have to settle the leaf evaluation, because t
 
 But wait — if my leaf evaluations are biased by an imperfect network, why is MCTS the right search to wrap around them, rather than the alpha-beta minimax the chess engines use? This is the thing that decides whether the whole approach can work, so let me reason about it carefully rather than assume. Alpha-beta computes an explicit minimax: at each node it takes the min or the max of its children. The trouble with min and max is that they *select* the extreme value. If my non-linear evaluator has a spurious large error anywhere in the searched subtree, a max will happily grab it, and that single bad estimate propagates straight to the root. That's exactly why people who tried to drop neural evaluations into alpha-beta engines couldn't beat the fast handcrafted ones — the search amplifies the approximation error. MCTS does the opposite: it *averages* the leaf evaluations over the subtree below an action. Average, not max. So the spurious errors, scattered in sign, tend to cancel as the subtree grows, instead of being latched onto. That's the property that makes a powerful-but-imperfect evaluator usable: pair the non-linear network with the averaging search, not the min/max search. Good — MCTS it is, and now I believe the pairing for a reason, not by fiat.
 
-Now run the search and define exactly what each node stores and how I descend. The tree has edges `(s, a)`, one per legal move from a position. At each edge I keep four numbers: a visit count `N(s,a)`, the total value accumulated through that edge `W(s,a)`, the mean value `Q(s,a) = W(s,a)/N(s,a)`, and the prior `P(s,a)` the network assigned to that move. A simulation starts at the root and descends, and at each node I have to pick which child to go to. This is the exploit-versus-explore choice, and I want to bias it by the network's prior — that's the whole point of having a policy head, to tell the search where to look first, replacing the move-ordering heuristics. So the selection rule needs an exploitation term that prefers high-value moves and an exploration term that prefers moves I haven't tried much *and* that the prior likes. Let me build the exploration bonus from those requirements. It should grow with the prior `P(s,a)` (look where the network points). It should shrink as I visit a move more — once I've explored a child a lot, the bonus for it should fade, so divide by something increasing in `N(s,a)`; `1/(1 + N(s,a))` does it and stays finite at `N=0`. And it should not vanish too fast relative to the parent — as the parent gets visited more, I should keep being willing to try its less-visited children, so scale by `√(Σ_b N(s,b))`, the square root of the parent's total visits, which is the usual UCB-style growth that keeps exploration alive. Put them together with a constant `c_puct` to set the overall exploration weight:
+Now run the search and define exactly what each node stores and how I descend. The tree has edges `(s, a)`, one per legal move from a position. At each edge I keep a visit count `N(s,a)`, a running mean value `Q(s,a)` of the values backed up through that edge, and the prior `P(s,a)` the network assigned to that move; if I wanted a separate total value `W`, this `Q` would just be `W/N`, but the running mean is enough. A simulation starts at the root and descends, and at each node I have to pick which child to go to. This is the exploit-versus-explore choice, and I want to bias it by the network's prior — that's the whole point of having a policy head, to tell the search where to look first, replacing the move-ordering heuristics. So the selection rule needs an exploitation term that prefers high-value moves and an exploration term that prefers moves I haven't tried much *and* that the prior likes. Let me build the exploration bonus from those requirements. It should grow with the prior `P(s,a)` (look where the network points). It should shrink as I visit a move more — once I've explored a child a lot, the bonus for it should fade, so divide by something increasing in `N(s,a)`; `1/(1 + N(s,a))` does it and stays finite at `N=0`. And it should not vanish too fast relative to the parent — as the parent gets visited more, I should keep being willing to try its less-visited children, so scale by `√(Σ_b N(s,b))`, the square root of the parent's total visits, which is the usual UCB-style growth that keeps exploration alive. Put them together with a constant `c_puct` to set the overall exploration weight:
 
 ```
 a* = argmax_a [ Q(s,a) + U(s,a) ],   U(s,a) = c_puct · P(s,a) · √(Σ_b N(s,b)) / (1 + N(s,a)).
 ```
 
-Early in the search `N` is small everywhere, so `U` dominates and the search fans out along the prior; as visits accumulate, `Q` takes over and the search exploits what it's learned. That's the predictor-UCB rule — the "predictor" being the network's prior `P`. It's the piece that lets the search be *selective* the way a strong human is selective, concentrating on a handful of promising moves rather than expanding everything uniformly, which is why it can be devastating at a thousand simulations where uniform search would need millions.
+Early in the search `N` is small everywhere, so `U` dominates and the search fans out along the prior; in code I only need a tiny epsilon to let the prior break the all-zero first tie. As visits accumulate, `Q` takes over and the search exploits what it's learned. That's the predictor-UCB rule — the "predictor" being the network's prior `P`. It's the piece that lets the search be *selective* the way a strong human is selective, concentrating on a handful of promising moves rather than expanding everything uniformly, which is why it can be devastating at a thousand simulations where uniform search would need millions.
 
-Descend by that rule until I hit a position not yet in the tree — a leaf. Expand it: call the network once, `(p, v) = f_θ(s_L)`, mask out illegal moves, renormalise the remaining prior, and let every legal action have an edge whose count starts at zero. The value `v` is the evaluation of this leaf. Now back it up. Walk back up the path I descended, and for every edge `(s, a)` on it: `N(s,a) += 1`, `W(s,a) += v`, `Q(s,a) = W(s,a)/N(s,a)`. One subtlety in a two-player game: value is from the perspective of the side to move, and the side to move alternates every ply, so the same leaf value `v` is good for one player and bad for the other — I flip the sign of `v` at each level as I propagate it up. (Concretely, the search evaluates everything in a canonical "side-to-move" frame, and the backed-up value negates each step.) After many simulations, the visit counts `N(s_root, a)` at the root encode how much the search favored each move.
+Descend by that rule until I hit a position not yet in the tree — a leaf. Expand it: call the network once, `(p, v) = f_θ(s_L)`, mask out illegal moves, renormalise the remaining prior, and let every legal action have an edge whose count starts at zero. The value `v` is the evaluation of this leaf. Now back it up. Walk back up the path I descended, and for every edge `(s, a)` on it, increment the visit count and fold the new value into the running mean, `Q ← (N_old Q + v)/(N_old + 1)`. One subtlety in a two-player game: value is from the perspective of the side to move, and the side to move alternates every ply, so the same leaf value `v` is good for one player and bad for the other — I flip the sign of `v` at each level as I propagate it up. (Concretely, the search evaluates everything in a canonical "side-to-move" frame, and the backed-up value negates each step.) After many simulations, the visit counts `N(s_root, a)` at the root encode how much the search favored each move.
 
 Now the claim I parked earlier: that the search output is a better policy than the network's prior `p`. Why should the visit counts be an improvement? Because the search *spends* its visits according to value. The selection rule keeps sending simulations down the high-`Q` actions and stops sending them down actions that the deeper evaluations reveal to be bad — even if the prior `p` initially liked them. So the visit distribution is the prior corrected by lookahead: moves the network overrated get their visits choked off once the search sees they lead nowhere, and moves the network underrated get more visits once the search confirms them. The lookahead is information the raw `p` didn't have. So the visit-count distribution is a policy-improvement step over `p` — it is `p` plus the correction that searching provides. That's precisely the better-than-current signal I needed for the bootstrap, and now I see *why* it's better, not just that it is.
 
-So turn the visit counts into a policy. The obvious thing is proportional to visits, but I also want the same readout to cover greedy play when I evaluate the player. A temperature does exactly that:
+So turn the visit counts into a policy. The obvious thing for self-play is proportional to visits, because I want the training games to keep sampling the moves that the search still considers plausible rather than collapse instantly to one line. I also want the same readout to cover greedy play when I evaluate the player. A temperature does exactly that:
 
 ```
 π(a | s_root) = N(s_root, a)^{1/τ} / Σ_b N(s_root, b)^{1/τ}.
@@ -50,11 +50,9 @@ l = (z − v)^2 − π^T log p + c‖θ‖^2.
 
 Gradient descent on this, mini-batched over positions sampled from recent self-play. Step back and look at what this loss *is*, because the unification is the satisfying part. The cross-entropy term pulls the network's prior toward the search's improved policy — that's the policy-improvement step being baked into the network. The squared-error term pulls the network's value toward the outcomes that this very policy produced — that's the policy-evaluation step. So one gradient step on this loss is simultaneously the improvement and the evaluation half of policy iteration, and the only "teacher" anywhere is the network's own search. There is no human data, no handcrafted evaluation, no rollout — the network is trained to imitate the lookahead-corrected version of itself and to predict the games that version plays. That's the entire mechanism. Random weights produce a weak search, the weak search is still a bit stronger than the raw weak network, the network is pulled toward that slightly-stronger search, which makes the next search stronger, and the ratchet turns.
 
-A couple of choices about *how* the loop runs that I should pin down rather than leave vague. Do I keep a "best player so far" and only generate self-play games from it, swapping in a new network only when it proves stronger in a match? That's one way to keep the data-generating policy from regressing. But it adds a whole evaluation-and-gating machine, and it stalls the loop while the match runs. Simpler: just maintain a single network, update it continually, and always generate self-play with the latest weights — no separate best-player, no gating match. The continual update is a little less stable in principle but far simpler and keeps the data fresh, and the loss is self-correcting enough that it holds together. And do I exploit board symmetries — generate the eight rotations/reflections of each position as extra training data, or average the network over symmetric transforms during search? That's free strength when the rules are symmetric, as in Go. But in chess and shogi the rules are *not* symmetric — pawns move only forward, castling differs by side, promotion happens on a specific rank — so I cannot assume any symmetry. To keep one algorithm across all three games, I drop the symmetry augmentation entirely rather than special-case it. Same reasoning for hyperparameters: reuse one set across games, with the sole exception of the Dirichlet `α` scaled by move count, because anything else would be game-specific tuning of the kind I'm trying to avoid.
+There are two loop choices I have to settle. During self-play I keep sampling from the proportional visit-count distribution; the greedy `τ → 0` readout is for evaluation, where I want the strongest move rather than diverse training data. Do I keep a "best player so far" and only generate self-play games from it, swapping in a new network only when it proves stronger in a match? That's one way to keep the data-generating policy from regressing. But it adds a whole evaluation-and-gating machine, and it stalls the loop while the match runs. Simpler: just maintain a single network, update it continually, and always generate self-play with the latest weights — no separate best-player, no gating match. The continual update is a little less stable in principle but far simpler and keeps the data fresh, and the loss is self-correcting enough that it holds together. And do I exploit board symmetries — generate the eight rotations/reflections of each position as extra training data, or average the network over symmetric transforms during search? That's free strength when the rules are symmetric, as in Go. But in chess and shogi the rules are *not* symmetric — pawns move only forward, castling differs by side, promotion happens on a specific rank — so I cannot assume any symmetry. To keep one algorithm across all three games, I drop the symmetry augmentation entirely rather than special-case it. Same reasoning for hyperparameters: reuse one set across games, with the sole exception of the Dirichlet `α` scaled by move count, because anything else would be game-specific tuning of the kind I'm trying to avoid.
 
-The pieces now close into one loop. I want a single network to learn a game from zero by self-play, with no human data and no rollouts, and the bootstrap requires a source of signal stronger than the current player. That source is the search: MCTS guided by the network's prior produces, at the root, a visit distribution that is a policy improvement over the prior, because the search reallocates visits according to deeper value estimates. I use MCTS specifically (not minimax) because it averages leaf evaluations and so tolerates the network's approximation errors instead of amplifying them, which lets a single dual-head network `(p, v) = f_θ(s)` supply both the leaf value (replacing rollouts and the handcrafted evaluation) and the expansion prior (replacing move-ordering heuristics). The search selects children by the predictor-UCB rule, exploits `Q` and explores in proportion to `P` and `√(Σ N)/(1+N)`, expands a leaf with one network call, backs up `v` with a per-ply sign flip and `Q = W/N`, injects Dirichlet noise at the root so no good move is starved, and reads out `π ∝ N^{1/τ}`. Self-play with `a ~ π` generates games scored by the rules to an outcome `z`, and the network is fit by `(z−v)^2 − π^T log p + c‖θ‖^2` — the squared-error term doing policy evaluation, the cross-entropy term doing policy improvement, one network chasing its own lookahead-corrected self. A single continually-updated network, the same procedure for chess, shogi, and Go, and the only domain knowledge anywhere is the rules, used by the search to step states, list legal moves, and score terminals.
-
-Here is the core in code.
+I can write the loop now.
 
 ```python
 import math
@@ -64,116 +62,155 @@ EPS = 1e-8
 
 
 class MCTS:
-    """One search tree. Edges (s,a) store N, W (via running Q), and the prior P.
-    The network supplies the leaf value v and the prior p; the rules step states,
-    list legal moves, and score terminals."""
+    """One search tree. Edges (s,a) store N, running Q, and prior P."""
 
-    def __init__(self, game, net, args):
-        self.game, self.net, self.args = game, net, args
-        self.Qsa, self.Nsa, self.Ns, self.Ps = {}, {}, {}, {}   # Q(s,a), N(s,a), N(s), P(s,·)
-        self.Es, self.Vs = {}, {}                                # cached terminal value, legal mask
+    def __init__(self, game, model, args):
+        self.game, self.model, self.args = game, model, args
+        self.Qsa, self.Nsa, self.Ns, self.Ps = {}, {}, {}, {}
+        self.Es, self.Vs = {}, {}
+        self.noised_roots = set()
 
-    def get_action_prob(self, board, temp=1):
-        # run the simulations, then read out pi proportional to N^{1/temp}
-        for _ in range(self.args.numMCTSSims):
-            self.search(board)
-        s = self.game.stringRepresentation(board)
-        counts = [self.Nsa.get((s, a), 0) for a in range(self.game.getActionSize())]
-        if temp == 0:                                            # greedy: argmax visits (tau -> 0)
+    def _normalise_policy(self, policy, legal_actions):
+        policy = np.asarray(policy, dtype=np.float64) * legal_actions
+        total = float(np.sum(policy))
+        if total <= 0:
+            policy = np.asarray(legal_actions, dtype=np.float64)
+            total = float(np.sum(policy))
+        return policy / total
+
+    def _adjust_root_prior(self, state_key):
+        legal = self.Vs[state_key]
+        legal_actions = np.flatnonzero(legal)
+        if len(legal_actions) == 0:
+            return
+        alpha = self.args.dirichlet_alpha
+        epsilon = getattr(self.args, "root_noise_fraction", 0.25)
+        noise = np.random.dirichlet([alpha] * len(legal_actions))
+        prior = np.array(self.Ps[state_key], dtype=np.float64)
+        prior[legal_actions] = (1 - epsilon) * prior[legal_actions] + epsilon * noise
+        self.Ps[state_key] = self._normalise_policy(prior, legal)
+        self.noised_roots.add(state_key)
+
+    def action_prob(self, canonical_state, temperature=1.0, explore=True):
+        root = self.game.string_representation(canonical_state)
+        sims = self.args.num_mcts_sims
+        if explore and root not in self.Ps:
+            self.search(canonical_state)
+            if root in self.Ps:
+                self._adjust_root_prior(root)
+            sims -= 1
+        elif explore and root in self.Ps and root not in self.noised_roots:
+            self._adjust_root_prior(root)
+
+        for _ in range(max(0, sims)):
+            self.search(canonical_state)
+
+        counts = np.array(
+            [self.Nsa.get((root, a), 0) for a in range(self.game.action_size())],
+            dtype=np.float64,
+        )
+        if np.sum(counts) <= 0:
+            counts = np.asarray(self.Vs[root], dtype=np.float64)
+        if temperature == 0:
             best = np.random.choice(np.flatnonzero(counts == np.max(counts)))
-            probs = [0] * len(counts); probs[best] = 1
+            probs = np.zeros_like(counts)
+            probs[best] = 1.0
             return probs
-        counts = [c ** (1.0 / temp) for c in counts]             # pi(a) = N(a)^{1/tau} / sum_b N(b)^{1/tau}
-        total = float(sum(counts))
-        return [c / total for c in counts]
+        counts = counts ** (1.0 / temperature)
+        return counts / float(np.sum(counts))
 
-    def search(self, board):
-        s = self.game.stringRepresentation(board)
+    def search(self, canonical_state):
+        state_key = self.game.string_representation(canonical_state)
+        if state_key not in self.Es:
+            self.Es[state_key] = self.game.terminal_value(canonical_state, 1)
+        if self.Es[state_key] is not None:
+            return -self.Es[state_key]
 
-        if s not in self.Es:
-            self.Es[s] = self.game.getGameEnded(board, 1)        # rules: terminal detection + score
-        if self.Es[s] != 0:
-            return -self.Es[s]                                   # terminal outcome, flipped for the parent
+        if state_key not in self.Ps:
+            prior, value = self.model.predict(canonical_state)
+            legal = np.asarray(self.game.legal_actions(canonical_state), dtype=np.float64)
+            self.Ps[state_key] = self._normalise_policy(prior, legal)
+            self.Vs[state_key], self.Ns[state_key] = legal, 0
+            return -value
 
-        if s not in self.Ps:                                     # leaf: one network call replaces a rollout
-            self.Ps[s], v = self.net.predict(board)              # (p, v) = f_theta(s)
-            valids = self.game.getValidMoves(board, 1)           # rules: legal move mask
-            self.Ps[s] = self.Ps[s] * valids                     # zero out illegal moves in the prior
-            ssum = np.sum(self.Ps[s])
-            self.Ps[s] = self.Ps[s] / ssum if ssum > 0 else (valids / np.sum(valids))
-            self.Vs[s], self.Ns[s] = valids, 0
-            return -v                                            # back up v, flipped for the parent
-
-        valids, best, best_a = self.Vs[s], -float("inf"), -1
-        for a in range(self.game.getActionSize()):               # predictor-UCB selection
-            if not valids[a]:
+        legal, best_score, best_action = self.Vs[state_key], -float("inf"), -1
+        for action in range(self.game.action_size()):
+            if not legal[action]:
                 continue
-            if (s, a) in self.Qsa:
-                u = self.Qsa[(s, a)] + self.args.cpuct * self.Ps[s][a] \
-                    * math.sqrt(self.Ns[s]) / (1 + self.Nsa[(s, a)])
+            if (state_key, action) in self.Qsa:
+                score = self.Qsa[(state_key, action)] + self.args.cpuct * self.Ps[state_key][action] \
+                    * math.sqrt(self.Ns[state_key]) / (1 + self.Nsa[(state_key, action)])
             else:
-                u = self.args.cpuct * self.Ps[s][a] * math.sqrt(self.Ns[s] + EPS)  # Q = 0 at first visit
-            if u > best:
-                best, best_a = u, a
+                # Break the first all-zero tie by the prior, matching the PUCT intent.
+                score = self.args.cpuct * self.Ps[state_key][action] * math.sqrt(self.Ns[state_key] + EPS)
+            if score > best_score:
+                best_score, best_action = score, action
 
-        a = best_a
-        next_board, next_player = self.game.getNextState(board, 1, a)   # rules: step the state
-        next_board = self.game.getCanonicalForm(next_board, next_player)
-        v = self.search(next_board)                              # recurse to the leaf, get value (already flipped)
+        next_state, next_player = self.game.next_state(canonical_state, 1, best_action)
+        next_state = self.game.canonical_form(next_state, next_player)
+        value = self.search(next_state)
 
-        if (s, a) in self.Qsa:                                   # backup: running mean Q = W/N, N += 1
-            self.Qsa[(s, a)] = (self.Nsa[(s, a)] * self.Qsa[(s, a)] + v) / (self.Nsa[(s, a)] + 1)
-            self.Nsa[(s, a)] += 1
+        if (state_key, best_action) in self.Qsa:
+            old_n = self.Nsa[(state_key, best_action)]
+            self.Qsa[(state_key, best_action)] = (old_n * self.Qsa[(state_key, best_action)] + value) / (old_n + 1)
+            self.Nsa[(state_key, best_action)] = old_n + 1
         else:
-            self.Qsa[(s, a)], self.Nsa[(s, a)] = v, 1
-        self.Ns[s] += 1
-        return -v                                                # flip sign on the way up (two-player)
-```
-
-```python
-import numpy as np
+            self.Qsa[(state_key, best_action)] = value
+            self.Nsa[(state_key, best_action)] = 1
+        self.Ns[state_key] += 1
+        return -value
 
 
-class Coach:
-    """Self-play -> train. Each game is played by MCTS for both sides; the
-    search policy pi is the training target, the final outcome z is the value."""
+class SelfPlayTrainer:
+    """Self-play produces (state, searched policy, final outcome) examples."""
 
-    def __init__(self, game, net, args):
-        self.game, self.net, self.args = game, net, args
-        self.mcts = MCTS(game, net, args)
+    def __init__(self, game, model, args):
+        self.game, self.model, self.args = game, model, args
+        self.examples = []
 
-    def execute_episode(self):
-        examples, board, player, step = [], self.game.getInitBoard(), 1, 0
+    def play_game(self):
+        examples = []
+        state, player = self.game.initial_state(), 1
         while True:
-            step += 1
-            canonical = self.game.getCanonicalForm(board, player)
-            temp = int(step < self.args.tempThreshold)           # tau=1 early (explore), tau->0 later (greedy)
-            pi = self.mcts.get_action_prob(canonical, temp=temp)  # improved policy from the search
-            examples.append([canonical, player, pi, None])        # store (state, player, pi); z filled in at the end
-            a = np.random.choice(len(pi), p=pi)                   # sample a ~ pi
-            board, player = self.game.getNextState(board, player, a)
-            r = self.game.getGameEnded(board, player)             # rules: 0 if ongoing, else outcome
-            if r != 0:
-                # z written from each position's player's perspective
-                return [(x[0], x[2], r * ((-1) ** (x[1] != player))) for x in examples]
+            canonical = self.game.canonical_form(state, player)
+            mcts = MCTS(self.game, self.model, self.args)
+            pi = mcts.action_prob(canonical, temperature=1.0, explore=True)
+            examples.append((canonical, player, pi))
+            action = np.random.choice(len(pi), p=pi)
+            state, player = self.game.next_state(state, player, action)
+            outcome = self.game.terminal_value(state, player)
+            if outcome is not None:
+                return [
+                    (past_state, past_pi, outcome if past_player == player else -outcome)
+                    for past_state, past_player, past_pi in examples
+                ]
 
     def learn(self):
-        for _ in range(self.args.numIters):
-            examples = []
-            for _ in range(self.args.numEps):
-                self.mcts = MCTS(self.game, self.net, self.args)  # fresh tree per game
-                examples += self.execute_episode()
-            self.net.train(examples)                              # fit toward (pi, z); see the loss below
-            # single continually-updated network: always self-play with the latest weights, no gating match
+        for _ in range(self.args.num_iterations):
+            iteration_examples = []
+            for _ in range(self.args.self_play_games):
+                iteration_examples.extend(self.play_game())
+            self.examples.extend(iteration_examples)
+            if len(self.examples) > self.args.max_examples:
+                self.examples = self.examples[-self.args.max_examples:]
+            self.model.train(self.examples)
 
 
-def loss(p_logits, v, target_pi, target_z, theta, c=1e-4):
-    # l = (z - v)^2 - pi^T log p + c||theta||^2
-    log_p = p_logits - np.log(np.sum(np.exp(p_logits)))           # log-softmax of the policy head
-    value_loss = np.mean((target_z - v) ** 2)                     # policy evaluation: v -> z
-    policy_loss = -np.mean(np.sum(target_pi * log_p, axis=1))     # policy improvement: p -> pi
-    l2 = c * np.sum(theta ** 2)
+def position_loss(policy_logits, value, target_policy, target_value, parameters, weight_decay=1e-4):
+    logits = np.asarray(policy_logits, dtype=np.float64)
+    target_policy = np.asarray(target_policy, dtype=np.float64)
+    if logits.ndim == 1:
+        logits = logits[None, :]
+        target_policy = target_policy[None, :]
+
+    shifted = logits - np.max(logits, axis=1, keepdims=True)
+    log_policy = shifted - np.log(np.sum(np.exp(shifted), axis=1, keepdims=True))
+    policy_loss = -np.mean(np.sum(target_policy * log_policy, axis=1))
+    pred_value = np.asarray(value, dtype=np.float64).reshape(-1)
+    target_value = np.asarray(target_value, dtype=np.float64).reshape(-1)
+    value_loss = np.mean((target_value - pred_value) ** 2)
+    l2 = weight_decay * sum(np.sum(np.asarray(param) ** 2) for param in parameters)
     return value_loss + policy_loss + l2
 ```
 
-The causal chain, once more: I wanted one network to learn a game from zero by self-play with no human data and no rollouts, and the bootstrap needs a signal stronger than the current player; the search supplies it, because MCTS guided by the network's prior produces a visit distribution that is a policy improvement over that prior, and MCTS (averaging) rather than minimax (min/max) is what makes a single dual-head network usable as the leaf evaluator despite its approximation errors; so I select by predictor-UCB, expand a leaf with one network call for `(p, v)`, back up with `Q = W/N` and a per-ply sign flip, add Dirichlet noise at the root so no move is starved, read out `π ∝ N^{1/τ}`, and train the network by `(z − v)^2 − π^T log p + c‖θ‖^2` — squared error doing policy evaluation, cross-entropy doing policy improvement — so the network forever chases the lookahead-corrected version of itself, and the only domain knowledge anywhere is the rules.
+I end up with one closed loop: I wanted one network to learn a game from zero by self-play with no human data and no rollouts, and the bootstrap needs a signal stronger than the current player; the search supplies it, because MCTS guided by the network's prior produces a visit distribution that is a policy improvement over that prior, and MCTS (averaging) rather than minimax (min/max) is what makes a single dual-head network usable as the leaf evaluator despite its approximation errors; so I select by predictor-UCB, expand a leaf with one network call for `(p, v)`, back up a running `Q` with a per-ply sign flip, add Dirichlet noise at the root so no move is starved, read out `π ∝ N^{1/τ}`, and train the network by `(z − v)^2 − π^T log p + c‖θ‖^2` — squared error doing policy evaluation, cross-entropy doing policy improvement — so the network forever chases the lookahead-corrected version of itself, and the only domain knowledge anywhere is the rules.

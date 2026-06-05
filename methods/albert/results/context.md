@@ -1,5 +1,3 @@
-# Context: making pretrained language representations bigger without making them un-trainable
-
 ## Research question
 
 Full-network pretraining of Transformer encoders has driven a rapid run of gains
@@ -107,23 +105,26 @@ Development-set medians over five runs are reported for high-variance GLUE tasks
 
 ## Code framework
 
-The substrate is a Transformer-encoder pretraining harness: token embedding
-lookup, a stack of self-attention + feed-forward blocks, a masked-LM head, an
-optional inter-sentence classification head, and a large-batch optimizer (LAMB,
-You et al. 2019). What is *not* fixed is how the embedding matrix relates to the
-hidden width, whether each layer gets its own parameters, and what inter-sentence
-objective (if any) is trained. The scaffold leaves those as slots.
+The substrate is a Transformer-encoder pretraining harness: token, position, and
+segment embeddings; a stack of self-attention + feed-forward blocks; a masked-LM
+head; an optional inter-sentence classification head; and a large-batch optimizer
+(LAMB, You et al. 2019). What is *not* fixed is how the embedding matrix relates
+to the hidden width, whether each layer gets its own parameters, and what
+inter-sentence objective is trained. The scaffold leaves those as slots.
 
 ```python
-import torch, torch.nn as nn, torch.nn.functional as F
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
-# --- embedding: TO DECIDE how the V-row table relates to hidden width H ---
-class TokenEmbedding(nn.Module):
-    def __init__(self, vocab_size, hidden):
-        # TODO: does the embedding dimension have to equal H, or can it be smaller
-        #       with a projection up to H?
+# --- embedding stem: token, position, and segment embeddings ---
+class EmbeddingStem(nn.Module):
+    def __init__(self, vocab_size, hidden, embedding_width=None,
+                 max_positions=512, type_vocab_size=2, dropout=0.1):
+        # TODO: choose how the token-embedding width maps to hidden width H.
         pass
-    def forward(self, ids):  # -> [B, T, H]
+
+    def forward(self, input_ids, token_type_ids=None):
         pass
 
 # --- one Transformer encoder block (attention + 4H feed-forward, GELU) ---
@@ -134,33 +135,48 @@ class EncoderBlock(nn.Module):
         self.ln1 = nn.LayerNorm(hidden); self.ln2 = nn.LayerNorm(hidden)
         self.ffn = nn.Sequential(nn.Linear(hidden, 4*hidden), nn.GELU(),
                                  nn.Linear(4*hidden, hidden))
-    def forward(self, x, mask=None):
-        a, _ = self.attn(x, x, x, attn_mask=mask)
+
+    def forward(self, x, padding_mask=None):
+        a, _ = self.attn(x, x, x, key_padding_mask=padding_mask, need_weights=False)
         x = self.ln1(x + a)
         return self.ln2(x + self.ffn(x))
 
-# --- the encoder stack: TO DECIDE whether layers share parameters ---
-class Encoder(nn.Module):
+# --- encoder stack ---
+class EncoderStack(nn.Module):
     def __init__(self, n_layers, hidden, n_heads, dropout):
-        # TODO: L independent blocks, or one block reused L times, or something between?
+        # TODO: choose L independent blocks, one reused block, or something between.
         pass
-    def forward(self, x, mask=None):
+
+    def forward(self, x, padding_mask=None):
         pass
 
 # --- objectives ---
-def mlm_loss(logits, labels):
-    return F.cross_entropy(logits.view(-1, logits.size(-1)), labels.view(-1),
-                           ignore_index=-100)
+def gather_positions(sequence_output, positions):
+    pass
 
-def inter_sentence_examples(documents):
+class MLMHead(nn.Module):
+    def __init__(self, hidden, embedding_width, vocab_size):
+        # TODO: choose how hidden states are projected to vocabulary logits.
+        pass
+
+    def forward(self, sequence_output, positions, embedding_table):
+        pass
+
+class SentencePairHead(nn.Module):
+    def __init__(self, hidden):
+        pass
+
+    def forward(self, sequence_output):
+        pass
+
+def inter_sentence_examples(seg_a, seg_b):
     # TODO: what makes a positive vs a negative pair for the inter-sentence task,
     #       and is the task hard enough to teach more than topic?
     pass
 
-# --- masking + optimizer (exist) ---
-def mask_tokens(tokens, mask_id, vocab_size):
-    pass  # span/n-gram masking for the MLM target
+def sample_ngram_length(max_n=3):
+    pass
 
-def make_optimizer(params, lr):  # LAMB, large batch (exists)
+def total_loss(mlm_logits, mlm_labels, mlm_weights, pair_logits, pair_labels):
     pass
 ```
