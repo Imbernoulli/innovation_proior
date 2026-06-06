@@ -146,6 +146,13 @@
     "evidence": "none",
     "reason": "no Codex review evidence found in any session"
   },
+  "bayesopt-ego": {
+    "codex_reviewed": false,
+    "outcome": "not_run",
+    "when": "2026-06-06T09:59:32Z",
+    "evidence": "this-run",
+    "reason": "Codex CLI returned 'You've hit your usage limit' (rate/usage limit) on the write-enabled review turn; fell back to a careful manual re-derivation of every equation (EI closed form, integration-by-parts, EI monotonicity derivatives, DACE predictor + MSE with interpolation/zero-uncertainty checks, muhat/sigmahat^2 closed forms) and verified all against the retrieved Jones-Schonlau-Welch 1998 full text and skopt source."
+  },
   "beit": {
     "codex_reviewed": true,
     "outcome": "completed",
@@ -418,6 +425,13 @@
     "when": null,
     "evidence": "none",
     "reason": "no Codex review evidence found in any session"
+  },
+  "dammann-grating": {
+    "codex_reviewed": false,
+    "outcome": "not_run",
+    "when": "2026-06-06T22:05:00Z",
+    "evidence": "this-run",
+    "reason": "Codex usage/rate limit hit ('You've hit your usage limit ... try again at 6:17 PM'); fell back to manual re-derivation: order-amplitude closed forms verified against a brute-force complex Fourier transform to ~1e-11 for multiple transition layouts, the 1x3 single-transition closed form (a0=4t1-1, a1=(2/pi)sin(2pi t1), t1~0.36763, eff~66.4%) cross-checked, and the optimizer reproduces 1x3~66.4% and 1x5~77.4%."
   },
   "darts": {
     "codex_reviewed": false,
@@ -1035,6 +1049,13 @@
     "evidence": "none",
     "reason": "no Codex review evidence found in any session"
   },
+  "gridsynth": {
+    "codex_reviewed": false,
+    "outcome": "not_run",
+    "when": "2026-06-06T00:00:00Z",
+    "evidence": "this-run",
+    "reason": "codex rate-limited (usage limit hit; retry after reset)"
+  },
   "grokking": {
     "codex_reviewed": false,
     "outcome": "none",
@@ -1231,6 +1252,13 @@
     "evidence": "session:f600e444-e46c-4e2c-a6e9-e555f4f530fc",
     "reason": "invocation cancelled/rejected/errored before Codex completed"
   },
+  "jameson-adjoint": {
+    "codex_reviewed": false,
+    "outcome": "not_run",
+    "when": "2026-06-06T17:55:00Z",
+    "evidence": "this-run",
+    "reason": "Codex usage/rate limit hit on this run ('You've hit your usage limit ... try again at 6:17 PM'); review deferred. Fell back to manual re-derivation of every equation against the primary VKI-2003 text and the canonical quasiOneD code."
+  },
   "jigsaw": {
     "codex_reviewed": false,
     "outcome": "none",
@@ -1258,6 +1286,13 @@
     "when": null,
     "evidence": "none",
     "reason": "no Codex review evidence found in any session"
+  },
+  "keccak": {
+    "codex_reviewed": false,
+    "outcome": "not_run",
+    "when": "2026-06-06T10:03:20Z",
+    "evidence": "this-run",
+    "reason": "Codex usage/rate limit hit ('You've hit your usage limit ... try again at 6:17 PM'); the write-enabled review pass could not run. Fell back to a careful manual re-derivation of every equation against the retrieved primary sources (FIPS 202, Sponge functions 2007, Indifferentiability EUROCRYPT 2008) and validated all deliverable code against official SHA-3/SHAKE known-answer test vectors."
   },
   "kfac": {
     "codex_reviewed": false,
@@ -1405,6 +1440,13 @@
     "when": null,
     "evidence": "none",
     "reason": "no Codex review evidence found in any session"
+  },
+  "lqr": {
+    "codex_reviewed": false,
+    "outcome": "not_run",
+    "when": "2026-06-06T10:01:37Z",
+    "evidence": "this-run",
+    "reason": "Codex CLI hit ChatGPT usage limit (rate-limited until ~6:17 PM local); review could not run this session. Fell back to a careful manual re-derivation of every equation against the retrieved Kalman 1960 original (HJB 4.13, value ansatz 6.2, inner-min u*=-R^{-1}B^T S x, ARE 6.3 at steady state, finite-horizon RDE, DARE, controllability Gramian 5.3 / rank test 5.6, Lyapunov identity d/dt(x^T S x)=-(x^T Q x+u^T R u) from sec 6.10) and to scipy/python-control code faithfulness."
   },
   "lsgan": {
     "codex_reviewed": false,
@@ -2036,6 +2078,13 @@
     "evidence": "session:rollout-2026-05-30T16-12-49-019e77f1-6643-7f72-a98c-77cc386c87e6.jsonl",
     "reason": null
   },
+  "scarf-ss-policy": {
+    "codex_reviewed": false,
+    "outcome": "not_run",
+    "when": "2026-06-06T17:55:00Z",
+    "evidence": "this-run",
+    "reason": "Codex CLI hit usage/rate limit ('You've hit your usage limit ... try again at 6:17 PM'); fell back to manual re-derivation of every K-convexity equation, sign, factor, and case against the clean secondary source (polymtl inventory notes, Def 3.3.1 and Lemmas 3.3.1-3.3.5)."
+  },
   "schnet": {
     "codex_reviewed": false,
     "outcome": "none",
@@ -2246,6 +2295,13 @@
     "evidence": "none",
     "reason": "no Codex review evidence found in any session"
   },
+  "spme-battery": {
+    "codex_reviewed": false,
+    "outcome": "not_run",
+    "when": "2026-06-06T10:03:54Z",
+    "evidence": "this-run",
+    "reason": "Codex usage limit hit ('You've hit your usage limit ... try again at 6:17 PM'); fell back to a manual line-by-line re-derivation against src/spme-submission.tex and code/pybamm/*, verifying every sign/factor/constant (dimensionless DFN, distinguished limit, leading-order SPM recovery, first-order electrolyte correction, the int j^1 dx=0 -> c_s-bar^1=0 step, eta_c / Delta-Phi_Elec / Delta-Phi_Solid, dressed exchange-current expansion, conditions and error estimate) and code faithfulness to the canonical PyBaMM SPMe."
+  },
   "squeezenet": {
     "codex_reviewed": false,
     "outcome": "none",
@@ -2428,6 +2484,13 @@
     "evidence": "none",
     "reason": "no Codex review evidence found in any session"
   },
+  "trimul": {
+    "codex_reviewed": false,
+    "outcome": "not_run",
+    "when": "2026-06-06T17:50:00Z",
+    "evidence": "this-run",
+    "reason": "Codex usage/rate limit hit ('You've hit your usage limit ... try again at 6:17 PM'); fell back to manual re-derivation of every equation against the retrieved AF2 SI (Algorithms 11-14) and the OpenFold + DeepMind canonical code."
+  },
   "trpo": {
     "codex_reviewed": true,
     "outcome": "completed",
@@ -2469,6 +2532,13 @@
     "when": null,
     "evidence": "none",
     "reason": "no Codex review evidence found in any session"
+  },
+  "vasarhelyi-flocking": {
+    "codex_reviewed": false,
+    "outcome": "not_run",
+    "when": "2026-06-06T17:55:00Z",
+    "evidence": "this-run",
+    "reason": "Codex usage limit reached ('You've hit your usage limit ... try again at 6:17 PM'); fell back to a careful manual re-derivation of every equation against the primary sources (2018 Materials & Methods pp.7-11 read visually, 2014 model pp.2-5 read visually) and against the vendored CoFlyers MATLAB code."
   },
   "vdm": {
     "codex_reviewed": false,
