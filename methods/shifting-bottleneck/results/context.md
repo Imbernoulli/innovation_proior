@@ -53,14 +53,15 @@ routinely beyond reach. The single 10×10 instance of Muth & Thompson (1963) had
 algorithm for over twenty years; its optimum of 930 was only settled around 1986.
 
 **Single-machine relaxation with heads and tails.** A single machine with release dates and
-delivery times — schedule jobs on one machine, job `j` cannot start before its release (head) `r_j`
-and contributes `r_j` (wait) `+ p_j` (run) `+ q_j` (tail/delivery) to a "two-extra-machine"
-completion — is the problem `1|r_j,q_j|C_max`, equivalent to minimizing maximum lateness `1|r_j|L_max`
-(set due date `f_j` so lateness `= C_j - f_j` matches `C_j + q_j`). It is itself NP-hard in the
-strong sense, but small instances solve in milliseconds by branch and bound. A polynomially solvable
-*relaxation* of it — allow preemption, `1|r_j,pmtn|L_max` — is solved exactly by the preemptive
-earliest-due-date rule and gives a valid lower bound on the non-preemptive optimum, since preemption
-can only help.
+delivery times asks for an order in which job `j` cannot start before its release (head) `r_j`,
+runs for `p_j`, and then carries a delivery tail `q_j`; the objective is
+`min max_j(C_j + q_j)`, the problem `1|r_j,q_j|C_max`. It is equivalent to maximum lateness
+`1|r_j|L_max` after choosing a fixed offset `H` and due date `f_j = H - q_j`, because
+`C_j - f_j = C_j + q_j - H`; subtracting the same `H` does not change the best order. The problem
+is itself NP-hard in the strong sense, but small instances solve in milliseconds by branch and
+bound. A polynomially solvable *relaxation* of it — allow preemption, `1|r_j,pmtn|L_max` — is solved
+exactly by the preemptive earliest-due-date rule and gives a valid lower bound on the
+non-preemptive optimum, since preemption can only help.
 
 **Active and non-delay schedules; priority dispatching.** Giffler & Thompson's classical result is
 that an optimal schedule can always be found among *active* schedules — ones in which no operation
@@ -127,33 +128,33 @@ class DisjunctiveGraph:
     def __init__(self, durations, machines, num_jobs, num_machines): ...
     def add_arc(self, i, j): ...        # orient one disjunctive edge i -> j
     def remove_arc(self, i, j): ...
-    def longest_path_to(self):          # forward pass: earliest start of every op
-        ...                             # returns makespan + distances (heads)
-    def longest_path_from(self):        # backward pass (tails)
+    def makespan(self, reverse=False):
+        """Longest-path labeling. Forward gives completion labels; reverse gives
+        longest path from each operation to the end. Return makespan, critical
+        path, and labels; report a cycle if the current orientation is infeasible."""
         ...
 
 def solve_one_machine_lmax(tasks):
-    """Exact 1|r_j,q_j|C_max == 1|r_j|L_max on a single machine: each task has
-    (duration, head r, tail q). Return optimal max-lateness and the job order."""
+    """Exact 1|r_j|L_max on a single machine: each task has
+    (duration, release/head r, due date f). Return optimal max-lateness and the job order."""
     # TODO: branch-and-bound (Schrage heuristic + critical-block bound),
     #       or an equivalent exact single-machine solver.
     pass
 
-def heads_and_tails(graph, ops):
+def heads_and_due_dates(graph, ops):
     """For every operation in `ops`, summarize the rest of the shop into a
-    release time and a delivery time via longest paths in the current graph."""
-    # TODO: r_op = longest_path_to(op) - d_op ;  q_op = makespan - longest_path_from(op) + d_op
+    release time and a due date via longest paths in the current graph."""
+    # TODO: r_op = completion_to(op) - d_op ;  f_op = makespan - completion_from(op) + d_op
     pass
 
 class Scheduler:
     """The strategy that orders the machines. To be designed."""
     def solve(self, graph):
-        # TODO: this is the contribution — how to use the single-machine
-        #       relaxation to decide machine orders and refine them.
+        # TODO: choose machine orders using the single-machine solver and refine them.
         pass
 
 def evaluate_makespan(instance, orientation):
-    """Reference makespan of a fully oriented schedule (CP/MIP):
+    """Exact makespan of a fully oriented schedule (CP/MIP):
     interval per op, end == start + dur, job precedence end <= next.start,
     no-overlap per machine, minimize max end."""
     ...

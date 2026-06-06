@@ -12,14 +12,14 @@ VaR_α(w) = min{ ζ : P(L(w,y) ≤ ζ) ≥ α }   (the α-quantile of the loss).
 
 VaR is written into banking regulation, so it is the natural target. The problem is that **minimizing VaR over `w` is the wrong optimization problem**, for two reasons that are facts about quantiles, knowable before any new measure is built:
 
-1. **As a function of `w`, VaR is non-convex and can be discontinuous, with many local minima.** A quantile of a `w`-dependent distribution moves in jumps as `w` changes the ordering of scenarios; gradient/convex methods land on local optima that are not global. For scenario-based (finite-sample) loss models the VaR-in-`w` surface is piecewise constant with cliffs.
+1. **As a function of `w`, VaR is non-convex and nonsmooth, with many local minima.** A quantile of a `w`-dependent distribution changes identity as the ordering of scenarios changes; gradient/convex methods land on local optima that are not global. For scenario-based linear loss models the VaR-in-`w` surface is piecewise linear with kinks, not a convex objective.
 2. **VaR ignores the magnitude of losses beyond the threshold and is not subadditive.** Two portfolios with identical VaR can have wildly different tails past `ζ` — a thin overshoot vs. a fat catastrophe. And combining positions can make VaR *increase*, contradicting the intuition that diversification reduces risk.
 
 What a usable solution must achieve: a tail-risk measure that (i) is **convex in `w`** so it can be minimized to a global optimum, (ii) **accounts for how bad the tail is** beyond the quantile, (iii) is **coherent** in the axiomatic sense below, and (iv) reduces, for scenario data, to something a solver can handle at large scale — ideally a **linear program**.
 
 ## Background
 
-**The quantile is non-convex in the decision and blind beyond itself.** Consider scenario data: `N` equally likely sampled losses `L_1, …, L_N`. `VaR_α` is the `⌈αN⌉`-th order statistic. As `w` varies, the order statistic is a max/min over changing subsets — a non-convex, piecewise-constant function with kinks and jumps. Minimizing it is a combinatorial, multi-extremal problem. Worse, two `w`'s that put the same value at the `⌈αN⌉`-th position but very different values *above* it are scored identically: VaR cannot tell "lose a little more than `ζ`" from "lose everything."
+**The quantile is non-convex in the decision and blind beyond itself.** Consider scenario data: `N` equally likely sampled losses `L_1, …, L_N`. `VaR_α` is the `⌈αN⌉`-th order statistic. As `w` varies, the order statistic is a max/min over changing subsets — for linear scenario losses, a continuous piecewise-linear surface with kinks where the active scenario changes, generally neither convex nor concave. Minimizing it is a combinatorial, multi-extremal problem. Worse, two `w`'s that put the same value at the `⌈αN⌉`-th position but very different values *above* it are scored identically: VaR cannot tell "lose a little more than `ζ`" from "lose everything."
 
 **VaR fails subadditivity — a worked construction.** Take two corporate bonds, each independently defaulting with probability `p = 0.04`, in which case it loses a fixed amount `L > 0` (otherwise it loses 0). Use confidence `α = 0.95`, so the tail mass is `1 − α = 0.05`.
 
@@ -39,7 +39,7 @@ They prove quantile-based VaR violates (S), and they propose a coherent alternat
 
 **Mean shortfall / expected shortfall, defined through VaR.** The actuarial and extreme-value literature already uses the *mean excess loss* / *mean shortfall* `E[ L | L > VaR_α ]` — the average loss given that VaR is breached. Conceptually this is exactly the tail-severity number one wants: it looks past the quantile and averages the bad tail. But as written it is defined *through* `VaR_α(w)`: to evaluate it for a given `w` you must first locate `VaR_α(w)`, the very object that is non-convex and ill-behaved in `w`. Using it as an optimization objective inherits VaR's pathology. For loss distributions with atoms (and scenario/finite-sample models always have atoms), the naive conditional expectation `E[L | L > VaR]` also turns out not to be coherent, because the probability mass sitting exactly at the VaR threshold is handled inconsistently.
 
-**Why scenarios force discreteness.** In practice the loss distribution is given by a finite Monte-Carlo or historical sample `y_1, …, y_N`, each with probability `1/N`. The loss CDF `Ψ(w, ζ) = P(L(w,y) ≤ ζ)` is then a step function with jumps at the sampled loss values. Every difficulty above — the cliffs in VaR, the atom at the threshold, the gap between "loss `>` VaR" and "loss `≥` VaR" — is unavoidable in exactly the setting where these tools must run.
+**Why scenarios force discreteness.** In practice the loss distribution is given by a finite Monte-Carlo or historical sample `y_1, …, y_N`, each with probability `1/N`. The loss CDF `Ψ(w, ζ) = P(L(w,y) ≤ ζ)` is then a step function with jumps at the sampled loss values. Every difficulty above — the nonsmooth order statistic in `w`, the atom at the threshold, the gap between "loss `>` VaR" and "loss `≥` VaR" — is unavoidable in exactly the setting where these tools must run.
 
 ## Baselines
 
@@ -76,7 +76,7 @@ class TailRiskEfficientPortfolio:
         self.alpha = alpha                        # confidence level
         self.lower, self.upper = weight_bounds
         self.w = cp.Variable(self.n)              # portfolio weights
-        # TODO: any auxiliary decision variables the tail measure needs
+        pass                                # TODO: auxiliary variables
 
     def _feasible_region(self, market_neutral=False):
         cons = [self.w >= self.lower, self.w <= self.upper]
@@ -86,19 +86,23 @@ class TailRiskEfficientPortfolio:
     def _tail_risk_expr(self):
         # TODO: a CONVEX expression in self.w (and auxiliaries) for the
         # level-alpha tail-risk of the loss, computed from the scenario panel.
-        # This is the slot the method fills.
-        raise NotImplementedError
+        pass
+
+    def _tail_risk_constraints(self):
+        # TODO: linear/convex constraints tying the auxiliaries to scenario losses.
+        pass
 
     def min_tail_risk(self, market_neutral=False):
         objective = self._tail_risk_expr()        # TODO
-        constraints = self._feasible_region(market_neutral)
-        # TODO: constraints that define the tail-risk auxiliaries
+        constraints = self._feasible_region(market_neutral) + self._tail_risk_constraints()
         cp.Problem(cp.Minimize(objective), constraints).solve()
         return self.w.value
 
     def efficient_return(self, target_return, market_neutral=False):
         # minimise tail risk s.t. expected return >= target. TODO: same slot.
-        raise NotImplementedError
-```
+        pass
 
-The method to come fills `_tail_risk_expr` and supplies the constraints that pin down its auxiliary variables; everything else (the panel, the weight variable, the budget/box region, the solver call) is already in place.
+    def efficient_risk(self, target_risk, market_neutral=False):
+        # maximise expected return s.t. tail risk <= target_risk. TODO: same slot.
+        pass
+```

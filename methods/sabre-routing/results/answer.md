@@ -19,7 +19,7 @@ A logical quantum circuit assumes any two-qubit gate (CNOT) can act on any pair 
 
    Pick the minimum-H candidate (random tie-break), apply, update π.
 
-3. **Reverse-traversal initial mapping.** Quantum circuits are reversible: the reversed circuit has the same two-qubit gates in reverse order. Routing forward from a random π₀ ends at a final mapping good for the *end* of the circuit; feeding that as the initial mapping to route the *reversed* circuit ends at a mapping good for the *beginning* of the original — globally informed but front-weighted. The three traversals are forward, backward, and the final real forward routing pass; the layout-refinement traversals can run in fake mode, emitting no SWAPs. Run from several random seeds and keep the best.
+3. **Reverse-traversal initial mapping.** For routing, the operation list can be traversed backward because the relevant data are the same two-qubit qubit-pairs in reverse order. Routing forward from a random π₀ ends at a final mapping good for the *end* of the circuit; feeding that as the initial mapping to route the reversed order ends at a mapping good for the *beginning* of the original — globally informed but front-weighted. The layout pass alternates fake forward and backward traversals for `max_iterations` rounds and keeps only the settled layout; a real routing pass then uses that layout to emit SWAPs. Run from several random seeds and keep the best.
 
 ## Algorithm (routing, one traversal)
 
@@ -294,4 +294,4 @@ class SabreLayout(AnalysisPass):
         return Layout(final_layout)
 ```
 
-Typical configuration: |E| ≈ 20, W = 0.5, δ starting at 0.001, decay reset every 5 search steps or whenever a gate executes; run several random initial mappings, each with a forward–backward–forward traversal, and keep the best.
+Typical configuration: `EXTENDED_SET_SIZE = 20`, `EXTENDED_SET_WEIGHT = 0.5`, `DECAY_RATE = 0.001`, and `DECAY_RESET_INTERVAL = 5`; decay also resets whenever a gate executes. Try several random initial mappings, use fake forward/backward layout refinement for each, then keep the routed result with the best SWAP count.

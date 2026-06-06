@@ -16,7 +16,7 @@ The question this landscape poses: can a single optimization run return a good a
 
 **Fitness sharing.** The standard pre-existing device for spreading a population is fitness sharing: each individual's fitness is divided down by the crowd around it. With a sharing function sh(d) = 1 − (d/σ_share)^α for d ≤ σ_share and 0 otherwise, an individual's niche count is Σ_j sh(d_ij) and its shared fitness is (raw fitness)/(niche count). This needs a user-supplied radius σ_share, and it costs a comparison of every pair in a niche, i.e. O(N^2) work.
 
-**Diagnostic facts about nondominated-sorting MOEAs, established before this work.** Nondominated-sorting GAs with sharing had three documented shortcomings, repeatedly noted in the literature of the late 1990s: (1) the nondominated-sorting step ran in O(MN^3) time (M objectives, N population), making it costly at large population sizes; (2) they were non-elitist — a good solution found in one generation could be lost in the next, and elitism had been shown to speed up and stabilize GA convergence; (3) the sharing mechanism needed σ_share, and the quality of the spread depended heavily on its value, which the user had to guess (some dynamic-sizing guidelines existed but no parameter-free method). Elitist successors (external archives, adaptive grids) addressed (2) but reintroduced their own bookkeeping and, in several cases, their own diversity parameters. These are facts about the existing methods, knowable by inspecting them; they motivate the design that follows.
+**Nondominated-sorting GA pain points.** Late-1990s nondominated-sorting GAs with sharing exposed three practical problems: (1) the nondominated-sorting step ran in O(MN^3) time (M objectives, N population), making it costly at large population sizes; (2) they were non-elitist, so a good solution found in one generation could be lost in the next, even though elitism had been shown to speed up and stabilize GA convergence; (3) the sharing mechanism needed σ_share, and the quality of the spread depended heavily on a value the user had to guess. Elitist successors based on external archives or adaptive grids addressed the loss-of-good-solutions problem, but they introduced archive bookkeeping and, in several cases, their own diversity parameters.
 
 ## Baselines
 
@@ -28,17 +28,17 @@ The question this landscape poses: can a single optimization run return a good a
 
 **SPEA — Strength Pareto EA (Zitzler & Thiele, 1999).** Elitist. Keep an external population (archive) of all nondominated solutions found so far; it participates in selection. Each archive member's *strength* = how many current-population members it dominates; a current member's fitness = sum of strengths of the archive members that dominate it (so being dominated by many strong solutions is bad). Diversity in the archive is held by deterministic clustering. The naive implementation is O(N^3); with careful bookkeeping O(N^2). It removed the σ_share knob in favor of clustering, but added an archive and a clustering procedure to maintain.
 
-**PAES — Pareto-Archived ES (Knowles & Corne).** A (1+1)-evolution-strategy: one parent, one offspring per step, compared by dominance; ties broken by an adaptive grid over objective space that tracks crowding in 2^d·v subspaces. Archive-based elitism; diversity by grid occupancy. Worst-case O(aMN) with archive length a, overall O(MN^2).
+**PAES — Pareto-Archived ES (Knowles & Corne).** A (1+1)-evolution-strategy: one parent, one offspring per step, compared by dominance; ties are broken by an adaptive objective-space grid whose depth controls the crowding resolution. Archive-based elitism; diversity by grid occupancy. With archive length a, the worst case is O(aMN), which becomes O(MN^2) when the archive is proportional to the population size.
 
 **Rudolph's elitist GA.** Form the combined nondominated set of parent and offspring populations and carry it forward as the next parents; if too small, fill from the offspring. This was proved to converge to the Pareto front, but it carries no explicit diversity mechanism — convergence without spread.
 
 ## Evaluation settings
 
-Two-objective test problems drawn from the literature would be the natural yardstick: Schaffer's SCH, Fonseca's FON, Poloni's POL, Kursawe's KUR, and the ZDT family (Zitzler-Deb-Thiele) ZDT1–ZDT6, which were deliberately constructed to stress different difficulties — convex fronts (ZDT1), non-convex fronts (ZDT2), discontinuous fronts (ZDT3), many local fronts (ZDT4), and non-uniform density (ZDT6). For scalable many-objective testing there is the DTLZ family (Deb-Thiele-Laumanns-Zitzler), which lets M grow while the true front stays analytically known. The two quantities a run is scored on are a **convergence** metric (mean distance from the obtained set to the true front) and a **diversity/spread** metric (how evenly the obtained points cover the front, including whether the extremes are reached). The natural points of comparison are the elitist MOEAs PAES and SPEA, run with their authors' recommended settings. Solutions are real-coded with simulated binary crossover and polynomial mutation, or binary-coded with single-point crossover and bitwise mutation.
+Two-objective test problems drawn from the literature would be the natural yardstick: Schaffer's SCH, Fonseca's FON, Poloni's POL, Kursawe's KUR, and the ZDT family instances ZDT1, ZDT2, ZDT3, ZDT4, and ZDT6, which stress convex fronts, non-convex fronts, discontinuous fronts, many local fronts, and non-uniform density. Constrained settings would include benchmark problems such as SRN and TNK, plus larger engineering-style constrained cases such as WATER. The two quantities a run is scored on are a **convergence** metric (mean distance from the obtained set to the true front) and a **diversity/spread** metric (how evenly the obtained points cover the front, including whether the extremes are reached). The natural points of comparison are the elitist MOEAs PAES and SPEA, run with their recommended settings. Solutions are real-coded with simulated binary crossover and polynomial mutation, or binary-coded with single-point crossover and bitwise mutation.
 
 ## Code framework
 
-The primitives that already exist: a `Problem` exposing objective (and constraint) evaluation, real-coded variation operators (simulated binary crossover, polynomial mutation), binary tournament selection, and a generational GA loop. The dominance test and the generic GA skeleton are known. What is *not* yet known — the slots to fill — is how to rank a vector-valued population, how to keep it diverse without a parameter, and how to make the loop elitist.
+The available primitives are a `Problem` exposing objective evaluation and optional aggregate constraint violation, real-coded variation operators (simulated binary crossover, polynomial mutation), binary tournament selection, and a generational GA loop. The empty slots are the vector-valued population ranking, the within-front diversity estimate, the comparison rule used by selection, and the survivor choice for the next generation.
 
 ```python
 import numpy as np
@@ -49,7 +49,7 @@ def dominates(f_a, f_b):
 
 class Problem:
     n_var: int; n_obj: int; xl: np.ndarray; xu: np.ndarray
-    def evaluate(self, X):           # -> F of shape (len(X), n_obj)
+    def evaluate(self, X):           # -> F, or (F, CV) with one CV per solution
         raise NotImplementedError
 
 def sbx_crossover(parents, xl, xu, eta, prob):   # simulated binary crossover (exists)
@@ -57,7 +57,7 @@ def sbx_crossover(parents, xl, xu, eta, prob):   # simulated binary crossover (e
 def polynomial_mutation(X, xl, xu, eta, prob):   # polynomial mutation (exists)
     ...
 
-def rank_population(F):
+def rank_population(F, CV=None):
     # TODO: split a vector-valued population into ordered nondomination fronts.
     #       Must be cheaper than comparing-and-re-comparing every pair every peel.
     pass
@@ -67,21 +67,21 @@ def diversity_metric(F_front):
     #       and is cheaper than every-pair sharing.
     pass
 
-def compare(i, j):
+def compare(i, j, ranks, diversity, F=None, CV=None):
     # TODO: a single ordering that fuses convergence (front) and diversity.
     pass
 
-def survival(pop_F, n_survive):
-    # TODO: elitist truncation of a combined parent+offspring set to n_survive,
-    #       using rank_population + diversity_metric + compare.
+def survival(candidate_F, n_survive, candidate_CV=None):
+    # TODO: choose n_survive objective vectors using
+    #       rank_population + diversity_metric + compare.
     pass
 
 def run(problem, pop_size, n_gen):
     X = np.random.uniform(problem.xl, problem.xu, (pop_size, problem.n_var))
     F = problem.evaluate(X)
     for _ in range(n_gen):
-        # selection (TODO: by `compare`) -> crossover -> mutation -> offspring
-        # TODO: combine parents+offspring, then survival(...) back down to pop_size
+        # TODO: selection by `compare` -> crossover -> mutation -> offspring
+        # TODO: form the candidate pool for the next generation and call survival(...)
         pass
     return X, F
 ```

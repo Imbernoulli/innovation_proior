@@ -54,7 +54,7 @@ How far should E look? Not far. The further out I look, the more the mapping wil
 
 That handles fidelity — minimizing added gates. But I claimed I also care about depth, and so far nothing in the score knows about depth at all. When does routing add depth unnecessarily? When I pile SWAP after SWAP onto the *same* qubits — those SWAPs are forced to run one after another, serializing. If instead, when I need several SWAPs, I spread them across *disjoint* qubits, they can run in parallel and depth barely grows. So I want the search to prefer SWAPs that don't reuse a qubit I just moved.
 
-Here's a way to bias it. Give every qubit a **decay** value, starting at 1. Each time a qubit is involved in a chosen SWAP, bump its decay up by a small δ. Then multiply the whole cost of a candidate SWAP by the larger of its two qubits' decays:
+A local penalty would do it. Give every qubit a **decay** value, starting at 1. Each time a qubit is involved in a chosen SWAP, bump its decay up by a small δ. Then multiply the whole cost of a candidate SWAP by the larger of its two qubits' decays:
 
   H = max(decay(SWAP.q₁), decay(SWAP.q₂)) · (A_F + W · A_E)
 
@@ -66,13 +66,13 @@ The cost is cheap to evaluate: summing over F and E is O(N) in the worst case (a
 
 The fast prior method picks π from a frequency count with no time; the strong one picks π from the first few gates. Both are local. What I want is a π informed by the *whole* circuit but weighted toward the beginning — because the beginning is what runs first and what π directly determines, but I don't want to ignore the rest. The problem is that "the whole circuit" is exactly what makes this hard: if I try to score an initial mapping against all gates I'm back to a global search.
 
-Let me look for structure I haven't used. Here's something peculiar to quantum circuits that a classical scheduler never has: they're **reversible**. Reverse the order of all the gates and you get a perfectly valid circuit — the two-qubit gates are the very same gates, just in the opposite order. So I have, for free, a mirror image of my problem.
+Let me look for structure I haven't used. For routing, I can traverse the operation list backward. I do not need that backward list to be the semantic inverse of the algorithm; I only need the sequence of logical two-qubit constraints. Those CNOT constraints are the same pairs in the opposite order, so I have, for free, a mirror image of the mapping problem.
 
 What does my router actually compute? I hand it an initial mapping and a circuit; it walks the gates inserting SWAPs and hands back a *final* mapping — the arrangement the qubits are in when the last gate runs. That final mapping is, by construction, a good arrangement for the *end* of the circuit: the router worked the whole way to make it so.
 
-Now turn that around. Run the router *forward* on the original circuit starting from some random π₀. I end at a final mapping π_f that's well-suited to the end of the circuit. Take π_f and use it as the *initial* mapping for the **reversed** circuit. Route the reversed circuit. The reversed circuit ends where the original begins — so the final mapping I get out of *this* run is an arrangement well-suited to the *beginning* of the original circuit. And it's not myopic: it was produced by routing an entire pass of all the gates, so every gate had a say. The gates nearest the start of the original (which are last in the reverse pass, closest to where the mapping finally settles) influence it most; the rest influence it less but aren't ignored. That's precisely the weighting I wanted — global, but front-loaded — and it came out of the reversibility, not from any extra search.
+Now turn that around. Run the router *forward* on the original circuit starting from some random π₀. I end at a final mapping π_f that's well-suited to the end of the circuit. Take π_f and use it as the *initial* mapping for a traversal over the reversed operation order. That traversal finishes at the beginning of the original order, so the final mapping I get out of *this* run is an arrangement well-suited to the *beginning* of the original circuit. And it's not myopic: it was produced by routing an entire pass of all the gates, so every gate had a say. The gates nearest the start of the original (which are last in the reverse pass, closest to where the mapping finally settles) influence it most; the rest influence it less but aren't ignored. That's precisely the weighting I wanted — global, but front-loaded — and it came from the symmetry of the routing constraints, not from any extra search.
 
-So the initial mapping isn't something I compute up front at all; it's something the router *refines* by being run back and forth. Concretely: start from a random π₀, route forward through the original, take the final mapping; route that through the reverse; take that final mapping as the refined initial layout for the original; then route the original forward with that layout. Forward–backward–forward. The layout-refinement traversals can run in a "fake" mode that updates the mapping but doesn't bother building the routed circuit; the last forward pass is the one that emits the hardware-compliant circuit. Since the router is greedy and seeded by a random start, I run the whole thing from several random π₀ and keep the best result.
+So the initial mapping isn't something I compute up front at all; it's something the router *refines* by being run back and forth. Concretely: start from a random π₀, run a fake forward traversal to get the final mapping, use that layout as the start of a fake traversal over the reversed operation order, and keep the layout that comes out as the candidate start for the real forward route. A minimal run is forward, backward, then real forward; the implementation can repeat the fake forward/backward pair for `max_iterations` rounds before the real routing pass. Since the router is greedy and seeded by a random start, I run the whole thing from several π₀ samples and keep the best result.
 
 Let me put the pieces together in code, the routing engine first.
 
@@ -81,18 +81,32 @@ from collections import defaultdict
 from copy import copy, deepcopy
 import numpy as np
 
+from qiskit.circuit.library.standard_gates import SwapGate
+from qiskit.circuit.quantumregister import Qubit
+from qiskit.converters import dag_to_circuit
+from qiskit.transpiler.basepasses import AnalysisPass, TransformationPass
+from qiskit.transpiler.exceptions import TranspilerError
+from qiskit.transpiler.layout import Layout
+from qiskit.transpiler.passmanager import PassManager
+from qiskit.transpiler.passes.layout.apply_layout import ApplyLayout
+from qiskit.transpiler.passes.layout.enlarge_with_ancilla import EnlargeWithAncilla
+from qiskit.transpiler.passes.layout.full_ancilla_allocation import FullAncillaAllocation
+from qiskit.transpiler.passes.layout.set_layout import SetLayout
+from qiskit.dagcircuit import DAGNode
+
 EXTENDED_SET_SIZE = 20      # |E|: how many near-future gates to peek at
 EXTENDED_SET_WEIGHT = 0.5   # W: E is a hint, weaker than F
 DECAY_RATE = 0.001          # delta: per-use bump to a qubit's decay
 DECAY_RESET_INTERVAL = 5    # forget decay penalties every few steps
 
 
-class SabreSwap:
+class SabreSwap(TransformationPass):
     """Route a circuit onto a coupling map by inserting SWAPs, greedily,
     one SWAP at a time, scored by a distance heuristic with look-ahead
     and a decay penalty for serial (depth-adding) SWAPs."""
 
     def __init__(self, coupling_map, heuristic="basic", seed=None, fake_run=False):
+        super().__init__()
         # Couplings are symmetric on this device; a CNOT runs either way.
         if coupling_map.is_symmetric:
             self.coupling_map = coupling_map
@@ -104,6 +118,11 @@ class SabreSwap:
         self.fake_run = fake_run   # layout-refinement passes don't emit SWAPs
 
     def run(self, dag):
+        if len(dag.qregs) != 1 or dag.qregs.get("q", None) is None:
+            raise TranspilerError("Sabre swap runs on physical circuits only.")
+        if len(dag.qubits) > self.coupling_map.size():
+            raise TranspilerError("More virtual qubits exist than physical.")
+
         rng = np.random.default_rng(self.seed)
         mapped_dag = None if self.fake_run else dag._copy_circuit_metadata()
         canonical_register = dag.qregs["q"]
@@ -175,6 +194,19 @@ class SabreSwap:
         self.property_set["final_layout"] = current_layout   # harvested by the layout pass
         return dag if self.fake_run else mapped_dag
 
+    def _apply_gate(self, mapped_dag, node, current_layout, canonical_register):
+        if self.fake_run:
+            return
+        new_node = _transform_gate_for_layout(node, current_layout, canonical_register)
+        mapped_dag.apply_operation_back(new_node.op, new_node.qargs, new_node.cargs)
+
+    def _successors(self, node, dag):
+        for _, successor, edge_data in dag.edges(node):
+            if successor.type != "op":
+                continue
+            if isinstance(edge_data, Qubit):
+                yield successor
+
     def _obtain_swaps(self, front_layer, current_layout):
         # Only SWAPs touching a blocked (front-layer) qubit can help.
         candidate_swaps = set()
@@ -237,31 +269,45 @@ class SabreSwap:
 
     def _is_resolved(self, node):
         return self.applied_predecessors[node] == len(node.qargs)
+
+
+def _transform_gate_for_layout(op_node, layout, device_qreg):
+    mapped_op_node = copy(op_node)
+    mapped_op_node.qargs = [device_qreg[layout[x]] for x in op_node.qargs]
+    return mapped_op_node
 ```
 
 And the reverse-traversal layer that refines the initial mapping by running that router forward and backward, harvesting only the layout:
 
 ```python
-class SabreLayout:
+class SabreLayout(AnalysisPass):
     """Pick a good initial mapping by routing forward/backward; the final
     forward routing pass then consumes the settled layout."""
 
     def __init__(self, coupling_map, routing_pass=None, seed=None, max_iterations=3):
+        super().__init__()
         self.coupling_map = coupling_map
         self.routing_pass = routing_pass
         self.seed = seed
         self.max_iterations = max_iterations
 
     def run(self, dag):
+        if len(dag.qubits) > self.coupling_map.size():
+            raise TranspilerError("More virtual qubits exist than physical.")
+        if self.seed is None:
+            self.seed = np.random.randint(0, np.iinfo(np.int32).max)
         rng = np.random.default_rng(self.seed)
         # Start from a random mapping.
         physical_qubits = rng.choice(self.coupling_map.size(), len(dag.qubits), replace=False)
+        physical_qubits = rng.permutation(physical_qubits)
         initial_layout = Layout({q: dag.qubits[i] for i, q in enumerate(physical_qubits)})
 
         if self.routing_pass is None:
             # fake_run: we only want the layout it lands on, not the SWAPs.
             self.routing_pass = SabreSwap(self.coupling_map, "decay",
                                           seed=self.seed, fake_run=True)
+        else:
+            self.routing_pass.fake_run = True
 
         circ = dag_to_circuit(dag)
         rev_circ = circ.reverse_ops()          # the mirror circuit, gates reversed
@@ -275,7 +321,28 @@ class SabreLayout:
                     initial_layout, pm.property_set["final_layout"], new_circ.qregs)
                 initial_layout = final_layout
                 circ, rev_circ = rev_circ, circ
+        for qreg in dag.qregs.values():
+            initial_layout.add_register(qreg)
         self.property_set["layout"] = initial_layout
+        self.routing_pass.fake_run = False
+
+    def _layout_and_route_passmanager(self, initial_layout):
+        return PassManager([
+            SetLayout(initial_layout),
+            FullAncillaAllocation(self.coupling_map),
+            EnlargeWithAncilla(),
+            ApplyLayout(),
+            self.routing_pass,
+        ])
+
+    def _compose_layouts(self, initial_layout, pass_final_layout, qregs):
+        trivial_layout = Layout.generate_trivial_layout(*qregs)
+        qubit_map = Layout.combine_into_edge_map(initial_layout, trivial_layout)
+        final_layout = {
+            v: pass_final_layout[qubit_map[v]]
+            for v, _ in initial_layout.get_virtual_bits().items()
+        }
+        return Layout(final_layout)
 ```
 
-So the whole thing, end to end: a long circuit can't run on a sparse chip because its CNOTs demand adjacencies the chip doesn't provide, and shuffling occupants by SWAPs to satisfy those demands optimally is NP-complete, so I go greedy. I build a DAG of the two-qubit gates and track the front layer of runnable ones; whenever I'm stuck I consider only the SWAPs touching a blocked qubit, collapsing an exponential search down to a linear one; I score each candidate by the summed coupling-graph distance of the front-layer gates, plus a down-weighted, size-normalized peek at the near-future extended set to kill myopia, all multiplied by a decay penalty that steers away from piling SWAPs on the same qubits so the result stays shallow and parallel — with the decay rate as a knob trading gate count against depth. And because quantum circuits are reversible, I get the initial mapping by running this same router forward and backward to carry information from deeper in the circuit back to the front, harvesting the settled layout rather than the gates; the final forward traversal then emits the hardware-compliant circuit.
+So the whole thing, end to end: a long circuit can't run on a sparse chip because its CNOTs demand adjacencies the chip doesn't provide, and shuffling occupants by SWAPs to satisfy those demands optimally is NP-complete, so I go greedy. I build a DAG of the two-qubit gates and track the front layer of runnable ones; whenever I'm stuck I consider only the SWAPs touching a blocked qubit, collapsing an exponential search down to a linear one; I score each candidate by the summed coupling-graph distance of the front-layer gates, plus a down-weighted, size-normalized peek at the near-future extended set to kill myopia, all multiplied by a decay penalty that steers away from piling SWAPs on the same qubits so the result stays shallow and parallel — with the decay rate as a knob trading gate count against depth. And because the two-qubit routing constraints can be read in reverse order, I get the initial mapping by running this same router forward and backward to carry information from deeper in the circuit back to the front, harvesting the settled layout rather than the gates; the final forward traversal then emits the hardware-compliant circuit.

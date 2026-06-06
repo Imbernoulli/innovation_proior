@@ -1,4 +1,4 @@
-# CVaR optimization — the Rockafellar–Uryasev linear program
+# CVaR optimization — the auxiliary-variable linear program
 
 ## Problem
 
@@ -6,7 +6,7 @@ Choose portfolio weights `w ∈ X` to control the right tail of the loss `L(w, y
 
 ## Key idea
 
-Replace VaR with **Conditional Value-at-Risk** `φ_α(w)` = the mean of the α-tail of the loss (the average loss in the worst `1 − α` of outcomes). The obstacle is that `φ_α(w) = E[L | L ≥ VaR_α(w)]` is defined *through* the quantile. The Rockafellar–Uryasev move is the auxiliary function
+Replace VaR with **Conditional Value-at-Risk** `φ_α(w)` = the mean of the α-tail of the loss (the average loss in the worst `1 − α` of outcomes). In the continuous case this is the same as `E[L | L ≥ VaR_α(w)]`, but that expression is defined *through* the quantile. The useful move is the auxiliary function
 
 ```
 F_α(w, ζ) = ζ + (1/(1−α)) · E[ (L(w,y) − ζ)⁺ ],     (t)⁺ = max{t, 0}.
@@ -18,11 +18,11 @@ F_α(w, ζ) = ζ + (1/(1−α)) · E[ (L(w,y) − ζ)⁺ ],     (t)⁺ = max{t, 
 φ_α(w) = min_ζ F_α(w, ζ),     argmin_ζ F_α(w, ζ) ∋ VaR_α(w).
 ```
 
-So minimizing `F` over `ζ` computes CVaR directly and yields VaR as a byproduct — no quantile needs to be evaluated first.
+So minimizing `F` over `ζ` computes CVaR directly and exposes the quantile interval; its lower endpoint is VaR. No quantile needs to be evaluated first.
 
 *Proof sketch.* With `Ψ(ζ) = P(L ≤ ζ)`, the one-sided derivatives are
 `∂⁺F_α/∂ζ = (Ψ(ζ) − α)/(1−α)` and `∂⁻F_α/∂ζ = (Ψ(ζ⁻) − α)/(1−α)`
-(differentiate `(L−ζ)⁺` under the expectation; the boundary event `{L ≥ ζ}` contributes `−(1−Ψ)`). By convexity the minimizers are the `ζ` with `∂⁻ ≤ 0 ≤ ∂⁺`, i.e. `Ψ(ζ⁻) ≤ α ≤ Ψ(ζ)` — exactly the α-quantiles, whose lower endpoint is `VaR_α`. Plugging the minimizing `ζ* = VaR_α` back in: the tail event has probability `1 − α`, so `(1/(1−α))E[(L−ζ*)⁺] = E[L − ζ* | L ≥ ζ*]` and `F_α(w, ζ*) = E[L | L ≥ ζ*] = φ_α(w)`. For loss distributions with an atom at `ζ*` (always the case for scenario data), the same minimum value equals the α-tail mean with the atom *split*, `λ·VaR_α + (1−λ)·E[L | L > VaR_α]`, `λ = (Ψ(ζ*) − α)/(1−α)`, which keeps the tail weight exactly `1 − α` and makes `φ_α` coherent.
+(the right derivative sees `{L > ζ}` and the left derivative sees `{L ≥ ζ}`, hence the `Ψ(ζ)` versus `Ψ(ζ⁻)` split). By convexity the minimizers are the `ζ` with `∂⁻ ≤ 0 ≤ ∂⁺`, i.e. `Ψ(ζ⁻) ≤ α ≤ Ψ(ζ)` — exactly the α-quantiles, whose lower endpoint is `VaR_α`. In the continuous case, plugging the minimizing `ζ* = VaR_α` back in gives a tail event of probability `1 − α`, so `(1/(1−α))E[(L−ζ*)⁺] = E[L − ζ* | L ≥ ζ*]` and `F_α(w, ζ*) = E[L | L ≥ ζ*] = φ_α(w)`. For loss distributions with an atom at `ζ*` (always the case for scenario data), the same minimum value equals the α-tail mean with the atom *split*, `λ·VaR_α + (1−λ)·E[L | L > VaR_α]`, `λ = (Ψ(ζ*) − α)/(1−α)`, which keeps the tail weight exactly `1 − α` and makes `φ_α` coherent.
 
 **Joint convexity and the optimization shortcut.** When `L(w,y)` is convex in `w` (in particular linear, `L = −Rᵀw`), `F_α(w, ζ)` is *jointly* convex in `(w, ζ)`. Therefore
 
@@ -43,7 +43,7 @@ subject to           u_k ≥ L_k(w) − ζ,   u_k ≥ 0,    k = 1, …, N
                      w ∈ X.
 ```
 
-At the optimum `u_k = (L_k(w) − ζ)⁺` (each `u_k` carries a positive objective coefficient, so it is pushed to the lower envelope of its two constraints). With `L_k = −R_kᵀw` linear, this is a **linear program** in `n + 1 + N` variables; the optimal `ζ` is the α-VaR and the optimal objective is the α-CVaR.
+At the optimum `u_k = (L_k(w) − ζ)⁺` (each `u_k` carries a positive objective coefficient, so it is pushed to the lower envelope of its two constraints). With `L_k = −R_kᵀw` linear, this is a **linear program** in `n + 1 + N` variables; the optimal objective is the α-CVaR, and the optimal `ζ` is an α-quantile threshold whose lower argmin endpoint is the α-VaR.
 
 ## Code
 
@@ -53,12 +53,12 @@ import numpy as np
 
 
 class CVaREfficientPortfolio:
-    """Mean-CVaR optimization via the Rockafellar–Uryasev auxiliary-variable LP.
+    """Mean-CVaR optimization via the auxiliary-variable LP.
 
         min_{w, zeta, u}  zeta + (1 / (N (1 - alpha))) * sum_k u_k
         s.t.  u_k >= L_k(w) - zeta,  u_k >= 0,  w in X,     L_k(w) = -R_k . w.
 
-    Optimal zeta = alpha-VaR (byproduct); optimal value = alpha-CVaR.
+    Optimal value = alpha-CVaR; zeta is an alpha-quantile threshold.
     Data are returns (gains); loss is the negative of the return.
     """
 
@@ -69,7 +69,7 @@ class CVaREfficientPortfolio:
         self.alpha = alpha                            # confidence level (e.g. 0.95)
         self.lower, self.upper = weight_bounds
         self.w = cp.Variable(self.n)                  # portfolio weights
-        self.zeta = cp.Variable()                     # threshold -> becomes VaR
+        self.zeta = cp.Variable()                     # alpha-quantile threshold
         self.u = cp.Variable(self.N)                  # loss-exceedance epigraph vars
 
     def _feasible_region(self, market_neutral=False):
@@ -92,7 +92,7 @@ class CVaREfficientPortfolio:
         objective = self._cvar_expr()
         constraints = self._feasible_region(market_neutral) + self._cvar_constraints()
         cp.Problem(cp.Minimize(objective), constraints).solve()
-        return self.w.value                            # self.zeta.value is the alpha-VaR
+        return self.w.value                            # self.zeta.value is an alpha-quantile
 
     def efficient_return(self, target_return, market_neutral=False):
         """Minimise CVaR subject to a floor on expected return."""

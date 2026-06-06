@@ -11,8 +11,9 @@ whose parameters are classically cheap to set for fixed `p`.
 ## Key idea
 
 View `C` as a diagonal operator (`C|z⟩ = C(z)|z⟩`); the optimum is its extremal eigenstate.
-Adiabatic evolution from the easy ground state `|s⟩ = |+⟩^{⊗n}` of the transverse-field
-mixer `B = Σ_j σˣ_j` toward `C` would reach it, but the required runtime scales like
+Adiabatic evolution from the easy transverse-field state `|s⟩ = |+⟩^{⊗n}` — the ground state
+of `Σ_j ½(1−σˣ_j)`, equivalently the top state of `B = Σ_j σˣ_j` — toward `C` would reach it,
+but the required runtime scales like
 `1/g_min²` and is one long coherent analog evolution. Trotterize that path into `p` discrete
 alternating layers, then **free the Trotter angles from the adiabatic schedule and make them
 variational**: define a `2p`-parameter state and maximize the expectation of `C` in it,
@@ -60,52 +61,57 @@ import networkx as nx
 import pennylane as qml
 from pennylane import numpy as np
 
-n_wires = 4
-graph = [(0, 1), (0, 3), (1, 2), (2, 3)]
-wires = range(n_wires)
+graph = nx.Graph([(0, 1), (0, 3), (1, 2), (2, 3)])
+wires = list(graph.nodes)
+n_wires = len(wires)
 
-# cost layer  U(C, gamma) = e^{-i gamma C},  C = sum_edges 1/2 (1 - Z_j Z_k)
-def U_C(gamma):
-    for j, k in graph:
-        qml.CNOT(wires=[j, k])
-        qml.RZ(gamma, wires=k)
-        qml.CNOT(wires=[j, k])
+def build_objective_and_driver(graph):
+    # PennyLane's MaxCut cost Hamiltonian is H_C = 1/2 sum_edges (Z_i Z_j - I) = -C_cut.
+    return qml.qaoa.maxcut(graph)
 
-# mixer layer  U(B, beta) = prod_j e^{-i beta X_j}
-def U_B(beta):
+def prepare_start(wires):
     for w in wires:
-        qml.RX(2 * beta, wires=w)
+        qml.Hadamard(wires=w)
 
-dev = qml.device("lightning.qubit", wires=n_wires)
+def state_preparation(gammas, betas, cost_h, mixer_h):
+    for gamma, beta in zip(gammas, betas):
+        qml.qaoa.cost_layer(gamma, cost_h)
+        qml.qaoa.mixer_layer(beta, mixer_h)
+
+cost_h, mixer_h = build_objective_and_driver(graph)
+dev = qml.device("default.qubit", wires=n_wires)
+shot_dev = qml.device("default.qubit", wires=n_wires, shots=100)
 
 @qml.qnode(dev)
-def circuit(gammas, betas, return_samples=False):
-    for w in wires:
-        qml.Hadamard(wires=w)                 # |s> = |+>^n
-    for gamma, beta in zip(gammas, betas):
-        U_C(gamma)
-        U_B(beta)                              # p alternating layers
-    if return_samples:
-        return qml.sample()
-    C = qml.sum(*(qml.Z(j) @ qml.Z(k) for j, k in graph))
-    return qml.expval(C)                       # F_p up to the cut affine map
+def expectation_circuit(gammas, betas):
+    prepare_start(wires)
+    state_preparation(gammas, betas, cost_h, mixer_h)
+    return qml.expval(cost_h)                  # minimize H_C to maximize the cut
 
 def objective(params):
     gammas, betas = params[0], params[1]
-    return -0.5 * (len(graph) - circuit(gammas, betas))   # maximize cut = minimize negative
+    return expectation_circuit(gammas, betas)
+
+@qml.qnode(shot_dev)
+def sampling_circuit(gammas, betas):
+    prepare_start(wires)
+    state_preparation(gammas, betas, cost_h, mixer_h)
+    return qml.sample(wires=wires)
+
+def cut_value(bitstring):
+    assignment = dict(zip(wires, map(int, bitstring)))
+    return sum(assignment[u] != assignment[v] for u, v in graph.edges)
 
 def qaoa_maxcut(p=1, steps=30):
-    params = 0.01 * np.random.rand(2, p, requires_grad=True)   # 2p variational angles
+    params = np.array(0.01 * np.random.rand(2, p), requires_grad=True)
     opt = qml.GradientDescentOptimizer(stepsize=0.5)
     for _ in range(steps):
         params = opt.step(objective, params)
-    # sample many shots at the optimized angles; the most frequent bitstring is the cut
-    bitstrings = [circuit(params[0], params[1], return_samples=True) for _ in range(100)]
-    return params, bitstrings
+    samples = sampling_circuit(params[0], params[1])
+    best = max(samples, key=cut_value)
+    return params, best, cut_value(best)
 ```
 
-For a general cost Hamiltonian the same structure is built directly:
-`H_C = Σ_edges ½(Z_i Z_j − I)` and `H_B = Σ_i X_i`, with each layer `e^{-iγ H_C}` then
-`e^{-iβ H_B}` (PennyLane's `qaoa.cost_layer`/`qaoa.mixer_layer` apply exactly these via
-`ApproxTimeEvolution`), the objective the expectation of `H_C`, and the `2p` angles optimized
-classically.
+For MaxCut, `qml.qaoa.maxcut` returns `H_C = Σ_edges ½(Z_i Z_j − I)` and `H_B = Σ_i X_i`.
+`qml.qaoa.cost_layer` and `qml.qaoa.mixer_layer` apply `e^{-iγ H_C}` and `e^{-iβ H_B}` via
+`ApproxTimeEvolution`; minimizing `⟨H_C⟩` is the same as maximizing the cut count.

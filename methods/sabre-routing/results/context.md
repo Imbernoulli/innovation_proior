@@ -36,7 +36,7 @@ The natural yardstick is a set of quantum circuits of varying size and function 
 
 ## Code framework
 
-The primitives that already exist: a circuit representation, a device `CouplingMap` with a method to test adjacency and list neighbors and to compute pairwise distances, and an all-pairs-shortest-path routine (Floyd–Warshall). A routing pass consumes a circuit plus a coupling map and emits a hardware-compliant circuit; a layout pass consumes a circuit plus a coupling map and emits an initial mapping. The contribution will fill the empty bodies below.
+The primitives that already exist: a circuit representation, a device `CouplingMap` with methods to test adjacency, list neighbors, and compute pairwise distances, a layout object mapping logical qubits to physical qubits, and an all-pairs-shortest-path routine (Floyd-Warshall). A routing pass consumes a circuit plus a coupling map and emits a hardware-compliant circuit; a layout pass consumes a circuit plus a coupling map and emits an initial mapping. The empty bodies below are the generic slots where movement selection and initial-layout selection still have to be designed.
 
 ```python
 from collections import defaultdict

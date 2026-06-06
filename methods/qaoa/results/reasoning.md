@@ -20,7 +20,7 @@ Trotterization is exactly the tool for turning a continuous evolution under a su
 e^{−i(A+B)t} = (e^{−iA t/N} e^{−iB t/N})^N + O(t²/N).
 ```
 
-My evolving Hamiltonian is, up to the time-dependent coefficients, made of two pieces: the cost operator `C` and the mixer `B = Σ_j σˣ_j` (the `σˣ` part of `H_B`; the constant and the ½ just shift and scale, I can fold them in). So a Trotterized approximation to the adiabatic path is an alternation of `e^{−iγC}` and `e^{−iβB}` for a sequence of little time slices, where the `γ`'s and `β`'s are the slice durations and their running sum is the total adiabatic time. Let me look at each factor.
+My evolving Hamiltonian is, up to the time-dependent coefficients and a sign convention, made of two pieces: the cost operator `C` and the transverse-field driver. For maximization it is cleaner to use `B = Σ_j σˣ_j`, whose top eigenstate is `|+⟩^n`, rather than the shifted ground-state Hamiltonian `Σ_j ½(1−σˣ_j)`; the two descriptions differ by a constant and a sign that can be absorbed into the allowed angles. So a Trotterized approximation to the extremal-state path is an alternation of `e^{−iγC}` and `e^{−iβB}` for a sequence of little time slices, where the `γ`'s and `β`'s are the slice durations, with signs folded into the angles. Let me look at each factor.
 
 The cost factor `e^{−iγC}`. Because `C = Σ_α C_α` is diagonal, all the `C_α` commute, so
 
@@ -30,7 +30,7 @@ U(C, γ) = e^{−iγC} = ∏_α e^{−iγ C_α},
 
 and this is *exact* — no Trotter error inside the cost layer. Even better, each factor `e^{−iγ C_α}` acts only on the bits clause `α` touches, so its locality is the clause's locality: a 2-bit clause gives a 2-qubit gate, a 3-bit clause a 3-qubit gate. That's precisely the "gates no harder than the objective" property I wanted, and it falls out for free. And since `C` has integer eigenvalues, `e^{−iγC}` is periodic in `γ` with period `2π`, so I can keep `γ ∈ [0, 2π]`.
 
-The mixer factor `e^{−iβB} = ∏_j e^{−iβ σˣ_j}` is a product of single-qubit `σˣ`-rotations, one `RX(2β)` per qubit, depth one. `σˣ` has period `2π` in the rotation angle, so `β ∈ [0, π]` covers it. Why is `B = Σσˣ` the right driver, and not something else? Two reasons, and they're the reasons it was the beginning Hamiltonian in the first place. Its ground state is the trivial `|+⟩^n` I start from. And it *moves amplitude between basis states*: a single-qubit `σˣ` flips one bit, so `B` connects every computational basis string to its single-bit-flip neighbors — the off-diagonal entries are non-negative, the operator is irreducible on the hypercube. By Perron–Frobenius that non-negative off-diagonal structure forces a non-degenerate extremal eigenvalue with a gap below it, which is exactly the gap-positivity the adiabatic theorem demands for the extremal-state path. Without something like `B` mixing the basis states, the cost layer alone would just rephase a diagonal state and never explore — `e^{−iγC}` is diagonal, it can't move probability between strings. So I need both: `C` to imprint the objective as phases, `B` to convert those phases into amplitude that flows toward good strings.
+The mixer factor `e^{−iβB} = ∏_j e^{−iβ σˣ_j}` is a product of single-qubit `σˣ`-rotations, one `RX(2β)` per qubit, depth one. `σˣ` has period `2π` in the rotation angle, so `β ∈ [0, π]` covers it. Why is `B = Σσˣ` the right driver, and not something else? Two reasons, and they're the reasons the shifted transverse-field Hamiltonian was the beginning Hamiltonian in the first place. The state I can prepare, `|+⟩^n`, is the top eigenstate of `B` and the ground state of `Σ_j ½(1−σˣ_j)`, so it is the right easy extremal state under either sign convention. And `B` *moves amplitude between basis states*: a single-qubit `σˣ` flips one bit, so `B` connects every computational basis string to its single-bit-flip neighbors — the off-diagonal entries are non-negative, the operator is irreducible on the hypercube. By Perron–Frobenius that non-negative off-diagonal structure forces a non-degenerate top eigenvalue with a gap below it, which is exactly the gap-positivity the adiabatic theorem demands for the maximizing path. Without something like `B` mixing the basis states, the cost layer alone would just rephase a diagonal state and never explore — `e^{−iγC}` is diagonal, it can't move probability between strings. So I need both: `C` to imprint the objective as phases, `B` to convert those phases into amplitude that flows toward good strings.
 
 So the Trotterized state, for `p` slices, is
 
@@ -50,7 +50,7 @@ F_p(γ, β) = ⟨γ, β| C |γ, β⟩,   M_p = max_{γ,β} F_p(γ, β).
 
 This is the variational principle put to work. `⟨ψ|C|ψ⟩ ≤ C_max` for any state, so `M_p` can never exceed the true optimum — every value of `F_p` I achieve is a genuine lower bound on what I can claim, and pushing `F_p` up is real progress, not a heuristic I have to apologize for. And freeing the angles can only *help* relative to the adiabatic schedule, because the schedule's particular angle sequence is just one point in the `2p`-dimensional box I'm now optimizing over. A short circuit with cleverly chosen angles can do far better than a short circuit forced to take faithful little Trotter steps.
 
-Two structural facts make this feel right. First, `M_p ≥ M_{p−1}`: a depth-`(p−1)` circuit is the special case of a depth-`p` circuit with the extra layer set to do nothing, so the depth-`p` maximization is over a strictly larger set — more layers never hurt. The knob I wanted is `p`, and turning it up provably can't lower the achievable objective. Second — and this is what reconnects me to the adiabatic story and proves the knob actually reaches the answer — `lim_{p→∞} M_p = max_z C(z)`. Here's why that limit holds: among all the angle choices available at large `p` are exactly the ones that *do* trace a faithful Trotterization of an adiabatic path — small angles summing to a long run time. For that subfamily, Trotterization plus the adiabatic theorem (with the Perron–Frobenius gap guaranteeing success along the extremal-state path) drives the state to the optimal eigenstate, so `F_p` at those angles approaches `max_z C(z)`. Since `M_p` is the *max* over all angles, it's at least that, and by the variational bound it's at most `max C`. So `M_p → max C`. The faithful-adiabatic regime I was worried about isn't gone — it's sitting inside my search space as the worst-case fallback, while the optimizer is free to find something far shallower that works just as well or better.
+Two structural facts make this feel right. A depth-`(p−1)` circuit is the special case of a depth-`p` circuit with the extra layer set to do nothing, so the depth-`p` maximization is over a strictly larger set: `M_p ≥ M_{p−1}`. More layers never hurt. The knob I wanted is `p`, and turning it up provably can't lower the achievable objective. The stronger fact, the one that reconnects me to the adiabatic story and proves the knob actually reaches the answer, is `lim_{p→∞} M_p = max_z C(z)`. Among all the angle choices available at large `p` are exactly the ones that *do* trace a faithful Trotterization of an adiabatic path — small angles summing to a long run time. For that subfamily, Trotterization plus the adiabatic theorem (with the Perron–Frobenius gap guaranteeing success along the maximizing extremal-state path) drives the state to the optimal eigenstate, so `F_p` at those angles approaches `max_z C(z)`. Since `M_p` is the *max* over all angles, it's at least that, and by the variational bound it's at most `max C`. So `M_p → max C`. The faithful-adiabatic regime I was worried about isn't gone — it's sitting inside my search space as the worst-case fallback, while the optimizer is free to find something far shallower that works just as well or better.
 
 That last point deserves a sanity check, because I might be fooling myself that this is just the adiabatic algorithm in a discrete costume. It isn't, and I can see why on a tiny example. Take the ring — a connected 2-regular MaxCut graph, the "ring of disagrees." At `p = 1`, with the best single `(γ, β)`, the state gives a `3/4` approximation ratio. But that state has *exponentially small overlap with the optimal strings*. The adiabatic algorithm aims to build large overlap with the optimum; this is doing something different — producing a state whose *expectation* of `C` is high even though it's nowhere near a delta function on the best string. Measuring it still hands me good strings often enough, because the expectation is what governs the measured mean. So this is genuinely not "approximate the ground state," it's "make `⟨C⟩` large," and those come apart.
 
@@ -94,7 +94,7 @@ Let me read this. The `sin(4β)` factor is the mixer turning phase into populati
 
 I push `sin(4β)` to its max of `1` at `β = π/8`, and numerically optimize `γ` in `¼·sin(γ)(2cos²γ)`. The maximum of the whole per-edge expectation comes out to `0.6924…` (around `γ ≈ 0.616`, `β ≈ 0.393` once I include the small corrections from the actual subgraph types). For a triangle-free 3-regular graph all edges share this value, so `F_1 / (number of edges) = 0.6924…`.
 
-To turn a per-edge expectation into a guaranteed approximation *ratio* I need the denominator, the best possible cut, and that's not just a function of the subgraph counts. But I can bound it. Suppose the graph has `T` isolated triangles and `S` crossed squares. Every triangle forces at least one uncut edge (you can't 2-color a triangle with all edges cut), and every crossed square forces at least one uncut edge, and no triangle and square can share a vertex, so `3T + 4S ≤ n`. Hence the optimal cut is at most `(3n/2 − S − T)` out of the `3n/2` edges. Meanwhile the QAOA value at `p=1` is `M_1(n,S,T) = max_{γ,β} F_1`, with
+To turn a per-edge expectation into a guaranteed approximation *ratio* I need the denominator, the best possible cut, and that's not just a function of the subgraph counts. But I can bound it. Suppose the graph has `T` isolated triangles and `S` crossed squares. Every triangle forces at least one uncut edge (you can't 2-color a triangle with all edges cut), and every crossed square forces at least one uncut edge, and no triangle and square can share a vertex, so `3T + 4S ≤ n`. Hence the optimal cut is at most `(3n/2 − S − T)` out of the `3n/2` edges. Meanwhile the best value this depth-one circuit can certify is `M_1(n,S,T) = max_{γ,β} F_1`, with
 
 ```
 F_1 = S·f_{g4} + (4S + 3T)·f_{g5} + (3n/2 − 5S − 3T)·f_{g6},
@@ -228,58 +228,62 @@ Maximize the lower bound. Set `γ = g/D^{1/2}`; for large `D`, `cos^{3D}(g/√D)
 
 So the recipe is settled. Encode the objective as a diagonal `C`; build a `p`-layer alternating circuit `U(B,β_p)U(C,γ_p)…U(B,β_1)U(C,γ_1)` on `|+⟩^n`, where `U(C,γ)=∏_α e^{−iγC_α}` imprints the objective as phases (locality = clause locality) and `U(B,β)=∏_j e^{−iβσˣ_j}` mixes amplitude; treat the `2p` angles as free variational parameters; maximize `F_p(γ,β)=⟨γ,β|C|γ,β⟩` — classically for fixed `p` and bounded degree, or by a classical optimizer querying the quantum computer for `F_p`; then run at the best angles, measure in the computational basis, and keep the best string. Turning `p` up provably can't lower the achievable objective and recovers the optimum as `p→∞`.
 
-Let me land it as real code on MaxCut. Build the cost Hamiltonian as a sum of `ZZ` edge terms and the mixer as a sum of single-qubit `X`'s; each variational layer is `e^{−iγ H_C}` followed by `e^{−iβ H_B}`; the objective is the (negated) expectation of `H_C`; optimize the `2p` angles by gradient descent; then sample.
+Let me land it as real code on MaxCut. The implementation convention I want to mirror uses a minimization Hamiltonian `H_C = ½Σ_edges(Z_iZ_j − I)`, which is the negative of the cut-count operator `C = ½Σ_edges(1 − Z_iZ_j)`. That only flips the sign of the cost angle and the classical objective: minimizing `⟨H_C⟩` maximizes the cut. The mixer is still `H_B = Σ_i X_i`; each layer is `e^{−iγ H_C}` followed by `e^{−iβ H_B}`; the state begins with Hadamards; the optimizer handles the `2p` angles; sampling reads candidate cuts.
 
 ```python
 import networkx as nx
 import pennylane as qml
 from pennylane import numpy as np
 
-# --- the instance ---
-n_wires = 4
-graph = [(0, 1), (0, 3), (1, 2), (2, 3)]
-wires = range(n_wires)
+graph = nx.Graph([(0, 1), (0, 3), (1, 2), (2, 3)])
+wires = list(graph.nodes)
+n_wires = len(wires)
 
-# --- cost layer: U(C, gamma) = e^{-i gamma C}, C = sum_edges 1/2(1 - Z_j Z_k) ---
-# the constant 1/2 is a global phase; e^{-i gamma/2 (-Z_jZ_k)} on each edge is CNOT-RZ-CNOT
-def U_C(gamma):
-    for j, k in graph:
-        qml.CNOT(wires=[j, k])
-        qml.RZ(gamma, wires=k)         # phases strings by their cut value
-        qml.CNOT(wires=[j, k])
+def build_objective_and_driver(graph):
+    # PennyLane's MaxCut Hamiltonian is H_C = 1/2 sum_edges (Z_i Z_j - I) = -C_cut.
+    return qml.qaoa.maxcut(graph)
 
-# --- mixer layer: U(B, beta) = prod_j e^{-i beta X_j}, one RX per qubit ---
-def U_B(beta):
+def prepare_start(wires):
     for w in wires:
-        qml.RX(2 * beta, wires=w)       # the transverse-field driver that moves amplitude
+        qml.Hadamard(wires=w)           # |s> = |+>^n, the easy transverse-field state
 
-dev = qml.device("lightning.qubit", wires=n_wires)
+def state_preparation(gammas, betas, cost_h, mixer_h):
+    for gamma, beta in zip(gammas, betas):
+        qml.qaoa.cost_layer(gamma, cost_h)     # e^{-i gamma H_C}
+        qml.qaoa.mixer_layer(beta, mixer_h)    # e^{-i beta H_B}
+
+cost_h, mixer_h = build_objective_and_driver(graph)
+dev = qml.device("default.qubit", wires=n_wires)
+shot_dev = qml.device("default.qubit", wires=n_wires, shots=100)
 
 @qml.qnode(dev)
-def circuit(gammas, betas, return_samples=False):
-    for w in wires:
-        qml.Hadamard(wires=w)           # |s> = |+>^n, ground state of the mixer
-    for gamma, beta in zip(gammas, betas):
-        U_C(gamma)                       # p alternating layers
-        U_B(beta)
-    if return_samples:
-        return qml.sample()              # read a candidate string in the computational basis
-    # F_p = <C>; here <sum_edges Z_j Z_k>, turned into the cut count below
-    C = qml.sum(*(qml.Z(j) @ qml.Z(k) for j, k in graph))
-    return qml.expval(C)
+def expectation_circuit(gammas, betas):
+    prepare_start(wires)
+    state_preparation(gammas, betas, cost_h, mixer_h)
+    return qml.expval(cost_h)            # minimizing this maximizes the cut
 
 def objective(params):
     gammas, betas = params[0], params[1]
-    # cut value = 1/2 (|E| - <sum Z_jZ_k>); maximize it => minimize the negative
-    return -0.5 * (len(graph) - circuit(gammas, betas))
+    return expectation_circuit(gammas, betas)
+
+@qml.qnode(shot_dev)
+def sampling_circuit(gammas, betas):
+    prepare_start(wires)
+    state_preparation(gammas, betas, cost_h, mixer_h)
+    return qml.sample(wires=wires)
+
+def cut_value(bitstring):
+    assignment = dict(zip(wires, map(int, bitstring)))
+    return sum(assignment[u] != assignment[v] for u, v in graph.edges)
 
 def qaoa_maxcut(p=1, steps=30):
-    params = 0.01 * np.random.rand(2, p, requires_grad=True)   # the 2p free angles
-    opt = qml.GradientDescentOptimizer(stepsize=0.5)           # classical optimizer of F_p
+    params = np.array(0.01 * np.random.rand(2, p), requires_grad=True)
+    opt = qml.GradientDescentOptimizer(stepsize=0.5)
     for _ in range(steps):
         params = opt.step(objective, params)
-    # run once at the best angles, sample many shots, keep the most frequent string
-    return params
+    samples = sampling_circuit(params[0], params[1])
+    best = max(samples, key=cut_value)
+    return params, best, cut_value(best)
 ```
 
 To recap the chain: optimization is finding the extremal eigenstate of a diagonal `C`; adiabatic evolution from the easy `H_B` ground state reaches it but needs runtime `∝ 1/g_min²` — exponential and one long coherent analog run, too deep and not even monotone in `T`; Trotterizing the path into alternating `e^{−iγC}` and `e^{−iβB}` discretizes it but a *faithful* adiabatic approximation still forces large `p`; so cut the angles free of the schedule and make all `2p` of them variational, bounded honestly by `⟨C⟩ ≤ C_max` — more layers never hurt (`M_p ≥ M_{p−1}`) and `p→∞` recovers the adiabatic optimum, while small `p` with optimized angles already gives a provable `0.6924` for cubic MaxCut and a `½ + 1/(2√(3e)D^{1/2})` typical edge over guessing on E3LIN2; locality makes the angle-finding `n`-independent for fixed `p`; and it all compiles to one Hadamard layer plus `p` rounds of cost-phase-then-mix.

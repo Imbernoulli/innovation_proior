@@ -93,11 +93,12 @@ large" is both physically out of reach and not reliably correct.
 shallow.* **Trotterization** (the Lie–Trotter product formula): for non-commuting `A` and `B`,
 `e^{−i(A+B)t} = (e^{−iA t/N} e^{−iB t/N})^N + O(t²/N)`, so a continuous evolution under a sum of
 two terms can be approximated by alternating short evolutions under each term separately, with
-error controllable by taking more, smaller steps. **The Perron–Frobenius theorem**: a matrix
-with non-negative off-diagonal entries (which `H_B`-type operators have, being sums of `σˣ`)
-has a non-degenerate extremal eigenvalue separated from the rest by a gap, which is exactly the
-gap-positivity premise the adiabatic theorem needs for the relevant extremal-state path. **The
-variational principle**: for any Hermitian `C` and any normalized state `|ψ⟩`,
+error controllable by taking more, smaller steps. **The Perron–Frobenius theorem**: the
+transverse-field driver `B = Σ_i σˣ_i` has non-negative off-diagonal entries and connects the
+hypercube of bit strings, so its top eigenstate is non-degenerate and separated from the rest;
+equivalently, the shifted Hamiltonian `Σ_i ½(1 − σˣ_i)` has the same easy state as its
+non-degenerate ground state. That is the gap-positivity structure an extremal-state adiabatic
+path needs. **The variational principle**: for any Hermitian `C` and any normalized state `|ψ⟩`,
 `⟨ψ|C|ψ⟩ ≤ C_max`, the largest eigenvalue. So if one prepares a *family* of states `|ψ(θ)⟩`
 and maximizes `⟨ψ(θ)|C|ψ(θ)⟩` over `θ`, the result is a rigorous lower bound on what the
 optimization can claim and an honest measure of progress — you can never exceed the true
@@ -111,7 +112,7 @@ bits equal to 0 or 1, each bit in at most `D+1` equations), a random assignment 
 satisfies half the equations; Håstad (2000) gave a classical algorithm reaching
 `½ + constant/D`, and Trevisan (2001) showed that beating `½ + constant/D^{1/2}` for large
 enough constant would imply P = NP, while general-instance `½ + ε` is itself NP-hard (Håstad,
-2001). A 2015 classical algorithm (Barak et al; Håstad) reached `½ + constant/D^{1/2}`.
+2001).
 
 ## Baselines
 
@@ -143,13 +144,12 @@ in a true ground state of an evolving Hamiltonian; on objectives with tall thin 
 thermal walk can be trapped, motivating a quantum alternative.
 
 **Classical approximation algorithms for the example problems.** Goemans–Williamson SDP
-rounding (`0.878` for MaxCut), Halperin–Livnat–Zwick for cubic MaxCut, Håstad's
-bounded-occurrence E3LIN2 algorithm (`½ + constant/D`), and the later `½ + constant/D^{1/2}`
-results. *Idea/math:* polynomial-time rounding of relaxations or combinatorial arguments.
-*Gap they leave:* they are the standard a method must be compared against; they set the bar a
-new quantum method should aim to meet or, eventually, beat — and they are the source of the
-inapproximability thresholds that say how much improvement over random guessing is even
-possible.
+rounding (`0.878` for MaxCut), Halperin–Livnat–Zwick for cubic MaxCut, and Håstad's
+bounded-occurrence E3LIN2 algorithm (`½ + constant/D`). *Idea/math:* polynomial-time rounding
+of relaxations or combinatorial arguments. *Gap they leave:* they are the standard a method
+must be compared against; they set the bar a new quantum method should aim to meet or,
+eventually, beat — and they are the source of the inapproximability thresholds that say how
+much improvement over random guessing is even possible.
 
 ## Evaluation settings
 
@@ -159,7 +159,7 @@ approximation ratio `C(z)/max C` as the metric; for cubic graphs the natural str
 parameters are the counts of small subgraphs (isolated triangles, crossed squares). **Max
 E3LIN2 with bounded occurrence**: each equation a mod-2 sum of three bits, each bit in at most
 `D+1` equations, the metric being the fraction of equations satisfied, with `½` (random
-guessing) as the floor and the `D`-dependence (`1/D`, `1/D^{1/2}`, `1/D^{3/4}`) of the excess
+guessing) as the floor and the `D`-dependence (`1/D` versus `1/D^{1/2}`) of the excess
 over `½` as the figure of merit. The protocol is: prepare a parameterized state on the quantum
 computer, measure in the computational basis to read off a candidate string, evaluate its
 objective, and repeat to estimate the mean objective; the parameters are either fixed by
@@ -167,48 +167,49 @@ offline classical analysis or tuned by repeated quantum evaluations.
 
 ## Code framework
 
-The primitives that already exist are a quantum-circuit library that can place single-qubit
+The primitives already available are a quantum-circuit library that can place single-qubit
 rotations and entangling gates and measure in the computational basis, plus a classical
-optimizer. The pieces below are known; the body of the state-preparation routine — the gates
-that turn the easy starting state into a good candidate — is the empty slot to be filled.
+optimizer. The scaffold keeps objective construction, the easy starting state, expectation
+measurement, sampling, and classical parameter search explicit; the state-preparation routine
+is the design slot.
 
 ```python
 import networkx as nx
 import pennylane as qml
 from pennylane import numpy as np
 
-# --- known: build the diagonal objective operator C from the instance ---
-def cost_hamiltonian(graph):
-    # C = sum over clauses of a diagonal (PauliZ-only) term.
-    # For MaxCut each edge contributes a 2-local term; known and constructible.
-    raise NotImplementedError  # TODO: assemble the diagonal cost operator
+def build_objective_and_driver(graph):
+    # TODO: assemble the diagonal objective from local clauses and choose a simple driver.
+    objective_op = None
+    driver_op = None
+    return objective_op, driver_op
 
-# --- known: the easy-to-prepare uniform starting state |+...+> ---
 def prepare_start(wires):
     for w in wires:
-        qml.Hadamard(wires=w)   # |s> = |+>^n, ground state of the transverse field
+        qml.Hadamard(wires=w)   # |s> = |+>^n, the easy transverse-field state
 
-# --- THE SLOT TO FILL: how to turn |s> into a good candidate state ---
-def state_preparation(params, graph, wires):
-    # TODO: the parameterized gate sequence whose measured strings are good optima.
+def state_preparation(params, objective_op, driver_op):
+    # TODO: the parameterized gate sequence whose measured strings are good candidates.
     pass
 
-dev = qml.device("lightning.qubit", wires=...)
+dev = qml.device("default.qubit", wires=...)
 
 @qml.qnode(dev)
 def expectation_circuit(params, graph, wires):
+    objective_op, driver_op = build_objective_and_driver(graph)
     prepare_start(wires)
-    state_preparation(params, graph, wires)         # TODO
-    return qml.expval(cost_hamiltonian(graph))       # variational principle: <C> <= C_max
+    state_preparation(params, objective_op, driver_op)
+    return qml.expval(objective_op)
 
 @qml.qnode(dev)
 def sampling_circuit(params, graph, wires):
+    objective_op, driver_op = build_objective_and_driver(graph)
     prepare_start(wires)
-    state_preparation(params, graph, wires)         # TODO
-    return qml.sample()                              # read a candidate string
+    state_preparation(params, objective_op, driver_op)
+    return qml.sample(wires=wires)                   # read a candidate string
 
 def objective(params, graph, wires):
-    # maximize <C>; optimizers minimize, so return its negative
+    # maximize the objective; optimizers minimize, so return the chosen sign convention
     return -expectation_circuit(params, graph, wires)
 
 def optimize(graph, wires):

@@ -76,101 +76,137 @@ Two checks before I trust the algorithm. First, numerical hygiene: a near-singul
 
 One more rule I'll want is the single best risk-adjusted point, the tangency / maximum-Sharpe portfolio — the place on the frontier where the line from a reference rate `r` is steepest, i.e. `(mu^T w - r)/sqrt(w^T Sigma w)` is maximized. Two ways. Inside the critical-line picture it's easy: the maximum-Sharpe portfolio lies on the frontier, so it's somewhere on one of the turning-point segments; on each segment `w(a) = a*w0 + (1-a)*w1` for `a` in `[0,1]`, the Sharpe ratio is a smooth function of the scalar `a`, so I just line-search `a` on each segment (golden-section is fine) and take the best across segments. The other way, if I'm solving with a general convex solver instead, the raw maximization of `(mu - r)^T w / sqrt(w^T Sigma w)` isn't convex — ratios of an affine over a square root aren't. The standard fix is a change of variable: let `y = w/k` with a scalar `k > 0`, normalize so that `(mu - r)^T y = 1`, and then *minimize* `y^T Sigma y` subject to `1^T y = k` (and the bounds scaled by `k`, `k >= 0`). That's a convex quadratic program in `(y, k)`; recover `w = y/k`. Maximizing the ratio became minimizing a quadratic on a slice — convex, solvable.
 
-So the rule is settled, and there are two faithful ways to compute it: a general convex-QP formulation (clean, flexible about constraints, one solve per frontier point), and the native critical-line algorithm (exact, gives the *entire* frontier from a handful of linear-algebra steps). Let me write both, grounded in how this is actually implemented.
+So the rule is settled, and there are two faithful ways to compute it: a general convex-QP formulation (clean, flexible about constraints, one solve per frontier point), and the native critical-line algorithm (exact, gives the *entire* frontier from a handful of linear-algebra steps). Let me write both side by side.
 
 ```python
 import numpy as np
 import cvxpy as cp
 
 
-# =========================================================================
-# 1) Mean-variance via a general convex QP (the flexible formulation).
-#    Each method below is one rule derived above; w >= 0, sum w = 1 by default.
-# =========================================================================
+def _as_column(x):
+    return np.asarray(x, dtype=float).reshape(-1, 1)
+
+
+def _scalar(x):
+    return float(np.asarray(x).reshape(-1)[0])
+
+
+def _weight_bounds(n, weight_bounds):
+    if len(weight_bounds) == n and not np.isscalar(weight_bounds[0]):
+        bounds = np.asarray(weight_bounds, dtype=float)
+        return bounds[:, 0], bounds[:, 1]
+    lo, hi = weight_bounds
+    lo = np.full(n, -1.0 if lo is None else lo) if np.isscalar(lo) or lo is None else np.asarray(lo, dtype=float)
+    hi = np.full(n, 1.0 if hi is None else hi) if np.isscalar(hi) or hi is None else np.asarray(hi, dtype=float)
+    return lo, hi
+
+
 class EfficientFrontier:
-    def __init__(self, mu, Sigma, weight_bounds=(0, 1)):
+    def __init__(self, mu, Sigma, weight_bounds=(0, 1), solver=None):
         self.mu = np.asarray(mu).ravel()                  # expected returns
         self.Sigma = np.asarray(Sigma)                    # covariance (PSD)
         self.n = len(self.mu)
         self.w = cp.Variable(self.n)
-        lo, hi = weight_bounds
-        # budget + box are the only constraints that exist a priori
-        self._constraints = [cp.sum(self.w) == 1, self.w >= lo, self.w <= hi]
+        self.lo, self.hi = _weight_bounds(self.n, weight_bounds)
+        self.solver = solver
+        self._base_constraints = [self.w >= self.lo, self.w <= self.hi]
 
-    def _solve(self, objective):
-        prob = cp.Problem(cp.Minimize(objective), self._constraints)
-        prob.solve()
-        return self.w.value
+    def _solve(self, objective, constraints=()):
+        constraints = list(self._base_constraints) + list(constraints)
+        prob = cp.Problem(cp.Minimize(objective), constraints)
+        prob.solve(solver=self.solver)
+        if self.w.value is None:
+            raise ValueError(f"optimization failed: {prob.status}")
+        return np.asarray(self.w.value).round(16) + 0.0
 
     def min_volatility(self):
         # bottom tip of the frontier: minimise V = w^T Sigma w
-        return self._solve(cp.quad_form(self.w, self.Sigma, assume_PSD=True))
+        return self._solve(
+            cp.quad_form(self.w, self.Sigma, assume_PSD=True),
+            [cp.sum(self.w) == 1],
+        )
 
-    def efficient_return(self, target):
+    def efficient_return(self, target_return):
         # min V s.t. mean >= target  -> one efficient point per target return
-        self._constraints.append(self.w @ self.mu >= target)
-        return self._solve(cp.quad_form(self.w, self.Sigma, assume_PSD=True))
+        return self._solve(
+            cp.quad_form(self.w, self.Sigma, assume_PSD=True),
+            [cp.sum(self.w) == 1, self.w @ self.mu >= target_return],
+        )
 
-    def efficient_risk(self, target_variance):
-        # max mean s.t. V <= target  (minimise -mean): one point per risk budget
-        self._constraints.append(
-            cp.quad_form(self.w, self.Sigma, assume_PSD=True) <= target_variance)
-        return self._solve(-(self.w @ self.mu))
+    def efficient_risk(self, target_volatility):
+        # max mean s.t. volatility <= target  (minimise -mean)
+        if target_volatility < 0:
+            raise ValueError("target_volatility must be non-negative")
+        variance = cp.quad_form(self.w, self.Sigma, assume_PSD=True)
+        return self._solve(
+            -(self.w @ self.mu),
+            [cp.sum(self.w) == 1, variance <= target_volatility**2],
+        )
 
-    def max_quadratic_utility(self, delta=1.0):
+    def max_quadratic_utility(self, risk_aversion=1.0):
         # the Lagrangian form: max mu^T w - (delta/2) w^T Sigma w
+        if risk_aversion <= 0:
+            raise ValueError("risk_aversion must be positive")
         util = (self.w @ self.mu
-                - 0.5 * delta * cp.quad_form(self.w, self.Sigma, assume_PSD=True))
-        return self._solve(-util)
+                - 0.5 * risk_aversion * cp.quad_form(self.w, self.Sigma, assume_PSD=True))
+        return self._solve(-util, [cp.sum(self.w) == 1])
 
-    def max_sharpe(self, r=0.0):
-        # ratio (mu-r)^T w / sqrt(w^T Sigma w) is non-convex; substitute y = w/k,
-        # fix (mu-r)^T y = 1, minimise y^T Sigma y, then w = y/k.
+    def max_sharpe(self, risk_free_rate=0.0):
+        # substitute y = w/k, fix (mu-r)^T y = 1, minimise y^T Sigma y
+        if np.max(self.mu) <= risk_free_rate:
+            raise ValueError("at least one expected return must exceed the reference rate")
         y, k = cp.Variable(self.n), cp.Variable()
-        lo, hi = 0.0, 1.0
-        cons = [(self.mu - r) @ y == 1, cp.sum(y) == k, k >= 0,
-                y >= lo * k, y <= hi * k]
-        cp.Problem(cp.Minimize(cp.quad_form(y, self.Sigma, assume_PSD=True)),
-                   cons).solve()
-        return y.value / k.value
+        constraints = [
+            (self.mu - risk_free_rate) @ y == 1,
+            cp.sum(y) == k,
+            k >= 0,
+            y >= self.lo * k,
+            y <= self.hi * k,
+        ]
+        prob = cp.Problem(cp.Minimize(cp.quad_form(y, self.Sigma, assume_PSD=True)), constraints)
+        prob.solve(solver=self.solver)
+        if y.value is None or k.value is None:
+            raise ValueError(f"optimization failed: {prob.status}")
+        return (y.value / k.value).round(16) + 0.0
 
 
-# =========================================================================
-# 2) The critical-line algorithm: trace the WHOLE frontier exactly by
-#    hopping turning point -> turning point. Walks lambda from high to 0.
-# =========================================================================
 class CLA:
-    def __init__(self, mu, Sigma, lB, uB):
+    def __init__(self, mu, Sigma, weight_bounds=(0, 1)):
         self.mean = np.asarray(mu, float).reshape(-1, 1)  # column vector
         self.cov = np.asarray(Sigma, float)
-        self.lB = np.asarray(lB, float).reshape(-1, 1)
-        self.uB = np.asarray(uB, float).reshape(-1, 1)
+        lo, hi = _weight_bounds(len(self.mean), weight_bounds)
+        self.lB, self.uB = _as_column(lo), _as_column(hi)
         self.w, self.ls, self.g, self.f = [], [], [], []  # weights, lambdas, gammas, free-sets
+
+    @staticmethod
+    def _infnone(x):
+        return float("-inf") if x is None else x
 
     def _init_algo(self):
         # max-return corner: fill highest-mu assets to their upper bound until budget spent
         idx = np.argsort(self.mean.ravel())            # ascending mu
+        if float(np.sum(self.lB)) > 1 or float(np.sum(self.uB)) < 1:
+            raise ValueError("bounds cannot satisfy a fully invested portfolio")
         w = np.copy(self.lB)
         i = len(idx)
-        while w.sum() < 1:
+        while float(np.sum(w)) < 1:
             i -= 1
             w[idx[i]] = self.uB[idx[i]]
-        w[idx[i]] += 1 - w.sum()                        # last asset partially filled = first free
+        w[idx[i]] += 1 - float(np.sum(w))               # last asset partially filled = first free
         return [idx[i]], w
 
     def _compute_w(self, covF_inv, covFB, meanF, wB):
         onesF = np.ones(meanF.shape)
         # gamma from the budget; affine in the current lambda (= self.ls[-1])
-        g1 = onesF.T @ covF_inv @ meanF
-        g2 = onesF.T @ covF_inv @ onesF
+        g1 = _scalar(onesF.T @ covF_inv @ meanF)
+        g2 = _scalar(onesF.T @ covF_inv @ onesF)
         if wB is None:                                  # every asset free
             g = (-self.ls[-1] * g1 + 1) / g2
             w1 = 0
         else:
             onesB = np.ones(wB.shape)
             w1 = covF_inv @ covFB @ wB                  # Sigma_FF^{-1} Sigma_FB w_B
-            g = (-self.ls[-1] * g1 + (1 - onesB.T @ wB + onesF.T @ w1)) / g2
-        g = float(g)
+            g = (-self.ls[-1] * g1 + (1 - _scalar(onesB.T @ wB) + _scalar(onesF.T @ w1))) / g2
         # w_F = -Sigma_FF^{-1} Sigma_FB w_B + gamma Sigma_FF^{-1} 1 + lambda Sigma_FF^{-1} mu
         wF = -w1 + g * (covF_inv @ onesF) + self.ls[-1] * (covF_inv @ meanF)
         return wF, g
@@ -178,29 +214,181 @@ class CLA:
     def _compute_lambda(self, covF_inv, covFB, meanF, wB, i, bi):
         # the lambda at which free asset i would reach boundary bi (a turning point)
         onesF = np.ones(meanF.shape)
-        c1 = onesF.T @ covF_inv @ onesF
+        c1 = _scalar(onesF.T @ covF_inv @ onesF)
         c2 = covF_inv @ meanF
-        c3 = onesF.T @ covF_inv @ meanF
+        c3 = _scalar(onesF.T @ covF_inv @ meanF)
         c4 = covF_inv @ onesF
-        c = -c1 * c2[i] + c3 * c4[i]
-        if c == 0:
-            return None, bi
+        c = -c1 * _scalar(c2[i]) + c3 * _scalar(c4[i])
+        if abs(c) < 1e-14:
+            return None, None
         if isinstance(bi, list):                        # pick lower/upper by sign of c
-            bi = bi[1] if c > 0 else bi[0]
+            bi = _scalar(bi[1]) if c > 0 else _scalar(bi[0])
+        else:
+            bi = _scalar(bi)
         if wB is None:
-            res = (c4[i] - c1 * bi) / c
+            res = (_scalar(c4[i]) - c1 * bi) / c
         else:
             onesB = np.ones(wB.shape)
-            l1 = onesB.T @ wB
+            l1 = _scalar(onesB.T @ wB)
             l3 = covF_inv @ covFB @ wB
-            l2 = onesF.T @ l3
-            res = ((1 - l1 + l2) * c4[i] - c1 * (bi + l3[i])) / c
-        return float(res), bi
+            l2 = _scalar(onesF.T @ l3)
+            res = ((1 - l1 + l2) * _scalar(c4[i]) - c1 * (bi + _scalar(l3[i]))) / c
+        return res, bi
 
-    # _solve() then walks: try event (a) bound a free weight, event (b) free a
-    # bounded weight; take whichever gives the larger valid lambda < current;
-    # append the new (w, lambda, gamma, free-set); stop when lambda hits 0
-    # (the global min-variance end). Finally purge numerical and dominated points.
+    def _get_b(self, f):
+        return [i for i in range(self.mean.shape[0]) if i not in f]
+
+    @staticmethod
+    def _reduce(matrix, rows, cols):
+        if len(rows) == 0 or len(cols) == 0:
+            return None
+        return matrix[np.ix_(rows, cols)]
+
+    def _get_matrices(self, f):
+        b = self._get_b(f)
+        return (
+            self._reduce(self.cov, f, f),
+            self._reduce(self.cov, f, b),
+            self._reduce(self.mean, f, [0]),
+            self._reduce(self.w[-1], b, [0]),
+        )
+
+    def _purge_num_err(self, tol=1e-9):
+        i = 0
+        while i < len(self.w):
+            bad_budget = abs(float(np.sum(self.w[i])) - 1) > tol
+            bad_bounds = np.any(self.w[i] < self.lB - tol) or np.any(self.w[i] > self.uB + tol)
+            if bad_budget or bad_bounds:
+                del self.w[i], self.ls[i], self.g[i], self.f[i]
+            else:
+                i += 1
+
+    def _purge_excess(self):
+        i, repeat = 0, False
+        while True:
+            if not repeat:
+                i += 1
+            if i == len(self.w) - 1:
+                break
+            mu_i = _scalar(self.w[i].T @ self.mean)
+            repeat = False
+            for j in range(i + 1, len(self.w)):
+                if mu_i < _scalar(self.w[j].T @ self.mean):
+                    del self.w[i], self.ls[i], self.g[i], self.f[i]
+                    repeat = True
+                    break
+
+    def _solve(self):
+        f, w = self._init_algo()
+        self.w, self.ls, self.g, self.f = [np.copy(w)], [None], [None], [f[:]]
+        while True:
+            l_in = i_in = bi_in = None
+            if len(f) > 1:
+                covF, covFB, meanF, wB = self._get_matrices(f)
+                covF_inv = np.linalg.inv(covF)
+                for j, asset in enumerate(f):
+                    lam, bi = self._compute_lambda(
+                        covF_inv, covFB, meanF, wB, j, [self.lB[asset], self.uB[asset]]
+                    )
+                    if lam is not None and lam > CLA._infnone(l_in):
+                        l_in, i_in, bi_in = lam, asset, bi
+
+            l_out = i_out = None
+            if len(f) < self.mean.shape[0]:
+                for asset in self._get_b(f):
+                    covF, covFB, meanF, wB = self._get_matrices(f + [asset])
+                    covF_inv = np.linalg.inv(covF)
+                    lam, _ = self._compute_lambda(
+                        covF_inv, covFB, meanF, wB, meanF.shape[0] - 1, self.w[-1][asset]
+                    )
+                    if lam is not None and (self.ls[-1] is None or lam < self.ls[-1]):
+                        if lam > CLA._infnone(l_out):
+                            l_out, i_out = lam, asset
+
+            if (l_in is None or l_in < 0) and (l_out is None or l_out < 0):
+                self.ls.append(0)
+                covF, covFB, meanF, wB = self._get_matrices(f)
+                covF_inv = np.linalg.inv(covF)
+                meanF = np.zeros(meanF.shape)
+            else:
+                if CLA._infnone(l_in) > CLA._infnone(l_out):
+                    self.ls.append(l_in)
+                    f.remove(i_in)
+                    w[i_in] = bi_in
+                else:
+                    self.ls.append(l_out)
+                    f.append(i_out)
+                covF, covFB, meanF, wB = self._get_matrices(f)
+                covF_inv = np.linalg.inv(covF)
+
+            wF, gamma = self._compute_w(covF_inv, covFB, meanF, wB)
+            for j, asset in enumerate(f):
+                w[asset] = wF[j]
+            self.w.append(np.copy(w))
+            self.g.append(gamma)
+            self.f.append(f[:])
+            if self.ls[-1] == 0:
+                break
+
+        self._purge_num_err()
+        self._purge_excess()
+
+    def min_volatility(self):
+        if not self.w:
+            self._solve()
+        variances = [_scalar(w.T @ self.cov @ w) for w in self.w]
+        return self.w[int(np.argmin(variances))].ravel()
+
+    def _golden_section(self, obj, a, b, args=(), minimum=True, tol=1e-9):
+        sign = 1 if minimum else -1
+        r, c = 0.618033989, 1 - 0.618033989
+        x1, x2 = r * a + c * b, c * a + r * b
+        f1, f2 = sign * obj(x1, *args), sign * obj(x2, *args)
+        for _ in range(int(np.ceil(-2.078087 * np.log(tol / abs(b - a))))):
+            if f1 > f2:
+                a, x1, f1 = x1, x2, f2
+                x2 = c * a + r * b
+                f2 = sign * obj(x2, *args)
+            else:
+                b, x2, f2 = x2, x1, f1
+                x1 = r * a + c * b
+                f1 = sign * obj(x1, *args)
+        return (x1, sign * f1) if f1 < f2 else (x2, sign * f2)
+
+    def _eval_sr(self, a, w0, w1, risk_free_rate):
+        w = a * w0 + (1 - a) * w1
+        ret = _scalar(w.T @ self.mean) - risk_free_rate
+        vol = _scalar(w.T @ self.cov @ w) ** 0.5
+        return ret / vol
+
+    def max_sharpe(self, risk_free_rate=0.0):
+        if not self.w:
+            self._solve()
+        candidates, ratios = [], []
+        for i in range(len(self.w) - 1):
+            w0, w1 = np.copy(self.w[i]), np.copy(self.w[i + 1])
+            a, ratio = self._golden_section(
+                self._eval_sr, 0, 1, args=(w0, w1, risk_free_rate), minimum=False
+            )
+            candidates.append(a * w0 + (1 - a) * w1)
+            ratios.append(ratio)
+        return candidates[int(np.argmax(ratios))].ravel()
+
+    def efficient_frontier(self, points=100):
+        if not self.w:
+            self._solve()
+        mus, sigmas, weights = [], [], []
+        per_segment = max(points // max(len(self.w), 1), 2)
+        grid = np.linspace(0, 1, per_segment)[:-1]
+        for i in range(len(self.w) - 1):
+            if i == len(self.w) - 2:
+                grid = np.linspace(0, 1, per_segment)
+            for a in grid:
+                w = self.w[i + 1] * a + (1 - a) * self.w[i]
+                weights.append(np.copy(w).ravel())
+                mus.append(_scalar(w.T @ self.mean))
+                sigmas.append(_scalar(w.T @ self.cov @ w) ** 0.5)
+        return mus, sigmas, weights
 ```
 
 The causal chain, start to finish: the present-value rule maximizes a linear function of the weights, so it lands on a single corner and can never recommend diversification, which is observed and sensible — so a usable rule cannot be linear in the weights. The law-of-large-numbers patch assumes the off-diagonal of the covariance matrix vanishes, which is empirically false for securities, so it can't be the fix either. Taking variance seriously, `V = w^T Sigma w`, splits into a diagonal that diversification kills and an off-diagonal of covariances it cannot — so a security's risk is its covariance with the rest of the book, and the right diversification is across low-covariance names. Return and variance trade off rather than co-optimize, so the object isn't a single optimum but the efficient frontier — minimum variance per level of return — which sidesteps needing a utility function entirely. Stationarity of the Lagrangian `(1/2)w^T Sigma w - lambda mu^T w` under the budget and box constraints makes the free weights affine in `lambda` (the critical line), the frontier piecewise-linear, kinking only when an asset enters or leaves the free set; hopping those turning points traces the whole frontier exactly. And dropping the bounds recovers `Sigma^{-1} 1 / (1^T Sigma^{-1} 1)`, the classic two-fund minimum-variance portfolio, as the bottom of that frontier. The code is just those two readings of the same object: a convex QP per point, or the critical-line walk for all points at once.

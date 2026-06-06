@@ -24,10 +24,9 @@ The dominant prescription for valuing and choosing securities is the *present-va
 discount view (J. B. Williams, *The Theory of Investment Value*, 1938; the discounting tradition
 going back through Hicks 1939). One forms, for each security, the discounted value of its
 anticipated stream of returns, `R_i = sum_t d_{it} r_{it}`, and prefers securities with higher
-`R_i`. Risk enters only as a premium added to the discount rate. Williams went so far as to argue
-that risk could be diversified away entirely: "Given adequate diversification, gains on such
-purchases will offset losses, and a return at the pure interest rate will be obtained. Thus the
-net risk turns out to be nil." A second strand reaches the same place through the *law of large
+`R_i`. Risk enters only as a premium added to the discount rate. Williams's argument treats broad
+diversification as enough to offset losses across securities, leaving effectively no residual risk.
+A second strand reaches the same place through the *law of large
 numbers* (a temptation since Jacob Bernoulli, 1713): spread money across many securities and the
 realized average yield will converge to the expected yield, so risk washes out in the aggregate.
 
@@ -41,7 +40,7 @@ Several established facts about probability and about the world constrain any ru
   — firms in the same industry tend to do badly at the same time. Empirically the returns are "too
   intercorrelated" for the law of large numbers to apply across a portfolio: diversification
   reduces dispersion but cannot drive it to zero, because the cross-correlations do not vanish.
-  This is a known pre-existing fact about market data, not something a rule gets to assume away.
+  A portfolio rule therefore has to handle co-movement rather than assume it away.
 - **Diversification is observed and is sensible**, and it is understood, informally, that its
   adequacy does not depend only on the *number* of holdings: sixty railway stocks are not as well
   diversified as a spread across railroads, utilities, mining, and manufacturing, because firms in
@@ -73,8 +72,7 @@ diversification for the right reason.
   so that the realized yield is almost the expected yield. **Gap:** this assumes a portfolio exists
   that simultaneously maximizes expected return and minimizes variance, and it assumes the law of
   large numbers applies across securities. Both are false in general — returns are too
-  intercorrelated, and the maximum-`E` portfolio is generally *not* the minimum-`V` one. It is a
-  special, degenerate case of the better rule below.
+  intercorrelated, and the maximum-`E` portfolio is generally *not* the minimum-`V` one.
 
 - **Expected-utility maximization (the von Neumann–Morgenstern / Savage program, contemporaneous).**
   Posit a utility function `U(W)` over terminal wealth and maximize `E[U(W)]`. Coherent and general.

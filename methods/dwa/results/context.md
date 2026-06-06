@@ -1,6 +1,6 @@
 ## Research question
 
-An indoor service robot has to drive toward a goal through a space full of people and furniture that move and appear without warning. It carries proximity sensors (sonar, later laser) that see only a small patch of the world around it, and it has to decide on a new steering command several times a second — in the working system, every 0.25 s — using just that local snapshot. The robot is not a point: it has a maximum speed, and, more importantly, its motors can only deliver bounded torque, so its translational and rotational accelerations are bounded. At the speeds we want (well under a meter per second up to nearly a meter per second), this matters — the robot physically cannot make an arbitrarily sharp turn on demand, because braking and turning take time and distance it may not have.
+An indoor service robot has to drive toward a goal through a space full of people and furniture that move and appear without warning. It carries proximity sensors (sonar, later laser) that see only a small patch of the world around it, and it has to decide on a new steering command several times a second using just that local snapshot. The robot is not a point: it has a maximum speed, and, more importantly, its motors can only deliver bounded torque, so its translational and rotational accelerations are bounded. At the speeds we want (well under a meter per second up to nearly a meter per second), this matters — the robot physically cannot make an arbitrarily sharp turn on demand, because braking and turning take time and distance it may not have.
 
 The precise problem: given the robot's current translational velocity v and rotational velocity ω, its current pose, and the obstacles currently visible nearby, choose the next motion command so that (1) the robot makes progress toward the goal, (2) it never commands a motion it cannot physically execute given its acceleration limits, and (3) it never drives into an obstacle — and do all of this within a single control cycle, repeatedly, without a global map. A solution has to respect the robot's *dynamics*, not just its kinematics: a command is only meaningful if the robot can actually reach that velocity in the next tick and can still stop before hitting something.
 
@@ -10,13 +10,13 @@ The field splits collision avoidance into two camps. **Global** methods (road-ma
 
 Several load-bearing facts about the robot and about prior local methods set up the problem:
 
-- **Synchro-drive kinematics.** On a synchro-drive base the translational velocity v always points along the robot's heading θ — a non-holonomic constraint. The pose evolves by integrating velocity: ẋ = v·cos θ, ẏ = v·sin θ, with θ driven by the rotational velocity ω. A robot moving at constant (v, ω) traces a circle of radius v/ω; v with ω = 0 is a straight line. So short trajectory segments are naturally **circular arcs**, and a circle-versus-obstacle intersection is cheap to test.
+- **Synchro-drive kinematics.** On a synchro-drive base the translational velocity v always points along the robot's heading θ — a non-holonomic constraint. The pose evolves by integrating velocity: ẋ = v·cos θ, ẏ = v·sin θ, with θ driven by the rotational velocity ω. A robot moving at constant (v, ω) traces a circle of radius |v/ω|; v with ω = 0 is a straight line. So short trajectory segments are naturally **circular arcs**, and a circle-versus-obstacle intersection is cheap to test.
 
 - **Bounded actuators.** For most mobile robots the accelerations are monotonic functions of the motor currents, and digital hardware can change those currents only at discrete control ticks. So the robot's translational and rotational accelerations are bounded and piecewise-constant between ticks. This is the physical fact that "ignore the dynamics" methods violate.
 
 - **Braking is a distance.** A robot moving at speed v that decelerates at a constant rate a needs distance v²/(2a) to stop. Whether a velocity is *safe* therefore depends on how far the nearest obstacle is along the path the robot would take.
 
-- **Potential-field local minima.** It is well documented that artificial-potential-field avoidance, which follows the negated gradient of an attractive (goal) plus repulsive (obstacle) potential, stalls at points where the gradient vanishes away from the goal — U-shaped obstacle configurations and symmetric layouts. Borenstein and Koren further observed that such methods fail to find a path between closely spaced obstacles and produce oscillatory behavior in narrow corridors. These are pre-existing, diagnosed failure modes of the design space, not measurements of any new method.
+- **Potential-field local minima.** It is well documented that artificial-potential-field avoidance, which follows the negated gradient of an attractive (goal) plus repulsive (obstacle) potential, stalls at points where the gradient vanishes away from the goal — U-shaped obstacle configurations and symmetric layouts. Borenstein and Koren further observed that such methods fail to find a path between closely spaced obstacles and produce oscillatory behavior in narrow corridors.
 
 - **The "infinite force" assumption.** Most local methods generate a command in two stages: first pick a desired motion *direction* from the sensor data, then convert that direction into a steering command. This is strictly justifiable only if arbitrarily large forces can be applied to the robot — i.e. if it can instantly accelerate in the chosen direction. For a robot with bounded acceleration the desired direction may be physically unreachable in the available time, and following it can drive the robot into the obstacle it was trying to avoid.
 
@@ -36,11 +36,17 @@ The natural testbed is a real synchro-drive indoor robot (a B21-class platform) 
 
 ## Code framework
 
-What already exists: a robot state `[x, y, yaw, v, omega]`; a motion model that steps the pose forward under a commanded `(v, omega)` for a small time `dt` along the resulting circular arc; the robot's hardware limits (max/min translational speed, max rotational speed, max translational and rotational accelerations) and loop period; and a local obstacle list from the proximity sensors. The control loop calls a planner each tick to turn the current state, the goal, and the obstacles into the next `(v, omega)`. The planner itself — how it restricts which velocities are even worth considering, and how it scores them — is the empty slot.
+What already exists: a robot state `[x, y, yaw, v, omega]`; a motion model that steps the pose forward under a commanded `(v, omega)` for a small time `dt` along the resulting circular arc; the robot's hardware limits (max/min translational speed, max rotational speed, max translational and rotational accelerations) and loop period; a robot footprint; and a local obstacle list from the proximity sensors. The control loop calls a planner each tick to turn the current state, the goal, and the obstacles into the next `(v, omega)`. The empty slot is the velocity-space selector: the bounds it searches, the candidate rollout, and the score that chooses one command.
 
 ```python
 import math
+from enum import Enum
 import numpy as np
+
+
+class RobotType(Enum):
+    circle = 0
+    rectangle = 1
 
 
 class Config:
@@ -52,10 +58,16 @@ class Config:
         self.max_delta_yaw_rate = 40.0 * math.pi / 180.0  # [rad/s^2]
         self.dt = 0.1                 # [s] control / prediction tick
         self.predict_time = 3.0       # [s] how far ahead to roll an arc
-        # weights for the score terms (to be designed)
         self.v_resolution = 0.01
         self.yaw_rate_resolution = 0.1 * math.pi / 180.0
+        self.to_goal_cost_gain = ...       # TODO: choose score weights
+        self.speed_cost_gain = ...
+        self.obstacle_cost_gain = ...
+        self.robot_stuck_flag_cons = ...   # TODO: choose stall behavior, if needed
+        self.robot_type = RobotType.circle
         self.robot_radius = 1.0       # [m] for collision check
+        self.robot_width = 0.5        # [m]
+        self.robot_length = 1.2       # [m]
 
 
 def motion(x, u, dt):
@@ -80,20 +92,28 @@ def predict_trajectory(x_init, v, w, config):
     return traj
 
 
-def reachable_velocity_set(x, config):
-    # TODO: which (v, omega) are even worth considering this tick?
-    #       (hardware limits, what's reachable under the accel limits,
-    #        what is safe given the obstacles)
+def calc_candidate_velocity_bounds(x, config):
+    # TODO: choose the velocity bounds to search this tick.
     pass
 
 
-def score(trajectory, goal, obstacles, config):
-    # TODO: how good is the arc produced by one candidate (v, omega)?
+def calc_to_goal_cost(trajectory, goal):
+    # TODO: score the predicted pose relative to the goal.
     pass
 
 
-def plan(x, config, goal, obstacles):
-    # TODO: pick the best (v, omega) from the reachable set by the score
+def calc_obstacle_cost(trajectory, ob, config):
+    # TODO: score or reject a trajectory using the local obstacle points.
+    pass
+
+
+def calc_control_and_trajectory(x, bounds, config, goal, ob):
+    # TODO: grid the candidate velocities, roll each one out, and keep the best.
+    pass
+
+
+def local_velocity_control(x, config, goal, ob):
+    # TODO: compute bounds, select a command, and return the command plus rollout.
     pass
 
 
@@ -102,7 +122,7 @@ def main(goal):
     config = Config()
     obstacles = ...  # local obstacle points from the proximity sensors
     while True:
-        u = plan(x, config, goal, obstacles)
+        u, _ = local_velocity_control(x, config, goal, obstacles)
         x = motion(x, u, config.dt)
         if math.hypot(x[0] - goal[0], x[1] - goal[1]) <= config.robot_radius:
             break

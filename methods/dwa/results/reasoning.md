@@ -16,15 +16,15 @@ Start with the kinematics. My base is synchro-drive: the translational velocity 
 
 But I can't set v(t) and θ(t) directly. What I set — really, what the motor currents set — are the accelerations. v(t) is the initial v(t₀) plus the integral of the translational acceleration v̇ up to t; θ(t) is θ(t₀) plus the integral of ω, and ω itself is ω(t₀) plus the integral of the rotational acceleration ω̇. Substituting all of that in, the x-coordinate becomes a double-integral expression that depends only on the initial dynamic configuration (x₀, v(t₀), θ(t₀), ω(t₀)) and the acceleration profiles v̇, ω̇. That's the honest dynamic model: trajectory as a functional of the accelerations. And the accelerations are exactly the controllable, bounded quantities — they're monotonic in the motor currents, and limiting current limits acceleration. Good; the bound I care about lives on the right variable.
 
-Now this is unwieldy — a trajectory that's a double integral of arbitrary acceleration profiles is not something I want to be intersecting with obstacles four times a second. I need to discretize. Digital hardware only lets me change the currents at ticks, so over each interval [tᵢ, tᵢ₊₁] the accelerations v̇ᵢ, ω̇ᵢ are constant. Plugging constant accelerations into the integral gives the exact discrete form: inside the cosine I get θ(tᵢ) + ωᵢ·Δt + ½·ω̇ᵢ·Δt², and v gets v(tᵢ) + v̇ᵢ·Δt. Still messy — that ½ω̇Δt² inside the cosine means the heading is sweeping quadratically and the integral has no clean closed form. Geometric operations like "does this trajectory cross that obstacle?" on such a curve are expensive.
+Now this is unwieldy — a trajectory that's a double integral of arbitrary acceleration profiles is not something I want to be intersecting with obstacles four times a second. I need to discretize. Digital hardware only lets me change the currents at ticks, so over each interval [tᵢ, tᵢ₊₁] the accelerations v̇ᵢ, ω̇ᵢ are constant. Plugging constant accelerations into the integral gives the exact discrete form: the speed term is v(tᵢ) + v̇ᵢ·τ, and the heading inside the cosine is θ(tᵢ) + ω(tᵢ)·τ + ½·ω̇ᵢ·τ², with τ = t − tᵢ. Still messy — that ½ω̇τ² inside the cosine means the heading is sweeping quadratically and the integral has no cheap geometric form. Geometric operations like "does this trajectory cross that obstacle?" on such a curve are expensive.
 
 So let me make one more approximation, and watch what it buys. Over a *small* interval the velocity barely changes, so instead of letting v ramp linearly across the interval I'll just hold it at some constant value vᵢ somewhere in [v(tᵢ), v(tᵢ₊₁)], and likewise hold ω at a constant ωᵢ in [ω(tᵢ), ω(tᵢ₊₁)]. (As the intervals shrink to zero this collapses back onto the exact equation, so I'm not changing the limit, only the per-step model.) Now inside the integral the heading is just θ(tᵢ) + ωᵢ·(t̂ − tᵢ) — linear in time — and v is the constant vᵢ. That integral I *can* solve:
 
-  for ωᵢ ≠ 0:  Fₓⁱ(t) = (vᵢ/ωᵢ)·(sin θ(tᵢ) − sin(θ(tᵢ) + ωᵢ·(t − tᵢ))),
-              F_yⁱ(t) = −(vᵢ/ωᵢ)·(cos θ(tᵢ) − cos(θ(tᵢ) + ωᵢ·(t − tᵢ))),
-  for ωᵢ = 0:  Fₓⁱ = vᵢ·cos θ(tᵢ)·t,  F_yⁱ = vᵢ·sin θ(tᵢ)·t.
+  for ωᵢ ≠ 0:  Fₓⁱ(t) = (vᵢ/ωᵢ)·(sin(θ(tᵢ) + ωᵢ·τ) − sin θ(tᵢ)),
+              F_yⁱ(t) = (vᵢ/ωᵢ)·(cos θ(tᵢ) − cos(θ(tᵢ) + ωᵢ·τ)),
+  for ωᵢ = 0:  Fₓⁱ = vᵢ·cos θ(tᵢ)·τ,  F_yⁱ = vᵢ·sin θ(tᵢ)·τ.
 
-Stare at the ω ≠ 0 case. There are sines and cosines of (θ + ω·Δt) scaled by v/ω, added to a constant offset. That's the parametrization of a circle. Let me check it: set the center to Mₓⁱ = −(vᵢ/ωᵢ)·sin θ(tᵢ), M_yⁱ = (vᵢ/ωᵢ)·cos θ(tᵢ), and compute the displacement from the center. (Fₓ − Mₓ)² + (F_y − M_y)² — expanding, every cross term cancels and the sin²+cos² of the swept angle collapses, leaving exactly (vᵢ/ωᵢ)². So the point stays at constant distance |vᵢ/ωᵢ| from (Mₓⁱ, M_yⁱ): the trajectory under a constant (v, ω) is a **circle of radius v/ω**. And the ω = 0 case is a straight line. So a robot's path over any short horizon is, to good approximation, a sequence of circular arcs — one arc per (v, ω) pair. Each velocity pair *is* a curvature.
+Stare at the ω ≠ 0 case. There are sines and cosines of (θ + ω·τ) scaled by v/ω, added to a constant offset. That's the parametrization of a circle. Let me check it: set the center, relative to the starting point of this interval, to Mₓⁱ = −(vᵢ/ωᵢ)·sin θ(tᵢ), M_yⁱ = (vᵢ/ωᵢ)·cos θ(tᵢ). Then Fₓ − Mₓ = (vᵢ/ωᵢ)·sin(θ(tᵢ)+ωᵢτ), and F_y − M_y = −(vᵢ/ωᵢ)·cos(θ(tᵢ)+ωᵢτ). Squaring and adding leaves exactly (vᵢ/ωᵢ)². So the point stays at constant distance |vᵢ/ωᵢ| from (Mₓⁱ, M_yⁱ): the trajectory under a constant (v, ω) is a **circle of radius |v/ω|**. And the ω = 0 case is a straight line. So a robot's path over any short horizon is, to good approximation, a sequence of circular arcs — one arc per (v, ω) pair. Each velocity pair *is* a curvature.
 
 This is exactly the leverage I wanted. Two things just happened. First, my decision variable is genuinely two-dimensional and concrete: pick a (v, ω) and I get a specific arc. Second, "where does this trajectory go and does it hit anything?" reduces to "where does this circle go and does it intersect a nearby obstacle?" — and circle-versus-point intersection is cheap. The approximation error from holding velocity constant per interval is, per step, bounded by |v(tᵢ₊₁) − v(tᵢ)|·Δtᵢ — linear in the tick length, so it vanishes as the loop runs faster, and anyway the encoders re-measure the true pose a few times a second, so the prediction only has to be good over one interval. I can live with that.
 
@@ -34,11 +34,11 @@ First cut, the trivial one: hardware limits. v can't exceed the max speed (and c
 
 Second cut, the important one — safety. A velocity is only acceptable if, committing to it, I can still stop before I hit whatever's on my arc. Let me actually compute when that's true. Along the arc of (v, ω), let dist(v, ω) be the distance to the nearest obstacle (a circle-versus-obstacle intersection — exactly what the arc geometry made cheap). If I'm moving at v and I slam on the brakes with translational deceleration v̇_b, how far do I travel before stopping? Constant deceleration: time to stop is v/v̇_b, distance is v·(v/v̇_b) − ½·v̇_b·(v/v̇_b)² = v²/(2·v̇_b). So my braking distance is v²/(2·v̇_b), and to stop in time I need that to be no more than the clearance:
 
-  v²/(2·v̇_b) ≤ dist(v, ω)  ⟺  v ≤ √(2·dist(v, ω)·v̇_b),
+  v²/(2·v̇_b) ≤ dist(v, ω)  ⟺  v ≤ √(2·dist(v, ω)·v̇_b)  for v ≥ 0,
 
-and the identical argument on the rotational axis with braking deceleration ω̇_b gives ω ≤ √(2·dist(v, ω)·ω̇_b). So the **admissible** velocities are
+and if I let the implementation command reverse motion I use |v| in the same inequality. The rotational rate is signed too, so the braking test has to be on its magnitude: |ω| ≤ √(2·dist(v, ω)·ω̇_b). So the **admissible** velocities are
 
-  V_a = { (v, ω) : v ≤ √(2·dist(v, ω)·v̇_b)  ∧  ω ≤ √(2·dist(v, ω)·ω̇_b) }.
+  V_a = { (v, ω) : |v| ≤ √(2·dist(v, ω)·v̇_b)  ∧  |ω| ≤ √(2·dist(v, ω)·ω̇_b) }.
 
 These are exactly the velocities from which the robot can brake to a halt before reaching the closest obstacle on the corresponding curvature. Notice how clean this is and how it differs from the direction-first methods: I never command a heading and hope; I keep only velocities that come with a guaranteed stopping distance. The faster I want to go, the more clearance I need — the constraint couples speed to the geometry, which is precisely the coupling the infinite-force methods threw away.
 
@@ -70,13 +70,20 @@ Put them together, each normalized to [0, 1] so the weights are comparable, and 
 
 The weights α, β, γ set the personality — how boldly it cuts toward the goal versus how wide a berth it gives obstacles versus how much it hurries. And the σ: I smooth the weighted sum over the (v, ω) grid before taking the max. Why bother? Without smoothing the maximum can sit on a knife-edge — a velocity that scores high but is one grid cell away from a velocity that grazes an obstacle, because dist can drop sharply as the arc just barely clears or just barely clips. Smoothing pulls the chosen optimum into a broad safe basin rather than onto a spike next to a cliff, which buys extra side-clearance from obstacles for free. So σ isn't cosmetic; it's what keeps the picked velocity comfortably inside the safe region instead of on its boundary.
 
-That's the whole method. Each cycle: from the current velocity, form the dynamic window V_d; intersect with the hardware box Vₛ and the braking-admissible set V_a to get V_r; over that 2-D region, score every (v, ω) by α·heading + β·dist + γ·velocity, smooth, take the max; execute that command for one tick; then the encoders give me a fresh pose, the sonar gives me fresh obstacles, and I do it all again. The dynamics aren't a correction applied after the fact — they're the window itself, so every command I ever issue is one the robot can actually reach and can actually stop from. That's the thing the potential field couldn't promise.
+Now the loop is clear. Each cycle: from the current velocity, form the dynamic window V_d; intersect with the hardware box Vₛ and the braking-admissible set V_a to get V_r; over that 2-D region, score every (v, ω) by α·heading + β·dist + γ·velocity, smooth, take the max; execute that command for one tick; then the encoders give me a fresh pose, the sonar gives me fresh obstacles, and I do it all again. The dynamics aren't a correction applied after the fact — they're the window itself, so every command I ever issue is one the robot can actually reach and can actually stop from. That's the thing the potential field couldn't promise.
 
-Let me write it the way I'd actually run it. I'll grid the window and forward-simulate each candidate arc rather than carry the closed-form circle around — the rollout is the same arc, just stepped, and it makes the obstacle and goal bookkeeping trivial. And I'll phrase the score as a *cost to minimize* (the negative of G, term by term): heading becomes the angular error to the goal, velocity becomes (max_speed − v) so slow is penalized, and clearance becomes 1/dist so close obstacles cost a lot — with an outright rejection (infinite cost) for any arc that actually collides, which is the admissibility filter folded straight into the cost.
+Let me write it the way I'd actually run it. I'll grid the hardware-and-acceleration window and forward-simulate each candidate arc rather than carry the closed-form circle around — the rollout is the same arc, just stepped, and it makes the obstacle and goal bookkeeping trivial. If I want the exact stopping guarantee, the braking-admissible filter belongs before scoring; in the compact rollout version below I keep the reachable window V_s ∩ V_d explicit, reject any sampled footprint collision with infinite cost, and make near-obstacle arcs expensive through 1/min_r. I'll phrase the score as a *cost to minimize*: heading becomes the angular error to the goal, velocity becomes (max_speed − v) so slow or reverse commands are penalized, and clearance becomes 1/dist so close obstacles cost a lot.
 
 ```python
 import math
+from enum import Enum
+
 import numpy as np
+
+
+class RobotType(Enum):
+    circle = 0
+    rectangle = 1
 
 
 class Config:
@@ -94,7 +101,25 @@ class Config:
         self.speed_cost_gain = 1.0                        # gamma (velocity)
         self.obstacle_cost_gain = 1.0                     # beta  (clearance)
         self.robot_stuck_flag_cons = 0.001
-        self.robot_radius = 1.0                           # [m] collision check
+        self.robot_type = RobotType.circle
+        self.robot_radius = 1.0                           # [m] circle footprint
+        self.robot_width = 0.5                            # [m] rectangle footprint
+        self.robot_length = 1.2                           # [m]
+        self.ob = np.array([[-1, -1],
+                            [0, 2],
+                            [4.0, 2.0],
+                            [5.0, 4.0],
+                            [5.0, 5.0],
+                            [5.0, 6.0],
+                            [5.0, 9.0],
+                            [8.0, 9.0],
+                            [7.0, 9.0],
+                            [8.0, 10.0],
+                            [9.0, 11.0],
+                            [12.0, 13.0],
+                            [12.0, 12.0],
+                            [15.0, 15.0],
+                            [13.0, 13.0]])
 
 
 def motion(x, u, dt):
@@ -143,13 +168,30 @@ def calc_to_goal_cost(trajectory, goal):
 
 
 def calc_obstacle_cost(trajectory, ob, config):
-    # clearance term + admissibility filter (V_a folded in)
+    # sampled footprint collision check plus reciprocal clearance cost
     ox, oy = ob[:, 0], ob[:, 1]
     dx = trajectory[:, 0] - ox[:, None]
     dy = trajectory[:, 1] - oy[:, None]
     r = np.hypot(dx, dy)
-    if np.any(r <= config.robot_radius):
-        return float("inf")          # arc collides -> inadmissible, reject
+    if config.robot_type == RobotType.rectangle:
+        yaw = trajectory[:, 2]
+        rot = np.array([[np.cos(yaw), -np.sin(yaw)],
+                        [np.sin(yaw), np.cos(yaw)]])
+        rot = np.transpose(rot, [2, 0, 1])
+        local_ob = ob[:, None] - trajectory[:, 0:2]
+        local_ob = local_ob.reshape(-1, local_ob.shape[-1])
+        local_ob = np.array([local_ob @ x for x in rot])
+        local_ob = local_ob.reshape(-1, local_ob.shape[-1])
+        upper_check = local_ob[:, 0] <= config.robot_length / 2
+        right_check = local_ob[:, 1] <= config.robot_width / 2
+        bottom_check = local_ob[:, 0] >= -config.robot_length / 2
+        left_check = local_ob[:, 1] >= -config.robot_width / 2
+        if (np.logical_and(np.logical_and(upper_check, right_check),
+                           np.logical_and(bottom_check, left_check))).any():
+            return float("inf")
+    elif config.robot_type == RobotType.circle:
+        if np.array(r <= config.robot_radius).any():
+            return float("inf")
     return 1.0 / np.min(r)           # closer obstacle -> higher cost
 
 
@@ -158,14 +200,14 @@ def calc_control_and_trajectory(x, dw, config, goal, ob):
     min_cost = float("inf")
     best_u = [0.0, 0.0]
     best_traj = np.array([x])
-    # grid the window V_r = (Vs ∩ Vd) with the admissible/collision filter inside the cost
+    # grid Vs ∩ Vd; sampled collisions are rejected by the obstacle cost
     for v in np.arange(dw[0], dw[1], config.v_resolution):
         for w in np.arange(dw[2], dw[3], config.yaw_rate_resolution):
             traj = predict_trajectory(x_init, v, w, config)
             to_goal = config.to_goal_cost_gain * calc_to_goal_cost(traj, goal)
             speed   = config.speed_cost_gain * (config.max_speed - traj[-1, 3])
             obst    = config.obstacle_cost_gain * calc_obstacle_cost(traj, ob, config)
-            cost = to_goal + speed + obst   # = -(alpha*heading + beta*dist + gamma*vel)
+            cost = to_goal + speed + obst
             if cost <= min_cost:
                 min_cost = cost
                 best_u = [v, w]
@@ -179,8 +221,8 @@ def calc_control_and_trajectory(x, dw, config, goal, ob):
 
 
 def dwa_control(x, config, goal, ob):
-    dw = calc_dynamic_window(x, config)          # form V_r this tick
+    dw = calc_dynamic_window(x, config)          # hardware limits ∩ one-tick reachability
     return calc_control_and_trajectory(x, dw, config, goal, ob)  # pick the best (v, omega)
 ```
 
-The causal chain, end to end: reasoning in *direction* space lets a method command a turn the robot can't physically make, so it crashes — therefore reason in *velocity* (v, ω) space, where bounded acceleration is a literal box. Deriving the motion from the synchro-drive equations shows that a constant (v, ω) traces a circular arc of radius v/ω, so every candidate velocity is one cheap-to-test arc. Of those arcs, keep only the ones the robot can brake to a stop on before the nearest obstacle (v ≤ √(2·dist·v̇_b)), and only the ones reachable in one tick under the acceleration limits (the dynamic window) — their intersection with the hardware box is the search space. Score each survivor by heading toward the goal, clearance from obstacles, and forward speed, smooth, take the max, drive one tick, re-sense, repeat. The dynamics live inside the window, so feasibility is guaranteed by construction rather than hoped for.
+The causal chain, end to end: reasoning in *direction* space lets a method command a turn the robot can't physically make, so it crashes — therefore reason in *velocity* (v, ω) space, where bounded acceleration is a literal box. Deriving the motion from the synchro-drive equations shows that a constant (v, ω) traces a circular arc of radius |v/ω|, so every candidate velocity is one cheap-to-test arc. The clean search space is the intersection of the hardware box, the braking-admissible set |v| ≤ √(2·dist·v̇_b), |ω| ≤ √(2·dist·ω̇_b), and the one-tick reachable rectangle. In the compact rollout code I actually execute, `calc_dynamic_window` builds the hardware-and-reachability rectangle, each sampled arc is rejected if its footprint intersects an obstacle, and `1/min_r` keeps the selected command away from nearby obstacles. The essential move is still the same: dynamics live in the velocity-space search itself, so the controller chooses among commands the robot can actually reach instead of issuing an impossible desired direction and hoping the body can follow.
