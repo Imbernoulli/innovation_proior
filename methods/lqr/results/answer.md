@@ -24,7 +24,7 @@ Substituting `u*` back and requiring the HJB to hold for all `x` forces `S` to s
 
 Solving this one matrix equation yields the constant, time-invariant optimal gain.
 
-**Why the hypotheses.** If `(A, B)` is **controllable** (`rank[B, AB, …, Aⁿ⁻¹B] = n`, equivalently the controllability Gramian is positive definite), every state can be driven to the origin with finite energy, so the infinite-horizon cost is finite and the stabilizing CARE solution `S ⪰ 0` exists. If in addition `(A, Q^{1/2})` is **observable**, the cost "sees" every mode, so along the closed loop `d/dt(xᵀSx) = −(xᵀQx + u*ᵀRu*) ≺ 0`: `V* = xᵀSx` is a strict Lyapunov function and `A − BK` is Hurwitz. Minimizing a finite cost is **not** by itself stabilizing — observability is what makes it so.
+**Why the hypotheses.** Complete controllability (`rank[B, AB, …, Aⁿ⁻¹B] = n`, equivalently the controllability Gramian is positive definite) is the clean sufficient condition: every state can be driven to the origin with finite energy, so the infinite-horizon cost is finite and the Riccati limit exists. The solver-level minimum is stabilizability, meaning every nondecaying mode of `A` must be controllable. Complete observability of `(A, Q^{1/2})` is the clean stability condition: along the closed loop `d/dt(xᵀSx) = −(xᵀQx + u*ᵀRu*) ≤ 0`, and observability rules out a nonzero invariant trajectory with zero running cost, so `A − BK` is Hurwitz. The weaker minimum is detectability. Minimizing a finite cost is **not** by itself stabilizing.
 
 ## Variants
 
@@ -40,11 +40,11 @@ Solving this one matrix equation yields the constant, time-invariant optimal gai
 
   The extra `(R + BᵀSB)⁻¹` appears because the one-step minimization over `u[k]` sees `S` through `BᵀSB`.
 
-**Solving the CARE.** It is quadratic in `S`, so it is solved via the `2n×2n` Hamiltonian matrix `Z = [[A, −BR⁻¹Bᵀ], [−Q, −Aᵀ]]`, whose eigenvalues are symmetric about the imaginary axis. The stabilizing `S` is the graph of the stable invariant subspace: ordered-Schur-decompose `Z`, take the leading `n` columns `[U₁; U₂]`, and `S = U₂U₁⁻¹`.
+**Solving the CARE.** It is quadratic in `S`, so it is solved through the Hamiltonian stable-subspace construction. In the regular case the associated `2n×2n` Hamiltonian matrix is `Z = [[A, −BR⁻¹Bᵀ], [−Q, −Aᵀ]]`, with eigenvalues paired as `λ` and `−conj(λ)`. The stabilizing `S` is the graph of the stable invariant subspace: ordered-Schur-decompose `Z`, take the stable basis `[U₁; U₂]`, and form `S = U₂U₁⁻¹` when `U₁` is nonsingular. SciPy implements the same idea with an extended Hamiltonian pencil, balancing, deflation, and QZ ordering.
 
 ## Code
 
-Faithful to `scipy.linalg.solve_continuous_are` (which forms exactly that Hamiltonian pencil) and the standard `K = R⁻¹BᵀS`, `u = −Kx` pattern.
+Faithful to `scipy.linalg.solve_continuous_are` and the standard `K = R⁻¹BᵀS`, `u = −Kx` pattern used by Python Control.
 
 ```python
 import numpy as np
@@ -52,26 +52,26 @@ import scipy.linalg
 from scipy.integrate import odeint
 
 
-def lqr(A, B, Q, R):
-    """Continuous-time infinite-horizon LQR.
+def solve_cost_to_go_matrix(A, B, Q, R):
+    """Continuous-time infinite-horizon cost matrix.
     Plant   dx/dt = A x + B u
     Cost    J = ∫ ( x'Q x + u'R u ) dt,   Q = Q' >= 0,  R = R' > 0.
-    Returns gain K (u = -K x), cost-to-go matrix S, closed-loop poles.
     """
     # Algebraic Riccati equation: A'S + SA - S B R^{-1} B'S + Q = 0.
-    S = scipy.linalg.solve_continuous_are(A, B, Q, R)
+    return scipy.linalg.solve_continuous_are(A, B, Q, R)
+
+
+def feedback_gain(A, B, Q, R):
+    """Return gain K (u = -K x), cost-to-go matrix S, closed-loop poles."""
+    S = solve_cost_to_go_matrix(A, B, Q, R)
     # Gain from the HJB inner-min: u* = -R^{-1} B'S x.
     K = np.linalg.solve(R, B.T @ S)
-    cl_poles = scipy.linalg.eig(A - B @ K)[0]
-    return K, S, cl_poles
+    return K, S, closed_loop_poles(A, B, K)
 
 
-def dlqr(A, B, Q, R):
-    """Discrete-time infinite-horizon LQR for x[k+1] = A x[k] + B u[k]."""
-    S = scipy.linalg.solve_discrete_are(A, B, Q, R)
-    K = np.linalg.solve(R + B.T @ S @ B, B.T @ S @ A)
-    cl_poles = scipy.linalg.eig(A - B @ K)[0]
-    return K, S, cl_poles
+def closed_loop_poles(A, B, K):
+    """Eigenvalues of A - B K."""
+    return scipy.linalg.eig(A - B @ K)[0]
 
 
 def simulate(A, B, K, x0, t):
@@ -98,7 +98,7 @@ Bx = np.array([[0], [0], [0], [1 / Ix]])   # pitch-torque input
 Q = np.eye(4); Q[0, 0] = 10.0    # weight position error; R is the effort knob
 R = np.array([[1.0]])
 
-K, S, poles = lqr(Ax, Bx, Q, R)
+K, S, poles = feedback_gain(Ax, Bx, Q, R)
 # control law tracks a reference: u = -K (x - x_ref)
 ```
 

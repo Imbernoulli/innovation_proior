@@ -64,8 +64,8 @@ Terminal voltage (electrode-averaged, accurate to O(C_e²)):
     ΔΦ̄_Solid = −(I/3) (L_p/σ_p + L_n/σ_n)
     j̄_{0,k}  = (1/L_k) ∫ (γ_k/C_{r,k}) (c_{s,k}⁰)^½ (1−c_{s,k}⁰)^½ (1 + C_e c_{e,k}¹)^½ dx
 
-The dressed exchange-current density `j̄_{0,k}` folds the first-order reaction-overpotential correction
-`c̄_{e,k}¹ I/√((j_{0,k}⁰ L_k)² + I²)` into the leading-order `sinh⁻¹` form.
+The dressed exchange-current density `j̄_{0,k}` folds the first-order reaction-overpotential contribution to the terminal voltage,
+`c̄_{e,k}¹ I/√((j_{0,k}⁰ L_k)² + I²)`, into the leading-order `sinh⁻¹` form.
 
 ## Dimensional summary
 
@@ -92,7 +92,7 @@ initialization step, and no current-step convergence failure.
 
 ## Code (PyBaMM)
 
-The SPMe inherits the SPM (leading order) and overrides three submodels with the first-order terms.
+The SPMe inherits the SPM leading-order particle and kinetic submodels, then overrides the solid potential, electrolyte concentration, and electrolyte-potential pieces.
 
 ```python
 import pybamm
@@ -100,58 +100,83 @@ from .spm import SPM
 
 
 class SPMe(SPM):
-    """Single Particle Model with electrolyte: SPM at leading order plus the
-    first-order electrolyte correction. Inherits the x-averaged particle and
-    Butler-Volmer; refills the electrolyte concentration, electrolyte potential,
-    and solid potential submodels."""
-
     def __init__(self, options=None, name="Single Particle Model with electrolyte",
                  build=True):
-        # c_s-bar^1 = 0 => one x-averaged particle per electrode is sufficient
         self.x_average = True
         super().__init__(options, name, build)
 
+    def set_solid_submodel(self):
+        for domain in ["negative", "positive"]:
+            if self.options.electrode_types[domain] == "porous":
+                solid_submodel = pybamm.electrode.ohm.Composite
+            elif self.options.electrode_types[domain] == "planar":
+                if self.options["surface form"] == "false":
+                    solid_submodel = pybamm.electrode.ohm.LithiumMetalExplicit
+                else:
+                    solid_submodel = pybamm.electrode.ohm.LithiumMetalSurfaceForm
+            self.submodels[f"{domain} electrode potential"] = solid_submodel(
+                self.param, domain, self.options
+            )
+
     def set_electrolyte_concentration_submodel(self):
-        # Transient first-order electrolyte PDE (the canonical SPMe's extra PDE):
-        #   d(eps c_e)/dt = -div N_e + source/F,  N_e = -tor D_e(c) grad c_e + t+ i_e/F
         self.submodels["electrolyte diffusion"] = pybamm.electrolyte_diffusion.Full(
             self.param, self.options
         )
 
     def set_electrolyte_potential_submodel(self):
-        # Composite electrolyte potential -> concentration overpotential eta_c and
-        # electrolyte Ohmic loss delta_phi_e (the first-order MacInnes solution).
-        self.submodels["electrolyte conductivity"] = (
-            pybamm.electrolyte_conductivity.Composite(self.param, options=self.options)
-        )
+        surf_form = pybamm.electrolyte_conductivity.surface_potential_form
 
-    def set_solid_submodel(self):
-        # First-order solid-phase Ohmic loss: -(I/3)(L_p/sigma_p + L_n/sigma_n)
+        if (
+            self.options["surface form"] == "false"
+            or self.options.electrode_types["negative"] == "planar"
+        ):
+            if self.options["electrolyte conductivity"] in ["default", "composite"]:
+                self.submodels["electrolyte conductivity"] = (
+                    pybamm.electrolyte_conductivity.Composite(
+                        self.param, options=self.options
+                    )
+                )
+            elif self.options["electrolyte conductivity"] == "integrated":
+                self.submodels["electrolyte conductivity"] = (
+                    pybamm.electrolyte_conductivity.Integrated(
+                        self.param, options=self.options
+                    )
+                )
+
+        if self.options["surface form"] == "false":
+            surf_model = surf_form.Explicit
+        elif self.options["surface form"] == "differential":
+            surf_model = surf_form.CompositeDifferential
+        elif self.options["surface form"] == "algebraic":
+            surf_model = surf_form.CompositeAlgebraic
+
         for domain in ["negative", "positive"]:
-            self.submodels[f"{domain} electrode potential"] = (
-                pybamm.electrode.ohm.Composite(self.param, domain, self.options)
-            )
+            if self.options.electrode_types[domain] == "porous":
+                self.submodels[f"{domain} surface potential difference [V]"] = (
+                    surf_model(self.param, domain, self.options)
+                )
 ```
 
 The composite electrolyte-potential submodel builds the first-order electrolyte potential and reads off
 the two averaged voltage contributions, which are exactly `η̄_c` and `ΔΦ̄_Elec`:
 
 ```python
-# concentration overpotential  eta_c = chi (RT/F)(macinnes_p - macinnes_n),  chi = 2(1 - t+)
-macinnes_c_e_p = pybamm.x_average(log(c_e_p / c_e_av))
-macinnes_c_e_n = pybamm.x_average(log(c_e_n / c_e_av))
+# diffusion-potential part of phi_e, averaged into the concentration overpotential
+macinnes_c_e_p = pybamm.x_average(
+    self._higher_order_macinnes_function(c_e_p / c_e_av)
+)
+macinnes_c_e_n = pybamm.x_average(
+    self._higher_order_macinnes_function(c_e_n / c_e_av)
+)
 eta_c_av = chi_av * RT_F_av * (macinnes_c_e_p - macinnes_c_e_n)
 
-# electrolyte Ohmic loss  -i (L_n/(3 k_n) + L_s/k_s + L_p/(3 k_p))  ==  Delta-Phi_Elec
+# migration Ohmic part of phi_e, averaged across the three regions
 delta_phi_e_av = -i_boundary_cc * (
     L_n / (3 * kappa_n_av) + L_s / kappa_s_av + L_p / (3 * kappa_p_av)
 )
 ```
 
-The Stefan–Maxwell electrolyte mass-transport submodel (`Full`) implements the transient electrolyte
-PDE: `N_e = −tor·D_e(c)·grad c_e + t⁺ i_e/F` and `∂(ε c_e)/∂t = −div N_e + source/F`, with the
-leading-order current `i_e` (linear ramp in each electrode, constant in the separator) as the source.
-The particle submodel is the x-averaged Fickian diffusion inherited from the SPM. Usage:
+The Stefan–Maxwell electrolyte mass-transport submodel (`Full`) implements `N_e = −tor·D_e(c_e,T)·grad c_e + t⁺ i_e/F` plus the framework's convection term, and `∂(ε c_e)/∂t = −div N_e + source/F`. The particle submodel is the x-averaged Fickian diffusion inherited from the SPM. Usage:
 
 ```python
 model = pybamm.lithium_ion.SPMe()

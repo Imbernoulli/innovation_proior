@@ -87,22 +87,22 @@ the controllability Gramian. The plant is completely controllable exactly when `
 
     rank [ G, FG, F²G, …, Fⁿ⁻¹G ] = n.
 
-That's the controllability rank test, and the point of it here is that controllability is what makes the infinite-horizon cost finite, which is what makes the backward Riccati solution `Π(t; 0, t₁)` converge to a constant `S̄` as `t₁ → ∞`. The argument is clean: for any `x`, pick a control that drives it to zero by some fixed time and is zero afterward — that control's cost is an upper bound on the optimal cost-to-go, finite and independent of `t₁`, so `Π` is bounded above; and extending the horizon can only add nonnegative cost, so `Π` is nondecreasing in `t₁`. Bounded and monotone ⟹ the limit exists, and by continuity it solves the algebraic Riccati equation. Good — that licenses "set `Ṡ = 0`."
+That's the controllability rank test, and complete controllability gives me a clean sufficient path to the infinite-horizon object: every initial state can be driven to zero with finite energy, so the optimal cost over longer and longer horizons stays bounded. The argument is clean: for any `x`, pick a control that drives it to zero by some fixed time and is zero afterward — that control's cost is an upper bound on the optimal cost-to-go, finite and independent of `t₁`; and extending the horizon can only add nonnegative cost, so `Π` is nondecreasing in `t₁`. Bounded and monotone gives a limit, and by continuity the limit solves the algebraic Riccati equation. I do not actually need to move modes that are already decaying, so the minimal condition is weaker — every nondecaying mode has to be controllable, i.e. the pair has to be stabilizable — but complete controllability is the transparent condition that licenses "set `Ṡ = 0`" without side cases.
 
-Now stability, and this is the trap. It is widely assumed — tacitly, and it's wrong — that any controller minimizing a cost must be stabilizing. It isn't automatic: minimizing a *finite* cost does not by itself force the state to decay to zero. Picture a mode of the plant that the cost simply doesn't see — it doesn't appear in `Q` — and that costs essentially nothing to leave alone. The cost-to-go can be finite while that mode quietly runs off to infinity. So stability is a genuinely separate property and I have to *prove* it, not assume it. Lyapunov's second method is the right tool, and beautifully, the value function itself is the natural candidate. Take `V°(x) = x'Sx`. Along the optimal closed-loop motion, what is its time-derivative? Differentiate the HJB story: the HJB at the optimum says `V°_x·(Fx + Gu*) + (x'Qx + u*'Ru*) = 0` (the `V°_t` term is zero in steady state), i.e.
+Now stability, and this is the trap. It is widely assumed — tacitly, and it's wrong — that any controller minimizing a cost must be stabilizing. It isn't automatic: minimizing a *finite* cost does not by itself force the state to decay to zero. Picture a mode of the plant that the cost simply doesn't see — it doesn't appear in `Q` — and that costs essentially nothing to leave alone. If that mode can grow without being seen, the cost-to-go can be finite while the state does not converge. So stability is a genuinely separate property and I have to *prove* it, not assume it. Lyapunov's second method is the right tool, and beautifully, the value function itself is the natural candidate. Take `V°(x) = x'Sx`. Along the optimal closed-loop motion, what is its time-derivative? Differentiate the HJB story: the HJB at the optimum says `V°_x·(Fx + Gu*) + (x'Qx + u*'Ru*) = 0` (the `V°_t` term is zero in steady state), i.e.
 
     d/dt V°(x(t)) = V°_x · ẋ = −( x'Qx + u*'Ru* ).
 
-The cost-to-go *decreases along trajectories at exactly the instantaneous running cost rate.* So `V̇° ≤ 0` always, and it's strictly negative as long as `x'Qx + u*'Ru* > 0`. With `V° = x'Sx > 0` for `x ≠ 0` and `V° → ∞` as `‖x‖ → ∞`, that's a Lyapunov function and the closed loop is asymptotically stable — *provided* the running cost can't stay zero along a nonzero trajectory. That's the missing hypothesis: I need the cost to actually "see" every mode that the control can't kill on its own. If `Q = H'(·)H` weights an output, the condition is that the plant be **completely observable** through that output — the dual notion to controllability (it's literally controllability of the time-reversed dual plant `F↦F'`, `G↦H'`), with its own Gramian and, in the time-invariant case, its own rank test `rank[H'; F'H'; …; (F')ⁿ⁻¹H'] = n`. Observability is what rules out the cheap-but-unobserved runaway mode: if every mode is visible in the cost, `x'Qx + u'Ru` can't vanish along a nonzero motion, so `V̇° ≺ 0` strictly and `F − GK` is Hurwitz. (To make these uniform statements for time-varying plants I'd also bound `Q, R` above and below by positive constants, so the Lyapunov function is sandwiched by increasing functions of `‖x‖` on both sides — but the structure is exactly this.) So: controllability ⟹ finite cost ⟹ the algebraic Riccati solution exists; observability ⟹ the optimal closed loop is actually stable. Both conditions earn their place; neither is decoration.
+The cost-to-go *decreases along trajectories at exactly the instantaneous running cost rate.* So `V̇° ≤ 0` always. That is enough for Lyapunov stability, but not yet enough for asymptotic stability, because the derivative can be zero at isolated nonzero states when `Q` is only semidefinite. What I need to rule out is a whole nonzero closed-loop trajectory on which the running cost stays zero. If `Q = H'H` weights an output, the clean strong condition is that the plant be **completely observable** through that output — the dual notion to controllability (it is controllability of the time-reversed dual plant `F↦F'`, `G↦H'`), with its own Gramian and, in the time-invariant case, its own rank test `rank[H'; F'H'; …; (F')ⁿ⁻¹H'] = n`. Observability says no nonzero motion can hide from the state-cost output forever. Together with the `u*'Ru*` term, the only invariant set where `V̇° = 0` is the origin, so the value function gives asymptotic stability of `F − GK`. Again the weakest useful form is detectability — unobserved modes are harmless if they already decay — but complete observability is the clean condition that makes the Lyapunov argument immediate. So: controllability gives finite cost and the Riccati limit in the clean theorem; stabilizability is the solver-level minimum. Observability gives the strict invariance argument for convergence; detectability is the minimum. Both ideas earn their place; neither is decoration.
 
-Two loose ends before code. First, the sign sanity check I promised: the closed loop is `ẋ = (F − GK)x = (F − G R⁻¹ G'S)x`. Is `F − GR⁻¹G'S` stable? That's exactly what the Lyapunov argument just established — `x'Sx` decreases along it — so yes, the `−K` (negative-feedback) sign is the stabilizing one. Good; if I'd taken `+K` the same `V°` would *increase* and I'd have the wrong sign. Second: how do I actually solve the algebraic Riccati equation numerically? It's quadratic in `S`, so I can't just invert something. But the costate route from before secretly hands me the answer. The canonical state/costate equations of the linear-quadratic problem are linear in `(x, ξ)` with the block matrix
+Two loose ends before code. First, the sign sanity check I promised: the closed loop is `ẋ = (F − GK)x = (F − G R⁻¹ G'S)x`. Is `F − GR⁻¹G'S` stable? That's exactly what the Lyapunov argument just established — the value function can only keep decreasing until the state reaches zero — so yes, the `−K` negative-feedback sign is the stabilizing one. If I had taken `+K`, the closed-loop matrix would be `F + GR⁻¹G'S`, and the Lyapunov identity I just derived would not hold. Second: how do I actually solve the algebraic Riccati equation numerically? It's quadratic in `S`, so I can't just invert something. But the costate route from before secretly hands me the answer. The canonical state/costate equations of the linear-quadratic problem are linear in `(x, ξ)` with the block matrix
 
     Z = [ F      −G R⁻¹ G' ;
           −Q     −F'        ].
 
-This `2n×2n` Hamiltonian matrix has a spectral symmetry: its eigenvalues come in `±` pairs (if `λ` is an eigenvalue so is `−λ`). The stabilizing solution `S` is the one whose graph `{(x, Sx)}` is the *stable* invariant subspace of `Z` — the span of the eigenvectors with negative real part. Concretely: compute an ordered Schur (or eigen-) decomposition of `Z` that puts the stable eigenvalues first, take the leading `n` columns `[U₁; U₂]` of the transformation, and `S = U₂ U₁⁻¹`. That's the modern Riccati solver — and it's the direct descendant of the old transition-matrix formula `P(t) = [Θ₂₁ + Θ₂₂P(t₁)][Θ₁₁ + Θ₁₂P(t₁)]⁻¹` from propagating the canonical equations, just stated in terms of the stable subspace instead of a terminal condition. In code I'll lean on the library that forms this Hamiltonian pencil and does the ordered decomposition for me; I just have to hand it `(F, G, Q, R)`.
+This `2n×2n` Hamiltonian matrix has the usual Hamiltonian spectral symmetry: if `λ` is present, so is `−conj(λ)`, and real eigenvalues appear in `±` pairs. The stabilizing solution `S` is the one whose graph `{(x, Sx)}` is the *stable* invariant subspace of `Z` — the span of the eigenvectors with negative real part. Concretely: compute an ordered Schur (or eigen-) decomposition of `Z` that puts the stable eigenvalues first, take the leading `n` columns `[U₁; U₂]` of the transformation, and `S = U₂ U₁⁻¹` when `U₁` is nonsingular. The library implementation uses the same idea in a numerically safer form: it builds an extended Hamiltonian pencil, deflates it, balances it, and isolates the left-half-plane generalized invariant subspace by QZ. That is the practical descendant of the transition-matrix formula `P(t) = [Θ₂₁ + Θ₂₂P(t₁)][Θ₁₁ + Θ₁₂P(t₁)]⁻¹` from propagating the canonical equations, just stated in terms of a stable subspace instead of a terminal condition. In code I just have to hand the solver `(F, G, Q, R)` and then read off the gain.
 
-Let me land it. I'll rename to the textbook letters `ẋ = Ax + Bu`, cost `∫(x'Qx + u'Ru)dt`. The whole synthesis is: solve the algebraic Riccati equation for `S`, then `K = R⁻¹B'S`, then `u = −Kx`.
+I'll rename to the textbook letters `ẋ = Ax + Bu`, cost `∫(x'Qx + u'Ru)dt`. The whole synthesis is: solve the algebraic Riccati equation for `S`, then `K = R⁻¹B'S`, then `u = −Kx`.
 
 ```python
 import numpy as np
@@ -110,26 +110,35 @@ import scipy.linalg
 from scipy.integrate import odeint
 
 
-def lqr(A, B, Q, R):
-    """Continuous-time infinite-horizon optimal state feedback.
+def solve_cost_to_go_matrix(A, B, Q, R):
+    """Return S for the continuous-time infinite-horizon quadratic cost.
     Plant   dx/dt = A x + B u
     Cost    J = ∫ ( x'Q x + u'R u ) dt,   Q = Q' >= 0,  R = R' > 0.
     """
     # Solve the algebraic Riccati equation  A'S + SA - S B R^{-1} B'S + Q = 0
     # for the symmetric cost-to-go matrix S (the value function is x'Sx).
-    # The solver forms the 2n×2n Hamiltonian pencil and takes its stable
-    # invariant subspace — the descendant of propagating the canonical
-    # state/costate equations — to pick the stabilizing root.
-    S = scipy.linalg.solve_continuous_are(A, B, Q, R)
+    # The solver isolates the stable subspace of an extended Hamiltonian
+    # pencil, which is the numerical form of the canonical-equation argument.
+    return scipy.linalg.solve_continuous_are(A, B, Q, R)
 
+
+def feedback_gain(A, B, Q, R):
+    S = solve_cost_to_go_matrix(A, B, Q, R)
     # Read the feedback gain off the value function: the inner min over u in
     # the HJB gave u* = -R^{-1} B'S x, i.e. K = R^{-1} B'S.
     K = np.linalg.solve(R, B.T @ S)
+    return K, S, closed_loop_poles(A, B, K)
 
-    # Closed-loop poles A - B K should all sit in the open left half-plane;
-    # that the Lyapunov function x'Sx decays along motions is exactly why.
-    cl_poles = scipy.linalg.eig(A - B @ K)[0]
-    return K, S, cl_poles
+
+def closed_loop_poles(A, B, K):
+    # Closed-loop poles A - B K should sit in the open left half-plane.
+    return scipy.linalg.eig(A - B @ K)[0]
+
+
+def simulate(A, B, K, x0, t):
+    def rhs(x, _t):
+        return A @ x + B @ (-K @ x)
+    return odeint(rhs, x0, t)
 ```
 
 And exercising it on a genuinely multivariable plant — a quadrotor linearized about hover — shows the structure the SISO methods could never handle. Hover decouples the small-signal dynamics into four channels, and the load-bearing physics is that horizontal position is steered through *attitude*: tilting the pitch by `θ` accelerates `x` by `g·θ`, so the `x`-channel state is `[x, ẋ, θ, θ̇]` with gravity coupling position to tilt, and the input is a pitch torque. That `g`-coupling is exactly the cross-channel interaction hand-tuning would have to fight; here it's just an entry in `A` and the Riccati solver handles all the gains jointly.
@@ -147,7 +156,7 @@ Bx = np.array([[0], [0], [0], [1 / Ix]])   # input is a pitch torque
 Q = np.eye(4); Q[0, 0] = 10.0   # weight position error most; R is the effort knob
 R = np.array([[1.0]])
 
-K, S, poles = lqr(Ax, Bx, Q, R)   # u = -K (x - x_ref): one gain, all states jointly
+K, S, poles = feedback_gain(Ax, Bx, Q, R)   # u = -K (x - x_ref): one gain, all states jointly
 ```
 
-The whole chain, in one breath: I wanted feedback, not a hand-tuned loop — so I wrote "good transient + bounded effort" as `J = ∫(x'Qx + u'Ru)dt` with `(Q,R)` the trade-off knob; the open-loop variational route gave only `u*(t)`, so I switched to the cost-to-go `V°(x)` and the HJB; guessing `V° = x'Sx` collapsed the PDE, and the inner min over `u` dropped out *linear* feedback `u = −R⁻¹B'Sx` with `S` solving the algebraic Riccati equation `A'S + SA − SBR⁻¹B'S + Q = 0`; controllability makes the infinite-horizon cost finite so that `S` exists, observability makes `x'Sx` a strict Lyapunov function so the closed loop is actually stable; and the gain is computed by taking the stable invariant subspace of the Hamiltonian matrix — `solve_continuous_are`, `K = R⁻¹B'S`, `u = −Kx`.
+The whole chain, in one breath: I wanted feedback, not a hand-tuned loop — so I wrote "good transient + bounded effort" as `J = ∫(x'Qx + u'Ru)dt` with `(Q,R)` the trade-off knob; the open-loop variational route gave only `u*(t)`, so I switched to the cost-to-go `V°(x)` and the HJB; guessing `V° = x'Sx` collapsed the PDE, and the inner min over `u` dropped out *linear* feedback `u = −R⁻¹B'Sx` with `S` solving the algebraic Riccati equation `A'S + SA − SBR⁻¹B'S + Q = 0`; controllability gives the clean finite-cost Riccati limit and stabilizability is the minimum needed by the solver, observability/detectability turns the value function into a Lyapunov proof of convergence; and the gain is computed from the stable subspace of a Hamiltonian pencil — `solve_continuous_are`, `K = R⁻¹B'S`, `u = −Kx`.

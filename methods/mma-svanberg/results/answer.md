@@ -43,11 +43,11 @@ clamped to the trust box, and maximizing the concave `m`-dimensional dual `W(λ)
 
 ## Algorithm (one outer iteration)
 
-1. Analyze at `x^k`: get `f_0, f_i` and gradients (the one expensive call).
+1. Use the values and gradients already evaluated at `x^k`.
 2. Update asymptotes `L_j, U_j` from `x^k, x^{k−1}, x^{k−2}` (oscillation rule; defaults at first two iters).
 3. Build `p_ij, q_ij, r_i` by the sign-split gradient match; set the trust box `α_j <= x_j <= β_j` (stay off the asymptotes by `albefa = 0.1`, cap the step by `move = 0.5`).
 4. Solve the convex separable subproblem (interior point / dual) → `x^{k+1}` and multipliers.
-5. Stop on the KKT residual of the original problem; else shift history and repeat.
+5. Evaluate the original problem at `x^{k+1}`, stop on its KKT residual, and otherwise reuse those fresh values and sensitivities in the next subproblem.
 
 Constraints are wrapped with cheap artificial variables `y_i >= 0`, `z >= 0` (objective `f_0 + a_0 z + Σ_i(c_i y_i + ½ d_i y_i^2)`, constraints `f_i − a_i z − y_i <= 0`; with `a_0 = 1, a_i = 0, d_i = 1, c_i` large this recovers the plain NLP but stays feasible even from an infeasible start, and also expresses min–max / least-squares forms).
 
@@ -213,22 +213,23 @@ def subsolv(m, n, epsimin, low, upp, alfa, beta, p0, q0, P, Q, a0, a, b, c, d):
     return x, y, z, lam, xsi, eta, mu, zet, s
 ```
 
-Outer driver — one analysis per iteration:
+Outer driver — each analysis is reused for the next subproblem:
 
 ```python
 xval = x0.copy(); xold1 = x0.copy(); xold2 = x0.copy()
 low = xmin.copy(); upp = xmax.copy()
 a0, a, c, d = 1.0, np.zeros((m,1)), 1000*np.ones((m,1)), np.ones((m,1))
+f0val, df0dx, fval, dfdx = fe_analysis(xval)
 for k in range(1, maxit + 1):
-    f0val, df0dx, fval, dfdx = fe_analysis(xval)          # expensive
     xmma, ymma, zmma, lam, xsi, eta, mu, zet, s, low, upp = mmasub(
         m, n, k, xval, xmin, xmax, xold1, xold2,
         f0val, df0dx, fval, dfdx, low, upp, a0, a, c, d)
+    xold2, xold1, xval = xold1, xval, xmma.copy()
+    f0val, df0dx, fval, dfdx = fe_analysis(xval)          # expensive
     _, kktnorm, _ = kktcheck(m, n, xmma, ymma, zmma, lam, xsi, eta, mu, zet, s,
                              xmin, xmax, df0dx, fval, dfdx, a0, a, c, d)
     if kktnorm < tol:
         break
-    xold2, xold1, xval = xold1, xval, xmma.copy()
 ```
 
 The optimizer never sees the structure — only values and gradients — so it drops in front of any FE/adjoint analysis (sizing, shape, or density-based continuum) as the constrained nonlinear-programming engine.

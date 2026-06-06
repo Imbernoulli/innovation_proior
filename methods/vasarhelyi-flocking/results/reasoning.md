@@ -16,7 +16,7 @@ Let me build v_i^d term by term, each term answering one failure.
 
 v_ij^rep = p^rep (r_0^rep − r_ij) · (r_i − r_j)/r_ij   if r_ij < r_0^rep,  else 0.
 
-The unit vector (r_i − r_j)/r_ij points from j to i, i.e. away from the neighbor — correct sign for repulsion. p^rep is a gain with units of 1/s, r_0^rep the cutoff. Linear, not quadratic-or-stiffer, precisely so that measurement noise doesn't get amplified into a singular kick; the cutoff makes it strictly local and cheap. Sum over neighbors: v_i^rep = Σ_{j≠i} v_ij^rep. That handles crowding at the level of "always push apart" — but pushing apart is reactive; it can't by itself prevent a collision if two agents are already closing faster than they can decelerate. That guarantee has to come from the alignment term, which I now have to redo around the acceleration limit. I keep the *purpose* of alignment from Vicsek — synchronize velocities so the group moves as one — but I now need it to also be a *damper* that kills the delay-induced oscillation, and to be *scalable*: at high flocking speed the velocity differences are large, and I must not fight every large velocity difference everywhere, or I over-damp the flock into sluggishness and it can't even turn collectively. Three requirements at once: relax velocity differences, stay local, stay bounded even as r_ij → 0.
+The unit vector (r_i − r_j)/r_ij points from j to i, i.e. away from the neighbor — correct sign for repulsion. p^rep is a gain with units of 1/s, r_0^rep the cutoff. Linear, not quadratic-or-stiffer, precisely so that measurement noise doesn't get amplified into a singular kick; the cutoff makes it strictly local and cheap. Sum over neighbors: v_i^rep = Σ_{j≠i} v_ij^rep. That handles crowding at the level of "always push apart" — but pushing apart is reactive; it can't by itself prevent a collision if two agents are already closing faster than they can decelerate. The missing protection has to come from the alignment term, which I now have to redo around the acceleration limit. I keep the *purpose* of alignment from Vicsek — synchronize velocities so the group moves as one — but I now need it to also be a *damper* that kills the delay-induced oscillation, and to be *scalable*: at high flocking speed the velocity differences are large, and I must not fight every large velocity difference everywhere, or I over-damp the flock into sluggishness and it can't even turn collectively. Three requirements at once: relax velocity differences, stay local, stay bounded even as r_ij → 0.
 
 My predecessor's answer was a viscous-friction term, v_ij^frict = C_frict (v_j − v_i)/(max{r_min, |d_ij|})² — always pull velocities together, with the strength decaying like 1/r² so it's local and the max{r_min,·} keeps it from blowing up at contact. That damps the oscillation, and it flies at low speed. But the law is *blind to kinematics*: how much velocity difference it tolerates at a given distance is set by a fixed 1/r² profile and a single gain, with no reference to whether that velocity difference is *survivable* given a_max. So one gain can't be right at two speeds. Turn up the gain to kill oscillation at high speed and the flock is molasses at low speed; turn it down to let the flock turn and it under-damps at high speed and the agents collide. It doesn't scale. I keep hitting this wall: a fixed friction law has no notion of "how close is too close *for this closing speed*."
 
@@ -36,20 +36,20 @@ v_ij^frictmax = max( v^frict , D(r_ij − r_0^frict, a^frict, p^frict) ).
 
 The argument is r_ij − r_0^frict, not r_ij, because the "expected stopping point" isn't contact — I want to be braked to matching velocity a comfortable offset r_0^frict before contact. Then the alignment term fires *only* when the actual relative speed v_ij = |v_i − v_j| exceeds this threshold, and it removes exactly the excess:
 
-v_ij^frict = C^frict (v_ij − v_ij^frictmax) · (v_i − v_j)/v_ij   if v_ij > v_ij^frictmax,  else 0.
+Δv_ij^frict = −C^frict (v_ij − v_ij^frictmax) · (v_i − v_j)/v_ij   if v_ij > v_ij^frictmax,  else 0.
 
-Sign and direction: (v_i − v_j)/v_ij is the unit vector along my velocity-relative-to-neighbor; multiplied by the positive excess (v_ij − v_ij^frictmax) and gain C^frict. To *reduce* the relative speed I must push my velocity *against* (v_i − v_j), so this contribution enters the desired velocity with a minus sign — it's a braking command proportional to how much I'm overspeeding the kinematic envelope. C^frict is the rate at which I bleed off that excess. Sum over neighbors: v_i^frict = Σ_{j≠i} v_ij^frict.
+Sign and direction: (v_i − v_j)/v_ij is the unit vector along my velocity-relative-to-neighbor; the excess (v_ij − v_ij^frictmax) is positive only outside the envelope. To reduce the relative speed I must push my velocity against that unit vector, so the executable contribution is the negative correction above. C^frict is the rate at which I bleed off that excess. Sum over neighbors: v_i^frict = Σ_{j≠i} Δv_ij^frict.
 
-Why does this stabilize where the fixed friction failed? First, kinematic safety is now built in: the term guarantees that whenever two agents are closing faster than the gap can brake, a braking command appears, scaled to the overshoot — so closing speed is held inside the √(2 a r) envelope at *every* distance, automatically, at any flocking speed. Collisions are prevented by construction, not by hoping the gain was tuned right. Second, the damper only acts on the *excess* relative velocity, so within the safe envelope it's silent and the flock isn't over-damped — it can turn and accelerate collectively. The delayed feedback loop's effective gain is now bounded by the envelope rather than by a fixed constant, so the oscillation that the naive rule rang up gets its energy removed precisely in the regime where it would have grown dangerous. And locality falls out for free: the largest relative speed worth thresholding is bounded by 2 v^max (no two agents can differ by more than twice the speed cap), so the interaction range is just the distance where D(·) = 2 v^max — beyond that, no agent can ever exceed the threshold, so there's nothing to compute. The term is local without me imposing a separate radius.
+Why does this stabilize where the fixed friction failed? The term fires as a braking command exactly when two agents carry more relative speed than the current gap is meant to absorb, and the command scales with the overshoot. Below the envelope it is silent, so the flock is not over-damped and can still turn and accelerate collectively. The delayed feedback loop's effective gain is concentrated where the oscillation has become physically dangerous instead of being set by a fixed constant everywhere. And locality falls out for free: the largest relative speed worth thresholding is bounded by 2 v^max (no two agents can differ by more than twice the speed cap), so the interaction range is just the distance where D(·) = 2 v^max — beyond that, no agent can ever exceed the threshold, so there is nothing to compute.
 
 That covers collisions and coordination; the flock still needs to stay together and inside the arena. Classic flocking keeps the group together with a long-range *attraction* (Reynolds' cohesion, Olfati-Saber's lattice). But long-range attraction is exactly another unbounded, delay-sensitive term, and on real hardware with finite range it's awkward. I don't actually need the group to self-attract if I instead put it in a *box* and make the box repel. So drop cohesion entirely and define a bounded arena with soft repulsive walls. Here Olfati-Saber's virtual-agent idea is the right tool: represent the wall by *shill* agents — fictitious agents sitting on the arena boundary, each moving inward at a fixed speed v^shill, perpendicular to the wall edge. A real agent near the wall should relax its velocity to the shill's velocity, which means it gets gently turned back inward before it leaves the arena.
 
-And I already have the perfect machinery for "relax your velocity to a target velocity within a braking-feasible envelope" — it's exactly the alignment term, applied between the real agent and the shill. So reuse it:
+The same correction can mean "relax your velocity to a target velocity within a braking-feasible envelope" if the target is a virtual wall agent instead of another drone:
 
 v_is^shillmax = D(r_is − r_0^shill, a^shill, p^shill),
-v_is^wall = (v_is − v_is^shillmax) · (v_i − v_s)/v_is   if v_is > v_is^shillmax,  else 0,
+Δv_is^wall = −(v_is − v_is^shillmax) · (v_i − v_s)/v_is   if v_is > v_is^shillmax,  else 0,
 
-with r_is = |r_i − r_s|, v_is = |v_i − v_s|, v_s the inward shill velocity of magnitude v^shill. Two deliberate differences from the inter-agent case: no velocity slack (no v^frict floor) — I don't want to "tolerate" drifting toward the wall, I want it braked the moment it exceeds the kinematic threshold — and the proportional gain is fixed to 1, the strongest setting, because the wall is a hard confinement, not a gentle preference. (This is literally the inter-agent term with C → 1 and the floor removed.) Obstacles inside the arena get the same treatment with the shill moving *outward* from the obstacle surface, a single shill placed at the closest point of the obstacle to the agent. So confinement and obstacle avoidance are one mechanism, and it reuses the braking curve — no new stability question to answer.
+with r_is = |r_i − r_s|, v_is = |v_i − v_s|, v_s the inward shill velocity of magnitude v^shill. Two deliberate differences from the inter-agent case: no velocity slack (no v^frict floor) — I don't want to tolerate drifting toward the wall — and the proportional gain is fixed to 1, the strongest setting, because the wall is a hard confinement, not a gentle preference. Obstacles inside the arena get the same treatment with the shill moving *outward* from the obstacle surface, a single shill placed at the closest point of the obstacle to the agent. So confinement and obstacle avoidance are one mechanism, and it reuses the braking curve.
 
 Nothing so far sets the cruising speed; repulsion, alignment, and walls only shape *differences* and boundaries. Add a simple self-propelling term parallel to the agent's own current velocity, with constant magnitude v^flock, the target flocking speed:
 
@@ -59,29 +59,23 @@ It pushes the agent to keep moving along its present heading at v^flock; the ali
 
 The desired velocity is the vector sum of all of these:
 
-ṽ_i^d = (v_i/|v_i|) v^flock + v_i^rep + v_i^frict + Σ_s v_is^wall + Σ_s v_is^obstacle.
+ṽ_i^d = (v_i/|v_i|) v^flock + v_i^rep + v_i^frict + Σ_s Δv_is^wall + Σ_s Δv_is^obstacle.
 
 But this sum can exceed the vehicle's hard speed cap, so I cap the *magnitude* while preserving the *direction* — I never want the cap to rotate my command, only to shorten it:
 
 v_i^d = (ṽ_i^d / |ṽ_i^d|) · min( |ṽ_i^d| , v^max ).
 
-That's the whole control law: self-propulsion sets the cruise, linear half-spring repulsion prevents crowding, the braking-curve-gated friction simultaneously damps oscillation and guarantees collision-feasible closing speeds, shill agents confine the flock and dodge obstacles, and a magnitude cap respects the vehicle limit. Every term traces to one failure of the naive rule on real hardware.
+That's the whole control law: self-propulsion sets the cruise, linear half-spring repulsion prevents crowding, braking-curve-gated friction damps excessive relative velocity according to the available stopping distance, shill agents confine the flock and dodge obstacles, and a magnitude cap respects the vehicle limit. Every term traces to one failure of the naive rule on real hardware.
 
 That's the law, but it isn't usable until I fix its parameters, and there are a lot of them. Count the free knobs: r_0^rep, p^rep for repulsion; r_0^frict, C^frict, v^frict, p^frict, a^frict for alignment; r_0^shill, v^shill, p^shill, a^shill for walls. Eleven, and they're not independent in any human-readable way — the braking crossover a/p² couples a and p, the locality radius depends on D which depends on (a,p), the right friction gain depends on v^flock. The map from these eleven numbers to "does the flock fly well at 8 m/s" is nonlinear, multimodal, and *noisy*, because the simulator itself is stochastic (sensor noise, wind, packet outages). Sweeping or hand-tuning an 11-D noisy multimodal landscape is a non-starter. I need to (a) reduce "flies well" to a single scalar I can maximize and (b) maximize it with an optimizer that tolerates noise and multimodality without gradients.
 
 To get a single scalar I can maximize, I start from the measurable requirements: velocity correlation φ_corr (maximize, it's a cosine-similarity average inside clusters, lives in [−1,1]); collision risk φ_coll (minimize, the fraction of time pairs sit inside the r_coll = 3 m danger zone); wall collisions φ_wall (minimize, how far agents stray outside the arena); speed φ_vel (drive to v^flock); plus communication-graph health — number of disconnected agents N_disc and minimum cluster size N_min, where I keep N_min > N/5 as a "the flock didn't shatter" threshold. To form clusters I need a characteristic interaction distance; the natural one is r_cluster = max( r_0^rep, r_0^frict + D̃(v^flock, a^frict, p^frict) ), where D̃(v,a,p) is the braking distance — the r at which D(r,a,p) = v — i.e. two agents are "in the same cluster" if they're within repulsion range or within the distance over which they'd brake to matching velocity.
 
-I want to *multiply* these into a global fitness so that *any* one of them being bad tanks the whole score — flocking is conjunctive; a beautiful correlation with frequent collisions is worthless. But raw order parameters have different ranges and different ideal points, so map each through a transfer function into [0,1] shaped to its meaning. Three shapes:
-
-- For a quantity that should be *large* (speed reaching its target), a monotonically growing sigmoid F1(φ, φ0, d) = 1 − S(φ, φ0, d), where S decays smoothly (a raised-cosine ramp) from 1 at φ0−d to 0 at φ0. Smooth so the optimizer sees a gradient, not a cliff.
-- For a quantity that should sit *at a target value with two-sided tolerance* (wall excursion near zero), a Gaussian F2(φ, s) = exp(−φ²/s²) — single peak at 0, smooth on both sides.
-- For a quantity where 0 is a *hard* requirement (collision risk, disconnection), a sharp peak F3(φ, a) = a²/(φ + a)² — pinned at 1 for φ = 0 and falling off harshly. This is the crucial one for collisions: I deliberately do *not* use a hard 0/1 indicator. If collisions scored a flat zero, the optimizer would see a vast flat dead region and have no gradient telling it *which way* is less collision-prone; the smooth F3 gives a slope out of the bad region while still punishing collisions severely.
-
-Assemble:
+I want to *multiply* these into a global fitness so that *any* one of them being bad tanks the whole score — flocking is conjunctive; a beautiful correlation with frequent collisions is worthless. But raw order parameters have different ranges and different ideal points, so I need transfer functions into [0,1]. A quantity that should be large, like speed reaching its target or the minimum cluster size passing the N/5 threshold, gets a monotonically growing sigmoid F1(φ, φ0, d) = 1 − S(φ, φ0, d), where S decays smoothly from 1 at φ0−d to 0 at φ0. A quantity that should sit near zero with two-sided tolerance, like wall excursion, gets F2(φ, s) = exp(−φ²/s²), a Gaussian peak at zero. A hard zero requirement, like collision risk or disconnected agents, gets F3(φ, a) = a²/(φ + a)²: it is pinned at 1 when φ = 0 and falls off harshly, but it is still smooth. That matters for collisions; a flat 0/1 score would leave the optimizer in a dead region, while this gives it a slope toward fewer dangerous pair-times.
 
 F = F^speed · F^coll · F^disc · F^cluster · F^wall · F^corr,
 F^speed = F1(φ^vel, v^flock, v^tol),  F^coll = F3(φ^coll, a^tol),  F^disc = F3(N^disc, N/5),
-F^cluster = F3(N^min, N/5, N/5),  F^wall = F2(φ^wall, r^tol),  F^corr = Θ(φ^corr)·φ^corr.
+F^cluster = F1(N^min, N/5, N/5),  F^wall = F2(φ^wall, r^tol),  F^corr = Θ(φ^corr)·φ^corr.
 
 φ^corr enters multiplicatively but raw (it's already in [−1,1]), cut off at 0 by the Heaviside so anti-correlated motion can't accidentally help. The tolerances v^tol, a^tol, r^tol set the relative importance of speed/collision/wall and are chosen for a balanced weighting (e.g. v^tol = (1.5/4) v^flock, a^tol = 0.00003, r^tol = 2 m). The product is the single scalar to maximize.
 
@@ -104,18 +98,24 @@ end
 
 ```matlab
 function [posDesired_id, velDesired_id, accDesired_id, control_mode_id] = ...
-        generate_desire_i(id, state_i, states_neighbor, dis_to_neighbor, posid_to_neighbor, ...
-                          terrain, terrain_params)
+        Vasarhelyi_module_generate_desire_i(id, state_i, states_neighbor, ...
+                                            dis_to_neighbor, posid_to_neighbor, terrain, terrain_params)
+
+    file_name_param = 'Vasarhelyi_module_parameters';
+    [~, str_core] = get_multi_core_value();
+    fun_params = str2func([file_name_param, str_core]);
 
     % --- 11 control-law knobs (tuned by CMA-ES) plus vehicle/world constants ---
     [r_com, v_flock, r_rep_0, p_rep, r_frict_0, c_frict, v_frict, p_frict, a_frict, ...
      r_shill_0, v_shill, p_shill, a_shill, v_max, dim, height, dr_shill, ...
-     pos_shill, vel_shill] = load_params();
+     pos_shill, vel_shill] = fun_params();
+
+    VELOCITY_HORIZONTAL_CONTROL_TYPE = 7;
 
     posDesired_id   = [state_i(1:2); height; 0];
     velDesired_id   = zeros(4,1);
     accDesired_id   = zeros(4,1);
-    control_mode_id = 7;                 % horizontal-velocity command mode
+    control_mode_id = VELOCITY_HORIZONTAL_CONTROL_TYPE;
 
     pos2DId        = state_i(1:2);
     vel2DId        = state_i(4:5);
@@ -133,7 +133,8 @@ function [posDesired_id, velDesired_id, accDesired_id, control_mode_id] = ...
         [h,w] = size(terrain);
         r_min = max(1,r_sub-h_sub); r_max = min(h,r_sub+h_sub);
         c_min = max(1,c_sub-w_sub); c_max = min(w,c_sub+w_sub);
-        [r_obs,c_obs] = find(terrain(r_min:r_max,c_min:c_max) > state_i(3));
+        terrain_sub = terrain(r_min:r_max,c_min:c_max);
+        [r_obs,c_obs] = find(terrain_sub > state_i(3));
         if ~isempty(r_obs)
             r_obs = r_obs + r_min - 1;  c_obs = c_obs + c_min - 1;
             temp_p_shill = [(c_obs'*terrain_params(1,2))+terrain_params(1,1);
@@ -196,4 +197,4 @@ function [posDesired_id, velDesired_id, accDesired_id, control_mode_id] = ...
 end
 ```
 
-Tracing the causal chain once more: the naive alignment rule, dropped onto a delayed, inertia-limited, speed-capped vehicle, becomes a delayed negative-feedback loop that self-oscillates and, at speed, collides — because braking needs distance and acceleration is bounded. Linear half-spring repulsion (soft, so sensor noise isn't amplified) stops crowding; the kinematic limit v ≤ √(2 a r) becomes a smooth braking curve D(r,a,p) (linear near contact for finite gain, constant-deceleration √-branch at range, stitched C¹), and gating the alignment to fire only when relative speed exceeds D simultaneously damps the oscillation's excess energy and guarantees every closing motion is brakeable — with a velocity-slack floor so the flock can still turn; the same braking-gated form against inward-moving shill agents confines the flock to the arena and dodges obstacles, replacing fragile long-range cohesion; self-propulsion sets the cruise speed and a magnitude cap respects the vehicle limit; and because the eleven knobs map nonlinearly and noisily to behavior, they're set by maximizing a single conjunctive fitness — a product of smoothly-shaped order parameters (collision risk through a soft peak, never a hard 0/1) — with CMA-ES, re-run per target speed to get the speed-scalable flocking the fixed-friction predecessor could not reach.
+Tracing the causal chain once more: the naive alignment rule, dropped onto a delayed, inertia-limited, speed-capped vehicle, becomes a delayed negative-feedback loop that self-oscillates and, at speed, collides — because braking needs distance and acceleration is bounded. Linear half-spring repulsion (soft, so sensor noise isn't amplified) stops crowding; the kinematic limit v ≤ √(2 a r) becomes a smooth braking curve D(r,a,p) (linear near contact for finite gain, constant-deceleration √-branch at range, stitched C¹), and gating the alignment to fire only when relative speed exceeds D removes the oscillation's excess energy in the regime where closing speed has become unsafe — with a velocity-slack floor so the flock can still turn; the same braking-gated form against inward-moving shill agents confines the flock to the arena and dodges obstacles, replacing fragile long-range cohesion; self-propulsion sets the cruise speed and a magnitude cap respects the vehicle limit; and because the eleven knobs map nonlinearly and noisily to behavior, they're set by maximizing a single conjunctive fitness — a product of smoothly-shaped order parameters (collision risk through a soft peak, never a hard 0/1) — with CMA-ES, re-run per target speed to get the speed-scalable flocking the fixed-friction predecessor could not reach.

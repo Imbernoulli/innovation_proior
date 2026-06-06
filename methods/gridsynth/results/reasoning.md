@@ -39,153 +39,150 @@ The crux is therefore: **given convex `A, B`, find a grid operator that makes bo
 
 An ellipse `{u : (u−p)†D(u−p) ≤ 1}` with positive-definite `D = [[a,b],[b,d]]` has area `π/√det D` and bounding-box area `4√(ad)/det D`, so `up(E) = (π/4)√(det D / ad)`. Normalize to `det D = 1`; then `D = [[eλ^{−z}, b],[b, eλ^z]]` with `e² = b² + 1`, and `up(E) = π/(4e²) = π/(4√(b²+1))`. So uprightness is high exactly when `b` (the off-diagonal, the "tilt") is small. For a *pair* of ellipses define a **state** `(D, Δ)` — two SPD det-1 matrices, `D` with off-diagonal `b` and "stretch" `z`, `Δ` with off-diagonal `β` and stretch `ζ`. Define the **skew** `b² + β²` and the **bias** `ζ − z`. Both ellipses are upright iff the skew is small.
 
-So I want an iterative procedure: while the skew is large, apply one special grid operator that provably *decreases* it, until it's below a threshold (15 turns out to be a convenient cutoff, corresponding to uprightness comfortably bounded below). Why can I always decrease it? The action of a special `G` on the state is `(D, Δ) ↦ (G†DG, G•†ΔG•)`. The bias measures the relative stretch of the two ellipses; first use "shift" operations (conjugates of `σ`-like maps, which scale the diagonals by powers of `λ`) to bring the bias into a small window like `[−1, 1]`, so the two ellipses are stretched comparably. Then, in the small-bias regime, a finite menu of fixed special grid operators each handles a region of the `(z, ζ)` and sign-of-`b` configuration:
-- a Hadamard-like rotation `R = (1/√2)[[1,−1],[1,1]]` when both stretches are near zero — it kills the tilt outright by rotating;
-- shears `Aⁿ = [[1,−2],[0,1]]ⁿ` and `Bⁿ = [[1,√2],[0,1]]ⁿ` when one direction is much longer, picking `n` to undo most of the shear;
-- a `K = (1/√2)[[−λ⁻¹,−1],[λ,1]]`-type operator in the strongly-asymmetric corner;
-- and `X` (swap), `Z` (sign-flip) symmetries to fold the case analysis in half.
+So I want an iterative procedure: while the skew is large, apply one special grid operator that provably *decreases* it, until it's below a threshold (15 turns out to be a convenient cutoff, corresponding to uprightness comfortably bounded below). Why can I always decrease it? The action of a special `G` on the state is `(D, Δ) ↦ (G†DG, G•†ΔG•)`. The bias measures the relative stretch of the two ellipses; first use "shift" operations (conjugates of `σ`-like maps, which scale the diagonals by powers of `λ`) to bring the bias into a small window like `[−1, 1]`, so the two ellipses are stretched comparably. Then, in the small-bias regime, a finite menu of fixed special grid operators each handles a region of the `(z, ζ)` and sign-of-`b` configuration. A Hadamard-like rotation `R = (1/√2)[[1,−1],[1,1]]` handles the nearly balanced case by rotating out the tilt; shears `Aⁿ = [[1,−2],[0,1]]ⁿ` and `Bⁿ = [[1,√2],[0,1]]ⁿ` handle elongated cases by choosing `n` to undo most of the shear; a `K = (1/√2)[[−λ⁻¹,−1],[λ,1]]`-type operator handles the strongly asymmetric corner; and the `X` swap and `Z` sign-flip symmetries fold the remaining sign cases into these same moves.
 Each region's operator drops the skew by a factor of at most ≈ 0.9, and one of the regions always applies, so iterating reduces the skew geometrically. Since the starting skew is `O(1/M²)` from uprightness `M`, the loop runs `O(log(1/M))` times. That's the engine: a special grid operator making any pair of ellipses `(1/6)`-upright (or so) in `O(log(1/M))` operations.
 
 Now I can solve the general 2D grid problem: enclose `A, B` in ellipses, run the skew-reduction to get `G`, enumerate solutions of the upright problem for `G(A), G•(B)`, pull them back through `G⁻¹`, filter against the original `A, B`. Total work `O(log(1/M))` plus a constant per solution. That `O(log(1/M))`-overall versus the naïve `O(1/M²)`-per-candidate is the whole payoff of grid operators.
 
 I need a *scaled* version, because my `u` lives in `D[ω] = ⋃_k (1/√2^k) Z[ω]`, not `Z[ω]`. For fixed `k`: `u = (1/√2^k) v` solves the scaled problem for `(A,B,k)` iff `v ∈ Z[ω]` solves the unscaled problem for `(√2^k A, (−√2)^k B)` — note the `(−√2)^k` on the `B` side, since `((1/√2^k)v)• = ((−1)^k/√2^k) v•`. And uprightness is scale-invariant, so the grid operator `G` only has to be computed *once*, not per `k`; for each `k` I rescale and re-run the (cheap) upright enumeration. To enumerate in order of increasing `k`, just run `k = 0, 1, 2, …`. (A point first appears at exponent `k > k−1` iff, writing `u·√2^k = aω³+bω²+cω+d`, `a−c` or `b−d` is odd — so I can skip duplicates.)
 
-One more thing I want before moving on — a guarantee that the supply of candidates *grows*, because I'll be discarding some. Two lower bounds. First: if `A` contains a disk of radius `r`, `B` a disk of radius `R`, and `rR ≥ (1+√2)²/2^k`, then the scaled problem at exponent `k` has at least **two** solutions (inscribe squares in the disks and apply the 1D bound twice). Second, and this is the multiplier: if there are two distinct solutions `u ≠ v` at exponent `k`, then for every ℓ ≥ 0 there are at least `2^ℓ + 1` solutions at exponent `k + 2ℓ`. Why — take `φ = j/2^ℓ` for `j = 0,…,2^ℓ` and form `u_j = φu + (1−φ)v`. Each `u_j` has denominator exponent `k + 2ℓ`. It's a convex combination of `u` and `v`, so `u_j ∈ A` by convexity; and since `φ• = φ` (it's rational), `u_j• = φu• + (1−φ)v•` is a convex combination of `u•, v•`, so `u_j• ∈ B`. Both sets convex ⟹ all `2^ℓ + 1` of them are solutions. So once I have two, the count explodes exponentially in ℓ. Good.
+One more thing I want before moving on — a guarantee that the supply of candidates *grows*, because I'll be discarding some. If `A` contains a disk of radius `r`, `B` a disk of radius `R`, and `rR ≥ (1+√2)²/2^k`, then the scaled problem at exponent `k` has at least **two** solutions: inscribe squares in the disks and apply the 1D bound twice. Once two distinct solutions `u ≠ v` exist at exponent `k`, every ℓ ≥ 0 gives at least `2^ℓ + 1` solutions at exponent `k + 2ℓ`. Why — take `φ = j/2^ℓ` for `j = 0,…,2^ℓ` and form `u_j = φu + (1−φ)v`. Each `u_j` has denominator exponent `k + 2ℓ`. It's a convex combination of `u` and `v`, so `u_j ∈ A` by convexity; and since `φ• = φ` (it's rational), `u_j• = φu• + (1−φ)v•` is a convex combination of `u•, v•`, so `u_j• ∈ B`. Both sets convex ⟹ all `2^ℓ + 1` of them are solutions. So once I have two, the count explodes exponentially in ℓ. Good.
 
 Back to the Diophantine equation: for a candidate `u`, solve `t†t = ξ`, `ξ = 1 − u†u ∈ D[√2]`, `t ∈ D[ω]`. When is this solvable, and how? Necessary: `t†t = ξ ≥ 0` and `(t•)†(t•) = ξ• ≥ 0` — `ξ` must be **doubly positive**. The geometry already guarantees this for my candidates (both `u` and `u•` in the unit disk give `0 ≤ ξ, ξ• ≤ 1`). The rest is classical algebraic number theory in the Euclidean domains `Z`, `Z[√2]`, `Z[ω]`.
 
-Work it in stages. First reduce `D[√2]` to `Z[√2]`: with `δ = 1 + ω` satisfying `δ†δ = λ√2 ∼ √2`, the element `ξ` is `†`-decomposable iff `√2 ξ` is — so multiply away the dyadic denominator until `ξ' = √2^ℓ ξ ∈ Z[√2]` with `ξ'•ξ' = n ∈ Z`, solve there, and divide back by `δ^ℓ`. Now in `Z[√2]`: I want `t†t ∼ ξ'` (up to a unit; doubly-positive units are squares, so `∼` recovers exact equality). Factor `ξ'` into primes of `Z[√2]`. A prime `ξ'` divides a unique rational prime `p`, and the question of whether `ξ'` is `†`-decomposable depends only on `p mod 8`:
-- `p = 2`: `ξ' ∼ √2`, and `δ†δ = λ√2 ∼ √2`, so yes.
-- `p ≡ 1 (mod 4)`: there's `u` with `u² ≡ −1 (mod p)`, so `ξ' | p | u²+1 = (u+i)(u−i)`; take `t = gcd(ξ', u+i)`, and a three-case argument (`t†t ∼ 1, ξ', or ξ'²`) forces `t†t ∼ ξ'`. Yes.
-- `p ≡ 3 (mod 8)`: similarly `−2` is a QR, `u² ≡ −2`, `ξ' | u²+2 = (u+i√2)(u−i√2)`, `t = gcd(ξ', u+i√2)`. Yes.
-- `p ≡ 7 (mod 8)`: **no** (to odd power). If `t†t ∼ ξ'`, then `(t•t)(t•t)† ∼ ξ'•ξ' ∼ p`, and `t•t ∈ Z[i]`, say `a+bi`, so `p ∼ a²+b²`; but `a², b² ∈ {0,1,4} (mod 8)`, which can never be `7`. Contradiction.
+Work it in stages. First reduce `D[√2]` to `Z[√2]`: with `δ = 1 + ω` satisfying `δ†δ = λ√2 ∼ √2`, the element `ξ` is `†`-decomposable iff `√2 ξ` is — so multiply away the dyadic denominator until `ξ' = √2^ℓ ξ ∈ Z[√2]` with `ξ'•ξ' = n ∈ Z`, solve there, and divide back by `δ^ℓ`. Now in `Z[√2]`: I want `t†t ∼ ξ'` (up to a unit; doubly-positive units are squares, so `∼` recovers exact equality). Factor `ξ'` into primes of `Z[√2]`. A prime `ξ'` divides a unique rational prime `p`, and the question of whether `ξ'` is `†`-decomposable depends only on `p mod 8`. If `p = 2`, then `ξ' ∼ √2`, and `δ†δ = λ√2 ∼ √2`, so it is decomposable. If `p ≡ 1 (mod 4)`, there is a `u` with `u² ≡ −1 (mod p)`, so `ξ' | p | u²+1 = (u+i)(u−i)`; take `t = gcd(ξ', u+i)`, and the three possible values `t†t ∼ 1, ξ', ξ'²` leave `ξ'` as the only one compatible with `t` catching exactly one conjugate factor. If `p ≡ 3 (mod 8)`, the same gcd argument runs with `u² ≡ −2`, because `ξ' | u²+2 = (u+i√2)(u−i√2)`. If `p ≡ 7 (mod 8)` to odd power, it fails: `t†t ∼ ξ'` would imply `(t•t)(t•t)† ∼ ξ'•ξ' ∼ p`; writing `t•t = a+bi ∈ Z[i]` gives `p ∼ a²+b²`, but squares mod 8 are only `0,1,4`, never summing to `7`.
 And a prime to an *even* power is always a square, hence decomposable. So: `t†t = ξ` is solvable iff `ξ` is doubly positive and every prime `p | n` with `p ≡ 7 (mod 8)` occurs to even multiplicity. The whole construction is constructive given the **prime factorization of `n`** (the inner steps — `√(−1) mod p`, `√(±2) mod p` — are probabilistic-polynomial). Factoring `n` is the one genuinely hard subproblem.
 
 Now assemble the algorithm. Enumerate `u ∈ D[ω]` solving the grid problem `u ∈ R_ε`, `u• ∈ disk`, in order of increasing `k`. For each, set `ξ = 1 − u†u`, write `ξ•ξ = n/2^ℓ`, factor `n`, solve `t†t = ξ`; the first success gives `U = [[u,−t†],[t,u†]]`, then `U' = T U T†`, synthesize whichever has smaller T-count, done. That's optimal: candidates come in increasing `k`, the Diophantine solver succeeds exactly when a `t` exists, so the first success has the smallest possible `k`, and `T`-count `2k−2` is then minimal over all approximations — *absolutely* minimal, not asymptotically, because any competing approximation reduces (by the ℓ=0 lemma) to the same form with denominator exponent `≥ k`.
 
-The wrinkle is factoring. With a factoring oracle (a quantum computer running Shor), the factoring step always succeeds and the optimality above is unconditional. Without one, I can't factor a generic large `n` in reasonable time — so I cap the factoring effort and, conservatively, only *accept* a candidate when `n` happens to be prime (then a single primality-flavored test handles it). How many candidates must I discard before hitting a prime `n`?
+The wrinkle is factoring. With a factoring oracle (a quantum computer running Shor), the factoring step always succeeds and the optimality above is unconditional. Without one, I can't factor a generic large `n` in reasonable time, so the implementation has to cap the factoring effort: it accepts any candidate whose Diophantine equation it can decide within that budget, rejects proved failures, and moves past undecided candidates. For the near-optimality argument I can be even more conservative and count only the candidates where `n` happens to be prime, because those are guaranteed to be accepted. How many candidates must I discard before hitting such an `n`?
 
 The numbers `n` aren't arbitrary: each one satisfies `n ≥ 0` and either `n = 0` or `n ≡ 1 (mod 8)` (a parity computation on the residues). And a prime `n ≡ 1 (mod 8)` is *always* solvable — by the `p ≡ 1 (mod 4)` case above. So "n is prime" already implies "the Diophantine equation succeeds." Now count. For a candidate of exponent `k_j`, `n_j ≤ 4^{k_j}` (since `0 ≤ ξ, ξ• ≤ 1`), so by the prime number theorem the chance `n_j` is prime is at least `≈ 2/ln(4^{k_j}) = 1/(k_j ln2)`. The exponential-growth lemma bounds `k_j ≤ k₂ + 2(1 + log₂ j)` (since once two solutions exist at `k₂`, there are `≥ 2^ℓ+1` by `k₂+2ℓ`). And the two-solutions bound with `r = ε²/4`, `R = 1` gives `k₂ = O(log(1/ε))`. Plugging in, the expected index of the first prime `n` is
 `E(j₀) = Σ_{j≥0} P(j₀ > j) ≤ 1 + Σ_{j≥1} (1 − 1/((k₂+2)ln2 + 2 ln j))^j = O(k₂) = O(log(1/ε))`,
 using the summation estimate `Σ (1 − 1/(a + b ln x))^x = O(a)`. So I try `O(log(1/ε))` candidates in expectation. And the T-count I land on: with `k ≤ k_{j₀} ≤ k'' + 2(1 + log₂ j₀)` where `k''` is the second-to-optimal exponent, and `2k−2 ≤ m ≤ 2k`, taking expectations (and `E(log j₀) ≤ log E(j₀)` by concavity),
 `E(m) ≤ m'' + 6 + 4 log₂ E(j₀) = m'' + O(log log(1/ε))`.
-So in the absence of a factoring oracle I lose only an additive `O(log log(1/ε))` over the second-to-optimal solution — near-optimal. (And as a bonus: the first candidate whose solver doesn't fail gives a *firm* per-instance lower bound `2k_j − 2` on the T-count, not just the average-case info-theoretic bound.)
+So in the absence of a factoring oracle, under this prime-distribution hypothesis, I lose only an additive `O(log log(1/ε))` over the second-to-optimal solution — near-optimal. (And as a bonus: the first candidate whose solver doesn't fail gives a *firm* per-instance lower bound `2k_j − 2` on the T-count, not just the average-case info-theoretic bound.)
 
-What's the actual T-count number? Worst case my algorithm enumerates *all* grid solutions and can solve the Diophantine equation whenever the older subset-enumeration method could, so it's never worse than `K + 4 log₂(1/ε)` (`K ≈ 10`) — and that worst case is hit only where it's genuinely optimal. When is that? Look at the ε-region's straight boundary: its slope is `r = −1/tan(θ/2)`, independent of ε. Two grid points span a line of slope in `Q(√2)`. If `r ∈ Q(√2)`, the ε-region runs *parallel* to a discrete family of grid lines, so the number of solutions at exponent `k` is governed by the region's **width** `ε²/2` versus the grid-line spacing `1/2^k`: I get a solution when `1/2^k ≲ ε²`, i.e. `k ≳ K + 2 log(1/ε)`, T-count `2k ≈ K + 4 log(1/ε)`. But if `r ∉ Q(√2)`, the grid lines are dense and it's the **area** `Θ(ε³)` versus the grid-point density `4^k` that matters: a point lands in the region when `1/4^k ≲ ε³`, i.e. `2k ≳ K + 3 log(1/ε)`, the typical T-count `K + 3 log₂(1/ε)` — matching the information-theoretic lower bound. So generic angles get the optimal `3 log₂`; only the measure-zero `tan(θ/2) ∈ Q(√2)` angles pay `4 log₂`.
+What's the actual T-count number I should expect? Worst case my algorithm enumerates *all* grid solutions and can solve the Diophantine equation whenever the older subset-enumeration method could, so it's never worse than `K + 4 log₂(1/ε)` (`K ≈ 10`) — and that worst case is hit in the structured cases where the older bound is already essentially tight. The counting picture explains when this should happen. Look at the ε-region's straight boundary: its slope is `r = −1/tan(θ/2)`, independent of ε. Two grid points span a line of slope in `Q(√2)`. If `r ∈ Q(√2)`, the ε-region runs *parallel* to a discrete family of grid lines, so the number of solutions at exponent `k` is governed by the region's **width** `ε²/2` versus the grid-line spacing `1/2^k`: I get a solution when `1/2^k ≲ ε²`, i.e. `k ≳ K + 2 log(1/ε)`, T-count `2k ≈ K + 4 log(1/ε)`. But if `r ∉ Q(√2)`, the grid lines should behave densely and the **area** `Θ(ε³)` should dominate against grid-point density `4^k`: a point lands in the region when `1/4^k ≲ ε³`, i.e. `2k ≳ K + 3 log(1/ε)`, the typical T-count `K + 3 log₂(1/ε)` — matching the information-theoretic lower bound. So I should expect ordinary angles to land at `3 log₂`, while the `tan(θ/2) ∈ Q(√2)` family can force the `4 log₂` behavior.
 
-Complexity overall: `M = up(R_ε) = Ω(ε⁴)`, so `log(1/M) = O(log(1/ε))` for the grid setup; `j₀ = O(log(1/ε))` candidates; each Diophantine solve is `polylog(n)` with `n ≤ 4^{k_{j₀}}`, `k_{j₀} = O(log(1/ε))`; exact synthesis `O(k_{j₀})`. Total expected arithmetic `O(polylog(1/ε))`, each operation at precision `O(log(1/ε))` — expected time `O(polylog(1/ε))`, oracle or not.
+Complexity overall: `M = up(R_ε) = Ω(ε⁴)`, so `log(1/M) = O(log(1/ε))` for the grid setup; the expected accepted candidate index is `O(log(1/ε))` under the same prime-distribution hypothesis; each decided Diophantine solve is `polylog(n)` with `n ≤ 4^k`; exact synthesis is linear in `k`. Total expected arithmetic is `O(polylog(1/ε))`, each operation at precision `O(log(1/ε))` — expected time `O(polylog(1/ε))` with a factoring oracle, and under the bounded-factoring/probabilistic hypothesis without one.
 
 I also want the "up to a phase" version, since global phase is unobservable. Claim: it suffices to consider only `λ ∈ {1, e^{iπ/8}}`. Because Clifford+T operators have discrete determinant (`det U = ω^k`), so for any optimal phase I can snap it to `e^{inπ/8}` (using: for unitary `W` with `det W = 1`, `tr W ≥ 0`, `‖I − W‖ ≤ ‖I − λW‖` for every unit λ — diagonalize and compare arcs), then absorb `ω^k = e^{ikπ/4}` into `U` itself at no T-cost, leaving the phase in `{1, e^{iπ/8}}`. Run the on-the-nose algorithm for `λ = 1` (interleaving even T-counts) and a twin for `λ = e^{iπ/8}` (where `U = [[u, −t†ω⁻¹],[t, u†ω⁻¹]]`, giving odd T-counts), enumerate both in increasing T-count, take the smaller. The `ω⁻¹` twin is exactly the same machinery with the constraint sets scaled by `√2±1`-flavored factors.
 
-Let me write the code, mirroring the structure I've derived: ring arithmetic with both conjugations; the two convex sets `EpsilonRegion` and `UnitDisk` (each as an ellipse plus a membership/line-intersection method); the skew-reduction `to_upright`; the scaled 2D grid solver `solve_2d_grid`; the Diophantine solver; the exact synthesis; and the main increasing-`k` loop.
+Let me write the code in the same shape: build the ε-region with the exact chord threshold, feed it with the unit disk into `gridpoints2_increasing`, let the grid-problem module compute the one `to_upright` transform and filter by `denomexp`, then use bounded Diophantine attempts and the `u+t` versus `u+ωt` completion choice before exact synthesis.
 
 ```python
 import mpmath
-from rings import ZRootTwo, ZOmega, DRootTwo, DOmega   # +,*, conj (†), conj_sq2 (•), denomexp k
-from exact_synthesis import decompose_domega_unitary   # KMM: minimal-T Clifford+T from a D[ω]-unitary
-from diophantine import diophantine_dyadic             # solve t†t = ξ given a factoring of n, else NO_SOLUTION
-from to_upright import to_upright_set_pair             # skew-reduction -> grid operator G + upright bboxes
-from grid_2d import solve_TDGP                          # scaled 2D grid problem at fixed k
+from rings import DRootTwo, DOmega, omega, adj, adj2, real, denomexp
+from gridproblems import ConvexSet, Ellipse, unitdisk, gridpoints2_increasing
+from diophantine import diophantine_dyadic, run_bounded, Success, Fail
+from exact_synthesis import synthesis_u2
 
 
-class EpsilonRegion:
-    # the slice of the unit disk with ⟨z⃗, u⃗⟩ ≥ 1 − ε²/2,  z = e^{-iθ/2}
-    def __init__(self, theta, epsilon):
-        self.theta, self.epsilon = theta, epsilon
-        self.zx, self.zy = mpmath.cos(-theta / 2), mpmath.sin(-theta / 2)
-        self.d = mpmath.sqrt(1 - epsilon**2 / 4)        # chord depth, in cos terms
-        # enclosing ellipse: rotate to z⃗, stretch (long along the chord ~1/ε, short ~1/ε²)
-        R    = mpmath.matrix([[self.zx, -self.zy], [self.zy, self.zx]])
-        Sdiag = mpmath.matrix([[64 / epsilon**4, 0], [0, 4 / epsilon**2]])
-        self.ellipse = (R, Sdiag, R.T, self.d)          # D = R · Sdiag · Rᵀ, centered at d·z⃗
+def epsilon_region(epsilon, theta):
+    zx = mpmath.cos(-theta / 2)
+    zy = mpmath.sin(-theta / 2)
+    d = 1 - epsilon**2 / 2
+    rot = mpmath.matrix([[zx, -zy], [zy, zx]])
+    shape = mpmath.matrix([[4 * (1 / epsilon)**4, 0],
+                           [0, (1 / epsilon)**2]])
+    center = (d * zx, d * zy)
+    ellipse = Ellipse(rot @ shape @ special_inverse(rot), center)
 
-    def inside(self, u):                                # u ∈ D[ω]: in unit disk AND past the chord
-        cos_sim = self.zx * u.real + self.zy * u.imag
-        return DRootTwo.from_domega(u.conj * u) <= 1 and cos_sim >= self.d
+    def inside(point):
+        x, y = point.real, point.imag
+        return x*x + y*y <= 1 and zx*x + zy*y >= d
 
-    def intersect(self, p, q):                          # {t : p + t q ∈ R_ε} as an interval
-        # quadratic for the disk boundary, linear for the chord; intersect the two
-        ...
+    def intersect(p, v):
+        disk_interval = solve_quadratic(v.dot(v), 2 * v.dot(p), p.dot(p) - 1)
+        if disk_interval is None:
+            return empty_interval()
+        t0, t1 = disk_interval
+        vz = zx * v.x + zy * v.y
+        rhs = d - (zx * p.x + zy * p.y)
+        if vz == 0:
+            return (t0, t1) if rhs <= 0 else empty_interval()
+        cut = rhs / vz
+        return (max(t0, cut), t1) if vz > 0 else (t0, min(t1, cut))
+
+    return ConvexSet(ellipse, inside, intersect)
 
 
-class UnitDisk:
-    def inside(self, u):
-        return DRootTwo.from_domega(u.conj * u) <= 1
-    def intersect(self, p, q):
-        ...                                             # quadratic |p + t q|² ≤ 1
+def gridsynth_stats(rng, prec_bits, theta, effort):
+    digits = mpmath.ceil(15 + 2 * prec_bits * mpmath.log10(2))
+    return with_fixed_precision(digits, gridsynth_internal, rng, prec_bits, theta, effort)
 
 
-def gridsynth(theta, epsilon):
-    A = EpsilonRegion(theta, epsilon)                   # u ∈ A   (closeness)
-    B = UnitDisk()                                      # u• ∈ B  (so the Diophantine eq is solvable)
+def gridsynth_internal(rng, prec_bits, theta, effort):
+    epsilon = 2 ** (-prec_bits)
+    region = epsilon_region(epsilon, theta)
+    candidates = gridpoints2_increasing(region, unitdisk())
 
-    # one skew-reduction: find special grid operator G s.t. G(A), G•(B) are upright (compute once)
-    G, ellA, ellB, bboxA, bboxB = to_upright_set_pair(A, B)
+    for u in candidates:
+        rng_try, rng = split_rng(rng)
+        xi = real(1 - adj(u) * u)                       # ξ = 1 − u†u ∈ D[√2]
+        status, t = run_bounded(effort, diophantine_dyadic(rng_try, xi))
+        if status == Success:
+            U = choose_completion(u, t)
+            return U, approximation_log_error(U, theta), status
+        record_candidate(u, status)
 
-    k = 0
-    while True:                                         # increasing least denominator exponent
-        for u in solve_TDGP(A, B, G, ellA, ellB, bboxA, bboxB, k):   # u ∈ D[ω], u ∈ A, u• ∈ B
-            if (u * u.conj).denom_is_trivial:           # skip u already appearing at exponent < k
-                continue
-            xi = 1 - DRootTwo.from_domega(u.conj * u)   # ξ = 1 − u†u ∈ D[√2]
-            t = diophantine_dyadic(xi)                  # solve t†t = ξ  (NO_SOLUTION if n unfactorable/insoluble)
-            if t is not None:
-                U = DOmegaUnitary(u, t)                 # [[u, −t†], [t, u†]]
-                return decompose_domega_unitary(U)      # minimal-T Clifford+T circuit (T-count 2k−2)
-        k += 1
+
+def choose_completion(u, t):
+    if denomexp(u + t) < denomexp(u + omega * t):
+        return matrix2x2((u, -adj(t)), (t, adj(u)))
+    return matrix2x2((u, -adj(omega * t)), (omega * t, adj(u)))
+
+
+def gridsynth_gates(rng, prec_bits, theta, effort):
+    U, _, _ = gridsynth_stats(rng, prec_bits, theta, effort)
+    return synthesis_u2(U)
 ```
 
 ```python
-# the scaled 2D grid solver: enumerate u ∈ (1/√2^k) Z[ω] with u ∈ A, u• ∈ B
-def solve_TDGP(A, B, G, ellA, ellB, bboxA, bboxB, k):
-    Ginv = G.inv
-    # in the UPRIGHT frame, the bounding boxes are axis-aligned rectangles:
-    # enumerate the y-coordinates β (a scaled 1D grid problem on the bbox's y-intervals),
-    for beta in solve_scaled_1d(bboxA.Iy, bboxB.Iy, k + 1):
-        # for each row, the x-extent is the line A ∩ (row) intersected with B ∩ (conjugate row),
-        z0 = Ginv * point(alpha0, beta, k + 1)          # a corner of this row, pulled back to the A,B frame
-        v  = Ginv * step(k)                              # the unit step along x, pulled back
-        tA = A.intersect(z0, v)                          # interval of t with z0 + t v ∈ A
-        tB = B.intersect(z0.conj_sq2, v.conj_sq2)        # interval of t with (z0 + t v)• ∈ B
-        if tA is None or tB is None:
-            continue
-        # x-coordinates α are a 1D grid problem on (tA, tB) with the parity fixed by β,
-        for alpha in solve_scaled_1d_with_parity(tA, tB, parity_of(beta), k):
-            u = point(alpha, beta, k)
-            if A.inside(u) and B.inside(u.conj_sq2):     # final exact filter
-                yield u
-```
-
-```python
-# the skew-reduction loop: repeatedly apply one special grid operator that drops the skew,
-# until both ellipses are upright.  Returns the composite grid operator.
-def to_upright_ellipse_pair(ellA, ellB):
-    state = normalize_pair(ellA, ellB)                  # (D, Δ): SPD, det 1, off-diagonals b, β
-    Gl = Gr = GridOp.identity()
+# the grid-problem module hides the skew-reduction behind gridpoints2_increasing.
+def gridpoints2_increasing(A, B):
+    solve_at_k = gridpoints2_scaled(A, B)
+    yield from solve_at_k(0)
+    k = 1
     while True:
-        b, beta = state.D.b, state.B.b
-        if beta < 0:                       state, G = apply(state, OP_Z)       # fold sign of β
-        elif state.A.bias * state.B.bias < 1: state, G = apply(state, OP_X)    # swap to equalize biases
-        elif state.bias far from 1:        state = shift(state, n); Gl, Gr = absorb(...)  # σ: bias -> ~1
-        elif state.skew <= 15:             return Gl * Gr                       # upright enough — done
-        elif both biases near 1:           state, G = apply(state, OP_R)       # rotate out the tilt
-        elif b >= 0 and one bias small:    state, G = apply(state, OP_K)       # asymmetric corner
-        elif b >= 0:                       state, G = apply(state, OP_A ** n)   # shear [[1,−2],[0,1]]ⁿ
-        else:                              state, G = apply(state, OP_B ** n)   # shear [[1,√2],[0,1]]ⁿ
-        Gr = G * Gr                                                            # accumulate
+        for z in solve_at_k(k):
+            if denomexp(z) == k:
+                yield z
+        k += 1
+
+
+def gridpoints2_scaled(A, B):
+    G = to_upright((A.ellipse.matrix, B.ellipse.matrix))
+    Ginv = special_inverse(G)
+    A1 = convex_transform(Ginv, A)
+    B1 = convex_transform(adj2(Ginv), B)
+    (Ax, Ay), (Bx, By) = bounding_box(A1), bounding_box(B1)
+
+    def solve_at_k(k):
+        for beta in gridpoints_scaled(fatten(Ay), fatten(By), k + 1):
+            x0 = first(gridpoints_scaled(Ax, Bx, k + 1))
+            dx = roothalf**k
+            tA = A1.intersect((x0, beta), (dx, 0))
+            tB = B1.intersect((adj2(x0), adj2(beta)), (adj2(dx), 0))
+            for alpha_offset in gridpoints_scaled_parity(
+                (beta - x0) * roottwo**k, fatten(tA), fatten(tB), 1
+            ):
+                alpha1 = alpha_offset * dx + x0
+                alpha, beta0 = point_transform(G, (alpha1, beta))
+                if A.inside((alpha, beta0)) and B.inside((adj2(alpha), adj2(beta0))):
+                    yield DOmega.from_coordinates(alpha, beta0)
+    return solve_at_k
+
+
+def diophantine_dyadic(rng, xi):
+    if xi < 0 or adj2(xi) < 0:
+        return Fail, None
+    xi_int, twist = clear_denominator_with_delta(xi)
+    status, s = adjoint_decompose_with_factoring_budget(rng, xi_int)
+    if status != Success:
+        return status, None
+    return Success, fix_units_and_denominator(s, xi, twist)
 ```
 
-```python
-# the Diophantine solver t†t = ξ, ξ ∈ D[√2], via factoring n = (ξ•ξ)·2^ℓ
-def diophantine_dyadic(xi):
-    if xi < 0 or xi.conj_sq2 < 0:                        # doubly positive is necessary
-        return None
-    # clear the dyadic denominator using δ = 1+ω (δ†δ = λ√2 ∼ √2), reduce to ξ' ∈ Z[√2]
-    xi_int = clear_denominator(xi)                       # ξ' = √2^ℓ ξ, with ξ'•ξ' = n ∈ Z
-    t = adj_decompose(xi_int)                            # factor n; per prime p: solvable unless p≡7 mod 8 to odd power
-    if t is None:                                        # (uses √-1 mod p, √±2 mod p; Pollard-rho for n)
-        return None
-    return fix_up_units(t, xi)                           # multiply by δ^{-ℓ} and a Z[√2]-square to match ξ exactly
-```
-
-The causal chain, start to finish: Solovay–Kitaev is universal but blind to Clifford+T's algebra, so it overshoots the `3 log₂` lower bound; the exact-representability iff (`entries ∈ D[ω]`) plus minimal-T exact synthesis turn the problem into "find the smallest-denominator-exponent `u ∈ D[ω]` near `e^{-iθ/2}`," because T-count `= 2k−2`; rewriting closeness as `⟨z⃗,u⃗⟩ ≥ 1−ε²/2` and unitarity-via-`(−)•` as `u• ∈ disk` makes that a 2D grid problem; grid operators plus skew-reduction solve any such problem in `O(log(1/M))` and enumerate solutions in increasing `k`; for each candidate the relative-norm equation `t†t = 1−u†u` is solvable by classical number theory once `n` is factored; with a factoring oracle the first solvable candidate is absolutely T-optimal, and without one, accepting only prime `n` (always solvable, since `n ≡ 1 mod 8`) costs an expected `O(log(1/ε))` extra candidates and an additive `O(log log(1/ε))` in T-count — landing on the information-theoretic `3 log₂(1/ε)` for generic angles, in `O(polylog(1/ε))` time.
+The causal chain, start to finish: Solovay–Kitaev is universal but blind to Clifford+T's algebra, so it overshoots the `3 log₂` counting lower bound; the exact-representability iff (`entries ∈ D[ω]`) plus minimal-T exact synthesis turn the problem into "find the smallest-denominator-exponent `u ∈ D[ω]` near `e^{-iθ/2}`," because T-count is `2k−2` after the harmless `T`-conjugation choice; rewriting closeness as `⟨z⃗,u⃗⟩ ≥ 1−ε²/2` and unitarity-via-`(−)•` as `u• ∈ disk` makes that a 2D grid problem; grid operators plus skew-reduction solve the candidate enumeration in `O(log(1/M))` and produce candidates in increasing `k`; for each candidate the relative-norm equation `t†t = 1−u†u` is solvable by classical number theory once `n` is factored; with a factoring oracle the first solvable candidate is absolutely T-optimal, and without one, bounded factoring plus the prime-`n` acceptance argument gives near-optimality under the stated distribution hypothesis; the counting picture then explains why ordinary angles should sit at the information-theoretic `3 log₂(1/ε)` scale, while structured slopes can force the `4 log₂(1/ε)` scale.

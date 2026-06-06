@@ -2,13 +2,13 @@ OK, let me set this up honestly from the pain. I run a warehouse for one product
 
 I want the rule that minimizes my total expected cost over a horizon of, say, $N$ periods. Not the cost for one instance — the *policy*: given my inventory $x$ at the start of period $k$, what's the order? And I don't want a giant lookup table that just says "at $x=37$ in period 4, order 12." I want to know if the optimal policy has a *shape* I can write down with a couple of numbers and explain to the floor.
 
-Let me get the single period straight first, because everything is built on it. One shot: I order up to level $S$, demand $w$ arrives, I pay $h(S-w)^+ + p(w-S)^+$. Expected cost $\bar L(S)=E[h(S-w)^+ + p(w-S)^+]$. That's an expectation of a convex function of $S$ (each of $(S-w)^+$ and $(w-S)^+$ is convex in $S$), so $\bar L$ is convex. Where's the minimum? Differentiate: $\frac{d}{dS}E[h(S-w)^+ + p(w-S)^+] = h\,P(w<S) - p\,P(w>S) = h F(S) - p(1-F(S))$. Set to zero: $(h+p)F(S)=p$, so $F(S^*)=\frac{p}{p+h}$. The critical fractile. Stock more when shortages bite harder ($p$ big) or holding is cheap ($h$ small). Clean. This is the newsvendor, and it's the target the whole multi-period thing has to reduce to. But it has no fixed cost and no tomorrow.
+Let me get the single period straight first, because everything is built on it. One shot: I order up to level $S$, demand $w$ arrives, I pay $h(S-w)^+ + p(w-S)^+$. Expected cost $\bar L(S)=E[h(S-w)^+ + p(w-S)^+]$. That's an expectation of a convex function of $S$ (each of $(S-w)^+$ and $(w-S)^+$ is convex in $S$), so $\bar L$ is convex. Where's the minimum? In the continuous case, differentiate: $\frac{d}{dS}E[h(S-w)^+ + p(w-S)^+] = h\,P(w<S) - p\,P(w>S) = h F(S) - p(1-F(S))$. Set to zero: $(h+p)F(S)=p$, so $F(S^*)=\frac{p}{p+h}$. If demand has atoms, I should not pretend there is a unique derivative; the subgradient condition becomes $F(S^{*-})\le \frac{p}{p+h}\le F(S^*)$. Either way, the minimizer is the critical-fractile quantile. Stock more when shortages bite harder ($p$ big) or holding is cheap ($h$ small). Clean. This is the newsvendor, and it's the target the whole multi-period thing has to reduce to. But it has no fixed cost and no tomorrow.
 
 Now chain the periods. The tool is the functional equation. Let $J_k^*(x)$ be the optimal expected cost from the start of period $k$ onward, given I walk in with inventory $x$. Decision: order $u\ge0$. The natural variable isn't $u$ but the post-order level $y=x+u$, with the constraint $y\ge x$ (I can't un-order). Immediate cost: the ordering charge plus the expected holding/shortage. Then I transition to $x_{k+1}=y-w$ and pay the optimal cost-to-go from there. So
 
 $$J_k^*(x)=\min_{y\ge x}\Big\{K\,\delta(y-x)+c(y-x)+\bar L(y)+\gamma\,E_w[J_{k+1}^*(y-w)]\Big\},$$
 
-where $\delta(z)=1$ if $z>0$ and $0$ otherwise, $\bar L(y)=E_w[L(y-w)]$ with $L(x)=p\,x^- + h\,x^+$, and $\gamma\in(0,1]$ discounts. Terminal: $J_N^*(x)=v_N(x)$, some convex nonnegative cost on what's left. The $-cx$ that should come from $c(y-x)$ — let me pull the $c$ apart. Group the $y$-dependent stuff: define
+where $\delta(z)=1$ if $z>0$ and $0$ otherwise, $\bar L(y)=E_w[L(y-w)]$ with $L(x)=p\,x^- + h\,x^+$, and $\gamma\in(0,1]$ discounts. For an $N$-period horizon the terminal object is $J_{N+1}^*(x)=v_{N+1}(x)$, some convex nonnegative cost on what's left after period $N$. The $-cx$ that should come from $c(y-x)$ — let me pull the $c$ apart. Group the $y$-dependent stuff: define
 
 $$G_k(y)=cy+\bar L(y)+\gamma\,E_w[J_{k+1}^*(y-w)].$$
 
@@ -38,7 +38,7 @@ Relax the right endpoint upward by $K$:
 $$f(\theta y+(1-\theta)y')\ \le\ \theta f(y)+(1-\theta)\big(K+f(y')\big).$$
 Call $f$ **$K$-convex** if this holds for all $y\le y'$ and all $\theta\in[0,1]$. With $K=0$ it's ordinary convexity. Geometrically: on $[y,y']$, $f$ must lie below the line segment from $(y,f(y))$ to $(y',f(y')+K)$ — the *right* end of the chord is lifted by $K$, the left end is not. So a $K$-convex function can wobble above ordinary convexity, can have downward jumps (bounded, as I'll see), can even have several local minima — but in a controlled way. This is exactly the slack I need: my $J_k^*+cx$ that went flat at $K+G_k(S_k)$ and then dipped to $G_k(S_k)$ — the dip below the flat is exactly $K$, so it should still sit under any $K$-lifted chord.
 
-Let me sanity-check the "bounded downward jump" claim, because it's the intuitive content. Take $y<y'$ and let $y'\downarrow y$. The chord's left value is $f(y)$, right value $f(y')+K$; the point $\theta y+(1-\theta)y'$ at $\theta\to1$ approaches $y$ from the right. The inequality forces $\limsup_{z\downarrow y}f(z)\le f(y)+K$ in the relevant configuration — a jump at $y$ can drop the value but the graph just to the right can't sit more than... hmm, let me be careful and instead get a cleaner equivalent form that I can actually compute with.
+Let me sanity-check the "bounded downward jump" claim, because it's the intuitive content. Take $y<y'$ and let $y'\downarrow y$. The chord's left value is $f(y)$, right value $f(y')+K$; the point $\theta y+(1-\theta)y'$ at $\theta\to1$ approaches $y$ from the right. The inequality forces $\limsup_{z\downarrow y}f(z)\le f(y)+K$ in the relevant configuration: a jump can only be downward and its size is controlled by the same $K$ that appears in the fixed charge. A cleaner equivalent form is easier to compute with.
 
 Here's a more useful restatement. I want to compare three collinear points: a left point $y-b$, a middle point $y$, and a right point $y+a$, with $b>0$, $a\ge0$. The middle $y$ is the convex combination $\theta(y-b)+(1-\theta)(y+a)$ with... let me solve: $y=\theta(y-b)+(1-\theta)(y+a)$ gives $0=-\theta b+(1-\theta)a$, so $\theta=\frac{a}{a+b}$, $1-\theta=\frac{b}{a+b}$. Plug into the $K$-convexity inequality with left $=y-b$, right $=y+a$:
 $$f(y)\le \frac{a}{a+b}f(y-b)+\frac{b}{a+b}\big(K+f(y+a)\big).$$
@@ -46,7 +46,7 @@ Multiply by $\frac{a+b}{b}$:
 $$\frac{a+b}{b}f(y)\le \frac{a}{b}f(y-b)+K+f(y+a).$$
 Rearrange, moving the $f(y)$ terms together: $\frac{a+b}{b}f(y)-\frac{a}{b}f(y-b)=f(y)+\frac{a}{b}\big(f(y)-f(y-b)\big)$. So
 $$K+f(y+a)\ \ge\ f(y)+\frac{a}{b}\big[f(y)-f(y-b)\big],\qquad \forall\,y\in\mathbb R,\ a\ge0,\ b>0.$$
-This is the working form of $K$-convexity — Scarf's inequality. Read it: $\frac{f(y)-f(y-b)}{b}$ is a backward slope at $y$; the right side extrapolates that slope forward by $a$; the inequality says $f(y+a)$ can't fall below that linear extrapolation by more than $K$. Ordinary convexity ($K=0$) is "the function lies above its own backward tangents"; $K$-convexity allows a $K$ of give. And if $f$ is differentiable, send $b\to0$ so the backward slope becomes $f'(y)$, rename $y\to x$, $y+a\to y$ (so $a=y-x\ge0$):
+This is the working form of $K$-convexity. Read it: $\frac{f(y)-f(y-b)}{b}$ is a backward slope at $y$; the right side extrapolates that slope forward by $a$; the inequality says $f(y+a)$ can't fall below that linear extrapolation by more than $K$. Ordinary convexity ($K=0$) is "the function lies above its own backward tangents"; $K$-convexity allows a $K$ of give. And if $f$ is differentiable, send $b\to0$ so the backward slope becomes $f'(y)$, rename $y\to x$, $y+a\to y$ (so $a=y-x\ge0$):
 $$K+f(y)\ \ge\ f(x)+f'(x)(y-x),\qquad x\le y.$$
 "The graph lies above its tangents, minus $K$." Nice and checkable.
 
@@ -62,25 +62,31 @@ Closure fact 2: expectation over the demand shift. If $f$ is $K$-convex, is $g(y
 
 So with $J_{k+1}^*$ $K$-convex: $\gamma E_w[J_{k+1}^*(y-w)]$ is $\gamma K$-convex by facts 2 then 1; adding $cy$ and $\bar L$ (both $0$-convex) keeps it $\gamma K$-convex. For the toll to be exactly $K$ I want $G_k$ to be at least $K$-convex; since $\gamma\le1$, $\gamma K\le K$, and a $\gamma K$-convex function is automatically $K$-convex (lifting the right end of the chord by *more* only makes the inequality easier). So $G_k$ is $K$-convex. It's coercive (the $cy+\bar L$ tails dominate, same $c+h>0$, $p>c$ argument as before; the $K$-convex future term is bounded below appropriately since costs are nonnegative). And continuous, given $w$ bounded so $\bar L$ and the expectation of a continuous-enough $J_{k+1}^*$ are continuous. So: **$J_{k+1}^*$ $K$-convex $\Rightarrow$ $G_k$ $K$-convex, coercive, continuous.** Preservation through the "build $G_k$" half holds. Now I need the minimization to (a) be the $(s,S)$ rule and (b) hand back a $K$-convex $J_k^*$.
 
-Let me extract the $(s,S)$ structure from "$f$ continuous, coercive, $K$-convex" abstractly, with $f=G_k$. Coercive + continuous $\Rightarrow$ a global minimizer exists; call it $S$ (if several, the structure will pin which). Define $s$ as the smallest $z\le S$ with $f(z)=f(S)+K$. Does such a $z$ exist and is it $\le S$? At $z=S$, $f(S)<f(S)+K$ (since $K>0$). As $z\to-\infty$, coercivity sends $f(z)\to+\infty>f(S)+K$. By continuity there's a crossing; take the smallest one, that's $s\le S$. I claim $(s,S)$ is the policy: order up to $S$ iff $x<s$.
+Let me extract the $(s,S)$ structure from "$f$ continuous, coercive, $K$-convex" abstractly, with $f=G_k$. Coercive + continuous gives me a global minimizer; call one of them $S$. Define $s$ as the smallest $z\le S$ with $f(z)=f(S)+K$. Does such a $z$ exist and is it $\le S$? At $z=S$, $f(S)<f(S)+K$ (since $K>0$). As $z\to-\infty$, coercivity sends $f(z)\to+\infty>f(S)+K$. By continuity there is a crossing; take the leftmost one. I claim this pair is enough: below $s$ the saving from jumping to $S$ clears the fixed charge, and from $s$ upward no jump can save more than $K$.
 
-I need four properties, and let me prove them, because the policy correctness rides on them.
+I need the small geometric consequences of $K$-convexity to be exact, because this is where a sign error would reverse the policy. If $u<v$ and $f(u)=K+f(v)$, then every $z\in[u,v]$ can be written as $z=\theta u+(1-\theta)v$, so
+$$f(z)\le \theta f(u)+(1-\theta)(K+f(v))=K+f(v).$$
+So once the left endpoint is exactly $K$ above the right endpoint, the whole interval stays below that lifted level.
 
-(1) $S$ minimizes $f$ — by construction.
+Now use that with $u=s$ and $v=S$. By definition, $f(s)=K+f(S)$. If some $y<s$ had $f(y)\le f(s)$, continuity and the fact that $f(z)\to\infty$ as $z\to-\infty$ would give an earlier crossing of the level $f(S)+K$, contradicting the way I chose $s$. Hence $f(y)>f(s)$ for every $y<s$.
 
-(2) $f(s)=f(S)+K$, and $f(y)>f(s)$ for all $y<s$. The equality is the definition of $s$. For the strict inequality: suppose some $y<s$ had $f(y)\le f(s)=f(S)+K$. There's a small lemma I keep needing, so let me prove it cleanly. *Lemma:* if $f$ is $K$-convex, $u<v$, and $f(u)=K+f(v)$, then $f(z)\le K+f(v)$ for all $z\in[u,v]$. Proof: write $z=\theta u+(1-\theta)v$; $K$-convexity gives $f(z)\le \theta f(u)+(1-\theta)(K+f(v))=\theta(K+f(v))+(1-\theta)(K+f(v))=K+f(v)$, using $f(u)=K+f(v)$. Done. The consequence I want: $f$ can cross the level $K+f(\cdot)$ "from above" at most in a controlled way; concretely, on $(-\infty,S)$ the equation $f(z)=f(S)+K$ can't have a solution with $f$ dipping *below* the level between it and $S$. Now back to the claim: if $y<s$ had $f(y)\le f(S)+K=f(s)$, then since $f(y)\ge f(S)$ (S is the min) and $f$ is continuous and large at $-\infty$, there'd be a point $y'\le y<s$ with $f(y')=f(S)+K$ as well — but the lemma applied with $u=y'$, $v=S$ would force $f\le f(S)+K$ on all of $[y',S]$, in particular at every level down to $s$, contradicting that $s$ is the *smallest* such crossing point (we'd have found a smaller one $y'<s$). So no such $y$ exists: $f(y)>f(s)$ for $y<s$. 
+The left tail must also decrease as I move right toward $s$. Take $y<y'<s$. Since $y'$ lies between $y$ and $S$, $K$-convexity on $[y,S]$ gives
+$$f(y')\le \theta f(y)+(1-\theta)(K+f(S)),\qquad \theta=\frac{S-y'}{S-y}\in(0,1).$$
+But $K+f(S)=f(s)$ and $y'<s$, so $f(s)<f(y')$. Substitute that stricter bound into the right side:
+$$f(y')<\theta f(y)+(1-\theta)f(y').$$
+Cancel the common $(1-\theta)f(y')$ term and I get $f(y')<f(y)$. Good: on $(-\infty,s)$ the function strictly decreases as inventory rises.
 
-(3) $f$ is decreasing on $(-\infty,s)$. Take $y<y'\le s$. Suppose $f(y)<f(y')$ for contradiction (i.e. $f$ went up somewhere left of $s$). Apply the Scarf inequality with the backward slope at $y'$ being negative-or-using points... cleaner: use $K$-convexity on the triple $y< y' \le s< S$. By (2), every point left of $s$ has $f>f(s)=f(S)+K$. Now the $K$-convexity chord from $y$ to $S$ (lift right end by $K$): for $z=y'\in[y,S]$, $f(y')\le \theta f(y)+(1-\theta)(f(S)+K)$ where $\theta=\frac{S-y'}{S-y}\in(0,1)$. Since $f(S)+K=f(s)<f(y')$ (by (2), as $y'<s$ would give $f(y')>f(s)$... careful, $y'\le s$; take $y'<s$ strictly first), we get $f(y')\le \theta f(y)+(1-\theta)f(y') $ wait let me substitute $f(S)+K=f(s)$ and use $f(s)<f(y')$: $f(y')\le \theta f(y)+(1-\theta)f(s)<\theta f(y)+(1-\theta)f(y')$. So $f(y')-(1-\theta)f(y')<\theta f(y)$, i.e. $\theta f(y')<\theta f(y)$, i.e. $f(y')<f(y)$. That contradicts the assumption $f(y)<f(y')$. Hence $f(y)\ge f(y')$ for $y<y'<s$ — $f$ is nonincreasing (decreasing in the weak sense) on $(-\infty,s)$. So as $x$ falls below $s$, the cost-of-not-ordering $G_k(x)$ only rises — never a reason to wait.
-
-(4) $f(y)\le f(y')+K$ for all $s\le y\le y'$. This is the "no profitable re-order once you're in the band" fact. Take $s\le y\le y'$. By $K$-convexity write $y=\theta s+(1-\theta)y'$? No, $y$ may exceed... if $y\in[s,y']$ then $y=\theta s+(1-\theta)y'$ for some $\theta\in[0,1]$. Hmm, I actually want to bound $f(y)$ by $f(y')+K$ directly. Use the Scarf inequality form $K+f(y'+a)\ge f(y')+\frac{a}{b}[f(y')-f(y'-b)]$... let me instead argue: for $y\ge s$, $f(y)\le f(S)+K$. Why: if $s\le y\le S$, apply the Lemma with $u=s,v=S$ ($f(s)=K+f(S)$): $f(y)\le K+f(S)$ on $[s,S]$. If $y\ge S$, then I use $K$-convexity on triple $s\le S\le y$: from the inequality, $K+f(y)\ge f(S)+\frac{y-S}{S-s}[f(S)-f(s)]=f(S)+\frac{y-S}{S-s}(-K)$, not directly what I want. Let me just take the cleaner target actually needed for the policy and verify it below rather than property (4) in full generality; (4) for the range $s\le y\le S$ is the Lemma, which is what the ordering decision uses.
+The no-order region needs the other inequality: for every $s\le y\le y'$, I need $f(y)\le f(y')+K$. Write $y=\theta s+(1-\theta)y'$ and apply $K$-convexity:
+$$f(y)\le \theta f(s)+(1-\theta)(K+f(y'))=\theta(K+f(S))+(1-\theta)(K+f(y')).$$
+That is $K+\theta f(S)+(1-\theta)f(y')$, and $S$ is a global minimizer, so $f(S)\le f(y')$. Therefore $f(y)\le K+f(y')$. This is the exact inequality I need: from $s$ onward, no higher post-order level can be more than $K$ cheaper than staying where I am.
 
 Now translate to the *decision*. Starting at $x$, I choose between not ordering (cost $G_k(x)$) and ordering up to the best $y>x$ (cost $K+\min_{y>x}G_k(y)$). Two cases.
 
 Case $x<s$: I want to show ordering up to $S$ beats not ordering, i.e. $K+G_k(S)<G_k(x)$. By (2), $G_k(x)>G_k(s)=K+G_k(S)$ for $x<s$. Exactly that. So order, and order to the global minimizer $S$ (nothing $>x$ is cheaper than $S$). 
 
-Case $x\ge s$: I want to show not ordering beats any order. Any order goes to some $y>x\ge s$, costing $K+G_k(y)\ge K+G_k(S)$. Not ordering costs $G_k(x)$. So I need $G_k(x)\le K+G_k(y)$ for all $y>x$. Since $x\ge s$ and $y>x\ge s$, and using (4)/the Lemma on $[s,S]$ plus the right-tail behavior: for $x\ge s$, $G_k(x)\le G_k(y)+K$ holds — concretely, if $x,y\in[s,S]$ both lie under the level $K+G_k(S)$, and to the right of $S$, $K$-convexity gives $G_k(y)+K\ge G_k(x)$ because the chord from $x$ (lifted... ). Let me just nail the right tail: for $S\le x\le y$, $K$-convexity (Scarf form, backward slope at $x$ from the left, which is $\ge0$ near/after the min) gives $K+G_k(y)\ge G_k(x)+\frac{y-x}{b}[G_k(x)-G_k(x-b)]\ge G_k(x)$ once the bracketed backward slope is $\ge0$, which it is to the right of the minimizer. And for $s\le x\le S\le y$: $G_k(x)\le K+G_k(S)\le K+G_k(y)$ (first by the Lemma, second since $S$ is the min). And for $s\le x\le y\le S$: $G_k(x)\le K+G_k(S)\le K+G_k(y)$? Need $G_k(y)\le G_k(S)$... no, $G_k(y)\ge G_k(S)$, so $K+G_k(y)\ge K+G_k(S)\ge G_k(x)$. Good in all subcases. So for $x\ge s$, no order beats every order: don't order. 
+Case $x\ge s$: any order moves to some $y>x$, and the inequality I just proved gives $G_k(x)\le K+G_k(y)$. Staying costs $G_k(x)$; ordering to $y$ costs $K+G_k(y)$. So no order can strictly beat staying. At $x=s$ there can be a tie with ordering to $S$, and I can break it by not ordering; below $s$ the inequality is strict in the other direction and ordering is forced.
 
-That's the $(s,S)$ policy, proven from "continuous coercive $K$-convex": don't order while $x\ge s_k$; when $x<s_k$, order up to $S_k$. And the two numbers are read straight off $G_k$: $S_k=\arg\min G_k$, and $s_k=$ the smallest $z\le S_k$ with $G_k(z)=G_k(S_k)+K$. When $K=0$, the equation $G_k(z)=G_k(S_k)$ has $z=S_k$ as its solution near the min, so $s_k=S_k$ and the band collapses — base-stock falls out as the special case. The whole structure degrades gracefully to the $K=0$ world. That's the tell I had the right generalization.
+That's the $(s,S)$ policy, proven from "continuous coercive $K$-convex": don't order while $x\ge s_k$ under the no-order tie convention; when $x<s_k$, order up to $S_k$. The two numbers are read straight off $G_k$: $S_k=\arg\min G_k$, and $s_k$ is the leftmost $z\le S_k$ with $G_k(z)=G_k(S_k)+K$. When $K=0$, the crossing collapses to the minimizer, so $s_k=S_k$ and base-stock falls out as the special case. The whole structure degrades gracefully to the $K=0$ world. That's the tell I had the right generalization.
 
 Last piece: close the induction by showing the *output* $J_k^*$ is again $K$-convex (and nonnegative, continuous), so the next step back can reuse everything. From the policy I just derived, plug the optimal action back in. Define $\tilde G_k(x):=J_k^*(x)+cx$ (strip the linear part; $K$-convexity of $J_k^*$ is equivalent to $K$-convexity of $\tilde G_k$ since adding the $0$-convex $cx$ doesn't change the class). For $x<s_k$ I order to $S_k$: $J_k^*(x)=K+G_k(S_k)-cx$, so $\tilde G_k(x)=K+G_k(S_k)$, a constant. For $x\ge s_k$ I don't order: $J_k^*(x)=G_k(x)-cx$, so $\tilde G_k(x)=G_k(x)$. So
 
@@ -92,92 +98,194 @@ Both right, $s_k\le y\le y'$: here $\tilde G_k\equiv G_k$ and $G_k$ is $K$-conve
 
 Both left, $y\le y'\le s_k$: $\tilde G_k$ is constant $=G_k(s_k)$, and a constant is $0$-convex hence $K$-convex, done.
 
-The interesting one, $y<s_k<y'$. On $[y,y']$ I must keep $\tilde G_k(z)$ below the segment $\ell(z)$ from $(y,\,\tilde G_k(y))=(y,\,G_k(s_k))$ to $(y',\,\tilde G_k(y')+K)=(y',\,G_k(y')+K)$. First, is this segment increasing? Its left height is $G_k(s_k)=K+G_k(S_k)$, its right height is $K+G_k(y')$, and $G_k(y')\ge G_k(S_k)$ since $S_k$ is the global min — so right $\ge$ left, the segment is nondecreasing. Now split $[y,y']$ at $s_k$. For $z\in[y,s_k]$: $\tilde G_k(z)=G_k(s_k)$ (the flat part), and $\ell$ is nondecreasing starting at $\ell(y)=G_k(s_k)$, so $\ell(z)\ge G_k(s_k)=\tilde G_k(z)$. Good. For $z\in[s_k,y']$: $\tilde G_k(z)=G_k(z)$. By $K$-convexity of $G_k$ on $[s_k,y']$, $G_k(z)$ lies below the $K$-lifted chord from $(s_k,G_k(s_k))$ to $(y',G_k(y')+K)$ — call it $\ell'(z)$. And $\ell'$ vs $\ell$: both end at the same right point $(y',G_k(y')+K)$; at the left, $\ell$ passes through $(y,G_k(s_k))$ and $\ell'$ through $(s_k,G_k(s_k))$ — same height $G_k(s_k)$ but $\ell'$'s left anchor is at $s_k\ge y$, i.e. *inside*. Two lines sharing the right endpoint, with $\ell'$'s left anchor at the same height but further right on an increasing line: $\ell'$ is the steeper one over $[s_k,y']$, and since they meet at the right and $\ell$ is at height $G_k(s_k)$ already at $y\le s_k$ (so $\ell\le G_k(s_k)$... no — $\ell$ is increasing, $\ell(s_k)\ge \ell(y)=G_k(s_k)=\ell'(s_k)$). So $\ell(s_k)\ge \ell'(s_k)$ and $\ell(y')=\ell'(y')$; both linear, hence $\ell(z)\ge \ell'(z)$ on $[s_k,y']$. Therefore $\tilde G_k(z)=G_k(z)\le \ell'(z)\le \ell(z)$. Below the chord, as required. All three cases check, so $\tilde G_k$ — and thus $J_k^*$ — is $K$-convex. Nonnegative, continuous, $K$-convex: exactly the induction hypothesis for stage $k-1$.
+The interesting one is $y<s_k<y'$. On $[y,y']$ I must keep $\tilde G_k(z)$ below the segment $\ell(z)$ from $(y,\tilde G_k(y))=(y,G_k(s_k))$ to $(y',\tilde G_k(y')+K)=(y',G_k(y')+K)$. Its left height is $G_k(s_k)=K+G_k(S_k)$, its right height is $K+G_k(y')$, and $G_k(y')\ge G_k(S_k)$ since $S_k$ is a global minimizer, so $\ell$ is nondecreasing. For $z\in[y,s_k]$, $\tilde G_k(z)=G_k(s_k)$ and $\ell(z)\ge \ell(y)=G_k(s_k)$, so the flat part is below the chord. For $z\in[s_k,y']$, $K$-convexity of $G_k$ puts $G_k(z)$ below the lifted chord $\ell'(z)$ from $(s_k,G_k(s_k))$ to $(y',G_k(y')+K)$. The two chords $\ell$ and $\ell'$ share the right endpoint; at $s_k$, $\ell(s_k)\ge G_k(s_k)=\ell'(s_k)$ because $\ell$ is nondecreasing from the same height at the earlier point $y$. Two linear functions with the same right endpoint and $\ell(s_k)\ge\ell'(s_k)$ keep that order throughout $[s_k,y']$, so $\ell'(z)\le\ell(z)$. Therefore $\tilde G_k(z)=G_k(z)\le \ell'(z)\le \ell(z)$. All three cases check, so $\tilde G_k$ — and thus $J_k^*$ — is $K$-convex. Nonnegative, continuous, $K$-convex: exactly the induction hypothesis for stage $k-1$.
 
-Base case: $J_N^*=v_N$, convex (= $0$-convex) and nonnegative. Induction runs from $N$ down to $1$. So at *every* stage $G_k$ is $K$-convex/coercive/continuous, an $(s_k,S_k)$ policy is optimal, and the value function stays $K$-convex. The fixed cost broke ordinary convexity; $K$-convexity is precisely the dented version that survives the min-plus-expectation operator and still pins the policy to two numbers. That's the whole thing.
+Base case: $J_{N+1}^*=v_{N+1}$, convex (= $0$-convex) and nonnegative. Induction runs from $N$ down to $1$. So at *every* stage $G_k$ is $K$-convex/coercive/continuous, an $(s_k,S_k)$ policy is optimal, and the value function stays $K$-convex. The fixed cost broke ordinary convexity; $K$-convexity is precisely the dented version that survives the min-plus-expectation operator and still pins the policy to two numbers. That's the whole thing.
 
 Now land it on code. A discretized backward DP on the inventory grid. The one efficiency move worth making: in $\theta_t(x)=\min_{y\ge x}\{K\delta(y-x)+c(y-x)+\bar L(y)+\gamma E[\theta_{t+1}(y-w)]\}$, the part $H_t(y):=\bar L(y)+\gamma E[\theta_{t+1}(y-w)]$ doesn't depend on $x$, so precompute $H_t(y)$ once per $(t,y)$ and reuse it across all $x$ in the inner min — that's where the cost is (the expectation over demand). Then for each $x$, scan $y\ge x$. Read off $S_t$ as the order-up-to level at the smallest $x$ in range (everyone low enough orders to the same $S_t$), and $s_t$ as the largest $x$ still ordering up to $S_t$ — equivalently the crossover where not-ordering takes over. When $K=0$ these coincide.
 
 ```python
 import numpy as np
+import warnings
 from scipy.stats import norm
+
+def _period_list(v, T, name):
+    if isinstance(v, (list, tuple, np.ndarray)):
+        values = list(v)
+        if len(values) == T:
+            return [None] + values
+        if len(values) == T + 1:
+            return values
+        raise ValueError(f"{name} must have length {T} or {T + 1}")
+    return [None] + [v] * T
+
+def _normal_loss(y, mu, sigma):
+    if sigma <= 0:
+        return max(mu - y, 0.0), max(y - mu, 0.0)
+    z = (y - mu) / sigma
+    phi = norm.pdf(z)
+    Phi = norm.cdf(z)
+    shortage = sigma * phi + (mu - y) * (1 - Phi)
+    holding = sigma * phi + (y - mu) * Phi
+    return shortage, holding
+
+def _eoq_with_backorders(K, h, p, mean):
+    if K <= 0 or h <= 0 or p <= 0 or mean <= 0:
+        return 0.0
+    return np.sqrt(2.0 * K * mean * (h + p) / (h * p))
 
 def finite_horizon_dp(num_periods, holding_cost, stockout_cost,
                       terminal_holding_cost, terminal_stockout_cost,
                       purchase_cost, fixed_cost,
-                      demand_mean, demand_sd,
+                      demand_mean=None, demand_sd=None, demand_source=None,
                       discount_factor=1.0, initial_inventory_level=0.0,
-                      d_spread=4, s_spread=5):
-    """Backward DP for the finite-horizon (s,S) inventory problem.
+                      trunc_tol=0.02, d_spread=4, s_spread=5,
+                      oul_matrix=None, x_range=None):
+    """Finite-horizon DP with the same state/action layout as the stockpyl routine.
 
-    theta_t(x) = min_{y>=x} { K*1[y>x] + c*(y-x) + Lbar(y) + gamma*E[theta_{t+1}(y-D)] }.
-    K-convexity of theta_t makes the minimizer an (s,S) rule; we read s_t, S_t off it.
+    theta_t(x) = min_{y>=x} { K*1[y>x] + c*(y-x) + Lbar_t(y)
+                              + gamma_t*E[theta_{t+1}(y-D_t)] }.
     """
     T = num_periods
-    def lst(v):  # broadcast a scalar to a 1-indexed per-period list
-        return [None] + [v]*T if np.isscalar(v) else v
-    h, p, c, K = lst(holding_cost), lst(stockout_cost), lst(purchase_cost), lst(fixed_cost)
-    mu, sd, g = lst(demand_mean), lst(demand_sd), lst(discount_factor)
+    if T <= 0 or int(T) != T:
+        raise ValueError("num_periods must be a positive integer")
+    if terminal_holding_cost < 0 or terminal_stockout_cost < 0:
+        raise ValueError("terminal costs must be non-negative")
 
-    # Demand support: truncate at mu +/- d_spread*sigma, clipped at 0.
-    d_min = int(max(0, round(min(mu[1:]) - d_spread*max(sd[1:]))))
-    d_max = int(round(max(mu[1:]) + d_spread*max(sd[1:])))
-    d_range = np.arange(d_min, d_max+1)
+    h = _period_list(holding_cost, T, "holding_cost")
+    p = _period_list(stockout_cost, T, "stockout_cost")
+    c = _period_list(purchase_cost, T, "purchase_cost")
+    K = _period_list(fixed_cost, T, "fixed_cost")
+    gamma = _period_list(discount_factor, T, "discount_factor")
+    mu = _period_list(demand_mean, T, "demand_mean")
+    sigma = _period_list(demand_sd, T, "demand_sd")
+    source = _period_list(demand_source, T, "demand_source")
 
-    # Inventory grid: around the newsvendor s and s + EOQ-with-backorders for S.
-    nv = [None] + [mu[t] for t in range(1, T+1)]                 # crude s estimate
-    Q  = [None] + [np.sqrt(2*K[t]*mu[t]/max(h[t], 1e-9)) for t in range(1, T+1)]  # batch scale
-    x_min = int(round(min(nv[1:]) - max(mu[1:]) - max(sd[1:])*(s_spread+d_spread)))
-    x_max = int(round(max(nv[1:]) + max(Q[1:]) + max(sd[1:])*s_spread))
-    x_range = np.arange(x_min, x_max+1)
-    nx = len(x_range)
+    for t in range(1, T + 1):
+        if source[t] is not None:
+            dist = source[t].demand_distribution
+            mu[t] = mu[t] if mu[t] is not None else dist.mean()
+            sigma[t] = sigma[t] if sigma[t] is not None else dist.std()
+        elif mu[t] is None or sigma[t] is None:
+            raise ValueError("provide demand_mean and demand_sd, or demand_source")
 
-    reorder_points = [0]*(T+1)        # s_t
-    order_up_to_levels = [0]*(T+1)    # S_t
-    theta = np.zeros((T+2, nx))       # theta[t, x-x_min] = cost-to-go
+    for values, name in [(h, "holding_cost"), (p, "stockout_cost"),
+                         (c, "purchase_cost"), (K, "fixed_cost")]:
+        if np.any(np.asarray(values[1:], dtype=float) < 0):
+            raise ValueError(f"{name} must be non-negative")
+    if np.any(np.asarray(gamma[1:], dtype=float) <= 0) or np.any(np.asarray(gamma[1:], dtype=float) > 1):
+        raise ValueError("discount_factor must be > 0 and <= 1")
 
-    # Terminal cost theta_{T+1}(x) = h_T x^+ + p_T x^-.
-    theta[T+1, :] = terminal_holding_cost*np.maximum(x_range, 0) \
-                  + terminal_stockout_cost*np.maximum(-x_range, 0)
+    mu_vals = np.asarray(mu[1:], dtype=float)
+    sd_vals = np.asarray(sigma[1:], dtype=float)
+    d_min = int(max(0, round(np.min(mu_vals) - d_spread * np.max(sd_vals))))
+    d_max = int(round(np.max(mu_vals) + d_spread * np.max(sd_vals)))
+    d_range = np.arange(d_min, d_max + 1)
 
-    for t in range(T, 0, -1):
-        # Demand pmf on the truncated support (normal, integer-binned).
-        prob = norm.cdf(d_range+0.5, mu[t], sd[t]) - norm.cdf(d_range-0.5, mu[t], sd[t])
+    def cdf(t, z):
+        if source[t] is None:
+            return norm.cdf(z, float(mu[t]), float(sigma[t]))
+        return source[t].demand_distribution.cdf(z)
 
-        # Precompute H_t(y) = Lbar(y) + gamma * E[theta_{t+1}(y - D)] for every y on the grid.
-        H = np.zeros(nx)
-        for j, y in enumerate(x_range):
-            hold  = np.dot(prob, np.maximum(y - d_range, 0))
-            short = np.dot(prob, np.maximum(d_range - y, 0))
-            Lbar = h[t]*hold + p[t]*short                       # newsvendor expected cost
-            d_eff = np.clip(d_range, y - x_max, y - x_min)        # keep y-d on the grid
-            future = g[t]*np.dot(prob, theta[t+1, (y - d_eff) - x_min])
-            H[j] = Lbar + future
+    outside = np.array([cdf(t, d_min) + (1 - cdf(t, d_max)) for t in range(1, T + 1)])
+    if np.any(outside > trunc_tol):
+        warnings.warn("demand truncation probability exceeds trunc_tol")
 
-        # For each starting x, minimize over post-order y >= x with the fixed-cost toll.
-        oul = np.zeros(nx)
-        for i, x in enumerate(x_range):
-            best_cost, best_y = np.inf, x
-            for j in range(i, nx):                               # y ranges over x..x_max
-                y = x_range[j]
-                order = (K[t] + c[t]*(y - x)) if y > x else 0.0   # K only when y>x
-                cost = order + H[j]
-                if cost < best_cost:
-                    best_cost, best_y = cost, y
-            theta[t, i] = best_cost
-            oul[i] = best_y
+    if oul_matrix is not None:
+        user_provided_oul_matrix = True
+        if x_range is None:
+            raise ValueError("x_range is required when oul_matrix is provided")
+        x_range = np.asarray(x_range, dtype=int)
+        x_min, x_max = int(np.min(x_range)), int(np.max(x_range))
+    elif x_range is not None:
+        user_provided_oul_matrix = False
+        x_range = np.asarray(x_range, dtype=int)
+        x_min, x_max = int(np.min(x_range)), int(np.max(x_range))
+    else:
+        user_provided_oul_matrix = False
+        nv = mu_vals
+        Q = np.array([_eoq_with_backorders(float(K[t]), float(h[t]), float(p[t]), float(mu[t]))
+                      for t in range(1, T + 1)])
+        x_min = int(round(np.min(nv) - np.max(mu_vals) - np.max(sd_vals) * (s_spread + d_spread)))
+        x_max = int(round(np.max(nv) + np.max(Q) + np.max(sd_vals) * s_spread))
+        x_range = np.arange(x_min, x_max + 1)
 
-        # Read (s_t, S_t) off the action profile: S_t = OUL at the lowest x;
-        # s_t = largest x that still orders up to S_t (the crossover).
-        S_t = oul[0]
-        order_up_to_levels[t] = S_t
-        s_idx = 0
-        while s_idx+1 < nx and oul[s_idx+1] == S_t:
-            s_idx += 1
-        reorder_points[t] = x_range[s_idx]                       # == S_t when K=0
+    def demand_probabilities(t):
+        if source[t] is not None and getattr(source[t], "is_discrete", False):
+            dist = source[t].demand_distribution
+            return np.array([dist.pmf(d) for d in d_range])
+        return np.array([cdf(t, d + 0.5) - cdf(t, d - 0.5) for d in d_range])
 
-    total_cost = theta[1, int(round(initial_inventory_level)) - x_min]
-    return reorder_points, order_up_to_levels, total_cost
+    def period_loss(t, y, prob):
+        if source[t] is None:
+            shortage, holding = _normal_loss(y, float(mu[t]), float(sigma[t]))
+            return float(h[t]) * holding + float(p[t]) * shortage
+        holding = np.dot(prob, np.maximum(y - d_range, 0))
+        shortage = np.dot(prob, np.maximum(d_range - y, 0))
+        return float(h[t]) * holding + float(p[t]) * shortage
+
+    done = False
+    while not done:
+        nx = len(x_range)
+        reorder_points = [0] * (T + 1)
+        order_up_to_levels = [0] * (T + 1)
+        cost_matrix = np.zeros((T + 2, nx))
+        if not user_provided_oul_matrix:
+            oul_matrix = np.zeros((T + 1, nx))
+        H = np.zeros((T + 1, nx))
+        cost_matrix[T + 1, :] = terminal_holding_cost * np.maximum(x_range, 0) \
+                              + terminal_stockout_cost * np.maximum(-x_range, 0)
+        abort = False
+
+        for t in range(T, 0, -1):
+            prob = demand_probabilities(t)
+
+            for y in range(x_min, x_max + 1):
+                d_eff = np.maximum(np.minimum(d_range, y - x_min), y - x_max)
+                future = float(gamma[t]) * np.dot(prob, cost_matrix[t + 1, y - d_eff - x_min])
+                H[t, y - x_min] = period_loss(t, y, prob) + future
+
+            for x in range(x_min, x_max + 1):
+                best_cost = float("inf")
+                if user_provided_oul_matrix:
+                    y_values = [int(oul_matrix[t, x - x_min])]
+                else:
+                    y_values = range(x, x_max + 1)
+
+                for y in y_values:
+                    order = float(c[t]) * (y - x) + float(K[t]) if y > x else 0.0
+                    cost = order + H[t, y - x_min]
+                    if cost < best_cost:
+                        best_cost, best_y = cost, y
+                        if y == x_max and x < x_max and not user_provided_oul_matrix:
+                            warnings.warn("cost is still decreasing at the upper end of the y range; expanding")
+                            abort = True
+                            x_max *= 2
+                            x_range = np.arange(x_min, x_max + 1)
+                            break
+                if abort:
+                    break
+                cost_matrix[t, x - x_min] = best_cost
+                oul_matrix[t, x - x_min] = best_y
+
+            if abort:
+                break
+
+            order_up_to_levels[t] = oul_matrix[t, 0]
+            reorder_points[t] = x_range[0]
+            while (reorder_points[t] < x_max and
+                   oul_matrix[t, reorder_points[t] + 1 - x_min] == order_up_to_levels[t]):
+                reorder_points[t] += 1
+
+            prob_below = 1 - cdf(t, reorder_points[t] - x_min)
+            if prob_below > trunc_tol:
+                warnings.warn("probability of falling below the x-grid exceeds trunc_tol")
+
+        if not abort:
+            done = True
+
+    total_cost = cost_matrix[1, int(initial_inventory_level) - x_min]
+    return reorder_points, order_up_to_levels, total_cost, cost_matrix, oul_matrix, x_range
 ```
 
-So the causal chain, top to bottom: the fixed charge $K$ makes topping-up-every-period wasteful, so I expect batching — wait, then order one lump — which is a two-number $(s,S)$ band, not a one-number base stock. The Bellman recursion reduces each stage to minimizing $G_k(y)$ over $y\ge x$ with a $K$ toll on moving. Without $K$, $G_k$ is convex and the operator preserves convexity, giving base stock. With $K$ the cost-to-go grows a bounded downward dent and convexity dies. The dent is exactly bounded by $K$, which is the chord-lifted-by-$K$ relaxation: $K$-convexity. It's closed under positive combination and under the demand-shift expectation, so the operator preserves it; continuous-coercive-$K$-convex forces the minimization to be order-up-to-$S$-iff-below-$s$; and plugging that policy back yields a $K$-convex value function again, so backward induction runs the whole horizon. The two numbers drop straight out of $G_k$ — $S_k$ its minimizer, $s_k$ the smallest level where $G_k$ exceeds the minimum by $K$ — and collapse to one when $K=0$.
+So the causal chain, top to bottom: the fixed charge $K$ makes topping-up-every-period wasteful, so I expect batching — wait, then order one lump — which is a two-number $(s,S)$ band, not a one-number base stock. The Bellman recursion reduces each stage to minimizing $G_k(y)$ over $y\ge x$ with a $K$ toll on moving. Without $K$, $G_k$ is convex and the operator preserves convexity, giving base stock. With $K$ the cost-to-go grows a bounded downward dent and convexity dies. The dent is exactly bounded by $K$, which is the chord-lifted-by-$K$ relaxation: $K$-convexity. It's closed under positive combination and under the demand-shift expectation, so the operator preserves it; continuous-coercive-$K$-convex forces the minimization to be order-up-to-$S$ below the reorder boundary and no-order above it; and plugging that policy back yields a $K$-convex value function again, so backward induction runs the whole horizon. The two numbers drop straight out of $G_k$ — $S_k$ its minimizer, $s_k$ the leftmost level where $G_k$ equals the minimum plus $K$ — and collapse to one when $K=0$.

@@ -16,7 +16,7 @@ A usable method therefore has to: (a) reach an optimum in as few FE evaluations 
 
 ## Background
 
-**The FE-cost regime.** Each design iteration begins with a complete analysis of structural behavior to evaluate the objective and constraint values plus their first derivatives with respect to the design variables, the analysis based on finite element discretization. For large-scale problems these repeated reanalyses dominate the runtime; a design iteration is concluded by feeding the analysis and sensitivity results to a minimization step that proposes the next point. This is an established, pre-method fact about the cost structure of structural synthesis, and it is what makes "few iterations, cheap explicit subproblem" the governing requirement.
+**The FE-cost regime.** Each design iteration begins with a complete analysis of structural behavior to evaluate the objective and constraint values plus their first derivatives with respect to the design variables, the analysis based on finite element discretization. For large-scale problems these repeated reanalyses dominate the runtime; a design iteration is concluded by feeding the analysis and sensitivity results to a minimization step that proposes the next point. That cost structure makes "few iterations, cheap explicit subproblem" the governing requirement.
 
 **Approximation concepts.** The accepted way to cope with implicit, expensive responses (Schmit and Miura 1976; Schmit and Fleury 1980; Fleury and Schmit 1980) is to replace the primary problem with a sequence of explicit subproblems built by Taylor expansion of the objective and constraints in terms of intermediate linearization variables, solved cheaply, and updated as the design moves. The art is the *choice of intermediate variable*.
 
@@ -40,10 +40,10 @@ The load-bearing facts: FE evaluations are the cost; reciprocal variables work a
 
 ```
 f_i(x) ≈ f_i(x^0) + Σ_{∂f_i/∂x_j > 0} (∂f_i/∂x_j)(x_j - x_j^0)
-                  + Σ_{∂f_i/∂x_j < 0} (∂f_i/∂x_j)(x_j^0)^2 (1/x_j - 1/x_j^0).
+                  + Σ_{∂f_i/∂x_j < 0} (∂f_i/∂x_j)(x_j^0)^2 (1/x_j^0 - 1/x_j).
 ```
 
-Because each retained term is convex (linear, or `1/x_j` with a positive coefficient), the surrogate is convex and separable, and by the Starnes–Haftka argument it is the most conservative direct/reciprocal mix. CONLIN solves the resulting subproblem with a dual method: it forms the separable Lagrangian, minimizes it analytically variable by variable to get a closed-form `x_i(r)` (with the side bounds clamping some variables to `x_min`/`x_max`), and maximizes the resulting dual function `l(r)` over the multipliers `r >= 0` — the dual gradient being exactly the primal constraint values, the dual Hessian available in closed form, solved by a sequential quadratic method in the active-multiplier subspace. CONLIN's gap: the reciprocal term places its singularity at the fixed point `x_j = 0`. The curvature of each term — hence the conservativeness and the implied step — is *fixed once the iterate is fixed*. There is no internal knob to make a given subproblem more or less conservative: if it is too curved it converges slowly, and if a sensitivity flips sign between iterations the surrogate can jump and the design can oscillate, fixable only by reimposing external move limits — the very fragility the approach was meant to remove.
+Because each retained term is convex (linear, or a reciprocal term whose coefficient on `1/x_j` is `-(∂f_i/∂x_j)(x_j^0)^2 > 0`), the surrogate is convex and separable, and by the Starnes–Haftka argument it is the most conservative direct/reciprocal mix. CONLIN solves the resulting subproblem with a dual method: it forms the separable Lagrangian, minimizes it analytically variable by variable to get a closed-form `x_i(r)` (with the side bounds clamping some variables to `x_min`/`x_max`), and maximizes the resulting dual function `l(r)` over the multipliers `r >= 0` — the dual gradient being exactly the primal constraint values, the dual Hessian available in closed form, solved by a sequential quadratic method in the active-multiplier subspace. CONLIN's gap: the reciprocal term places its singularity at the fixed point `x_j = 0`. The curvature of each term — hence the conservativeness and the implied step — is *fixed once the iterate is fixed*. There is no internal knob to make a given subproblem more or less conservative: if it is too curved it converges slowly, and if a sensitivity flips sign between iterations the surrogate can jump and the design can oscillate, fixable only by reimposing external move limits — the very fragility the approach was meant to remove.
 
 ## Evaluation settings
 
@@ -86,15 +86,18 @@ def kkt_residual(x, mult, f0val, df0dx, fval, dfdx, xmin, xmax):
 def optimize(x0, xmin, xmax, maxit):
     xval = x0.copy(); xold1 = x0.copy(); xold2 = x0.copy()
     state = None
+    f0val, df0dx, fval, dfdx = fe_analysis(xval)        # expensive
     for k in range(1, maxit + 1):
-        f0val, df0dx, fval, dfdx = fe_analysis(xval)        # expensive
         sub, state = build_subproblem(xval, xmin, xmax, xold1, xold2,
                                       f0val, df0dx, fval, dfdx, state)
         x_next, mult = solve_subproblem(sub)                # cheap, no FE
-        if kkt_residual(x_next, mult, f0val, df0dx, fval, dfdx,
+        f0next, df0next, fnext, dfdxnext = fe_analysis(x_next)
+        if kkt_residual(x_next, mult, f0next, df0next, fnext, dfdxnext,
                         xmin, xmax) < tol:
+            xval = x_next
             break
         xold2, xold1, xval = xold1, xval, x_next
+        f0val, df0dx, fval, dfdx = f0next, df0next, fnext, dfdxnext
     return xval
 ```
 

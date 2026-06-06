@@ -134,9 +134,8 @@ generator. The surrogate-driven optimization loop is the scaffold to be filled i
 
 ```python
 import numpy as np
-from scipy.stats import norm
 
-def latin_hypercube(n_points, bounds):
+def latin_hypercube(n_points, bounds, rng):
     """Space-filling initial design over the box `bounds`."""
     # ... draw an LHS with good low-dimensional projections ...
     raise NotImplementedError
@@ -161,21 +160,24 @@ def acquisition(x, surrogate, f_min):
     #       against exploring high sigma(x). This is the slot the method fills.
     pass
 
-def optimize_expensive(objective, bounds, n_init, max_evals):
-    X = latin_hypercube(n_init, bounds)
+def maximize_acquisition(acq_fn, bounds, rng):
+    """Globally maximize a cheap multimodal criterion over the box."""
+    # TODO: combine broad search over the box with local polishing.
+    pass
+
+def optimize_expensive(objective, bounds, n_init, max_evals, seed=0):
+    rng = np.random.default_rng(seed)
+    X = latin_hypercube(n_init, bounds, rng)
     y = [objective(x) for x in X]          # the only expensive calls
     surrogate = CorrelatedSurrogate()
     for _ in range(max_evals - n_init):
         surrogate.fit(X, y)
         f_min = min(y)
         # pick the next point by maximizing the acquisition over the box
-        x_next = maximize(lambda x: acquisition(x, surrogate, f_min), bounds)
+        acq_fn = lambda Xcand: acquisition(Xcand, surrogate, f_min)
+        x_next, acq_value = maximize_acquisition(acq_fn, bounds, rng)
         # TODO: stopping rule based on the acquisition's own value
         y_next = objective(x_next)         # one expensive call
         X = np.vstack([X, x_next]); y.append(y_next)
     return X[np.argmin(y)], min(y)
-
-def maximize(fn, bounds):
-    """Globally maximize a cheap multimodal function over the box."""
-    raise NotImplementedError
 ```

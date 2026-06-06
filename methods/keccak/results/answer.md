@@ -15,11 +15,11 @@ Because the digest exposes only outer bits (truncated to `d ≤ r`) and never th
 
 ### Why a permutation, and the security knob
 
-A permutation needs no key schedule (unlike a Davies–Meyer block-cipher compression function) yet keeps all block-cipher design intuition. Modeling `f` as a random permutation, the sponge is indistinguishable/indifferentiable from a random oracle except via an **inner collision** (two distinct absorbed paths reaching the same inner `c`-bit value). After `N` calls to `f` and `f^{-1}`,
+A permutation needs no key schedule (unlike a Davies–Meyer block-cipher compression function) yet keeps all block-cipher design intuition. Modeling `f` as ideal, the sponge is indistinguishable/indifferentiable from a random oracle except via an **inner collision** (two distinct absorbed paths reaching the same inner `c`-bit value). For a random transformation, after `N` primitive calls,
 
   P(inner collision) ≈ 1 − ∏_{i=1}^{N}(1 − i/2^c) ≈ N(N+1) / 2^{c+1}.
 
-The advantage depends on `c` only — never on `r`. So security ~`2^{c/2}`, throughput tuned by `r`, with `r + c = b` fixed. Collision/(2nd)preimage resistance are obtained from an easily invertible `f` because the secret is the hidden inner state, not `f`. Choosing **`c = 2d`** matches a `d`-bit truncated random oracle (collisions `2^{d/2}`, preimages `2^d`).
+For a random permutation with forward and inverse queries, the formal indifferentiability bound is slightly smaller; the same expression is the flat, conservative security term. The advantage depends on `c` only — never on `r`. So security is controlled around `2^{c/2}`, throughput is tuned by `r`, with `r + c = b` fixed. For a `d`-bit output, the random-oracle target gives collisions around `2^{d/2}` and preimages around `2^d`; choosing **`c = 2d`** keeps the sponge term from being the bottleneck at that output length. Collision/(2nd)preimage resistance are obtained from an easily invertible `f` because the secret is the hidden inner state, not `f`.
 
 ### Padding and domain separation
 
@@ -36,7 +36,7 @@ State `A[x][y][z]`, `0 ≤ x,y < 5`, `0 ≤ z < w=64`: 5×5 lanes of 64 bits, `b
 - **χ (nonlinearity).** Per row of 5: `A'[x] = A[x] ⊕ ((¬A[x+1]) ∧ A[x+2])`. The only nonlinear step; algebraic degree 2; invertible.
 - **ι (symmetry breaking).** XOR an LFSR-generated round constant into lane `(0,0)`, defeating the `z`-translation symmetry and slide attacks; one round of θ/χ diffuses it to all lanes.
 
-θ comes first so the round mixes the inner (capacity) and outer (rate) parts early in the sponge; the order of the rest is essentially free.
+θ comes first so the round mixes the inner (capacity) and outer (rate) parts early in the sponge; the remaining order keeps the linear layer between χ applications while preserving the compact round structure.
 
 ## Code
 

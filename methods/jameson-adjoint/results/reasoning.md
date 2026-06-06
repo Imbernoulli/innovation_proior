@@ -121,13 +121,13 @@ drag is an *integral* of pressure over the surface, and the shock moves continuo
 so the integrated cost is smooth even where the pointwise sensitivity is not. The continuous adjoint,
 because it works with the functional and its boundary integral, computes the sensitivity of the
 *integrated* quantity directly and never has to form the ill-posed pointwise sensitivities. Second,
-when I integrate by parts in the continuous derivation, the field/metric terms — how the interior
-mesh deforms when the boundary moves — can be made to cancel, leaving the gradient as a pure
-*surface* integral over the boundary displacement. That makes the gradient independent of how the
-volume mesh is moved, which is a gift on overset and unstructured grids. So the continuous route buys
-well-posedness and mesh-agnosticism; the discrete route buys an exact discrete gradient and a
-mechanical implementation. I'll derive the continuous adjoint to understand the structure, then build
-the discrete one because that's what validates cleanly against finite differences.
+when I integrate by parts in the continuous derivation, the state-variation terms can be cancelled and
+the remaining metric terms can be reduced to a boundary displacement. That makes the final gradient
+independent of an arbitrary interior volume-mesh motion, which is a gift on overset and unstructured
+grids. So the continuous route buys well-posedness and mesh-agnosticism; the discrete route buys an
+exact discrete gradient and a mechanical implementation. I'll derive the continuous adjoint to
+understand the structure, then build the discrete one because that's what validates cleanly against
+finite differences.
 
 Let me actually do the continuous Euler adjoint to see the boundary condition emerge, because that's
 the part the abstract Lagrangian hides. Steady Euler: ∂fᵢ/∂xᵢ = 0 in D. Map to a fixed computational
@@ -135,13 +135,14 @@ domain ξ so the geometry change shows up in the metrics rather than in the doma
 transformed fluxes Fᵢ = Sᵢⱼ fⱼ with S the metric cofactors (the projected face areas). Linearize:
 δ(∂Fᵢ/∂ξᵢ) = 0, where δFᵢ splits into a part from δw through the flux Jacobian Cᵢ = Sᵢⱼ ∂fⱼ/∂w and a
 part from the metric change δSᵢⱼ fⱼ (the shape moving the mesh). The cost is a boundary integral, say
-the pressure mismatch on the wall. Multiply the linearized PDE by a costate field ψ and integrate
-over the domain:
+the pressure mismatch on the wall. Multiply the linearized PDE by a costate field ψ, integrate over
+the domain, and subtract that zero constraint contribution from δI:
 
     ∫ ψᵀ ∂(δFᵢ)/∂ξᵢ dD.
 
-Integrate by parts. The volume term gives ∫ (∂ψᵀ/∂ξᵢ) δFᵢ dD, and I want the δw piece of that to
-vanish in the interior, which forces the **adjoint field equation**
+After integration by parts, the subtracted constraint contributes the volume term
+∫ (∂ψᵀ/∂ξᵢ) δFᵢ dD. I want the δw piece of that term to vanish in the interior, which forces the
+**adjoint field equation**
 
     Cᵢᵀ ∂ψ/∂ξᵢ = 0   in D
 
@@ -160,14 +161,19 @@ that pins down the **adjoint wall boundary condition**
 — a transpiration condition on the momentum-component costates, with the cost's target-pressure
 mismatch as the forcing. (It imposes nothing on ψ's tangential component.) Beautiful: the cost
 functional doesn't enter the adjoint *interior* equation at all for inverse design; it enters only
-through this wall BC. And once ψ solves its PDE with this BC, the remaining boundary terms collapse
-the cost variation to a pure surface integral
+through this wall BC. And once ψ solves its PDE with this BC, the flow-state variation is gone. What
+remains is a metric-variation expression with the flow held fixed,
 
-    δI = −∫ (∂ψᵀ/∂ξ) δS f dD  →  surface form,
+    δI = δI_II + ∫ ψᵀ δR_II dD,
 
-i.e. G is a function defined over the boundary — the metric/field terms cancelled, exactly the
-mesh-independence I wanted. Good. The continuous picture is consistent with the abstract one: ψ from a
-single transposed/backward solve, gradient from a cheap boundary assembly.
+and the reduced-gradient step then integrates the interior metric dependence along coordinate lines
+emanating from the wall, so it becomes a pure boundary-displacement integral,
+
+    δI = ∫_B G δF dB.
+
+So G is a function defined over the boundary, and the final derivative does not depend on an arbitrary
+choice of interior mesh motion. Good. The continuous picture is consistent with the abstract one: ψ
+from a single transposed/backward solve, gradient from a cheap boundary assembly.
 
 Now, descent. Naively I just step α ← α − λG. But there's a trap I should think about before I
 iterate, and it's the calculus-of-variations smoothness issue. Take the toy I = ∫ F(y, y′) dx. Under
@@ -195,9 +201,9 @@ step δy = −λḡ no longer degrades the smoothness class. And it's still genu
 δI = ⟨ḡ, −λḡ⟩ = −λ⟨ḡ, ḡ⟩ < 0. So I keep descent and I keep smoothness. As a bonus this acts like a
 preconditioner — the smoothing damps the high-frequency components of the raw gradient that were
 forcing tiny steps, so I can take much larger λ and converge in far fewer design cycles. In the
-discrete code this is just: take the raw gradient G and apply a tridiagonal operator, ḡ = A·G, where
-A is the discretization of (1 − ε ∂²) — diagonal 1+2ε, off-diagonals −ε — then step δα = −λ A G. One
-small linear solve per cycle, negligible next to a flow solve.
+discrete code this is: build the tridiagonal matrix M for (1 − ε ∂²), with diagonal 1+2ε and
+off-diagonals −ε, solve Mḡ = G, then step δα = −λḡ. If I call the smoothing map A, then A = M⁻¹;
+the local code builds M and applies A by a small linear solve, negligible next to a flow solve.
 
 One more design decision before I trust the loop on a real wing: what cost? If I minimize drag with
 nothing held fixed, the optimizer will discover that induced drag — a big chunk of total drag — drops
@@ -215,8 +221,17 @@ a known answer. The pieces I need to assemble the adjoint gradient G = ∂I/∂�
 (∂R/∂w)ᵀ ψ = ∂I/∂w:
 
 ```cpp
-VectorXd gradient_adjoint(/* x, dx, area, flo_opts, flow_data, opt_opts, design */)
+VectorXd gradient_adjoint(
+    const int cost_function,
+    const std::vector<double>& x, const std::vector<double>& dx,
+    const std::vector<double>& area,
+    const Flow_options& flo_opts, const Flow_data<double>& flow_data,
+    const Optimization_options<double>& opt_opts, const Design<double>& design)
 {
+    const int n_elem = flo_opts.n_elem;
+    const int n_resi = n_elem * 3;
+    const int n_face = n_elem + 1;
+
     // ∂(area)/∂(design vars): chain through the shape parameterization
     MatrixXd dAreadDes = evaldAreadDes(x, dx, design);
 
@@ -234,8 +249,8 @@ VectorXd gradient_adjoint(/* x, dx, area, flo_opts, flow_data, opt_opts, design 
     MatrixXd dRdArea = evaldRdArea(flo_opts, flow_data);
     MatrixXd dRdDes  = dRdArea * dAreadDes;
 
-    // ∂R/∂w  — the flow Jacobian (here via complex step / AD; analytic and FD versions agree)
-    SparseMatrix<double> dRdW = evaldRdW(area, flo_opts, flow_data);
+    // ∂R/∂w  — the flow Jacobian used by this implementation (ADOL-C trace of the residual)
+    SparseMatrix<double> dRdW = eval_dRdW_dRdX_adolc(flo_opts, area, flow_data);
 
     // ----- the one extra solve: adjoint equation (∂R/∂w)ᵀ ψ = ∂I/∂w -----
     SparseLU<SparseMatrix<double>, COLAMDOrdering<int>> solver;
@@ -253,8 +268,9 @@ differentiation builds the flow sensitivity from (∂R/∂w)(∂w/∂α) = −�
 ∂R/∂α, and then dI/dα = ∂I/∂α + (∂I/∂w)ᵀ ∂w/∂α = ∂I/∂α − (∂I/∂w)ᵀ(∂R/∂w)⁻¹ ∂R/∂α. The adjoint just
 regroups the last term as −ψᵀ ∂R/∂α with ψ = (∂R/∂w)⁻ᵀ ∂I/∂w — *same minus sign*. So in code the
 forward path is `dCostdDes + dCostdW·dWdDes` where `dWdDes = solve(−dRdW, dRdDes)` (the minus folded
-into the solve), and the adjoint path is `dCostdDes − psiᵀ·dRdDes`. They must agree to machine
-precision, and that equality, plus agreement with central FD, is exactly the gradient test I'll run:
+into the solve), and the adjoint path is `dCostdDes − psiᵀ·dRdDes`. They should agree within the
+linearization and solver tolerances, and that equality, plus agreement with central FD, is exactly the
+gradient test I'll run:
 
 ```cpp
 adjoint_gradient = getGradient(1,  /* ... */);   //  ∂I/∂α − ψᵀ ∂R/∂α
@@ -264,18 +280,20 @@ cfinite_gradient = getGradient(-3, /* ... */);   //  central FD, 2N flow solves,
 ```
 
 And the design loop: solve flow, get the adjoint gradient, condition it (steepest descent here scales
-the gradient; the Sobolev/implicit-smoothing operator A is available to precondition it), take an
+the gradient; the Sobolev/implicit-smoothing solve is available to precondition it), take an
 Armijo backtracking step, re-solve, repeat until ‖G‖ falls below tolerance.
 
 ```cpp
 quasiOneD(x, area, flo_opts, &flow_data);
 double cost = evalFitness(dx, flo_opts, flow_data.W, opt_opts);
-VectorXd g  = getGradient(opt_opts.gradient_type, /* ... */);   // adjoint: ~two solves, N-independent
+VectorXd g  = getGradient(opt_opts.gradient_type, opt_opts.cost_function,
+                          x, dx, area, flo_opts, flow_data, opt_opts, current_design);
 while (g.norm() > opt_opts.opt_tol && it < opt_opts.opt_maxit) {
-    VectorXd pk = -lambda * g;                  // steepest descent (or pk = -A*g, Sobolev-smoothed)
+    VectorXd pk = -lambda * g;                  // steepest descent (or pk = -implicitSmoothing(g, eps))
     cost = linesearch_backtrack(/* Armijo: new_cost <= cost + alpha*c1*g.dot(pk) */);
     area = evalS(current_design, x, dx);
-    g    = getGradient(opt_opts.gradient_type, /* ... */);
+    g    = getGradient(opt_opts.gradient_type, opt_opts.cost_function,
+                       x, dx, area, flo_opts, flow_data, opt_opts, current_design);
 }
 ```
 
@@ -284,10 +302,10 @@ where the implicit-smoothing preconditioner is exactly the discretized (1 − ε
 ```cpp
 VectorXd implicitSmoothing(VectorXd g, double epsilon) {
     int n = g.size();
-    MatrixXd A = MatrixXd::Zero(n, n);
-    for (int i = 0; i < n; i++)            A(i,i)   = 1.0 + 2.0*epsilon;   // ḡ − ε ḡ″ = g, tridiagonal
-    for (int i = 0; i < n-1; i++) { A(i+1,i) = -epsilon; A(i,i+1) = -epsilon; }
-    return A.llt().solve(g);               // ḡ smoother than g → larger steps, fewer cycles
+    MatrixXd M = MatrixXd::Zero(n, n);
+    for (int i = 0; i < n; i++)            M(i,i)   = 1.0 + 2.0*epsilon;   // M ḡ = g
+    for (int i = 0; i < n-1; i++) { M(i+1,i) = -epsilon; M(i,i+1) = -epsilon; }
+    return M.llt().solve(g);               // applies M^{-1}; ḡ is smoother than g
 }
 ```
 

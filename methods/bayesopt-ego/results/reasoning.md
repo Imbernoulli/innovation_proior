@@ -31,7 +31,7 @@ Now fit them. The data `y = (y(x_1),...,y(x_n))` is a draw from a multivariate n
 
   (2π)^{-n/2} (σ²)^{-n/2} |R|^{-1/2} exp[ −(y − 1μ)' R⁻¹ (y − 1μ) / (2σ²) ].
 
-Here's a nice economy: for *fixed* correlation parameters (the θ's and p's, which fix R), I can solve for μ and σ² in closed form. Take the log-likelihood, differentiate w.r.t. μ: the only μ-dependence is in the quadratic form `(y−1μ)'R⁻¹(y−1μ)`, whose derivative set to zero gives the generalized-least-squares mean
+There is a useful economy: for *fixed* correlation parameters (the θ's and p's, which fix R), I can solve for μ and σ² in closed form. Take the log-likelihood, differentiate w.r.t. μ: the only μ-dependence is in the quadratic form `(y−1μ)'R⁻¹(y−1μ)`, whose derivative set to zero gives the generalized-least-squares mean
 
   μ̂ = (1' R⁻¹ y) / (1' R⁻¹ 1).
 
@@ -95,19 +95,15 @@ And `s z = s · (f_min − μ)/s = f_min − μ`, so
 
   **E[I(x)] = (f_min − μ) Φ((f_min − μ)/s) + s φ((f_min − μ)/s).**
 
-Note it's `s` out front of the second term, not `s²` — easy to slip there, but the substitution makes it `s·φ`. Beautiful. And look at what the two terms *are*:
+Note it's `s` out front of the second term, not `s²` — easy to slip there, but the substitution makes it `s·φ`. The first term, `(f_min − μ) Φ(z)`, is the exploitation part: it grows when the predicted mean `μ` sits below the incumbent `f_min`, and `Φ(z)` is the probability of actually landing below `f_min`. The second term, `s φ(z)`, is the exploration part: it grows with uncertainty, capturing the upside that even if `μ` is not promising, a wide error bar leaves room for a downward surprise.
 
-  • `(f_min − μ) Φ(z)` — the **exploitation** term. It's large when the predicted mean `μ` sits well below the incumbent `f_min` (the model thinks there's real value here), and `Φ(z)` is the probability that we actually land below `f_min`.
-
-  • `s φ(z)` — the **exploration** term. It's large when `s` is large (the model is uncertain here), capturing the upside that even if `μ` isn't promising, a wide error bar means there's a fat chance the true value surprises us downward.
-
-That's the whole exploit/explore tension resolved inside one scalar, with no knob to set. A point with low predicted mean scores via the first term; a point I know nothing about scores via the second; a point that's both gets both. The criterion *automatically* balances them. This is exactly what neither pure-exploit (first term only, effectively) nor pure-explore (second term only) could do.
+That's the whole exploit/explore tension resolved inside one scalar, with no knob to set. A point with low predicted mean scores through the first term; a point I know nothing about scores through the second; a point that's both gets both. The criterion *automatically* balances them. This is exactly what neither pure-exploit (first term only, effectively) nor pure-explore (second term only) could do.
 
 Now let me confirm the behavior that makes it a *global* search and not a local one. At a sampled point `s = 0`. Then `z = (f_min − μ)/s → ±∞`, but `s Φ` and `s φ` both → 0 (the `s` prefactor kills it; `Φ` is bounded and `φ → 0` faster than any blowup). So `E[I] = 0` at every point I've already evaluated — the criterion never wastes a call re-sampling a known point. Between sampled points `E[I] > 0`. And crucially, EI is itself *highly multimodal*: it has a bump in every under-explored region as well as near promising low-`μ` regions. On a one-dimensional example with five points, EI shows two peaks — one near a promising basin, one out in an unexplored stretch; the taller peak wins this round, but once I sample there and `s` collapses locally, the *other* peak becomes the max and the search is driven across the box. That emergent globe-spanning behavior is the exploration term doing its job over iterations. So maximizing EI, evaluating, refitting, and repeating gives me global search for free — the thing pure exploitation could never deliver.
 
 One worry: EI being multimodal *and* having big flat near-zero plateaus (most of the box, late in the run) means a naive multistart-from-random-seeds maximizer could miss the true max of EI — and missing it means I might sample a suboptimal point or, worse, falsely think EI is small everywhere and stop early. I'd like to maximize EI to *guaranteed* optimality. Can I? EI is in closed form, so maybe I can exploit its structure with branch-and-bound: recursively split the box into sub-boxes, compute an *upper bound* on EI over each sub-box, and prune any sub-box whose upper bound is below the best EI found so far. For that I need a cheap, valid upper bound on EI over a rectangle.
 
-Here's where a clean fact helps. Differentiate `E[I]` w.r.t. `μ` and w.r.t. `s` and watch the terms cancel. Write `g(μ,s) = (f_min−μ)Φ(z) + s φ(z)` with `z = (f_min−μ)/s`.
+Differentiate `E[I]` w.r.t. `μ` and w.r.t. `s` and watch the terms cancel. Write `g(μ,s) = (f_min−μ)Φ(z) + s φ(z)` with `z = (f_min−μ)/s`.
 
 For `∂g/∂μ`: `∂z/∂μ = −1/s`. Then
   `∂g/∂μ = −Φ(z) + (f_min−μ)φ(z)·(−1/s) + s φ'(z)·(−1/s)`.
@@ -119,26 +115,44 @@ For `∂g/∂s`: `∂z/∂s = −(f_min−μ)/s² = −z/s`. Then
   `∂g/∂s = (f_min−μ)φ(z)·(−z/s) + φ(z) + s φ'(z)·(−z/s)`.
 Again `(f_min−μ) = s z` and `φ'(z) = −z φ(z)`:
   `= s z · φ(z)·(−z/s) + φ(z) + s·(−z φ(z))·(−z/s) = −z² φ(z) + φ(z) + z² φ(z) = φ(z) > 0.`
-So EI is monotonically *increasing* in `s` — more uncertainty, more expected improvement. Both signs match the intuition, and both derivatives collapsed to a single clean term, which is exactly the structure I need: because EI is increasing in `s` and decreasing in `μ`, to upper-bound EI over a sub-box it suffices to find a *lower* bound `y_L` on `ŷ(x)` and an *upper* bound `s_U` on `s(x)` over that box, and plug `μ = y_L`, `s = s_U` into the closed form. (Lower-bounding `ŷ` and upper-bounding `s` over a box is itself doable from the kriging formulas — bound `r'R⁻¹(...)` componentwise — but the point I needed is just that the monotonicity makes a valid box-bound trivial to assemble.) That gives branch-and-bound a legitimate upper bound, so I can maximize EI to guaranteed global optimality despite its multimodality. (In practice a dense multistart / random-sample-then-local-polish does fine and is what I'll code, but the guarantee is what justifies trusting the criterion.)
+So EI is monotonically *increasing* in `s` — more uncertainty, more expected improvement. Both signs match the intuition, and both derivatives collapsed to a single clean term. If I can get a lower bound `y_L` on `ŷ(x)` and an upper bound `s_U` on `s(x)` over any rectangular sub-box, then plugging `μ = y_L` and `s = s_U` into the EI formula gives a valid upper bound on EI over that sub-box. That is enough for branch-and-bound.
 
-Now I can assemble the loop. The pieces:
+I should not hand-wave those two bounds, because this is where a missed sign would wreck the guarantee. Over a box `l_h <= x_h <= u_h`, the correlations are variables constrained by
 
-1. **Initial design.** Before I can fit the correlation parameters θ, p at all, I need a spread of points across the box — and I want them to cover the box's low-dimensional projections well, without clustering (clustered points make the correlation matrix nearly singular and waste evaluations). A Latin hypercube design (McKay, Conover & Beckman 1979) does exactly this: it's space-filling and its 1-D and 2-D projections are near-uniform. Evaluate `y` on these initial points — the only expensive calls up front.
+  ln(r_i) = -Σ_h θ_h |x_h - x_{ih}|^{p_h}.
 
-2. **Fit the surrogate** by maximizing the concentrated likelihood over θ, p (μ̂, σ̂² closed-form inside). Then sanity-check the fit with cross-validated standardized residuals — leave one point out, predict it, divide the error by the predicted RMSE; a well-fit model keeps these below about 3 in magnitude. If they're bad, the response may need a transformation (model `log y` or `−1/y` instead of `y`) so the smooth-Gaussian-field assumption holds better.
+The upper bound on `s²` starts by maximizing the MSE formula itself over `x` and `r` subject to those equations. I rewrite each equality as the two inequalities `ln(r_i) + Σ_h θ_h |x_h - x_{ih}|^{p_h} <= 0` and `-ln(r_i) - Σ_h θ_h |x_h - x_{ih}|^{p_h} <= 0`, add the interval bounds on `x` and the induced interval bounds `r_i^L <= r_i <= r_i^U`, and then negate the objective so the problem becomes a minimization. The Hessian of this negated objective, with respect to the `r` variables, is
 
-3. **Sequential loop.** Maximize EI over the box (branch-and-bound for the guarantee, or dense multistart in practice). If the maximum EI has fallen below ~1% of the current best `|f_min|`, stop — and this is the self-contained stopping rule I wanted at the very start: EI is the model's *own* estimate of the remaining gain from sampling, so "EI is everywhere tiny" *means* "the model expects nothing more to be had." (On a log-transformed response, stop when EI on the log scale is below ~0.01 absolute, ≈1% relative.) Otherwise, evaluate `y` at the argmax of EI — one expensive call — append it, refit the surrogate, and repeat.
+  2σ²[ R⁻¹ - (R⁻¹1)(R⁻¹1)' / (1'R⁻¹1) ].
+
+If its smallest eigenvalue `λ_min` is negative, I can force convexity with the αBB move: add `α Σ_i (r_i - r_i^L)(r_i - r_i^U)` and choose `α = max(0, -λ_min/2)`. The factor `1/2` is important because that added quadratic contributes `2α` to each diagonal Hessian entry. On the interval `[r_i^L, r_i^U]`, each product `(r_i - r_i^L)(r_i - r_i^U)` is nonpositive, so the modified minimization objective lies below the original objective while becoming convex. Then I replace the nonlinear pieces in the constraints by linear underestimators. That makes the constraints easier to satisfy, so I am still relaxing the original problem, not tightening it. Solving this convex relaxed minimization and reversing the sign gives an upper bound on the original maximum of `s²`, hence an upper bound on `s`.
+
+For the lower bound on `ŷ`, the predictor is linear in `r` once the model is fit:
+
+  ŷ(x) = μ̂ + c' r,  c = R⁻¹(y - 1μ̂).
+
+I could minimize that linear function over the same convex relaxation, but it is loose. If I set every `p_h = 2`, which is the smooth case and the case that makes the fast bound simple, then `r_i(x) = exp(-z_i(x))` with `z_i(x) = Σ_h θ_h (x_h - x_{ih})²`, and
+
+  ŷ(x) = μ̂ + Σ_i c_i exp(-z_i(x)).
+
+Interval arithmetic over the sub-box gives `z_i^L <= z_i(x) <= z_i^U`. Now the sign of `c_i` decides the underestimator. If `c_i >= 0`, then `c_i exp(-z)` is convex, so its tangent at the interval midpoint lies below it. If `c_i < 0`, then multiplying by the negative coefficient makes it concave, so the chord over `[z_i^L, z_i^U]` lies below it. In both cases I get a line `a_i + b_i z_i` satisfying `a_i + b_i z_i <= c_i exp(-z_i)` throughout the interval. Substituting all those lines gives
+
+  ŷ(x) >= μ̂ + Σ_i a_i + Σ_h θ_h Σ_i b_i (x_h - x_{ih})².
+
+The right-hand side separates by coordinate. For each coordinate `h`, I only have to minimize a one-variable quadratic over `[l_h, u_h]`: if the quadratic coefficient is positive, use the vertex clipped to the interval; if it is negative, use the better endpoint; if it is zero, the remaining linear term picks an endpoint, and if that is zero too, every point in the interval is tied. Adding the coordinate minima gives a valid lower bound `y_L`. This is why fixing `p_h = 2` is attractive in the branch-and-bound version: the bound becomes fast and separable; the `p_h < 2` extension is possible but more complicated.
+
+At this point the loop is forced. Before I can fit the correlation parameters θ, p at all, I need a spread of points across the box, and I want them to cover low-dimensional projections well without clustering, because clustered points waste evaluations and make `R` nearly singular. A Latin hypercube design (McKay, Conover & Beckman 1979) gives one stratified sample per coordinate level and shuffles the levels by dimension, so the one- and two-dimensional projections are nearly uniform. I evaluate `y` on those initial points, fit the surrogate by maximizing the concentrated likelihood over θ and p with `μ̂` and `σ̂²` closed inside, and check cross-validated standardized residuals by leaving out one point, predicting it, and dividing the error by the predicted RMSE. If the residuals are not within about 3 in magnitude, I should try a response transformation such as `log y` or `-1/y` so the smooth-Gaussian-field assumption has a better chance of being true. Then the sequential part is simple: maximize EI over the box, stop if the maximum EI is below about 1% of the current best `|f_min|` because EI is the model's own estimate of remaining one-step gain, otherwise evaluate the real objective at the EI maximizer, append the point, refit, and repeat. On a log-transformed response, an EI threshold of about `0.01` on the log scale corresponds to roughly a 1% relative change.
 
 One more practical snag I should preempt: `R` can go nearly singular two ways. If the function is very smooth, neighboring columns of `R` are almost identical (everything correlates with everything) and `R` is ill-conditioned; and late in the run, as EI keeps pulling points into the same promising basin, near-duplicate points create near-duplicate columns. The fix is to solve the linear systems through an SVD of `R`, zeroing out tiny singular values rather than naively inverting (a small jitter / "nugget" on the diagonal does the same job in modern code). With that, the loop is stable.
 
-Let me now write it against a real GP toolkit. Modern Gaussian-process libraries give me the DACE surrogate directly: scikit-learn's `GaussianProcessRegressor` with a Matérn kernel and per-dimension (ARD) length scales is the same animal — the Matérn smoothness parameter ν plays the role of the exponent `p` (smoothness), the ARD length scales are the reciprocal analog of the activity weights `θ_h`, and a `WhiteKernel`/noise term is the modern stand-in for the SVD nugget that keeps `R` invertible. skopt's `gp_minimize` wires up exactly the loop above: build the GP, in each iteration fit it, maximize the acquisition, evaluate, tell the model, refit.
+Let me now write it against a real GP toolkit. Modern Gaussian-process libraries give me the DACE surrogate directly: scikit-learn's `GaussianProcessRegressor` with a Matérn kernel and per-dimension (ARD) length scales is the same animal — the Matérn smoothness parameter ν plays the role of the exponent `p` (smoothness), and the ARD length scales are the reciprocal analog of the activity weights `θ_h`. For a deterministic objective I want the noise level essentially zero, but I still need a tiny numerical nugget so the linear algebra does not fall apart when `R` is nearly singular. skopt's `gp_minimize` has the same skeleton: build the GP, generate initial points, optimize an acquisition such as EI by sampling plus L-BFGS-B, evaluate, tell the optimizer, and refit. Its `gaussian_ei` also exposes an optional `xi` margin; setting `xi = 0` gives the exact EI I just derived, while a small positive `xi` demands improvement beyond the incumbent by that margin.
 
 ```python
 import numpy as np
 from scipy.stats import norm
 from scipy.optimize import minimize
 from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import Matern, ConstantKernel, WhiteKernel
+from sklearn.gaussian_process.kernels import ConstantKernel, Matern
 
 
 def latin_hypercube(n_points, bounds, rng):
@@ -157,63 +171,62 @@ def latin_hypercube(n_points, bounds, rng):
 
 
 class CorrelatedSurrogate:
-    """Kriging/DACE surrogate: interpolates the data and reports an honest
-    local error bar (s=0 at sampled points, growing away from them)."""
+    """GP/kriging surrogate with ARD length scales and a tiny numerical nugget."""
 
-    def __init__(self):
-        # constant mean (ConstantKernel) + correlated field (Matern, ARD
-        # length scales = per-variable 'activity'; nu = smoothness ~ DACE p)
-        # + a small noise term standing in for the SVD nugget on R.
-        kernel = (ConstantKernel(1.0) *
-                  Matern(length_scale=np.ones(1), nu=2.5) +
-                  WhiteKernel(noise_level=1e-8))
-        self.gp = GaussianProcessRegressor(
-            kernel=kernel, normalize_y=True, n_restarts_optimizer=10)
+    def __init__(self, alpha=1e-10):
+        self.alpha = alpha
+        self.gp = None
 
     def fit(self, X, y):
-        # fit correlation parameters by maximum (marginal) likelihood;
-        # mean/variance close in closed form inside the GP.
-        self.gp.kernel.k1.k2.length_scale = np.ones(np.asarray(X).shape[1])
-        self.gp.fit(np.asarray(X), np.asarray(y))
+        # Fit correlation parameters by maximum marginal likelihood.  The tiny
+        # alpha is numerical jitter; the analytic DACE model is noise-free.
+        X = np.asarray(X, float)
+        y = np.asarray(y, float)
+        kernel = (ConstantKernel(1.0) *
+                  Matern(length_scale=np.ones(X.shape[1]), nu=2.5))
+        self.gp = GaussianProcessRegressor(
+            kernel=kernel, alpha=self.alpha, normalize_y=True,
+            n_restarts_optimizer=10)
+        self.gp.fit(X, y)
         return self
 
     def predict(self, X, return_std=True):
         return self.gp.predict(np.atleast_2d(X), return_std=return_std)
 
 
-def expected_improvement(X, surrogate, f_min, xi=0.01):
-    # The figure of merit that balances exploiting low mu against exploring
-    # high sigma -- one scalar, no hand-set trade-off knob.
+def expected_improvement(X, surrogate, f_min, xi=0.0):
+    # xi=0 is the original EI threshold; skopt exposes the same margin and
+    # often sets xi=0.01 to demand a small improvement beyond the incumbent.
     mu, std = surrogate.predict(X, return_std=True)
     mu = np.atleast_1d(mu); std = np.atleast_1d(std)
     ei = np.zeros_like(mu)
-    mask = std > 0                                   # EI = 0 where s = 0
-    improve = f_min - xi - mu[mask]                  # f_min - mu (xi: margin)
-    z = improve / std[mask]                          # z = (f_min - mu)/s
+    mask = std > 1e-12                               # EI = 0 where s = 0
+    improve = f_min - xi - mu[mask]                  # f_min - mu when xi=0
+    z = improve / std[mask]                          # z = improve / s
     ei[mask] = improve * norm.cdf(z) + std[mask] * norm.pdf(z)
     #          \_ exploitation: mu below f_min  \_ exploration: large s
     return ei
 
 
-def maximize_ei(surrogate, bounds, f_min, rng, n_restarts=20, n_raw=10000):
-    # EI is multimodal with big flat ~0 plateaus, so seed densely (the safe
-    # stand-in for the branch-and-bound global guarantee) and polish.
+def maximize_acquisition(acq_fn, bounds, rng, n_restarts=20, n_raw=10000):
+    # The acquisition is multimodal with flat near-zero plateaus, so seed
+    # densely and polish the best starts, matching the skopt optimizer pattern.
     bounds = np.asarray(bounds, float)
     lo, hi = bounds[:, 0], bounds[:, 1]
     raw = lo + rng.uniform(size=(n_raw, len(bounds))) * (hi - lo)
-    vals = expected_improvement(raw, surrogate, f_min)
+    vals = acq_fn(raw)
     seeds = raw[np.argsort(vals)[-n_restarts:]]
-    best_x, best_ei = raw[vals.argmax()], vals.max()
-    for x0 in seeds:                                 # local polish of -EI
-        res = minimize(lambda x: -expected_improvement(x, surrogate, f_min)[0],
+    best_x, best_val = raw[vals.argmax()], float(vals.max())
+    for x0 in seeds:
+        res = minimize(lambda x: -float(acq_fn(x)[0]),
                        x0, bounds=list(map(tuple, bounds)), method="L-BFGS-B")
-        if -res.fun > best_ei:
-            best_x, best_ei = res.x, -res.fun
-    return best_x, best_ei
+        if -res.fun > best_val:
+            best_x, best_val = res.x, -res.fun
+    return best_x, best_val
 
 
 def efficient_global_optimization(objective, bounds, n_init=10, max_evals=40,
-                                  ei_tol_frac=0.01, seed=0):
+                                  ei_tol_frac=0.01, xi=0.0, seed=0):
     rng = np.random.default_rng(seed)
     X = latin_hypercube(n_init, bounds, rng)
     y = np.array([objective(x) for x in X])          # the only expensive calls
@@ -221,7 +234,8 @@ def efficient_global_optimization(objective, bounds, n_init=10, max_evals=40,
     for _ in range(max_evals - n_init):
         surrogate.fit(X, y)
         f_min = y.min()
-        x_next, ei = maximize_ei(surrogate, bounds, f_min, rng)
+        acq_fn = lambda Xcand: expected_improvement(Xcand, surrogate, f_min, xi)
+        x_next, ei = maximize_acquisition(acq_fn, bounds, rng)
         # stopping rule from EI itself: the model's own estimate of the
         # remaining gain has fallen below 1% of the current best.
         if ei < ei_tol_frac * max(abs(f_min), 1e-12):
@@ -232,4 +246,4 @@ def efficient_global_optimization(objective, bounds, n_init=10, max_evals=40,
     return X[i], y[i]
 ```
 
-So the whole chain, in one breath: the objective is an expensive, gradientless, possibly-multimodal black box with a budget of tens of calls, which kills grid/random/local/true-function methods because they re-query instead of *learning*. Plain regression can't model a deterministic code's correlated residuals and gives no honest local uncertainty — but kriging/DACE does both, handing me an interpolating surrogate with a mean ŷ to exploit and an error bar s to explore. Chasing min-ŷ alone falls into a local minimum; chasing max-s alone wastes the budget; so I want one criterion that fuses them with no tuning knob. Probability-of-improvement only counts *whether* I improve, biasing toward the incumbent — so I score by the *expected amount* of improvement instead, `E[max(f_min−Y,0)]`, which integrates to the closed form `(f_min−ŷ)Φ(z) + s φ(z)` with `z=(f_min−ŷ)/s`, whose two terms *are* exploitation and exploration, balanced automatically. EI is zero at sampled points and multimodal, so it drives global search across iterations; it's monotone (decreasing in ŷ, increasing in s), so I can bound and maximize it to guaranteed optimality; and its own magnitude is a built-in stopping rule. Maximize EI, evaluate the real function once, refit the kriging surrogate, repeat — and land on a GP-with-Matérn / expected-improvement loop that is exactly the modern `gp_minimize`.
+So the whole chain, in one breath: the objective is an expensive, gradientless, possibly-multimodal black box with a budget of tens of calls, which kills grid/random/local/true-function methods because they re-query instead of *learning*. Plain regression can't model a deterministic code's correlated residuals and gives no honest local uncertainty — but kriging/DACE does both, handing me an interpolating surrogate with a mean ŷ to exploit and an error bar s to explore. Chasing min-ŷ alone falls into a local minimum; chasing max-s alone wastes the budget; so I want one criterion that fuses them with no tuning knob. Probability-of-improvement only counts *whether* I improve, biasing toward the incumbent — so I score by the *expected amount* of improvement instead, `E[max(f_min−Y,0)]`, which integrates to the closed form `(f_min−ŷ)Φ(z) + s φ(z)` with `z=(f_min−ŷ)/s`, whose two terms *are* exploitation and exploration, balanced automatically. EI is zero at sampled points and multimodal, so it drives global search across iterations; it is monotone, decreasing in ŷ and increasing in s, so I can bound and maximize it to guaranteed optimality; and its own magnitude is a built-in stopping rule. Maximize EI, evaluate the real function once, refit the kriging surrogate, repeat, and the code lands on the same GP-with-Matérn / expected-improvement pattern used by `gp_minimize`.

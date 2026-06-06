@@ -1,4 +1,4 @@
-# The Vásárhelyi flocking model: optimized collision-free drone-swarm flocking in confined spaces
+# Vasarhelyi flocking model
 
 ## Problem
 
@@ -6,7 +6,7 @@ Make a swarm of real autonomous quadcopters flock — coherent, collision-free, 
 
 ## Key idea
 
-Build the per-agent desired velocity as a sum of physically-motivated terms, with the alignment term redesigned around the acceleration limit. Since the maximum closing speed that can still be braked to zero across a gap r with deceleration a is v = √(2 a r), the velocity-alignment ("friction") term should fire **only when relative speed exceeds this kinematic envelope**, and brake exactly the excess. This makes one damper both kill the delay-induced oscillation and guarantee collision-feasible closing speeds at any flocking speed. Confinement and obstacle avoidance reuse the same braking-gated form against virtual "shill" wall agents. The eleven resulting parameters are tuned by a derivative-free evolution strategy (CMA-ES) against a single conjunctive fitness built from flocking order parameters.
+Build the per-agent desired velocity as a sum of physically motivated terms, with the alignment term redesigned around the acceleration limit. Since the maximum closing speed that can still be braked to zero across a gap r with deceleration a is v = √(2 a r), the velocity-alignment ("friction") term fires only when relative speed exceeds this kinematic envelope, then commands a correction opposite the excess. This makes one damper both kill delay-induced oscillation and keep closing speeds tied to braking distance. Confinement and obstacle avoidance reuse the same braking-gated form against virtual "shill" wall agents. The eleven resulting parameters are tuned by CMA-ES against a single conjunctive fitness built from flocking order parameters.
 
 ## The model
 
@@ -20,35 +20,35 @@ Linear (not Lennard-Jones) so noisy position estimates near contact don't inject
 D(r,a,p) = 0 (r ≤ 0); = r·p (0 < r·p < a/p, i.e. r < a/p²); = √(2 a r − a²/p²) (otherwise).
 Linear constant-gain p near contact (finite gain), constant-deceleration √-branch at range (encodes a_max).
 
-**Velocity alignment / friction (the crux).** Distance-dependent tolerated velocity difference:
+**Velocity alignment / friction.** Distance-dependent tolerated velocity difference:
 v_ij^frictmax = max( v^frict , D(r_ij − r_0^frict, a^frict, p^frict) ),
-v_ij^frict = C^frict (v_ij − v_ij^frictmax) (v_i − v_j)/v_ij  if v_ij > v_ij^frictmax, else 0;  v_i^frict = Σ v_ij^frict,
-entering v_i^d with a minus sign (it brakes the relative velocity). Fires only above the braking-feasible envelope, so it damps oscillation and prevents collisions while leaving the flock free to turn within the envelope. The floor v^frict allows a constant velocity slack. Locality is automatic: the interaction range is where D(·) = 2 v^max.
+Δv_ij^frict = −C^frict (v_ij − v_ij^frictmax) (v_i − v_j)/v_ij  if v_ij > v_ij^frictmax, else 0;  v_i^frict = Σ Δv_ij^frict.
+It fires only above the braking-feasible envelope, so it damps excessive relative motion while leaving the flock free to turn within the envelope. The floor v^frict allows a constant velocity slack. Locality is automatic: the interaction range is where D(·) = 2 v^max.
 
 **Walls and obstacles (shill agents).** Virtual shill agents on arena edges move inward at speed v^shill (obstacle shills move outward, one at the closest point). The real agent relaxes to the shill velocity with the same braking-gated form, but **no velocity slack and gain fixed to 1**:
 v_is^shillmax = D(r_is − r_0^shill, a^shill, p^shill),
-v_is^wall = (v_is − v_is^shillmax)(v_i − v_s)/v_is  if v_is > v_is^shillmax, else 0.
+Δv_is^wall = −(v_is − v_is^shillmax)(v_i − v_s)/v_is  if v_is > v_is^shillmax, else 0.
 Replaces fragile long-range cohesion with a soft repulsive box.
 
 **Self-propulsion and cap.**
-ṽ_i^d = (v_i/|v_i|) v^flock + v_i^rep + v_i^frict + Σ_s v_is^wall + Σ_s v_is^obstacle,
+ṽ_i^d = (v_i/|v_i|) v^flock + v_i^rep + v_i^frict + Σ_s Δv_is^wall + Σ_s Δv_is^obstacle,
 v_i^d = (ṽ_i^d/|ṽ_i^d|) · min(|ṽ_i^d|, v^max).
 
 **Realistic agent dynamics** (what v_i^d is fed into):
 a_i = η_i + [(v_i^d − v_i − v_i^s)/|v_i^d − v_i − v_i^s|] · min{ |v_i^d − v_i − v_i^s|/τ_CTRL , a_max },
 with communication delay t_del, inner sensor noise v_i^s (SD σ_s), outer noise η_i (SD σ), sensor refresh t_s, communication range r_c. Typical quadcopter values: τ_CTRL ≈ 1 s, a_max = 6 m s⁻².
 
-## Tuning (the CoFlyers task)
+## Tuning
 
 Eleven parameters { r_0^rep, p^rep, r_0^frict, C^frict, v^frict, p^frict, a^frict, r_0^shill, v^shill, p^shill, a^shill } map nonlinearly and noisily to behavior, so they are optimized rather than hand-tuned.
 
-**Order parameters** (from a stochastic simulation): velocity correlation φ^corr ∈ [−1,1] (maximize); collision risk φ^coll = time-average of Θ(r_coll − r_ij) over pairs, r_coll = 3 m (minimize); wall collisions φ^wall (minimize); speed φ^vel → v^flock; disconnected agents N^disc and minimum cluster size N^min (N^min > N/5). Cluster distance r^cluster = max(r_0^rep, r_0^frict + D̃(v^flock, a^frict, p^frict)), D̃ = braking distance.
+**Order parameters** (from a stochastic simulation): velocity correlation φ^corr ∈ [−1,1] (maximize); collision risk φ^coll = time-average of the pair indicator that is one when r_ij < r_coll, with r_coll = 3 m (minimize); wall collisions φ^wall (minimize); speed φ^vel → v^flock; disconnected agents N^disc and minimum cluster size N^min (N^min > N/5). Cluster distance r^cluster = max(r_0^rep, r_0^frict + D̃(v^flock, a^frict, p^frict)), D̃ = braking distance.
 
 **Single-objective fitness** (multiplicative — any bad component tanks the score), with each parameter mapped to [0,1] by a transfer function:
 F1(φ,φ0,d) = 1 − S(φ,φ0,d) (monotone, raised-cosine ramp S); F2(φ,s) = exp(−φ²/s²) (Gaussian peak at 0); F3(φ,a) = a²/(φ+a)² (sharp soft peak at 0 — used for collisions so the optimizer keeps a gradient out of bad regions instead of a flat 0/1 cliff).
 F = F^speed · F^coll · F^disc · F^cluster · F^wall · F^corr,
 F^speed = F1(φ^vel, v^flock, v^tol), F^coll = F3(φ^coll, a^tol), F^disc = F3(N^disc, N/5),
-F^cluster = F3(N^min, N/5, N/5), F^wall = F2(φ^wall, r^tol), F^corr = Θ(φ^corr)·φ^corr.
+F^cluster = F1(N^min, N/5, N/5), F^wall = F2(φ^wall, r^tol), F^corr = Θ(φ^corr)·φ^corr.
 Tolerances e.g. v^tol = (1.5/4) v^flock, a^tol = 0.00003, r^tol = 2 m.
 
 **Optimizer:** CMA-ES (derivative-free, noise- and multimodality-tolerant), population ~100, ~150 generations (~15000 evals, each a multi-minute stochastic flight), parameters initialized mid-range with initial SD ≈ 1/6 of the range. Re-run per target speed (e.g. v^flock = 4, 6, 8 m/s with v^max = 6, 8, 10).
@@ -69,16 +69,21 @@ end
 
 ```matlab
 function [posDesired_id, velDesired_id, accDesired_id, control_mode_id] = ...
-        generate_desire_i(id, state_i, states_neighbor, dis_to_neighbor, posid_to_neighbor, ...
-                          terrain, terrain_params)
+        Vasarhelyi_module_generate_desire_i(id, state_i, states_neighbor, ...
+                                            dis_to_neighbor, posid_to_neighbor, terrain, terrain_params)
+    file_name_param = 'Vasarhelyi_module_parameters';
+    [~, str_core] = get_multi_core_value();
+    fun_params = str2func([file_name_param, str_core]);
+
     % 11 tuned control-law knobs + vehicle/world constants
     [r_com, v_flock, r_rep_0, p_rep, r_frict_0, c_frict, v_frict, p_frict, a_frict, ...
      r_shill_0, v_shill, p_shill, a_shill, v_max, dim, height, dr_shill, ...
-     pos_shill, vel_shill] = load_params();
+     pos_shill, vel_shill] = fun_params();
 
+    VELOCITY_HORIZONTAL_CONTROL_TYPE = 7;
     posDesired_id   = [state_i(1:2); height; 0];
     velDesired_id   = zeros(4,1);  accDesired_id = zeros(4,1);
-    control_mode_id = 7;                          % horizontal-velocity command mode
+    control_mode_id = VELOCITY_HORIZONTAL_CONTROL_TYPE;
     pos2DId        = state_i(1:2);   vel2DId = state_i(4:5);
     vel2D_neighbor = states_neighbor(4:5,:);
 
@@ -91,7 +96,8 @@ function [posDesired_id, velDesired_id, accDesired_id, control_mode_id] = ...
         [h,w] = size(terrain);
         r_min = max(1,r_sub-h_sub); r_max = min(h,r_sub+h_sub);
         c_min = max(1,c_sub-w_sub); c_max = min(w,c_sub+w_sub);
-        [r_obs,c_obs] = find(terrain(r_min:r_max,c_min:c_max) > state_i(3));
+        terrain_sub = terrain(r_min:r_max,c_min:c_max);
+        [r_obs,c_obs] = find(terrain_sub > state_i(3));
         if ~isempty(r_obs)
             r_obs = r_obs + r_min - 1;  c_obs = c_obs + c_min - 1;
             temp_p_shill = [(c_obs'*terrain_params(1,2))+terrain_params(1,1);
@@ -151,4 +157,4 @@ function [posDesired_id, velDesired_id, accDesired_id, control_mode_id] = ...
 end
 ```
 
-The result is a distributed control law that is collision-free by kinematic construction, confined and obstacle-avoiding through shill agents, coherent through speed-scalable braking-gated alignment, and tunable to a chosen flocking speed via CMA-ES on a single conjunctive fitness — flying on real quadcopter swarms at speeds well beyond what fixed-friction predecessors reached.
+The implementation is a distributed desired-velocity controller: soft repulsion handles crowding, braking-gated alignment damps unsafe relative motion, shill-agent corrections handle walls and obstacles, self-propulsion sets the cruise speed, and CMA-ES tunes the coupled parameters through the conjunctive fitness.

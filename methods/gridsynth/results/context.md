@@ -1,4 +1,4 @@
-# Context: Optimal ancilla-free Clifford+T approximation of single-qubit z-rotations
+# Context
 
 ## Research question
 
@@ -24,9 +24,9 @@ Several rings of algebraic integers organize the problem:
 
 **The two relevant number-theoretic facts.** (i) Unitarity `u†u + t†t = 1` means `u` lies in the closed unit disk; applying `(−)•` shows `u•` also lies in the unit disk. (ii) Given a candidate `u`, finding `t` requires solving the relative-norm Diophantine equation `t†t = 1 − u†u =: ξ ∈ D[√2]`. By classical algebraic number theory (Gauss, Kummer), this is solvable iff `ξ` is doubly positive (`ξ ≥ 0` and `ξ• ≥ 0`) and, writing `ξ•ξ = n/2^ℓ`, every prime `p` dividing `n` to odd multiplicity satisfies `p = 2` or `p ≡ 1,3,5 (mod 8)` — a prime `p ≡ 7 (mod 8)` appearing to an odd power kills solvability. The rings `Z`, `Z[√2]`, `Z[ω]` are Euclidean domains, so unique factorization, gcd, and these prime classifications are all available; the constructive proofs reduce to solving `x² ≡ −1 (mod p)` / `x² ≡ ±2 (mod p)`, doable in probabilistic polynomial time. The single hard step is **factoring `n` itself**.
 
-**Diagnostic facts about the design space** (knowable before any synthesis algorithm, used to motivate the approach):
+**Diagnostic facts about the design space.**
 - An information-theoretic counting argument lower-bounds the T-count of any deterministic single-qubit Clifford+T ε-approximation of a generic rotation by roughly `K + 3 log₂(1/ε)`.
-- The number of grid points of denominator exponent `k` per unit area scales as `4^k`; the distance between "grid lines" of a fixed rational slope scales as `1/2^k`. Whether the number of admissible `u` at exponent `k` is governed by *area* or by *width* depends on the slope of the ε-region's boundary, i.e. on whether `tan(θ/2) ∈ Q(√2)`.
+- The number of grid points of denominator exponent `k` per unit area scales as `4^k`; the distance between "grid lines" of a fixed rational slope scales as `1/2^k`. A plausible counting model separates an area-governed regime from a width-governed regime according to the slope of the ε-region's boundary, i.e. according to whether `tan(θ/2) ∈ Q(√2)`.
 - The ε-region (the slice of the unit disk satisfying the closeness constraint) is a thin sliver: width `ε²/2` at its widest, inscribing a disk of radius `ε²/4`, area `Θ(ε³)`. Its uprightness relative to its bounding box is `Ω(ε⁴)`.
 
 ## Baselines
@@ -45,7 +45,7 @@ The natural yardstick is the approximate synthesis problem itself: pick a set of
 
 ## Code framework
 
-Pre-method, the pieces that already exist are: the exact-synthesis routine (denominator-reduction over `D[ω]` giving minimal-T-count Clifford+T circuits), the arithmetic of the rings `Z[√2]`, `Z[ω]`, `D[√2]`, `D[ω]` with both conjugations, a one-dimensional grid-problem solver (enumerate `α ∈ Z[√2]` with `α ∈ A`, `α• ∈ B` for intervals `A, B`), and a probabilistic Diophantine solver for `t†t = ξ` assuming a factorization of `n` is available. The contribution will fill the gap between "candidate `u`" and "smallest-`k` candidate `u`."
+The available pieces are: the exact-synthesis routine (denominator-reduction over `D[ω]` giving minimal-T-count Clifford+T circuits), the arithmetic of the rings `Z[√2]`, `Z[ω]`, `D[√2]`, `D[ω]` with both conjugations, a one-dimensional grid-problem solver (enumerate `α ∈ Z[√2]` with `α ∈ A`, `α• ∈ B` for intervals `A, B`), and a probabilistic Diophantine solver for `t†t = ξ` assuming a factorization of `n` is available. What is missing is the candidate stream: a way to enumerate possible top-left entries `u` in increasing least denominator exponent while respecting both the approximation constraint and the conjugate-unit-disk constraint.
 
 ```python
 import mpmath
@@ -54,7 +54,6 @@ from exact_synthesis import decompose_domega_unitary   # KMM: D[ω]-unitary -> m
 from diophantine import diophantine_dyadic              # solve t†t = ξ given a factoring of n (or fail)
 from grid_1d import solve_1d_grid                        # enumerate α∈Z[√2]: α∈[x0,x1], α•∈[y0,y1]
 
-# --- the convex constraint sets, in pre-method vocabulary ---
 class ConvexSet:
     """A bounded convex set, given with: a membership test, a routine to intersect
     it with a line, and an enclosing ellipse."""
@@ -63,32 +62,25 @@ class ConvexSet:
     @property
     def ellipse(self): raise NotImplementedError
 
-class EpsilonRegion(ConvexSet):
-    # the slice of the unit disk where ⟨z,u⟩ ≥ 1 − ε²/2 ; z = e^{-iθ/2}
-    def __init__(self, theta, epsilon): ...               # build it from θ, ε
+def target_region(theta, epsilon):
+    # TODO: translate ‖Rz(θ) − U‖ ≤ ε into a convex constraint on u.
+    pass
 
 class UnitDisk(ConvexSet):
     pass
 
-# --- the slot the contribution occupies: given two convex sets A, B, ---
-# --- enumerate u ∈ D[ω] with u ∈ A and u• ∈ B, smallest denominator exponent first ---
-def to_upright(A, B):
-    # TODO: find a special grid operator G making G(A), G•(B) upright
-    pass
-
-def solve_2d_grid(A, B, G, k):
-    # TODO: enumerate u ∈ (1/√2^k) Z[ω] with u ∈ A, u• ∈ B  (reduce to 1D via G and the bbox)
+def candidate_stream(region, conjugate_guard):
+    # TODO: enumerate u ∈ D[ω] by increasing least denominator exponent,
+    # subject to u ∈ region and u• ∈ conjugate_guard.
     pass
 
 def synthesize(theta, epsilon):
-    A = EpsilonRegion(theta, epsilon)
+    A = target_region(theta, epsilon)
     B = UnitDisk()
-    G = to_upright(A, B)
-    k = 0
-    while True:
-        for u in solve_2d_grid(A, B, G, k):
-            # TODO: form ξ = 1 − u†u, try to solve t†t = ξ; on success build U and synthesize it
+    for u in candidate_stream(A, B):
+        xi = 1 - DRootTwo.from_domega(u.conj * u)
+        t = diophantine_dyadic(xi)
+        if t is not None:
+            # TODO: choose between the equivalent t and ωt completions, then exact-synthesize.
             pass
-        k += 1
-    # return decompose_domega_unitary(U)
 ```

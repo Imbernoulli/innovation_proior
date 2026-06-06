@@ -45,20 +45,22 @@ has a field integral). The boundary terms fix the adjoint wall BC; for inverse d
 
     ψⱼ nⱼ = p − p_d   on the wall
 
-(a transpiration condition on the momentum-component costates). The metric/grid-sensitivity terms
-cancel, leaving the gradient as a pure surface integral over the boundary displacement — well-posed
-through shocks (integrated, not pointwise, sensitivities) and independent of interior mesh motion.
+(a transpiration condition on the momentum-component costates). The flow-state variation cancels;
+the remaining metric-variation terms are reduced to a pure surface integral over the boundary
+displacement, making the final derivative well-posed through shocks (integrated, not pointwise,
+sensitivities) and independent of arbitrary interior mesh motion.
 
 **Discrete adjoint**: discretize first, so R is the residual vector and ∂R/∂w the flow Jacobian; the
 adjoint is the linear system (∂R/∂w)ᵀ ψ = ∂I/∂w with the transposed Jacobian, giving the exact
-gradient of the discrete cost. This is what validates cell-by-cell against finite differences.
+gradient of the discrete cost and a direct cell-by-cell comparison target for finite differences.
 
 **Sobolev gradient (smoothness + preconditioning).** Raw L² steepest descent on a function-valued
 shape reduces its smoothness by two classes per step (the gradient g = ∂F/∂y − (d/dx)∂F/∂y′ contains a
 derivative of the shape), driving instability. Descend instead in a weighted Sobolev inner product
 ⟨u,v⟩ = ∫(uv + ε u′v′)dx: the smoothed gradient ḡ solves ḡ − ε ḡ″ = G, preserving the smoothness class
 and still descending (δI = −λ⟨ḡ,ḡ⟩ < 0). It acts as a preconditioner — larger steps, far fewer design
-cycles. Discretely, ḡ = A·G with A the tridiagonal (1+2ε, −ε) operator.
+cycles. Discretely, build the tridiagonal matrix M with diagonal 1+2ε and off-diagonals −ε, solve
+Mḡ = G, and use −ḡ as the descent direction; in the source notation the smoothing map is A = M⁻¹.
 
 **Lift constraint.** Minimize drag at a fixed target C_L (trim angle of attack each flow solve, carry
 its sensitivity), with planform and minimum thickness held, so the optimizer cannot reduce drag by
@@ -93,8 +95,8 @@ VectorXd gradient_adjoint(
     MatrixXd dRdArea = evaldRdArea(flo_opts, flow_data);
     MatrixXd dRdDes  = dRdArea * dAreadDes;
 
-    // ∂R/∂w : flow Jacobian (analytic / complex-step / AD all agree)
-    SparseMatrix<double> dRdW = evaldRdW(area, flo_opts, flow_data);
+    // ∂R/∂w : flow Jacobian from the ADOL-C residual trace
+    SparseMatrix<double> dRdW = eval_dRdW_dRdX_adolc(flo_opts, area, flow_data);
 
     // one extra solve: adjoint equation, transpose of the flow Jacobian (N-independent)
     SparseLU<SparseMatrix<double>, COLAMDOrdering<int>> solver;
@@ -106,19 +108,21 @@ VectorXd gradient_adjoint(
     return dIdDes;
 }
 
-// Sobolev / implicit smoothing of the gradient:  ḡ − ε ḡ″ = g  (tridiagonal preconditioner)
+// Sobolev / implicit smoothing of the gradient: M ḡ = g, the discrete form of ḡ − ε ḡ″ = g
 VectorXd implicitSmoothing(VectorXd g, double epsilon) {
     int n = g.size();
-    MatrixXd A = MatrixXd::Zero(n, n);
-    for (int i = 0; i < n; i++)             A(i, i)   = 1.0 + 2.0 * epsilon;
-    for (int i = 0; i < n - 1; i++) { A(i+1, i) = -epsilon; A(i, i+1) = -epsilon; }
-    return A.llt().solve(g);
+    MatrixXd M = MatrixXd::Zero(n, n);
+    for (int i = 0; i < n; i++)             M(i, i)   = 1.0 + 2.0 * epsilon;
+    for (int i = 0; i < n - 1; i++) { M(i+1, i) = -epsilon; M(i, i+1) = -epsilon; }
+    return M.llt().solve(g);
 }
 
 // Design loop: flow solve → adjoint gradient → descent step with Armijo backtracking
 void optimizer(/* constants, x, dx, flo_opts, opt_opts, initial_design */) {
     Design<double> current_design = initial_design;
     std::vector<double> area = evalS<double>(current_design, x, dx);
+    VectorXd searchD(opt_opts.n_design_variables);
+    int it_design = 0;
 
     Flow_data<double> flow;
     quasiOneD(x, area, flo_opts, &flow);
@@ -128,7 +132,8 @@ void optimizer(/* constants, x, dx, flo_opts, opt_opts, initial_design */) {
                              x, dx, area, flo_opts, flow, opt_opts, current_design);
 
     while (g.norm() > opt_opts.opt_tol && it_design < opt_opts.opt_maxit) {
-        VectorXd pk = -lambda * g;          // steepest descent (or pk = -A*g, Sobolev-preconditioned)
+        it_design++;
+        VectorXd pk = -50 * g;              // steepest descent branch in the local optimizer
         cost = linesearch_backtrack_unconstrained(   // Armijo: new_cost <= cost + alpha*c1*g.dot(pk)
             1.0, x, dx, pk, g, cost, flo_opts, opt_opts, &searchD, &flow, &current_design);
         area = evalS(current_design, x, dx);
@@ -138,10 +143,7 @@ void optimizer(/* constants, x, dx, flo_opts, opt_opts, initial_design */) {
 }
 ```
 
-The adjoint gradient is validated against forward (direct) differentiation — `dCostdDes +
-dCostdW·dWdDes` with `dWdDes = solve(−dRdW, dRdDes)` — and against central finite differences; all
-three agree to machine precision, while the adjoint costs ≈ two flow solves independent of N.
-
-Production continuous-adjoint interface (3D, e.g. SU2): `shape_optimization.py -g CONTINUOUS_ADJOINT
--o SLSQP`, with `OBJECTIVE_FUNCTION = DRAG`, Hicks–Henne bump design variables, and each design cycle
-= one direct solve + one adjoint solve + projected-gradient step.
+The local implementation also includes `test_grad`, which compares `getGradient(1)` against forward
+direct differentiation, `getGradient(2)`, and central finite differences, `getGradient(-3)`. The forward
+path computes `dCostdDes + dCostdW·dWdDes` with `dWdDes = solve(−dRdW, dRdDes)`, so the minus sign in
+the adjoint assembly is checked against the same residual linearization.

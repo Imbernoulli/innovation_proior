@@ -2,9 +2,9 @@
 
 ## Research question
 
-Given a single collimated input beam (or a single object in an imaging system), produce an array of N
-equally bright copies, arranged on a regular grid about the optical axis, in one passive transmissive pass,
-with as little light wasted as possible. The element must be thin, fully transparent, and manufacturable.
+Given a single collimated input beam (or a single object in an imaging system), produce a chosen symmetric
+set of equally bright copies, arranged on a regular grid about the optical axis, in one passive transmissive
+pass, with as little light wasted as possible. The element must be thin, fully transparent, and manufacturable.
 
 The difficulty is the combination of constraints. A beam can be replicated with a stack of partially
 reflecting plates, but that is bulky, alignment-sensitive, and the copies are hard to equalize. An absorbing
@@ -21,8 +21,9 @@ transform of t. If t is *periodic* with period d, that transform is a comb of de
 diffraction orders — located at sinθ_m = mλ/d (the grating equation, with λ the wavelength and m the integer
 order). The complex amplitude landing in order m equals the m-th Fourier-series coefficient c_m of one period
 of t, and the intensity of that spot is |c_m|². The angular *positions* of the spots are fixed by the period
-alone; their *brightnesses* are entirely a question of the Fourier coefficients of the period's shape. So
-"make N equal spots" becomes "shape one period so that |c_0| = |c_1| = … = |c_{N-1}| and the rest are small."
+alone; their *brightnesses* are entirely a question of the Fourier coefficients of the period's shape. For a
+symmetric one-dimensional fan-out, the design target is to make the nonnegative orders m = 0, …, L equal in
+magnitude, which gives equal spots at −L, …, 0, …, L, while the other orders stay small.
 
 **Amplitude gratings waste light.** A Ronchi (bar) grating modulates |t| between 0 and 1. Because it absorbs
 or blocks light, its efficiency is intrinsically low and a large share of the transmitted power stays in the
@@ -49,10 +50,8 @@ period. The order amplitudes become closed-form trigonometric sums in those tran
 
 **Efficiency is bounded for binary elements.** With only two phase levels, the fraction of input power that
 can be steered into a prescribed set of equal orders has a ceiling well below what a continuously-blazed or
-many-level element could reach; the figure commonly cited for binary fan-out elements is below roughly 86%.
-A single transition splitting into three equal spots reaches about two-thirds of the light in the target
-orders; two transitions for five equal spots reach roughly three-quarters. These are facts about the binary
-constraint, knowable from the coefficient algebra before any particular layout is fixed.
+many-level element could reach. The binary constraint makes efficiency a design tradeoff, not a free
+consequence of lossless phase modulation.
 
 ## Baselines
 
@@ -70,7 +69,7 @@ dominates, and equalizing many orders while staying bright is not achievable.
 **Sinusoidal / continuous phase gratings.** A smoothly varying phase φ(x) is lossless and far brighter than an
 amplitude grating. Math: a sinusoidal phase grating of modulation depth gives order amplitudes J_m. Limitation:
 the order weights follow fixed special-function curves and are not independently tunable, so you cannot demand
-"the first N orders exactly equal and the rest suppressed"; and a continuous blaze is harder to fabricate
+an arbitrary flat set of target orders with the rest suppressed; and a continuous blaze is harder to fabricate
 faithfully than a single etch step.
 
 ## Evaluation settings
@@ -87,9 +86,8 @@ transition layout serves any wavelength once the depth is scaled.
 ## Code framework
 
 The pieces that already exist: NumPy/SciPy for arrays and nonlinear optimization, an FFT for checking far
-fields, and a routine to render a periodic two-level profile from a list of sign-flip positions. The contribution
-will occupy the empty slots below — the closed-form order amplitudes for a given transition layout, and the
-search that places the transitions.
+fields, and a routine to render a periodic two-level profile from a list of sign-flip positions. A minimal
+computational scaffold needs a profile renderer, a coefficient evaluator, an objective, and a multistart search.
 
 ```python
 import numpy as np
@@ -97,25 +95,17 @@ from scipy.optimize import minimize
 
 def binary_profile(x, transitions, start=+1.0):
     """Render one even period (values +/-1) given sign-flip positions on [0, 0.5]."""
-    y = np.full_like(x, start)
-    for i, _ in enumerate(transitions):
-        lo = transitions[i]
-        hi = transitions[i+1] if i+1 < len(transitions) else 0.5
-        y[(np.abs(x) >= lo) & (np.abs(x) < hi)] = start * (-1.0)**(i+1)
-    return y
+    pass
 
 def order_amplitudes(transitions, M):
-    """Diffraction-order amplitudes a_0..a_M for an even binary period defined by `transitions`.
-    # TODO: the closed form for the Fourier coefficients of a binary period — the contribution."""
+    """Diffraction-order amplitudes a_0..a_M for an even binary period."""
     pass
 
-def design_cost(transitions, N):
-    """Objective measuring (un)uniformity of the first N orders and the efficiency in them.
-    # TODO: built from order_amplitudes once it exists."""
+def design_cost(transitions, num_nonnegative):
+    """Objective for equalizing orders m = 0..num_nonnegative-1."""
     pass
 
-def design(N, K, restarts):
-    """Search the K transition positions so the first N orders are equal and efficiency is high.
-    # TODO: multistart nonlinear optimization of design_cost."""
+def design(num_nonnegative, num_transitions=None, restarts=400):
+    """Search transition positions for the target order set."""
     pass
 ```

@@ -108,8 +108,8 @@ e) per cell, a duct area distribution S(x) as the control parameterized by a few
 steady state with a Roe / Steger–Warming flux. The canonical cost is inverse design,
 I = ½ Σᵢ (pᵢ/p_t − p_{d,i})² Δxᵢ, recovering a prescribed target pressure distribution p_d (so the
 known optimum is the shape that generated p_d, which lets a gradient be checked against a known
-answer). On this problem an adjoint gradient is validated cell-by-cell against forward differentiation
-and against central finite differences as ground truth.
+answer). The natural gradient checks are forward differentiation and central finite differences, both
+evaluated on the same converged discrete residual.
 
 The full-scale settings are three-dimensional transonic wing and wing–body configurations under the
 Euler and Reynolds-Averaged Navier–Stokes equations, with cost = drag coefficient at a fixed target

@@ -1,5 +1,3 @@
-# Context: distributed flocking control for real autonomous drone swarms
-
 ## Research question
 
 How do you make a *large group of real autonomous flying robots* — quadcopters, each running only on-board sensing and computation, exchanging only local radio messages — move together as a coherent flock that is **collision-free**, stays **confined to a bounded arena** (and avoids obstacles), and remains **stable across a wide range of flocking speeds and flock sizes**?
@@ -18,11 +16,11 @@ The motivation is concrete and physical. Decades of statistical-physics and comp
 
 **The realistic-agent model and the friction-like alignment term (Virágh, Vásárhelyi et al., 2014).** The direct predecessor makes the deficiencies of a real flying robot first-class citizens of the model. It defines an agent whose desired velocity v_i^d is a function of *delayed, noisy, local* neighbor positions and velocities, and whose actual acceleration obeys
 a_i(t) = η_i(t) + [ (v_i^d − v_i − v_i^s) / |v_i^d − v_i − v_i^s| ] · min{ |v_i^d − v_i − v_i^s| / τ_CTRL , a_max },
-i.e. the real velocity relaxes toward the desired velocity with characteristic time τ_CTRL but is capped at acceleration a_max, with inner sensor noise v_i^s, outer (wind) noise η_i, finite sensor refresh t_s, time delay t_del, and communication range r_c. With quadcopter values τ_CTRL ≈ 1 s, a_max = 6 m s⁻², σ_s = 0.005 m² s⁻², t_s = 0.2 s, t_del = 0–2 s, r_c = 30–140 m, and desired speeds saturated at v_max = 4 m s⁻². Crucially, it observes that a naive alignment rule is *destabilized* by delay and noise, and damps the oscillations with a **viscous-friction-like alignment term**: a pairwise term that pulls neighbor velocities together, of the form
+i.e. the real velocity relaxes toward the desired velocity with characteristic time τ_CTRL but is capped at acceleration a_max, with inner sensor noise v_i^s, outer (wind) noise η_i, finite sensor refresh t_s, time delay t_del, and communication range r_c. With quadcopter values τ_CTRL ≈ 1 s, a_max = 6 m s⁻², σ_s = 0.005 m² s⁻², t_s = 0.2 s, t_del = 0–2 s, r_c = 30–140 m, and desired speeds saturated at v_max = 4 m s⁻¹. Crucially, it observes that a naive alignment rule is *destabilized* by delay and noise, and damps the oscillations with a **viscous-friction-like alignment term**: a pairwise term that pulls neighbor velocities together, of the form
 v_ij^frict = C_frict · (v_j − v_i) / (max{r_min, |d_ij|})²,
 chosen to satisfy three requirements — relax velocity differences, remain local, and stay upper-bounded even as the inter-agent distance goes to zero. Its short-range repulsion is a *linear half-spring* (with the explicit argument that a stiff Lennard-Jones-type potential would, under noisy position measurements, inject huge spurious accelerations, whereas a soft linear repulsion is robust to noise), and confinement is via virtual *shill* wall agents whose velocity the real agents align to. This model flies on real quadcopters at low speed.
 
-**The diagnostic failure mode that motivates the next step.** The 2014 viscous term damps oscillations by a *fixed* law: the amount of velocity-difference it tolerates depends only on inter-agent distance through a 1/r² decay, not on whether that velocity difference is *kinematically survivable*. With limited acceleration a_max, an agent needs a *distance* proportional to (closing speed)² to brake to zero. So a single global friction strength either over-damps at low speed (sluggish, agents fight tiny velocity differences and the flock cannot turn collectively) or under-damps at high speed (two agents approach faster than the gap allows them to brake → collision). Empirically the 2014 model does not scale past a few m/s: trajectories stay oscillatory and intergroup distances become dangerous as flocking speed rises. The pre-method fact to carry forward is this observed instability — the alignment threshold must become *distance-dependent* and tied to the braking kinematics, not a fixed 1/r² law.
+**The diagnostic failure mode that motivates the next step.** The 2014 viscous term damps oscillations by a *fixed* law: the amount of velocity-difference it tolerates depends only on inter-agent distance through a 1/r² decay, not on whether that velocity difference is *kinematically survivable*. With limited acceleration a_max, an agent needs a *distance* proportional to (closing speed)² to brake to zero. So a single global friction strength either over-damps at low speed (sluggish, agents fight tiny velocity differences and the flock cannot turn collectively) or under-damps at high speed (two agents approach faster than the gap allows them to brake → collision). Empirically the 2014 model does not scale past a few m/s: trajectories stay oscillatory and intergroup distances become dangerous as flocking speed rises. The open gap is an alignment threshold that changes with distance and is tied to braking kinematics, rather than a fixed 1/r² law.
 
 ## Baselines
 
@@ -38,7 +36,7 @@ The natural yardstick is a stochastic simulation of the realistic-agent model in
 
 Order parameters (the measurable requirements of "good flocking"), to be computed from a trajectory and used as optimization targets:
 - **velocity correlation** φ_corr — cluster-internal time-average of v_i·v_j/(|v_i||v_j|), to be maximized;
-- **collision risk** φ_coll — time-average over agent pairs of the Heaviside Θ(r_coll − r_ij), the fraction of time pairs sit inside the 3 m danger zone, to be minimized;
+- **collision risk** φ_coll — time-average over agent pairs of the indicator that is one when r_ij < r_coll, the fraction of time pairs inside the 3 m danger zone, to be minimized;
 - **wall collisions** φ_wall — time-average of how far agents stray outside the arena (signed distance), to be minimized;
 - **speed** φ_vel — time-averaged |v_i|, to be driven toward v_flock;
 - **disconnected agents** N_disc and **minimum cluster size** N_min (from the communication graph, with the practical threshold N_min > N/5).
@@ -46,63 +44,35 @@ A characteristic clustering distance r_cluster = max( r_0^rep, r_0^frict + D̃(v
 
 ## Code framework
 
-The simulator already exists: a discrete-time stochastic integrator for the realistic-agent dynamics (Euler/Euler–Maruyama), a neighbor/communication-graph builder with range r_c and delay buffers, a terrain/wall description, and a generic per-agent "compute desired velocity" hook. The control law to be designed plugs into that hook. Below is the pre-method scaffold — the harness that is known to exist, with one empty slot where the distributed control law will go.
+The simulator already has a discrete-time stochastic integrator for the realistic-agent dynamics (Euler/Euler–Maruyama), a neighbor/communication-graph builder with range r_c and delay buffers, a terrain/wall description, and a generic per-agent "compute desired velocity" hook. The control law plugs into that hook.
 
 ```matlab
-% --- known: per-agent desired-velocity hook called every control step ---
-% Inputs: this agent's state (pos, vel), the (delayed, noisy, local) states of
-% its neighbors, distances/unit-vectors to them, and a terrain/wall description.
-% Output: a desired velocity command handed to the low-level controller, which
-% relaxes the real velocity toward it with time constant tau_CTRL, capped at a_max.
+% Per-agent desired-velocity hook called every control step.
+% Inputs: own state; delayed, noisy local neighbor states; distances and
+% unit vectors to neighbors; terrain/wall description.
+% Output: desired horizontal velocity command for the low-level controller.
 
 function [posDesired_i, velDesired_i, accDesired_i, control_mode_i] = ...
         generate_desire_i(id, state_i, states_neighbor, dis_to_neighbor, posid_to_neighbor, ...
                           terrain, terrain_params)
 
-    params = load_params();          % the tunable knobs of the control law (TODO: define them)
-    v_max  = params.v_max;           % known hard speed cap of the vehicle
-    dim    = params.dim;
+    params = load_params();
+    v_max  = params.v_max;
+    height = params.height;
 
-    pos2D_i = state_i(1:2);
-    vel2D_i = state_i(4:5);
+    posDesired_i   = [state_i(1:2); height; 0];
+    velDesired_i   = zeros(4,1);
+    accDesired_i   = zeros(4,1);
+    control_mode_i = 7;
 
-    % TODO: build the set of "wall/obstacle" virtual agents local to this agent
-    %       from the terrain description (the confinement mechanism).
-    pos_shill = [];  vel_shill = [];   % to be filled by the method
+    % TODO: compute a distributed desired horizontal velocity from local
+    %       neighbor states and terrain geometry.
+    v_command_2D = zeros(2,1);
 
-    % TODO: a term that drives the agent's speed toward the target flocking speed.
-    v_selfprop = zeros(dim,1);
-
-    % TODO: a short-range term that prevents collisions between agents.
-    v_rep = zeros(dim,1);
-
-    % TODO: a velocity-coordination term that damps delay-induced oscillation
-    %       AND keeps closing speed within what the gap can brake — the crux.
-    v_align = zeros(dim,1);
-
-    % TODO: a wall/obstacle term that keeps the flock inside the arena.
-    v_wall = zeros(dim,1);
-
-    % --- known: superpose the contributions and cap the magnitude at v_max ---
-    v_desired_2D = v_selfprop + v_rep + v_align + v_wall;        % (filled by method)
-    s = norm(v_desired_2D);
+    s = norm(v_command_2D);
     if s > v_max
-        v_desired_2D = v_desired_2D / s * v_max;                 % keep direction, cap speed
+        v_command_2D = v_command_2D / s * v_max;
     end
-    velDesired_i = [v_desired_2D; 0; 0];
-end
-
-% --- a generic smooth speed-vs-distance shaping helper the method will need ---
-function D = brake_curve(r, a, p)        % TODO: choose its exact piecewise form
-    D = zeros(size(r));                  % (the kinematically-motivated curve)
-end
-
-% --- the tuner: a derivative-free optimizer over the control-law knobs against
-%     a single scalar fitness built from the order parameters above ---
-function theta_star = tune(theta0)
-    % TODO: define fitness F(theta) from simulated order parameters
-    %       (velocity correlation, collision risk, wall collisions, speed, clusters),
-    %       then maximize it with a black-box evolution strategy.
-    theta_star = theta0;
+    velDesired_i(1:2) = v_command_2D;
 end
 ```

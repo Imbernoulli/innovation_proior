@@ -69,15 +69,15 @@ def solve_cost_to_go_matrix(A, B, Q, R):
 
 
 def feedback_gain(A, B, Q, R):
-    """Return the constant state-feedback gain K such that u = -K x is
-    the optimal control law for the infinite-horizon quadratic cost."""
+    """Return the constant state-feedback gain K, the cost matrix S, and
+    the closed-loop poles for the infinite-horizon quadratic cost."""
     # TODO: S = solve_cost_to_go_matrix(A, B, Q, R)
     # TODO: K = (some closed form in R, B, S)
     pass
 
 
 def closed_loop_poles(A, B, K):
-    """Eigenvalues of the controlled plant A - B K (should be stable)."""
+    """Eigenvalues of the controlled plant A - B K, used as a stability check."""
     return scipy.linalg.eig(A - B @ K)[0]
 
 
@@ -88,5 +88,3 @@ def simulate(A, B, K, x0, t):
         return A @ x + B @ u
     return odeint(rhs, x0, t)
 ```
-
-The whole content of the method lives in the two bodies marked `# TODO`: which matrix equation `S` solves, and how the gain `K` is read off from `S`.

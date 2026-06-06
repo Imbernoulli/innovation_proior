@@ -32,9 +32,11 @@ evaluations so far, then let the surrogate choose the next point.
    The first term is **exploitation** (large when ŷ is below the incumbent), the second is
    **exploration** (large when s is large). The trade-off is intrinsic — no hand-tuned knob.
    EI = 0 at sampled points, is positive between, and is multimodal, so iterating it searches
-   **globally**. It is monotone — `∂EI/∂ŷ = −Φ(z) < 0`, `∂EI/∂s = φ(z) > 0` — so it can be
-   maximized to guaranteed optimality by branch-and-bound (lower-bound ŷ and upper-bound s over a
-   box, plug into the closed form). Its own magnitude is a **stopping rule**.
+   **globally**. It is monotone — `∂EI/∂ŷ = −Φ(z) < 0`, `∂EI/∂s = φ(z) > 0` — so branch-and-bound
+   can upper-bound EI over a box by lower-bounding `ŷ` and upper-bounding `s`. The `s²` bound comes
+   from a convex relaxation of the kriging MSE; the fast `ŷ` bound uses `p_h = 2`, writes
+   `r_i = exp(-z_i)`, and underestimates each `c_i exp(-z_i)` by a tangent if `c_i >= 0` or a chord
+   if `c_i < 0`. EI's own magnitude is a **stopping rule**.
 
 ## Algorithm
 
@@ -48,8 +50,8 @@ evaluations so far, then let the surrogate choose the next point.
    `R` stays invertible when the surface is very smooth or points cluster late in the run.
 
 Modern realization: a Gaussian-process regressor with a Matérn kernel (ν ↔ smoothness `p`) and ARD
-length scales (↔ activity `θ_h`) plus a small noise term (↔ the SVD nugget), driven by an
-expected-improvement acquisition in an ask/fit/maximize/tell loop — i.e. skopt's `gp_minimize`.
+length scales (↔ activity `θ_h`) plus a tiny numerical nugget, driven by an expected-improvement
+acquisition in an ask/fit/maximize/tell loop, matching the structure of skopt's `gp_minimize`.
 
 ## Code
 
@@ -58,7 +60,7 @@ import numpy as np
 from scipy.stats import norm
 from scipy.optimize import minimize
 from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import Matern, ConstantKernel, WhiteKernel
+from sklearn.gaussian_process.kernels import ConstantKernel, Matern
 
 
 def latin_hypercube(n_points, bounds, rng):
@@ -74,54 +76,56 @@ def latin_hypercube(n_points, bounds, rng):
 
 
 class CorrelatedSurrogate:
-    """Kriging/DACE surrogate: interpolates the data, s = 0 at sampled points."""
+    """GP/kriging surrogate with ARD length scales and a tiny numerical nugget."""
 
-    def __init__(self):
-        kernel = (ConstantKernel(1.0) *
-                  Matern(length_scale=np.ones(1), nu=2.5) +
-                  WhiteKernel(noise_level=1e-8))
-        self.gp = GaussianProcessRegressor(
-            kernel=kernel, normalize_y=True, n_restarts_optimizer=10)
+    def __init__(self, alpha=1e-10):
+        self.alpha = alpha
+        self.gp = None
 
     def fit(self, X, y):
-        X = np.asarray(X)
-        self.gp.kernel.k1.k2.length_scale = np.ones(X.shape[1])  # ARD per-dim
-        self.gp.fit(X, np.asarray(y))
+        X = np.asarray(X, float)
+        y = np.asarray(y, float)
+        kernel = (ConstantKernel(1.0) *
+                  Matern(length_scale=np.ones(X.shape[1]), nu=2.5))
+        self.gp = GaussianProcessRegressor(
+            kernel=kernel, alpha=self.alpha, normalize_y=True,
+            n_restarts_optimizer=10)
+        self.gp.fit(X, y)
         return self
 
     def predict(self, X, return_std=True):
         return self.gp.predict(np.atleast_2d(X), return_std=return_std)
 
 
-def expected_improvement(X, surrogate, f_min, xi=0.01):
+def expected_improvement(X, surrogate, f_min, xi=0.0):
     mu, std = surrogate.predict(X, return_std=True)
     mu = np.atleast_1d(mu); std = np.atleast_1d(std)
     ei = np.zeros_like(mu)
-    mask = std > 0                                   # EI = 0 where s = 0
-    improve = f_min - xi - mu[mask]                  # f_min - mu (xi: margin)
-    z = improve / std[mask]                          # z = (f_min - mu)/s
+    mask = std > 1e-12                               # EI = 0 where s = 0
+    improve = f_min - xi - mu[mask]                  # f_min - mu when xi=0
+    z = improve / std[mask]                          # z = improve / s
     ei[mask] = improve * norm.cdf(z) + std[mask] * norm.pdf(z)
     #          \_ exploitation                       \_ exploration
     return ei
 
 
-def maximize_ei(surrogate, bounds, f_min, rng, n_restarts=20, n_raw=10000):
+def maximize_acquisition(acq_fn, bounds, rng, n_restarts=20, n_raw=10000):
     bounds = np.asarray(bounds, float)
     lo, hi = bounds[:, 0], bounds[:, 1]
     raw = lo + rng.uniform(size=(n_raw, len(bounds))) * (hi - lo)
-    vals = expected_improvement(raw, surrogate, f_min)
+    vals = acq_fn(raw)
     seeds = raw[np.argsort(vals)[-n_restarts:]]
-    best_x, best_ei = raw[vals.argmax()], vals.max()
+    best_x, best_val = raw[vals.argmax()], float(vals.max())
     for x0 in seeds:
-        res = minimize(lambda x: -expected_improvement(x, surrogate, f_min)[0],
+        res = minimize(lambda x: -float(acq_fn(x)[0]),
                        x0, bounds=list(map(tuple, bounds)), method="L-BFGS-B")
-        if -res.fun > best_ei:
-            best_x, best_ei = res.x, -res.fun
-    return best_x, best_ei
+        if -res.fun > best_val:
+            best_x, best_val = res.x, -res.fun
+    return best_x, best_val
 
 
 def efficient_global_optimization(objective, bounds, n_init=10, max_evals=40,
-                                  ei_tol_frac=0.01, seed=0):
+                                  ei_tol_frac=0.01, xi=0.0, seed=0):
     rng = np.random.default_rng(seed)
     X = latin_hypercube(n_init, bounds, rng)
     y = np.array([objective(x) for x in X])          # the only expensive calls
@@ -129,7 +133,8 @@ def efficient_global_optimization(objective, bounds, n_init=10, max_evals=40,
     for _ in range(max_evals - n_init):
         surrogate.fit(X, y)
         f_min = y.min()
-        x_next, ei = maximize_ei(surrogate, bounds, f_min, rng)
+        acq_fn = lambda Xcand: expected_improvement(Xcand, surrogate, f_min, xi)
+        x_next, ei = maximize_acquisition(acq_fn, bounds, rng)
         if ei < ei_tol_frac * max(abs(f_min), 1e-12):   # EI-based stopping rule
             break
         y_next = objective(x_next)                   # one expensive call
@@ -138,7 +143,7 @@ def efficient_global_optimization(objective, bounds, n_init=10, max_evals=40,
     return X[i], y[i]
 ```
 
-The EI closed form here is exactly skopt's `gaussian_ei`
-(`improve = y_opt − xi − mu; scaled = improve/std; values = improve·Φ(scaled) + std·φ(scaled)`),
-and the loop mirrors `gp_minimize` (Matérn-kernel GP, `n_initial_points`, EI acquisition,
-ask/fit/maximize/tell).
+The EI algebra follows skopt's `gaussian_ei`
+(`improve = y_opt - xi - mu; scaled = improve/std; values = improve*Φ(scaled) + std*φ(scaled)`).
+Setting `xi=0` recovers the no-margin EI criterion above; skopt exposes `xi` as an optional margin
+and commonly defaults it to `0.01`.

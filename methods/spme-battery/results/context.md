@@ -110,8 +110,9 @@ bolt electrolyte terms onto the SPM to push accuracy to higher C-rate. *Core ide
 electrolyte concentration equation and extra voltage terms (a concentration overpotential and an
 electrolyte Ohmic loss) on top of the SPM. *Math/algorithm (typical):* solve an electrolyte
 diffusion PDE, then add to the SPM voltage a *pointwise* concentration overpotential of the form
-`2(1−t⁺) log((1+c_e|_x1)/(1+c_e|_x2))` and a *pointwise* electrolyte Ohmic loss; some keep a
-nonlinear electrolyte diffusivity `D_e(c_e)`, some take exchange-current densities constant.
+`2(1−t⁺) log((1+C_e c_{e,p}¹|_{x=1})/(1+C_e c_{e,n}¹|_{x=0}))` and a *pointwise* electrolyte
+Ohmic loss; some keep a nonlinear electrolyte diffusivity `D_e(c_e)`, some take exchange-current
+densities constant.
 *Gaps they leave:* the terms kept/dropped are chosen by hand (one such model needs six assumptions
 that can only be checked *after* comparing to the full model, e.g. assuming the current profile
 takes a prescribed shape); the modelling error cannot be bounded a-priori from the parameters; and
@@ -159,9 +160,9 @@ class BaseCellModel:
         self.param, self.options, self.submodels = param, options, {}
         self.set_particle_submodel()                   # solid diffusion in 1 particle / electrode
         self.set_intercalation_kinetics_submodel()     # Butler-Volmer at particle surface
-        self.set_electrolyte_concentration_submodel()  # SLOT A: electrolyte mass transport
-        self.set_electrolyte_potential_submodel()      # SLOT B: electrolyte charge / overpotentials
-        self.set_solid_submodel()                      # SLOT C: solid-phase potential / Ohmic loss
+        self.set_solid_submodel()                      # solid-phase potential
+        self.set_electrolyte_concentration_submodel()  # electrolyte mass transport
+        self.set_electrolyte_potential_submodel()      # electrolyte charge + surface potentials
 
     def terminal_voltage(self, v):
         # V = OCV + reaction overpotential + concentration overpotential
@@ -177,35 +178,39 @@ class SingleParticleBase(BaseCellModel):
             self.submodels[f"{dom} particle"] = pybamm.particle.FickianDiffusion(
                 self.param, dom, self.options, x_average=True)
 
-    def set_electrolyte_concentration_submodel(self):    # SLOT A (leading order)
-        # electrolyte held spatially uniform: c_e = const
-        self.submodels["electrolyte diffusion"] = \
-            pybamm.electrolyte_diffusion.ConstantConcentration(self.param, self.options)
-
-    def set_electrolyte_potential_submodel(self):        # SLOT B (leading order)
-        # flat electrolyte potential; eta_c = 0, delta_phi_e = 0
-        self.submodels["electrolyte conductivity"] = \
-            pybamm.electrolyte_conductivity.LeadingOrder(self.param, options=self.options)
-
-    def set_solid_submodel(self):                        # SLOT C (leading order)
+    def set_solid_submodel(self):
         # flat solid potential; delta_phi_s = 0
         for dom in ["negative", "positive"]:
             self.submodels[f"{dom} electrode potential"] = \
                 pybamm.electrode.ohm.LeadingOrder(self.param, dom, self.options)
 
+    def set_electrolyte_concentration_submodel(self):
+        # electrolyte held spatially uniform: c_e = const
+        self.submodels["electrolyte diffusion"] = \
+            pybamm.electrolyte_diffusion.ConstantConcentration(self.param, self.options)
+
+    def set_electrolyte_potential_submodel(self):
+        # flat electrolyte potential; eta_c = 0, delta_phi_e = 0
+        self.submodels["leading-order electrolyte conductivity"] = \
+            pybamm.electrolyte_conductivity.LeadingOrder(self.param, options=self.options)
+        surf_model = pybamm.electrolyte_conductivity.surface_potential_form.Explicit
+        for dom in ["negative", "positive"]:
+            self.submodels[f"{dom} surface potential difference"] = \
+                surf_model(self.param, dom, options=self.options)
+
 
 # A higher-accuracy electrolyte-aware model reuses the particle + kinetics of the base
-# model and refills SLOTS A/B/C with the transport/correction terms to be derived:
+# model and refills the transport and potential terms to be derived:
 class ElectrolyteAwareModel(SingleParticleBase):
-    def set_electrolyte_concentration_submodel(self):    # SLOT A
-        # TODO: a transport PDE for the electrolyte concentration across n|s|p
+    def set_solid_submodel(self):
+        # TODO: solid-phase potential correction
         pass
 
-    def set_electrolyte_potential_submodel(self):        # SLOT B
-        # TODO: electrolyte potential + concentration overpotential + electrolyte Ohmic loss
+    def set_electrolyte_concentration_submodel(self):
+        # TODO: electrolyte concentration transport across n|s|p
         pass
 
-    def set_solid_submodel(self):                        # SLOT C
-        # TODO: first-order solid-phase Ohmic loss
+    def set_electrolyte_potential_submodel(self):
+        # TODO: electrolyte potential, electrolyte current, and surface potentials
         pass
 ```

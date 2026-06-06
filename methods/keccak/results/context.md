@@ -10,7 +10,7 @@ We want a cryptographic hash function: a map from arbitrary-length messages to f
 
 **Iterated hashing and its intrinsic gap.** Practical hashes are iterated over a chaining value so a stream can be hashed on the fly without buffering the whole message. But a finite chaining state means *state collisions* exist: two messages M1, M2 reaching the same chaining value. From any such collision, M1‖N and M2‖N collide for every suffix N. A random oracle has no such property — even when RO(M1)=RO(M2), the outputs on M1‖N and M2‖N are independent. So an iterated hash with a finite state can *never* be a random oracle; the right question is not "is it a RO" but "how far is it, and can the gap be made negligible."
 
-**The empirical failures that forced the issue.** Wang et al. demonstrated practical MD5 collisions in 2004, and collision attacks on SHA-1 below the 2^80 birthday bound followed (Wang, 2005). These are observed breaks of the *compression-function* layer of the dominant family. They prompted a public competition: a call for new hash algorithms was issued on 2 November 2007, submissions closed 31 October 2008 with 51 entries, narrowed to 14 (July 2009) and then to five finalists (December 2010). The competition is the backdrop into which a new construction must fit: it must be efficient, must come with a clean security argument, and should avoid the structural pitfalls that the prevailing construction exhibits.
+**The empirical failures that forced the issue.** Wang et al. demonstrated practical MD5 collisions in 2004, and collision attacks on SHA-1 below the 2^80 birthday bound followed (Wang, 2005). These are observed breaks of the *compression-function* layer of the dominant family. They prompted a public competition: a call for new hash algorithms was issued on 2 November 2007, with submissions due on 31 October 2008. The competition is the backdrop into which a new construction must fit: it must be efficient, must come with a clean security argument, and should avoid the structural pitfalls that the prevailing construction exhibits.
 
 **Length-extension as a structural (not compression-function) defect.** In the prevailing iterated design the emitted digest *is* the chaining state after the message (up to an optional finalization). Knowing the digest and the message length — but not the message — lets one resume the iteration and compute the digest of message‖padding‖suffix. The naive MAC H(K‖M) is forgeable this way. In practice this is patched with extra structure (HMAC, MGF1), which is a tell: the base construction is structurally leaky and must be wrapped to be safe.
 
@@ -28,16 +28,13 @@ We want a cryptographic hash function: a map from arbitrary-length messages to f
 
 ## Evaluation settings
 
-The yardstick is the security a truncated random oracle provides for a digest of length d: ~2^{d/2} work for a collision, ~2^d for a (second) preimage, and resistance to length-extension and related structural distinctions. A construction is judged by (a) a provable indistinguishability / indifferentiability bound against a RO, expressed in the number N of queries to the underlying primitive (including inverse queries when the primitive is invertible), and (b) the implied generic-attack complexities for collision, preimage, and second preimage. Standard known-answer test vectors (the digests of the empty string and of short fixed messages) serve as correctness checks. Efficiency is measured as throughput — work per input bit absorbed — on the fixed state, on both software and hardware. The structural primitive (a large fixed permutation on b bits) and the differential/linear-trail machinery used to argue its strength are pre-existing analysis tools; only the *outcomes* for the new design are out of scope here.
+The yardstick is the security a truncated random oracle provides for a digest of length d: ~2^{d/2} work for a collision, ~2^d for a (second) preimage, and resistance to length-extension and related structural distinctions. A construction is judged by (a) a provable indistinguishability / indifferentiability bound against a RO, expressed in the number N of queries to the underlying primitive (including inverse queries when the primitive is invertible), and (b) the implied generic-attack complexities for collision, preimage, and second preimage. Standard known-answer test vectors (the digests of the empty string and of short fixed messages) serve as correctness checks. Efficiency is measured as throughput — work per input bit absorbed — on the fixed state, on both software and hardware. A large fixed permutation and the differential/linear-trail machinery used to argue its strength are natural analysis tools for this design space.
 
 ## Code framework
 
-The primitives that already exist: fixed-width bitwise operations (rotate, XOR, AND, NOT) on machine words, little-endian packing of bytes into and out of a fixed-size state, and a generic iterated-hashing harness that pads an input and processes it block by block. The slots a new design will fill are the fixed-length primitive on the state and the variable-input/variable-output mode wrapped around it.
+The primitives that already exist: fixed-width bitwise operations (rotate, XOR, AND, NOT) on machine words, byte packing into and out of a fixed-size state, and a generic iterated-hashing harness that pads an input and processes it block by block. The slots a new design will fill are the fixed-length primitive on the state and the variable-input/variable-output mode wrapped around it.
 
 ```python
-B = 1600                      # state width in bits (known: we want a large fixed state)
-LANES, W = 25, 64             # 5x5 lanes of 64-bit words
-
 def rol64(a, n):
     return ((a >> (64 - (n % 64))) | (a << (n % 64))) & ((1 << 64) - 1)
 
@@ -48,10 +45,7 @@ def store64(a):               # 64-bit lane -> little-endian bytes
     return list((a >> (8 * i)) & 0xFF for i in range(8))
 
 def fixed_primitive(state):
-    """A fixed-length transformation on the b-bit state.
-    The contribution lives here: which transformation, and how its
-    internal structure provides diffusion and nonlinearity. # TODO
-    """
+    """A fixed-length transformation on the state. # TODO"""
     pass
 
 def pad(message_bytes, rate_in_bytes):
@@ -60,8 +54,6 @@ def pad(message_bytes, rate_in_bytes):
     pass
 
 def hash(rate, capacity, input_bytes, output_len):
-    """Variable-input, variable-output mode built on fixed_primitive.
-    How input enters the state, what part of the state is exposed as
-    output, and what part is held back — # TODO."""
+    """Variable-input, variable-output mode built on fixed_primitive. # TODO"""
     pass
 ```

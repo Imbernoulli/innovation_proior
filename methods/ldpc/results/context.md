@@ -16,13 +16,13 @@ The real question, then, is not "do good long codes exist?" — Shannon answered
 
 **Decoding is inference.** On a memoryless channel the received vector y gives, for each bit, a likelihood — on the binary symmetric channel (BSC) a crossover probability p, on the additive-white-Gaussian-noise (AWGN) channel with antipodal signalling x_n = ±1 a Gaussian density. Optimal decoding finds the codeword maximizing the posterior P(x | y) subject to Hx = 0. The information the channel hands us is genuinely *soft*: a per-bit a-posteriori probability, not just a hard 0/1 guess. Any decoder that throws the soft information away before it starts is leaving evidence on the table.
 
-**The distance picture and its ensemble statistics.** The error-correcting power of a code is classically summarized by its minimum distance D — the smallest number of bit positions in which two codewords differ. A decoder that always returns the nearest codeword corrects any error pattern of weight up to ⌊(D−1)/2⌋. For an ensemble of randomly built parity-check matrices one can compute the *average* distance distribution rather than any single code's: the expected number of weight-ℓ codewords is N̄(ℓ) = (n choose ℓ) 2^{−n(1−R)}, because a fixed nonzero weight-ℓ pattern satisfies each of the n(1−R) independent parity checks with probability ½. Bounding the tail of this with Stirling shows the typical minimum distance grows linearly with n, with the linear coefficient δ_0 fixed by H(δ_0) = (1−R) ln 2 (the Gilbert bound). So *randomly* built parity-check codes already have good distance growth — the bottleneck was never distance, it was the decoder.
+**The distance picture and its ensemble statistics.** The error-correcting power of a code is classically summarized by its minimum distance D — the smallest number of bit positions in which two codewords differ. A decoder that always returns the nearest codeword corrects any error pattern of weight up to ⌊(D−1)/2⌋. For an ensemble of randomly built parity-check matrices one can compute the *average* distance distribution rather than any single code's: the expected number of weight-ℓ codewords is N̄(ℓ) = (n choose ℓ) 2^{−n(1−R)}, because a fixed nonzero weight-ℓ pattern satisfies each of the n(1−R) independent parity checks with probability ½. Bounding the tail of this with Stirling gives an exponent H(δ) − (1−R) ln 2. For every δ below the root δ_0 satisfying H(δ_0) = (1−R) ln 2, the expected number of codewords of weight at most δn goes to zero exponentially, so the typical minimum distance grows linearly with n. Randomly built parity-check codes already have good distance growth — the bottleneck was never distance, it was the decoder.
 
-**Graphs of codes.** A parity-check matrix is equivalently a bipartite graph: one node per bit (variable node), one node per parity check (check node), an edge wherever H has a 1. Tanner (1981) made this graph view explicit, building long codes by wiring short subcodes onto a bipartite graph and decoding by passing partial results along the graph's edges, with the rate and minimum distance of the long code bounded in terms of the graph and the subcodes. The graph turns "decode the whole block" into "reconcile local constraints along edges" — a structural handle on the cost of decoding.
+**Graphs of codes.** A parity-check matrix is equivalently a bipartite graph: one node per bit, one node per parity check, and an edge wherever H has a 1. The graph turns "decode the whole block" into "reconcile local constraints along edges" — a structural handle on the cost of decoding.
 
-**Soft, iterative, probabilistic inference on graphs.** Pearl's belief propagation (1988) is a general algorithm for computing posterior marginals in a graphical model by passing "messages" — local probability summaries — between nodes along edges. Its defining property: on a graph with no cycles (a tree), the messages converge to the *exact* posterior marginals after one sweep. On a graph with cycles it is only an approximation, and its quality degrades as the cycles get shorter (as the girth shrinks). This is the lever that connects a sparse code graph to cheap near-optimal decoding: if a code's graph looks locally like a tree, local message passing computes nearly the right answer.
+**Soft, iterative, probabilistic inference on local constraints.** If the parity-check graph has no cycles, the evidence below each edge is independent of the evidence below every other edge once the edge is cut. That means local probability summaries can be passed along the tree and multiplied without double-counting. On a graph with cycles this independence is only approximate, and shorter cycles make the approximation worse. This is the lever that connects a sparse code graph to cheap probabilistic decoding: if a code's graph looks locally like a tree, local message passing can compute nearly the right answer.
 
-**Pre-method failure modes, recalled not measured.** Two phenomena about iterative graph decoders are established before any specific code is built, and they bound what such a decoder can do. First, *short cycles*: when the bit and check involved in a message lie on a short cycle, the "independent evidence" assumption underlying belief propagation is violated, a node's own past belief returns to it, and the marginals it computes are biased. Second, and more subtly, certain small, specially-structured subsets of bits — sets whose induced subgraph attaches to only a few odd-degree checks (later called trapping sets or near-codewords) — can hold an iterative decoder in a wrong but self-consistent state even when the channel noise is mild, so the residual error probability stops falling as fast as the distance would predict and flattens into a floor at high signal-to-noise ratio. Both are properties of the *graph*, knowable by inspecting it, and both say the same thing: an iterative local decoder is near-optimal only to the extent the graph is locally tree-like and free of small bad substructures.
+**Short cycles.** When the bit and check involved in a message lie on a short cycle, the "independent evidence" assumption is violated: a node's own past belief can return to it through another path and get counted again. The graph therefore has to be sparse enough, and cycle-free enough at small radii, for a local decoder to be trusted.
 
 ## Baselines
 
@@ -40,12 +40,11 @@ The natural yardsticks already exist. The two canonical channels are the binary 
 
 ## Code framework
 
-The pieces that already exist: GF(2) linear algebra (matrix products mod 2, Gaussian elimination), a noisy-channel simulator, and a generic iterative decoding loop that stops when the parity checks are satisfied. What does **not** yet exist is the choice of *which* parity-check matrix to use and *what messages* to pass on its graph — those are the slots to fill.
+The scaffold is a linear-code simulation harness: GF(2) matrix products, Gaussian elimination, a parity-check constructor, a generator constructor, a BPSK/AWGN channel, an iterative decoder, and a parity-check stopping test. The open choices are the structure of H and the quantities exchanged during decoding.
 
 ```python
 import numpy as np
 
-# --- known: GF(2) linear algebra -------------------------------------------
 def binaryproduct(X, Y):
     return X.dot(Y) % 2
 
@@ -53,7 +52,6 @@ def gaussjordan(X):
     # row-reduce over GF(2); used to turn H into a generator G
     ...
 
-# --- the slot: which parity-check matrix? ----------------------------------
 def parity_check_matrix(n, *params, seed=None):
     """Return an (n-k) x n parity-check matrix H over GF(2).
     The structure of H is the design choice to be made."""
@@ -63,14 +61,12 @@ def coding_matrix(H):
     # standard: derive a generator G from H so that H G = 0, x = G v
     ...
 
-# --- known: channel simulator (BPSK over AWGN) -----------------------------
 def encode(G, v, snr, seed=None):
     d = binaryproduct(G, v)
     x = (-1) ** d                      # bit 0 -> +1, bit 1 -> -1
     sigma = 10 ** (-snr / 20)
     return x + np.random.randn(*x.shape) * sigma
 
-# --- the slot: how to decode? ----------------------------------------------
 def decode(H, y, snr, maxiter=1000):
     """Infer the transmitted codeword from the noisy observation y.
     What quantities live on the edges of H's graph, and how do the
