@@ -46,8 +46,8 @@ $t_k \ge (k+1)/2$ they yield the optimal
 $$ F(x_k) - F(x^\star) \ \le\ \frac{2L\,\|x_0-x^\star\|_2^2}{(k+1)^2} = O(1/k^2), $$
 
 at the same per-iteration cost as ISTA (one prox = one soft-threshold, one $A$, one
-$A^{\top}$). If $L$ is unknown, a backtracking line search inflates a trial $L$ by $\eta>1$
-until the quadratic model majorizes $f$.
+$A^{\top}$). If $L$ is unknown, a backtracking line search shrinks a trial step until the
+quadratic model majorizes $f$.
 
 ## Algorithm
 
@@ -68,95 +68,113 @@ soft(v, τ)ᵢ = sign(vᵢ)·max(|vᵢ| − τ, 0)
 import numpy as np
 
 
+def smooth_value(A, y, x):
+    r = A @ x - y
+    return 0.5 * float(np.real(np.vdot(r, r)))
+
+
+def grad_smooth(A, y, x):
+    """Gradient of 1/2||Ax-y||^2: one application of A then one of the adjoint."""
+    return A.conj().T @ (A @ x - y)
+
+
 def soft_threshold(v, thresh):
-    """Prox of λ‖·‖₁ at step t (thresh = t·λ): shrink by `thresh`, zero out |v| ≤ thresh.
-    The flat dead-zone is what makes the iterates exactly sparse."""
-    return np.sign(v) * np.maximum(np.abs(v) - thresh, 0.0)
+    """Prox of lam*||.||_1 at step t, with thresh = t*lam."""
+    mag = np.abs(v)
+    if np.iscomplexobj(v):
+        return np.maximum(mag - thresh, 0.0) * np.exp(1j * np.angle(v))
+    return np.sign(v) * np.maximum(mag - thresh, 0.0)
 
 
-def power_iteration_L(A, n_iter=100, seed=0):
-    """L = ‖A‖² = λmax(AᵀA), Lipschitz constant of ∇(½‖Ax−y‖²). Largest safe step is 1/L."""
+def lipschitz_constant(A, n_iter=100, seed=0):
+    """L = ||A||^2 = lambda_max(A.conj().T @ A), so the largest fixed step is 1/L."""
     rng = np.random.default_rng(seed)
     x = rng.standard_normal(A.shape[1])
-    x /= np.linalg.norm(x)
+    norm = np.linalg.norm(x)
+    if norm == 0.0:
+        raise ValueError("power iteration initialized at zero")
+    x = x / norm
     for _ in range(n_iter):
-        x = A.T @ (A @ x)
-        x /= np.linalg.norm(x)
-    return float(x @ (A.T @ (A @ x)))
+        x = A.conj().T @ (A @ x)
+        norm = np.linalg.norm(x)
+        if norm == 0.0:
+            return 0.0
+        x = x / norm
+    return float(np.real(np.vdot(x, A.conj().T @ (A @ x))))
 
 
-def grad_f(A, y, x):
-    """∇f(x) = Aᵀ(Ax − y): one application of A then one of Aᵀ."""
-    return A.T @ (A @ x - y)
+def _backtracking(point, step, A, y, lam, beta=0.5, n_back=100):
+    grad = grad_smooth(A, y, point)
+    f_point = smooth_value(A, y, point)
+    for _ in range(n_back):
+        cand = soft_threshold(point - step * grad, step * lam)
+        d = cand - point
+        q = f_point + np.real(np.vdot(grad, d)) + (0.5 / step) * np.real(np.vdot(d, d))
+        if smooth_value(A, y, cand) <= q:
+            break
+        step *= beta
+    return cand, step
+
+
+def proximal_gradient_l1(A, y, lam, x0=None, step=None, n_iter=500,
+                         backtracking=False, beta=0.5, n_back=100,
+                         acceleration=None):
+    """Proximal gradient for 1/2||Ax-y||^2 + lam*||x||_1.
+
+    The loop follows the standard solver layout:
+    x <- prox_g(z - step*grad_smooth(z)), then z <- x + omega*(x - x_old).
+    """
+    if x0 is None:
+        x0 = np.zeros(A.shape[1])
+    if step is None:
+        backtracking = True
+        step = 1.0
+    if acceleration not in (None, "fista", "vandenberghe"):
+        raise ValueError("acceleration must be None, 'fista', or 'vandenberghe'")
+
+    x = x0.copy()
+    z = x.copy()
+    tk = 1.0
+    for i in range(n_iter):
+        x_old = x.copy()
+        if backtracking:
+            x, step = _backtracking(z, step, A, y, lam, beta=beta, n_back=n_back)
+        else:
+            x = soft_threshold(z - step * grad_smooth(A, y, z), step * lam)
+
+        if acceleration == "fista":
+            tk_old = tk
+            tk = (1.0 + np.sqrt(1.0 + 4.0 * tk * tk)) / 2.0
+            omega = (tk_old - 1.0) / tk
+        elif acceleration == "vandenberghe":
+            omega = i / (i + 3.0)
+        else:
+            omega = 0.0
+        z = x + omega * (x - x_old)
+    return x
 
 
 def ista(A, y, lam, n_iter=500, L=None):
-    """Iterative shrinkage-thresholding for ½‖Ax−y‖² + λ‖x‖₁.  O(1/k)."""
+    """Iterative shrinkage-thresholding for 1/2||Ax-y||^2 + lam*||x||_1."""
     if L is None:
-        L = power_iteration_L(A)
-    t = 1.0 / L
-    x = np.zeros(A.shape[1])
-    for _ in range(n_iter):
-        x = soft_threshold(x - t * grad_f(A, y, x), t * lam)   # grad step on f, then prox of g
-    return x
+        L = lipschitz_constant(A)
+    if L <= 0.0:
+        raise ValueError("L must be positive")
+    step = 1.0 / L
+    return proximal_gradient_l1(A, y, lam, step=step, n_iter=n_iter)
 
 
 def fista(A, y, lam, n_iter=500, L=None):
-    """Accelerated (Nesterov) proximal gradient for ½‖Ax−y‖² + λ‖x‖₁.  O(1/k²)."""
+    """Accelerated proximal gradient for 1/2||Ax-y||^2 + lam*||x||_1."""
     if L is None:
-        L = power_iteration_L(A)
+        L = lipschitz_constant(A)
+    if L <= 0.0:
+        raise ValueError("L must be positive")
     step = 1.0 / L
-    x = np.zeros(A.shape[1])
-    z = x.copy()                 # look-ahead point y_k; y_1 = x_0
-    tk = 1.0
-    for _ in range(n_iter):
-        x_new = soft_threshold(z - step * grad_f(A, y, z), step * lam)   # prox at extrapolated z
-        tk_new = (1.0 + np.sqrt(1.0 + 4.0 * tk * tk)) / 2.0              # forced by the telescoping
-        z = x_new + ((tk - 1.0) / tk_new) * (x_new - x)                  # momentum (t_k−1)/t_{k+1}
-        x, tk = x_new, tk_new
-    return x
-
-
-def fista_backtracking(A, y, lam, n_iter=500, L0=1.0, eta=2.0, n_back=100):
-    """FISTA with backtracking when L = λmax(AᵀA) is unknown/expensive.
-    Inflate a trial L by η until the quadratic model majorizes f."""
-    def f(x):
-        r = A @ x - y
-        return 0.5 * float(r @ r)
-
-    x = np.zeros(A.shape[1])
-    z = x.copy()
-    tk, L = 1.0, L0
-    for _ in range(n_iter):
-        gz, fz = grad_f(A, y, z), f(z)
-        for _ in range(n_back):
-            cand = soft_threshold(z - (1.0 / L) * gz, lam / L)
-            d = cand - z
-            # majorization: f(cand) ≤ f(z) + ⟨∇f(z), d⟩ + (L/2)‖d‖²
-            if f(cand) <= fz + gz @ d + 0.5 * L * (d @ d):
-                break
-            L *= eta
-        x_new = cand
-        tk_new = (1.0 + np.sqrt(1.0 + 4.0 * tk * tk)) / 2.0
-        z = x_new + ((tk - 1.0) / tk_new) * (x_new - x)
-        x, tk = x_new, tk_new
-    return x
-
-
-if __name__ == "__main__":
-    rng = np.random.default_rng(0)
-    n, m, k = 400, 120, 8                       # underdetermined: m < n; k-sparse signal
-    A = rng.standard_normal((m, n)) / np.sqrt(m)
-    x_true = np.zeros(n)
-    x_true[rng.choice(n, k, replace=False)] = rng.standard_normal(k)
-    y = A @ x_true + 1e-3 * rng.standard_normal(m)
-
-    x_hat = fista(A, y, lam=1e-2, n_iter=1000)
-    print("nonzeros recovered:", int(np.sum(np.abs(x_hat) > 1e-6)),
-          " support match:", set(np.flatnonzero(np.abs(x_hat) > 1e-6)) >= set(np.flatnonzero(x_true)))
+    return proximal_gradient_l1(A, y, lam, step=step, n_iter=n_iter, acceleration="fista")
 ```
 
 The accelerated proximal-gradient recursion above is the standard one: a gradient step on
-the smooth least-squares term, the $\ell_1$ prox (soft-threshold), and the Nesterov
-extrapolation with weight $(t_k-1)/t_{k+1}$ — exactly what general proximal-gradient solvers
-implement under the `acceleration="fista"` option.
+the smooth least-squares term, the $\ell_1$ prox (soft-threshold), and an extrapolation
+weight selected by `acceleration`; the `acceleration="fista"` branch uses
+$(t_k-1)/t_{k+1}$ after updating $t_{k+1}=(1+\sqrt{1+4t_k^2})/2$.

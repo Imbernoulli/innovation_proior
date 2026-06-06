@@ -1,4 +1,4 @@
-OK, let me think this through from scratch. The thing that actually hurts when I serve a decoder-only Transformer is generation, token by token. Each new token has to attend over every token before it, and I don't want to recompute all the past keys and values every step, so I keep them around in a KV cache. Fine. But how big is that cache? Per token, per layer, I'm storing keys and values for all n_h heads, each of width d_h — that's 2·n_h·d_h scalars per token per layer, so 2·n_h·d_h·l over the whole stack. For a model with n_h=128 and d_h=128 that's ~32K elements per token per... no wait, per token across layers, and it scales linearly with sequence length and with batch. At 128K context and a decent batch this thing is enormous, and it's the cache, not the weights, that decides how big a batch I can run and how long a context I can hold.
+OK, let me think this through from scratch. The thing that actually hurts when I serve a decoder-only Transformer is generation, token by token. Each new token has to attend over every token before it, and I don't want to recompute all the past keys and values every step, so I keep them around in a KV cache. Fine. But how big is that cache? Per token, per layer, I'm storing keys and values for all n_h heads, each of width d_h — that's 2·n_h·d_h scalars per token per layer, so 2·n_h·d_h·l over the whole stack. For a model with n_h=128 and d_h=128 that's ~32K elements per token per layer before I multiply by l, and it scales linearly with sequence length and with batch. At 128K context and a decent batch this thing is enormous, and it's the cache, not the weights, that decides how big a batch I can run and how long a context I can hold.
 
 And here's the part that really stings: when I generate one token, the arithmetic I do is tiny — one fresh query dotted against all the stored keys, a softmax, a weighted sum of the stored values. But to do that tiny arithmetic I have to *stream the entire cache* through the chip. The operation is memory-bandwidth bound, not compute bound. So the per-token latency is basically "how many bytes of cache do I have to read." That reframes the whole problem: I'm not trying to save flops, I'm trying to save *bytes cached per token*. That's the number. Shrink it.
 
@@ -40,11 +40,11 @@ Concretely: alongside the content key k_{t,i}^C = W^{UK}_i c_t^{KV}, compute a s
 
   q_{t,i} · k_{j,i} = q_{t,i}^C · k_{j,i}^C  +  q_{t,i}^R · k_{j}^R.
 
-The first term is pure content, no RoPE — fully absorbable, exactly as derived above; it reads only the cached latent c_j^{KV}. The second term carries all the position, but it's a dot product of two small d_h^R-vectors with RoPE applied normally, so it gets the relative-position property q_{t}^{R,T} R_{j-t} k... — RoPE works on it because here I *want* the rotation between the two pieces; there's no up-projection to absorb on this branch, so nothing breaks. Position lives entirely in a small decoupled subspace, and content lives in the absorbable compressed subspace. The wall is gone.
+The first term is pure content, no RoPE — fully absorbable, exactly as derived above; it reads only the cached latent c_j^{KV}. The second term carries all the position. If I call the unrotated small vectors \bar q_{t,i}^R and \bar k_j^R, then after RoPE their dot product is (\bar q_{t,i}^R)^T R_{j-t} \bar k_j^R. That is exactly where I want the relative-position rotation to live; there is no up-projection to absorb on this branch, so nothing breaks. Position lives entirely in a small decoupled subspace, and content lives in the absorbable compressed subspace. The wall is gone.
 
 Now, should the RoPE key be per-head or shared? Notice k_t^R has no head index in what I wrote — I made it a *single* shared vector broadcast to all heads, MQA-style on this tiny branch. Why share it? Two reasons. First, cache: if every head had its own RoPE key I'd be caching n_h·d_h^R extra elements per token, which would eat back the savings; sharing makes it just d_h^R per token. Second, this branch is only carrying relative-position signal, which is a low-dimensional, head-agnostic quantity — there's little to gain from per-head positional subspaces, so the MQA-style collapse here costs almost nothing in quality while the content branch keeps full per-head richness. The query side q_{t,i}^R *is* per-head (it comes from W^{QR} producing n_h·d_h^R outputs), so each head still steers its own positional query against the one shared positional key.
 
-Let me total the cache now. Per token per layer I cache c_t^{KV} (d_c elements) plus the shared k_t^R (d_h^R elements): (d_c + d_h^R)·l. With the numbers that fall out — d_c = 4·d_h, d_h^R = d_h/2 — that's (4 + 0.5)·d_h·l = 4.5·d_h·l per token. Compare: MHA is 2·n_h·d_h·l (with n_h=128 that's 256·d_h·l), MQA is 2·d_h·l, GQA is 2·n_g·d_h·l. So 4.5·d_h·l is the same cache as GQA with n_g = 2.25 groups — basically MQA-territory in size — yet I never collapsed the per-head content subspaces, so I expect MHA-level (or better) quality. That's the whole point: GQA's small-cache region forces tiny n_g and loses quality; here the small cache comes from compression, not from killing subspaces.
+Let me total the cache now. Per token per layer I cache c_t^{KV} (d_c elements) plus the shared k_t^R (d_h^R elements): (d_c + d_h^R)·l. With the numbers that fall out — d_c = 4·d_h, d_h^R = d_h/2 — that's (4 + 0.5)·d_h·l = 4.5·d_h·l per token. Compare: MHA is 2·n_h·d_h·l (with n_h=128 that's 256·d_h·l), MQA is 2·d_h·l, GQA is 2·n_g·d_h·l. So 4.5·d_h·l is the same cache as GQA with n_g = 2.25 groups — basically MQA-territory in size — yet I never collapsed the per-head content subspaces, so the quality target can stay at the MHA level. That's the whole point: GQA's small-cache region forces tiny n_g and loses quality; here the small cache comes from compression, not from killing subspaces.
 
 The softmax scaling needs a fix-up. Each head's query and key are now [content; rope] of total width d_h + d_h^R, so the dot product accumulates over d_h + d_h^R terms, and to keep the logits at unit scale I divide by √(d_h + d_h^R), not √d_h.
 
@@ -64,11 +64,11 @@ Let me assemble the full forward for one token t, the way it runs in training an
 
 Only the two boxed quantities — c_t^{KV} and k_t^R — are written to the cache. Everything else is reconstructed (training/prefill) or absorbed away (decode).
 
-A couple of stability details I'd want. These down-projections create narrow bottlenecks — d_c and d_c' are small relative to d — and a low-rank bottleneck can let the activation scale drift, so I'll put an RMSNorm right on the latents c^{KV} and c^Q before they're up-projected, to keep the reconstruction well-conditioned. And since the up-projection outputs are large activations I'd rather not store through the whole backward pass, in training I can recompute the up-projections during back-propagation rather than persisting their outputs — they're cheap to redo from the cached latents and that saves a chunk of activation memory. For long context, the only thing carrying position is the small decoupled key k^R, so any RoPE-extension scheme (e.g. a YaRN-style rescaling) only needs to touch that branch — the content/compression branch is position-free and untouched.
+A couple of stability details I'd want. These down-projections create narrow bottlenecks — d_c and d_c' are small relative to d — and a low-rank bottleneck can let the activation scale drift, so I'll put an RMSNorm right on the latents c^{KV} and c^Q before they're up-projected, to keep the reconstruction well-conditioned. And since the up-projection outputs are large activations I'd rather not store through the whole backward pass, in training I can recompute the RMSNorms and up-projections during back-propagation rather than persisting their outputs. They are cheap to redo from the latents, and that saves a chunk of activation memory. For long context, the only place RoPE exists is the small decoupled branch, so any RoPE-extension scheme (e.g. a YaRN-style rescaling) only needs to touch that branch — the content/compression branch is position-free and untouched.
 
 For sizes: I'll take n_h = 128 heads of d_h = 128, a KV compression dimension d_c = 512 (= 4·d_h), a query compression dimension d_c' = 1536, and a decoupled per-head dimension d_h^R = 64 (= d_h/2). So a content head is 128-wide, the rope piece adds 64, the per-head q/k width is 192, and the value head is 128.
 
-Now to code. In a real implementation a few things get fused for efficiency, and tracking the fusions is the whole game. The query path is W^{DQ} → RMSNorm → a single matrix that produces *both* q^C and q^R per head (so its output width is n_h·(d_h + d_h^R)); I then split each head into the nope part (content, no RoPE) and the pe part (rope). On the KV side, the down-projection and the decoupled-key projection are fused into *one* linear whose output is the latent c^{KV} concatenated with the shared rope key k^R (width d_c + d_h^R) — that single matrix is W^{DKV} stacked with W^{KR}; I split its output into compressed_kv and k_pe. RMSNorm hits only the compressed_kv part. Then one fused up-projection W^{UK}/W^{UV} (output width n_h·(d_h + d_h^R_value... actually n_h·(qk_nope + v) ) takes the normalized latent to per-head k^C (nope) and v^C, which I split. RoPE is applied to the query pe part and the single shared k_pe (head dim 1, broadcast to all heads). Then I lay [q^C; q^R] and [k^C; k^R] into contiguous per-head vectors, scale by (d_h + d_h^R)^{-1/2}, softmax, weight the values, concat heads, and apply W^O.
+Now to code. In a real implementation a few things get fused for efficiency, and tracking the fusions is the whole game. The query path is W^{DQ} → RMSNorm → a single matrix that produces *both* q^C and q^R per head, so its output width is n_h·(d_h + d_h^R); I then split each head into the nope part (content, no RoPE) and the pe part (RoPE). On the KV side, the down-projection and the decoupled-key projection are fused into *one* linear whose output is the latent c^{KV} concatenated with the shared RoPE key k^R, width d_c + d_h^R. That single matrix is W^{DKV} stacked with W^{KR}; I split its output into compressed_kv and k_pe. RMSNorm hits only the compressed_kv part. Then one fused up-projection W^{UK}/W^{UV}, with output width n_h·(qk_nope_head_dim + v_head_dim), takes the normalized latent to per-head k^C and v^C, which I split. RoPE is applied to the query pe part and the single shared k_pe, with k_pe broadcast to all heads. Then I lay [q^C; q^R] and [k^C; k^R] into contiguous per-head vectors, scale by (d_h + d_h^R)^{-1/2}, softmax, weight the values, concat heads, and apply W^O.
 
 ```python
 import torch
@@ -83,17 +83,26 @@ class RMSNorm(nn.Module):
         self.eps = eps
 
     def forward(self, x):
-        x = x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
-        return x * self.weight
+        input_dtype = x.dtype
+        x = x.to(torch.float32)
+        variance = x.pow(2).mean(-1, keepdim=True)
+        x = x * torch.rsqrt(variance + self.eps)
+        return self.weight * x.to(input_dtype)
+
+
+def rotate_half(x):
+    x1 = x[..., : x.shape[-1] // 2]
+    x2 = x[..., x.shape[-1] // 2 :]
+    return torch.cat((-x2, x1), dim=-1)
 
 
 def apply_rope(x, cos, sin, position_ids):
-    # rotate coordinate pairs of x by position-dependent angles (relative-position property)
+    # Match the cached-cos/sin permutation used by the decoder implementation.
     cos = cos[position_ids].unsqueeze(1)
     sin = sin[position_ids].unsqueeze(1)
-    x1, x2 = x[..., 0::2], x[..., 1::2]
-    rot = torch.stack((-x2, x1), dim=-1).reshape_as(x)
-    return x * cos + rot * sin
+    bsz, n_heads, seq_len, head_dim = x.shape
+    x = x.view(bsz, n_heads, seq_len, head_dim // 2, 2).transpose(4, 3).reshape_as(x)
+    return (x * cos) + (rotate_half(x) * sin)
 
 
 class MultiHeadLatentAttention(nn.Module):
@@ -101,6 +110,7 @@ class MultiHeadLatentAttention(nn.Module):
         super().__init__()
         self.hidden_size = config.hidden_size           # d
         self.num_heads = config.num_attention_heads     # n_h
+        self.attention_dropout = config.attention_dropout
         self.q_lora_rank = config.q_lora_rank           # d_c'  (query compression)
         self.kv_lora_rank = config.kv_lora_rank         # d_c   (KV compression)  -> the only "big" cache
         self.qk_nope_head_dim = config.qk_nope_head_dim # d_h   (content key/query part, absorbable)
@@ -109,7 +119,8 @@ class MultiHeadLatentAttention(nn.Module):
         self.q_head_dim = self.qk_nope_head_dim + self.qk_rope_head_dim  # per-head q/k width
 
         # --- query path: W^{DQ} -> RMSNorm -> fused W^{UQ}/W^{QR} (produces nope+rope per head) ---
-        self.q_a_proj = nn.Linear(self.hidden_size, self.q_lora_rank, bias=False)   # W^{DQ}
+        self.q_a_proj = nn.Linear(
+            self.hidden_size, self.q_lora_rank, bias=config.attention_bias)         # W^{DQ}
         self.q_a_layernorm = RMSNorm(self.q_lora_rank)                              # norm on c^Q
         self.q_b_proj = nn.Linear(self.q_lora_rank,
                                   self.num_heads * self.q_head_dim, bias=False)     # [W^{UQ}; W^{QR}]
@@ -117,14 +128,14 @@ class MultiHeadLatentAttention(nn.Module):
         # --- KV path: fused W^{DKV}/W^{KR} (latent c^{KV} ++ shared rope key k^R) ---
         self.kv_a_proj_with_mqa = nn.Linear(self.hidden_size,
                                             self.kv_lora_rank + self.qk_rope_head_dim,
-                                            bias=False)                            # [W^{DKV}; W^{KR}]
+                                            bias=config.attention_bias)             # [W^{DKV}; W^{KR}]
         self.kv_a_layernorm = RMSNorm(self.kv_lora_rank)                           # norm on c^{KV}
         self.kv_b_proj = nn.Linear(self.kv_lora_rank,
                                    self.num_heads * (self.qk_nope_head_dim + self.v_head_dim),
                                    bias=False)                                     # [W^{UK}; W^{UV}]
 
         self.o_proj = nn.Linear(self.num_heads * self.v_head_dim,
-                                self.hidden_size, bias=False)                      # W^O
+                                self.hidden_size, bias=config.attention_bias)       # W^O
         # logits accumulate over content+rope dims -> scale by 1/sqrt(d_h + d_h^R)
         self.softmax_scale = self.q_head_dim ** -0.5
 
@@ -158,13 +169,15 @@ class MultiHeadLatentAttention(nn.Module):
         key_states = torch.cat([k_nope, k_pe.expand(-1, self.num_heads, -1, -1)], dim=-1)
 
         if past_key_value is not None:
-            # decode: the durable cache is exactly compressed_kv (d_c) + k_pe (d_h^R)
+            # The generic eager cache stores reconstructed tensors; the compressed
+            # decode path stores compressed_kv plus k_pe after the absorption above.
             key_states, value_states = past_key_value.update(key_states, value_states)
 
         scores = torch.matmul(query_states, key_states.transpose(2, 3)) * self.softmax_scale
         if attention_mask is not None:
             scores = scores + attention_mask
         probs = F.softmax(scores, dim=-1, dtype=torch.float32).to(query_states.dtype)
+        probs = F.dropout(probs, p=self.attention_dropout, training=self.training)
 
         out = torch.matmul(probs, value_states)                    # per-head outputs o_{t,i}
         out = out.transpose(1, 2).reshape(bsz, q_len, self.num_heads * self.v_head_dim)

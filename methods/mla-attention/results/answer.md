@@ -31,7 +31,7 @@ Let `h_t ∈ R^d` be the layer input, `n_h` heads of content width `d_h`, decoup
 
 **Cache:** `(d_c + d_h^R)·l` per token. With `d_c = 4 d_h`, `d_h^R = d_h/2`, that is `4.5·d_h·l` — equal to GQA with 2.25 groups, far below MHA's `2 n_h d_h l`, while keeping full per-head content subspaces.
 
-**Sizes used at scale:** `n_h=128`, `d_h=128`, `d_c=512`, `d_c'=1536`, `d_h^R=64`. RMSNorm is applied to the latents `c^{KV}`, `c^Q` (the narrow bottlenecks); up-projections may be recomputed in back-prop to save activation memory; long-context RoPE rescaling (e.g. YaRN) touches only the decoupled key `k^R`.
+**Sizes used at scale:** `n_h=128`, `d_h=128`, `d_c=512`, `d_c'=1536`, `d_h^R=64`. RMSNorm is applied to the latents `c^{KV}`, `c^Q` (the narrow bottlenecks); RMSNorms and up-projections may be recomputed in back-prop to save activation memory; long-context RoPE rescaling touches only the small decoupled RoPE branch.
 
 ## Code
 
@@ -48,16 +48,25 @@ class RMSNorm(nn.Module):
         self.eps = eps
 
     def forward(self, x):
-        x = x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
-        return x * self.weight
+        input_dtype = x.dtype
+        x = x.to(torch.float32)
+        variance = x.pow(2).mean(-1, keepdim=True)
+        x = x * torch.rsqrt(variance + self.eps)
+        return self.weight * x.to(input_dtype)
+
+
+def rotate_half(x):
+    x1 = x[..., : x.shape[-1] // 2]
+    x2 = x[..., x.shape[-1] // 2 :]
+    return torch.cat((-x2, x1), dim=-1)
 
 
 def apply_rope(x, cos, sin, position_ids):
     cos = cos[position_ids].unsqueeze(1)
     sin = sin[position_ids].unsqueeze(1)
-    x1, x2 = x[..., 0::2], x[..., 1::2]
-    rot = torch.stack((-x2, x1), dim=-1).reshape_as(x)
-    return x * cos + rot * sin
+    bsz, n_heads, seq_len, head_dim = x.shape
+    x = x.view(bsz, n_heads, seq_len, head_dim // 2, 2).transpose(4, 3).reshape_as(x)
+    return (x * cos) + (rotate_half(x) * sin)
 
 
 class MultiHeadLatentAttention(nn.Module):
@@ -65,6 +74,7 @@ class MultiHeadLatentAttention(nn.Module):
         super().__init__()
         self.hidden_size = config.hidden_size
         self.num_heads = config.num_attention_heads
+        self.attention_dropout = config.attention_dropout
         self.q_lora_rank = config.q_lora_rank           # d_c'
         self.kv_lora_rank = config.kv_lora_rank         # d_c  -> the cached latent
         self.qk_nope_head_dim = config.qk_nope_head_dim # d_h   (content, absorbable)
@@ -73,19 +83,20 @@ class MultiHeadLatentAttention(nn.Module):
         self.q_head_dim = self.qk_nope_head_dim + self.qk_rope_head_dim
 
         # query: W^{DQ} -> RMSNorm -> fused [W^{UQ}; W^{QR}]
-        self.q_a_proj = nn.Linear(self.hidden_size, self.q_lora_rank, bias=False)
+        self.q_a_proj = nn.Linear(self.hidden_size, self.q_lora_rank, bias=config.attention_bias)
         self.q_a_layernorm = RMSNorm(self.q_lora_rank)
         self.q_b_proj = nn.Linear(self.q_lora_rank, self.num_heads * self.q_head_dim, bias=False)
 
         # KV: fused [W^{DKV}; W^{KR}] -> latent ++ shared rope key
         self.kv_a_proj_with_mqa = nn.Linear(
-            self.hidden_size, self.kv_lora_rank + self.qk_rope_head_dim, bias=False)
+            self.hidden_size, self.kv_lora_rank + self.qk_rope_head_dim, bias=config.attention_bias)
         self.kv_a_layernorm = RMSNorm(self.kv_lora_rank)
         self.kv_b_proj = nn.Linear(
             self.kv_lora_rank,
             self.num_heads * (self.qk_nope_head_dim + self.v_head_dim), bias=False)  # [W^{UK}; W^{UV}]
 
-        self.o_proj = nn.Linear(self.num_heads * self.v_head_dim, self.hidden_size, bias=False)
+        self.o_proj = nn.Linear(
+            self.num_heads * self.v_head_dim, self.hidden_size, bias=config.attention_bias)
         self.softmax_scale = self.q_head_dim ** -0.5
 
     def forward(self, hidden_states, cos, sin, position_ids,
@@ -113,17 +124,18 @@ class MultiHeadLatentAttention(nn.Module):
         key_states = torch.cat([k_nope, k_pe.expand(-1, self.num_heads, -1, -1)], dim=-1)
 
         if past_key_value is not None:
-            # durable cache = compressed_kv (d_c) + k_pe (d_h^R)
+            # Generic eager caches store reconstructed tensors.
             key_states, value_states = past_key_value.update(key_states, value_states)
 
         scores = torch.matmul(query_states, key_states.transpose(2, 3)) * self.softmax_scale
         if attention_mask is not None:
             scores = scores + attention_mask
         probs = F.softmax(scores, dim=-1, dtype=torch.float32).to(query_states.dtype)
+        probs = F.dropout(probs, p=self.attention_dropout, training=self.training)
 
         out = torch.matmul(probs, value_states)
         out = out.transpose(1, 2).reshape(bsz, q_len, self.num_heads * self.v_head_dim)
         return self.o_proj(out)
 ```
 
-This eager forward materializes K/V for training/prefill; at decode the `kv_b_proj` up-projections fold into `q_b_proj` (keys) and `o_proj` (values), so only `compressed_kv` and `k_pe` are read from the cache.
+This eager forward materializes K/V for training/prefill and for a generic reconstructed-tensor cache. In the compressed decode path, the `kv_b_proj` up-projections fold into the query and output projections, so the durable cache is `compressed_kv` plus the rotated `k_pe`.

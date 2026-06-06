@@ -60,11 +60,11 @@ non-differentiable in `r, c, M`, and the chosen vertex brittle — a small pertu
 different vertex.
 
 **When the LP optimum is a metric.** `d_M(r,c)` satisfies the distance axioms when `M` is itself a
-metric matrix — `M` in the cone of distance matrices `{M ∈ R^{d×d}_+ : m_ii = 0, m_ij ≤ m_ik + m_kj}`
-(Villani, *Optimal Transport: Old and New*, §6.1). The classical proof of the triangle inequality
-goes through the **gluing lemma** (Villani, *Topics in Optimal Transportation*, Lemma 7.6): given a
-coupling of `(x,y)` and one of `(y,z)`, one can "glue" them along the shared `y` marginal into a
-coupling of `(x,z)` whose cost is bounded by the sum.
+metric matrix — nonnegative, symmetric, zero on the diagonal, and satisfying
+`m_ij ≤ m_ik + m_kj` (Villani, *Optimal Transport: Old and New*, §6.1). The classical proof of the
+triangle inequality goes through the **gluing lemma** (Villani, *Topics in Optimal Transportation*,
+Lemma 7.6): given a coupling of `(x,y)` and one of `(y,z)`, one can "glue" them along the shared `y`
+marginal into a coupling of `(x,z)` whose cost is bounded by the sum.
 
 **The maximum-entropy principle.** Jaynes (1957) and, in the regularized-estimation form,
 Dudík & Schapire (2006): when many configurations are compatible with the constraints, prefer the
@@ -72,13 +72,15 @@ one of maximum entropy — the least committal, most plausible. Applied here: at
 cost, the smoothest (highest-entropy) plan is a more *robust* description of how mass moves than the
 brittle vertex plan.
 
-**Matrix scaling — Sinkhorn & Knopp (1967).** For a nonnegative matrix `A` with *total support* (it
-has at least one positive diagonal, i.e. its nonzero pattern admits a perfect matching), there exist
-diagonal matrices `D₁, D₂` with positive diagonals such that `D₁ A D₂` has prescribed positive row
-sums and column sums, and the scaling is **unique**; moreover the simple iterative procedure of
-alternately rescaling the rows to the target row sums and the columns to the target column sums
-**converges** to it (Sinkhorn & Knopp, *Pacific J. Math.* 21:343–348). When `A > 0` total support is
-automatic. The same alternating-fit iteration appeared independently many times — iterative
+**Matrix scaling — Sinkhorn & Knopp (1967).** For a nonnegative matrix `A` whose positive entries
+have enough support (in particular, every positive entry lies on a positive diagonal; strictly
+positive `A` is the simple case), there exist positive diagonal scalings `D₁, D₂` such that
+`D₁ A D₂` has prescribed positive row sums and column sums. The scaled matrix is unique, and the
+diagonal factors are unique up to the reciprocal rescaling `D₁ -> sD₁`, `D₂ -> D₂/s`. Moreover the
+simple iterative procedure of alternately rescaling the rows to the target row sums and the columns
+to the target column sums **converges** to it (Sinkhorn & Knopp, *Pacific J. Math.* 21:343–348).
+When `A > 0` the support condition is automatic. The same alternating-fit iteration appeared
+independently many times — iterative
 proportional fitting (Deming & Stephan 1940), the RAS method (Bacharach 1965), and, in
 transportation economics, the **gravity model** for estimating origin–destination flows
 (Erlander & Stewart, *The Gravity Model in Transportation Analysis*). Knight (2008) gives a modern
@@ -134,31 +136,32 @@ penalty buys both regularity *and* a cheap, well-behaved distance.
 ## Code framework
 
 What already exists: dense linear algebra (`numpy` / GPU array libraries), elementwise vector ops,
-and exact LP transportation solvers to call as a reference. The pieces below are the slots a fast
-histogram-distance routine would fill in.
+and exact LP transportation solvers to use as a slow baseline. The pieces below are the empty slots
+for a fast smooth histogram-distance routine.
 
 ```python
 import numpy as np
 
 def emd(a, b, M):
-    """Exact transportation LP via network simplex — the slow reference.
+    """Exact transportation LP via network simplex.
     Returns a vertex plan with <= 2d-1 nonzeros. Cost ~ O(d^3 log d)."""
-    ...  # provided by an external min-cost-flow / network-simplex solver
-
-def transport_plan(a, b, M, ...):
-    """Find a transport plan P with row sums a, column sums b, given ground cost M,
-    that is cheap to compute, smooth in its inputs, and parallelizable over many b at once.
-    """
-    # TODO: this is the slot the method fills.
-    # Known building blocks we are allowed to assume:
-    #   K = ...            # TODO: some fixed matrix built from M (to be derived)
-    #   u, v = ...         # TODO: scaling vectors found by an iteration (to be derived)
-    #   return ...         # TODO: assemble P from K, u, v
     pass
 
-def transport_cost(a, b, M, ...):
-    """Scalar distance = <P, M> for the plan above; vectorizable over a family of targets."""
-    # TODO: P = transport_plan(...); return sum(P * M)
+def transport_plan(a, b, M, regularization, num_iter=1000, stop_thr=1e-9):
+    """Find a smooth transport plan P with row sums a and column sums b.
+    b is one target histogram.
+    """
+    # TODO: choose the regularized objective and the fast solver.
+    pass
+
+def transport_cost(a, b, M, regularization, num_iter=1000, stop_thr=1e-9):
+    """Return <P, M>; b may be one target or a matrix of target histograms."""
+    # TODO: fill the same solver without materializing every plan when b has many columns.
+    pass
+
+def stable_transport_plan(a, b, M, regularization, num_iter=1000, stop_thr=1e-9):
+    """Numerically stable version for sharper, smaller-regularization plans."""
+    # TODO: carry the same fixed point in stabilized arithmetic.
     pass
 ```
 

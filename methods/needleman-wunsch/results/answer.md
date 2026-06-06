@@ -23,15 +23,15 @@ Boundary (global alignment charges leading gaps):
 The maximum match is F(n,m). Record, per cell, which term won; traceback from (n,m) to (0,0) emits the alignment columns (diagonal → paired, down → gap opposite aᵢ, right → gap opposite bⱼ), reversed.
 
 Variants on the same lattice:
-- **Affine gaps (Gotoh):** a length-g gap costs `open + (g−1)·extend`, so one long indel beats many short ones. Keep three tables — M (ends in match), Iₓ (ends in gap consuming A), I_y (ends in gap consuming B):
+- **Affine gaps:** a length-g gap costs `open + (g−1)·extend`, so one long indel is favored over many separate short indels. Keep three tables — M (ends in match), X (ends with Aᵢ opposite a gap in B), Y (ends with Bⱼ opposite a gap in A):
 
-  M(i,j)  = s(aᵢ,bⱼ) + max( M(i−1,j−1), Iₓ(i−1,j−1), I_y(i−1,j−1) )
-  Iₓ(i,j) = max( M(i−1,j) − open,  Iₓ(i−1,j) − extend )
-  I_y(i,j) = max( M(i,j−1) − open,  I_y(i,j−1) − extend )
+  M(i,j) = s(aᵢ,bⱼ) + max( M(i−1,j−1), X(i−1,j−1), Y(i−1,j−1) )
+  X(i,j) = max( M(i−1,j) − open,  Y(i−1,j) − open,  X(i−1,j) − extend )
+  Y(i,j) = max( M(i,j−1) − open,  X(i,j−1) − open,  Y(i,j−1) − extend )
 
-  answer = max(M,Iₓ,I_y) at (n,m); still O(nm).
+  answer = max(M,X,Y) at (n,m); still O(nm).
 - **Edit distance (Levenshtein):** the minimization dual — score match 0, mismatch/gap 1, minimize; `F(i,0)=i`, `F(0,j)=j`.
-- **Local alignment (Smith–Waterman):** add a `0` option, `H(i,j)=max(0, …)`, init first row/col to 0, traceback from the global-max cell to the first 0.
+- **Local alignment:** add a `0` option, `H(i,j)=max(0, …)`, init first row/col to 0, traceback from the global-max cell to the first 0.
 
 ## Code
 
@@ -90,7 +90,7 @@ def align(seqA, seqB, gap=GAP, score=score_pair):
 # crude identity scoring; for real use, pass a substitution-matrix `score`.
 ```
 
-Affine-gap variant (Gotoh), three tables, one O(nm) pass:
+Affine-gap variant, three tables, one O(nm) pass:
 
 ```python
 NEG = float('-inf')
@@ -98,8 +98,8 @@ NEG = float('-inf')
 def align_affine(seqA, seqB, gap_open=2.0, gap_extend=0.5, score=score_pair):
     n, m = len(seqA), len(seqB)
     M  = [[NEG] * (m + 1) for _ in range(n + 1)]   # ends in match/mismatch
-    Ix = [[NEG] * (m + 1) for _ in range(n + 1)]   # ends in gap consuming A
-    Iy = [[NEG] * (m + 1) for _ in range(n + 1)]   # ends in gap consuming B
+    Ix = [[NEG] * (m + 1) for _ in range(n + 1)]   # ends with A aligned to a gap
+    Iy = [[NEG] * (m + 1) for _ in range(n + 1)]   # ends with B aligned to a gap
     M[0][0] = 0.0
     for i in range(1, n + 1):
         Ix[i][0] = -gap_open - (i - 1) * gap_extend
@@ -109,16 +109,20 @@ def align_affine(seqA, seqB, gap_open=2.0, gap_extend=0.5, score=score_pair):
         for j in range(1, m + 1):
             s = score(seqA[i-1], seqB[j-1])
             M[i][j]  = s + max(M[i-1][j-1], Ix[i-1][j-1], Iy[i-1][j-1])
-            Ix[i][j] = max(M[i-1][j] - gap_open, Ix[i-1][j] - gap_extend)
-            Iy[i][j] = max(M[i][j-1] - gap_open, Iy[i][j-1] - gap_extend)
+            Ix[i][j] = max(M[i-1][j] - gap_open,
+                           Iy[i-1][j] - gap_open,
+                           Ix[i-1][j] - gap_extend)
+            Iy[i][j] = max(M[i][j-1] - gap_open,
+                           Ix[i][j-1] - gap_open,
+                           Iy[i][j-1] - gap_extend)
     return max(M[n][m], Ix[n][m], Iy[n][m])
 ```
 
-The widely used library form is `Bio.pairwise2` / `Bio.Align.PairwiseAligner` in Biopython, whose generic global routine implements exactly this score-plus-traceback table fill (with general gap functions and optional non-penalized end gaps); the code above mirrors that structure.
+The Biopython `pairwise2` implementation uses this score-matrix plus traceback structure, with general gap functions and optional non-penalized end gaps; the code above mirrors that structure.
 
 ## Complexity and properties
 
 - Time and space O(nm); the optimum is exact (no heuristic).
-- The optimization is independent of the scoring policy: identity, codon-correspondence, or empirical substitution matrices (the PAM/BLOSUM lineage) all drop into `s(·,·)`.
+- The optimization is independent of the scoring policy: identity, codon-correspondence, or empirical substitution matrices from the PAM lineage all drop into `s(·,·)`.
 - The gap penalty `d` is a barrier: `d→∞` forbids gaps (pure diagonal comparison), `d=0` makes gaps free; affine `open/extend` models indels as single multi-residue events.
 - Significance of a maximum match is assessed against scores of randomly shuffled sequences (composition preserved), summarized as a z-score.

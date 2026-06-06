@@ -33,7 +33,8 @@ in Φ; α sets how fast perturbations to the cycle decay; `r_j` scales each leg'
 "alive" its oscillator is.
 
 **Cartesian variant with independent swing/stance frequencies and feedback** (the form used to
-decouple the two half-durations and to inject touch-sensor feedback). With `r² = x² + y²`:
+decouple the two half-durations and to inject touch-sensor feedback). Here `y > 0` denotes stance
+and `y < 0` denotes swing; with `r² = x² + y²`:
 
     ẋ_i = α (μ − r_i²) x_i − ω_i y_i
     ẏ_i = β (μ − r_i²) y_i + ω_i x_i + Σ_j k_ij y_j + u_i
@@ -44,7 +45,7 @@ while keeping `x` (the joint command) smooth. The coupling matrix `k_ij` is desi
 coupled-cell theory (H/K theorem) so exactly the desired gait is the stable symmetric solution.
 Foot-contact feedback enters `y` only:
 
-    u_i = −sign(y_i) F                    # fast transition: drive y → 0 (delay ≈ y/F)
+    u_i = −sign(y_i) F                    # fast transition: drive y → 0 (delay ≈ |y|/F)
     u_i = −ω_i x_i − Σ_j k_ij y_j         # stop & wait at boundary: ẋ=ẏ=0 at y=0, x=±√μ
     u_i = 0                               # otherwise
 

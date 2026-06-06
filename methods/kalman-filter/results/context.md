@@ -1,5 +1,3 @@
-# Context: estimating the state of a dynamic system from noisy data (circa 1959)
-
 ## Research question
 
 A physical system evolves in time — the position and velocity of a tracked object, the
@@ -39,8 +37,9 @@ loss `E{L[x(t1) − x̂(t1)] | y(t0), …, y(t)}`.
 **Conditional expectation as the optimal estimate.** Under a squared-error loss `L(ε)=ε²`, the
 estimate minimizing expected loss is the conditional mean `x̂ = E[x(t1) | y(t0), …, y(t)]` — a
 classical fact in probability theory (Doob, *Stochastic Processes*, pp. 77–78). More generally, if the
-conditional distribution is symmetric and convex below its mean (which holds for any symmetric
-unimodal loss in the Gaussian case), the conditional mean is optimal for that whole class of losses.
+conditional distribution is symmetric about its mean and convex on the lower side in the sense used by
+Sherman's loss theorem, that same conditional mean is optimal for any even loss that grows with
+`|ε|`; Gaussian conditional distributions satisfy these requirements.
 
 **The orthogonality principle.** Among all *linear* functions of the observations, the one minimizing
 mean-squared error is the **orthogonal projection** of the unknown onto the linear span `Y(t)` of the
@@ -140,17 +139,18 @@ step. Sensor noise covariance is something one can sample offline by exercising 
 ## Code framework
 
 What already exists: linear-algebra primitives (matrix multiply, transpose, inverse) and a sampled
-linear-system model. Given the model matrices and noise covariances, we want to iterate a belief about
-the state forward and fold in measurements. The slots the method will occupy are left empty.
+linear-system model. Given the model matrices and noise covariances, we need a recursive estimator
+that carries some summary of the hidden state, advances that summary through the dynamics, and folds
+in each measurement.
 
 ```python
 import numpy as np
 
 class LinearGaussianModel:
-    """A sampled linear system  x_{k+1} = F x_k + w,  z_k = H x_k + v,
+    """A sampled linear system  x_{k+1} = F x_k + B u_k + w,  z_k = H x_k + v,
     with  w ~ N(0, Q),  v ~ N(0, R)  independent and white."""
-    def __init__(self, F, H, Q, R):
-        self.F, self.H, self.Q, self.R = F, H, Q, R
+    def __init__(self, F, H, Q, R, B=None):
+        self.F, self.H, self.Q, self.R, self.B = F, H, Q, R, B
 
 class StateBelief:
     """Whatever we carry forward to summarize what is known about x_k.
@@ -162,7 +162,7 @@ class StateBelief:
 def time_update(belief, model, u=None):
     """Advance the belief from step k-1 to step k using only the dynamics,
     before seeing the new measurement.
-    TODO: propagate the estimate and its uncertainty through F and the noise w."""
+    TODO: propagate the summary through F, optional B u, and the noise w."""
     pass
 
 def measurement_update(belief, model, z):

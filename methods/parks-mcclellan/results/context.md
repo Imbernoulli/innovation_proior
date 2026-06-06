@@ -54,7 +54,7 @@ truncation of the ideal impulse response (a rectangular window) suffers the **Gi
 roughly **9% overshoot** at the band edge that does **not** shrink as `N` grows — increasing `N`
 only narrows the "ears," never lowers them. So the rectangular window minimizes the
 integral-squared error but is *not optimal by the minimax criterion*: its worst-case ripple is
-stuck. Tapered windows (Hamming `0.54 + 0.46 cos(2πn/N)`, with peak sidelobe ~40 dB down; Blackman,
+stuck. Tapered windows (Hamming `0.54 - 0.46 cos(2πn/(N-1))`, with peak sidelobe ~40 dB down; Blackman,
 sidelobes < 0.0001 of the main-lobe peak at the cost of a 3× wider main lobe; Kaiser/Dolph–Chebyshev
 windows that trade ripple against transition width) tame the ripple but still do not *minimize* it,
 and they offer **no direct handle on the band-edge frequencies** — the cutoff is wherever the
@@ -63,7 +63,7 @@ windowed sum happens to put it.
 ## Baselines
 
 **Window method.** Take the ideal (doubly infinite) impulse response `h_d(n)` — for a lowpass cut
-at `ω_c`, `h_d(n) = sin(ω_c n)/(πn)` — truncate it to `N` samples by multiplying by a window `w(n)`,
+at `ω_c`, `h_d(n) = sin(ω_c n)/(πn)` with limiting value `ω_c/π` at `n=0` — truncate it to `N` samples by multiplying by a window `w(n)`,
 and delay to make it causal. In the frequency domain this convolves the ideal brick wall with the
 window's Fourier transform; the window's main-lobe width sets the transition width and its sidelobes
 set the ripple. **Limitation:** the worst-case ripple is governed by the window, not optimized; for
@@ -109,33 +109,27 @@ taps are within scope.
 
 ## Code framework
 
-The primitives that already exist: forming the ideal impulse response, evaluating a real trig
-amplitude on a dense frequency grid, Lagrange interpolation, and the (inverse) DFT. The pre-method
-skeleton is just "set up the weighted approximation problem on a grid, hand it to some solver that
-returns optimal coefficients, fold those into a symmetric impulse response." The solver core is the
-one empty slot.
+The available primitives are forming the ideal impulse response, evaluating a real trigonometric
+amplitude on a dense frequency grid, solving finite interpolation systems, and using the DFT or
+inverse DFT. The scaffold is: set up the weighted approximation problem on the prescribed bands,
+send the amplitude fit to one solver slot, then fold the returned coefficients into a symmetric or
+antisymmetric impulse response.
 
 ```python
 import numpy as np
 
 def desired_and_weight(grid, bands, desired, weight):
     """Sample the desired amplitude D(f) and weight W(f) on a dense frequency grid.
-    Pre-method primitive: piecewise-constant lookup over the prescribed bands."""
+    Piecewise-constant lookup over the prescribed bands."""
     D = np.empty_like(grid); W = np.empty_like(grid)
     # ... fill D, W per band (and leave transition gaps out of the grid) ...
     return D, W
 
-def lagrange_eval(nodes, values, weights, xq):
-    """Barycentric Lagrange interpolation of a trig polynomial at query points.
-    Pre-method primitive."""
-    pass  # standard barycentric formula
-
 def fit_amplitude(grid, D, W, num_cos):
-    """THE SLOT THE METHOD FILLS.
-    Find the length-`num_cos` cosine amplitude that is best in the weighted
+    """Find the length-`num_cos` cosine amplitude that is best in the weighted
     worst-case (minimax) sense for desired D under weight W on `grid`.
     Returns the cosine coefficients and the achieved error level."""
-    # TODO: the optimal-approximation engine we are about to design
+    # TODO: choose and implement the optimal-approximation engine
     pass
 
 def design_fir(numtaps, bands, desired, weight=None, grid_density=16):

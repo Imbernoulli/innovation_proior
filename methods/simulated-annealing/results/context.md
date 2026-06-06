@@ -11,15 +11,16 @@ minimizes total distance. The same flavor of problem pervades scheduling, layout
 design of computers (partitioning gates between chips, placing components, routing wires), where
 the number of variables runs into the tens of thousands.
 
-The difficulty is structural. The traveling-salesman problem is NP-complete: every known exact
-method needs effort that grows exponentially with `N`, so exact solution is feasible only up to a
-few hundred cities. For problems of practical size there is no hope of enumerating or exactly
-solving; one must settle for heuristics that find good configurations with effort that scales as a
-small power of `N`. A solution would have to (1) work on a generic cost function presented as a
-black box — evaluate `f`, propose rearrangements — without bespoke problem-specific theory; (2)
-reliably avoid being trapped in the poor local minima that defeat the obvious heuristic; and (3)
-scale to very large `N`. No existing heuristic meets all three at once: the standard ones either
-get stuck or are narrowly tailored to one problem.
+The difficulty is structural. The decision version of the traveling-salesman problem is
+NP-complete, and the optimization version is NP-hard: every known exact method needs effort that
+grows exponentially with `N`, so exact solution is feasible only up to modest sizes. For problems of
+practical size there is no hope of enumerating or exactly solving; one must settle for heuristics
+that find good configurations with effort that scales as a small power of `N`. A solution would have
+to (1) work on a generic cost function presented as a black box — evaluate `f`, propose
+rearrangements — without bespoke problem-specific theory; (2) reliably avoid being trapped in the
+poor local minima that defeat the obvious heuristic; and (3) scale to very large `N`. No existing
+heuristic meets all three at once: the standard ones either get stuck or are narrowly tailored to one
+problem.
 
 ## Background
 
@@ -30,8 +31,7 @@ the division is a good one, so that errors made at the seams do not eat the gain
 intertwined problem the right division is itself unclear. The second is **iterative improvement**,
 also called local search or hill-climbing.
 
-The field state, framed by these heuristics, rests on a few load-bearing facts knowable before any
-new method exists:
+The field state, framed by these heuristics, rests on a few load-bearing facts:
 
 - **The cost is a function of a discrete configuration, and its landscape is rugged.** For
   combinatorial problems `f` typically has enormous numbers of local minima — configurations from
@@ -134,27 +134,37 @@ boundary, plus a balance penalty), component placement (metric: total wire lengt
 penalties), and wire routing (metric: wire density / congestion along links). A configuration is
 represented compactly — a permuted list of city indices for a tour, a `±1` assignment per gate for
 a partition — and a move is a local rearrangement of that representation (swap or reverse a segment
-of the tour; flip one gate to the other chip). The yardstick against which any new method is
-measured is the quality reached by iterative improvement and greedy heuristics under comparable
-computational budgets, and how the required effort scales with `N`.
+of the tour; flip one gate to the other chip). The natural yardstick is the quality reached by
+iterative improvement and greedy heuristics under comparable computational budgets, and how the
+required effort scales with `N`.
 
 ## Code framework
 
-The primitives that already exist: a way to represent a configuration, a cost function evaluated on
-it, a random-move operator that perturbs it, a uniform random-number source, and the Metropolis
-accept/reject test (accept downhill; accept uphill with probability `e^{-ΔE/T}`). What does not yet
-exist is the procedure that wraps the Metropolis test in a temperature that *changes over the run*.
-A pre-method scaffold for a generic minimizer over a black-box configuration:
+The primitives that already exist: a mutable representation of a configuration, a cost function
+evaluated on it, a random-move operator that perturbs it, a way to copy and restore a configuration,
+a uniform random-number source, and optional progress reporting. Metropolis also supplies a
+constant-control Markov transition for physical equilibrium sampling. A generic black-box optimizer
+still needs the search loop that decides whether non-improving moves are allowed, how the control
+parameter is chosen, how it changes, and when the run is considered finished.
 
 ```python
-import math, random
+import copy
 
-class Problem:
+class EnergySearchProblem:
     """A black-box optimization problem over a discrete configuration space.
     The user supplies the representation, the cost, and a random move."""
 
+    control_high = None
+    control_low = None
+    steps = None
+    updates = 100
+    copy_strategy = "deepcopy"
+    user_exit = False
+
     def __init__(self, initial_state):
-        self.state = initial_state
+        self.state = self.copy_state(initial_state)
+        self.best_state = None
+        self.best_energy = None
 
     def energy(self):
         """Cost of the current configuration. Lower is better."""
@@ -167,49 +177,39 @@ class Problem:
         # TODO: problem-specific neighbor proposal
         raise NotImplementedError
 
+    def copy_state(self, state):
+        """Return an independent copy of a configuration."""
+        if self.copy_strategy == "deepcopy":
+            return copy.deepcopy(state)
+        if self.copy_strategy == "slice":
+            return state[:]
+        if self.copy_strategy == "method":
+            return state.copy()
+        raise RuntimeError("unknown copy strategy")
 
-def metropolis_accept(dE, T):
-    """Accept a proposed move given its cost change dE at parameter T.
-    Downhill always; uphill with probability exp(-dE/T)."""
-    if dE <= 0.0:
-        return True
-    return random.random() < math.exp(-dE / T)
+    def set_controls(self, controls):
+        """Install externally chosen search controls."""
+        self.control_high = controls["high"]
+        self.control_low = controls["low"]
+        self.steps = int(controls["steps"])
+        self.updates = int(controls.get("updates", self.updates))
 
+    def update(self, step, control, energy, acceptance, improvement):
+        """Optional progress hook."""
+        pass
 
-def temperature_schedule(step, total_steps):
-    """Return the control parameter T to use at this step."""
-    # TODO: how T should vary across the run — the slot the method fills
-    raise NotImplementedError
+    def search(self):
+        """Return the best state and cost found."""
+        # TODO: fill in the transition rule, control schedule,
+        # best-state tracking, and stopping rule.
+        raise NotImplementedError
 
-
-def optimize(problem, total_steps):
-    """Search for a low-cost configuration of `problem`."""
-    best_state = problem.state          # track the best ever seen
-    best_energy = problem.energy()
-    E = best_energy
-    for step in range(total_steps):
-        T = temperature_schedule(step, total_steps)   # TODO: the schedule
-        prev_state = clone(problem.state)
-        prev_E = E
-        dE = problem.move()
-        if dE is None:
-            E = problem.energy()
-            dE = E - prev_E
-        else:
-            E += dE
-        if metropolis_accept(dE, T):
-            if E < best_energy:
-                best_state, best_energy = clone(problem.state), E
-        else:
-            problem.state, E = prev_state, prev_E   # restore
-    return best_state, best_energy
-
-
-def clone(state):
-    """Return an independent copy of a configuration."""
-    # TODO: copy strategy appropriate to the representation
-    raise NotImplementedError
+    def calibrate_controls(self, minutes, probes=2000):
+        """Explore the landscape and propose search controls."""
+        # TODO: estimate useful starting/ending controls and a run length.
+        raise NotImplementedError
 ```
 
-The empty slot is `temperature_schedule`: how the control parameter `T` should be set, and how it
-should change from the first step to the last, is exactly what the method must supply.
+The open slot is the controlled local-search loop: how to use occasional non-improving moves without
+turning the run into an aimless random walk, how to lower that allowance, and how to calibrate the
+endpoints.

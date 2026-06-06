@@ -1,5 +1,3 @@
-# Context: the cutting-stock problem and the tools available to attack it
-
 ## Research question
 
 A mill keeps standard stock lengths of a material — rolls of paper of width `L`, bars, sheets — in unlimited supply, each carrying a cost. Customers send in an *order*: a list of `m` requested lengths `ℓ₁, …, ℓ_m`, with `Nᵢ` pieces wanted of length `ℓᵢ`. To fill the order the mill repeatedly takes a stock length and cuts it crosswise into ordered pieces; whatever is left over is trim loss. The problem is to fill the whole order at minimum total cost of consumed stock (equivalently, when all stock lengths and costs are equal, to use the fewest stock pieces, i.e. minimize trim waste).
@@ -12,11 +10,11 @@ The difficulty is combinatorial. A single way of cutting one stock length into o
 
 **Why the model is intractable, stated precisely.** Two factors make this formulation impractical. First, the number `n` of pattern variables is huge — it grows combinatorially with the number `k` of stock lengths and the number `m` of requested lengths, so for any realistic order one cannot even write down, let alone store, the constraint matrix. Second, the variables are restricted to integers, and integer programs are hard in their own right. These two are separable: the integrality is a familiar obstacle handled by rounding or branching, whereas the sheer column count is the obstacle peculiar to this problem.
 
-**The LP relaxation and the simplex method.** Dropping the integrality restriction gives a linear program. For an order with large piece counts `Nᵢ`, an LP-optimal cutting plan is generally fractional, but rounding it up to integers raises the cost only by a small fraction of the total — and the LP cost is a valid lower bound, so the rounded plan is provably close to optimal. This makes the LP relaxation the right thing to solve. The simplex method walks from one basic feasible solution (a choice of `m` basic columns forming an invertible basis `B`) to a better neighbor. Its inner loop is *pricing*: it scans the non-basic columns for one whose entry would reduce the objective, brings it into the basis, and repeats until none remains. A standard simplification: when integrality is dropped, the demand slack variables can be removed, because any solution that over-fills a demand has an equal-cost solution that does not — so one may work with equality and `m` activities, or keep slacks (which can let a minimal solution use fewer than `m` activities, which helps the eventual rounding).
+**The LP relaxation and the simplex method.** Dropping the integrality restriction gives a linear program. For an order with large piece counts `Nᵢ`, an LP-optimal cutting plan is generally fractional, but rounding or solving a final integer master over the useful patterns changes only a small fraction of a large order in the intended regime. The LP cost is a valid lower bound, so it gives an a posteriori certificate for the integer plan's gap. This makes the LP relaxation the right thing to solve first. The simplex method walks from one basic feasible solution (a choice of `m` basic columns forming an invertible basis `B`) to a better neighbor. Its inner loop is *pricing*: it scans the non-basic columns for one whose entry would reduce the objective, brings it into the basis, and repeats until none remains. A standard simplification: when integrality is dropped, the demand slack variables can be removed, because any solution that over-fills a demand has an equal-cost solution that does not — so one may work with equality and `m` activities, or keep slacks (which can let a minimal solution use fewer than `m` activities, which helps the eventual rounding).
 
 **Reduced cost and LP duality.** The pricing test is the reduced cost. Given a basis `B` with cost row `c_B`, the simplex multipliers (dual prices) are `π = c_B B⁻¹`, one price `πᵢ` per demand row. A non-basic column `P = (a₁, …, a_m)` with direct cost `c` has reduced cost `c − πᵀP`; the column can improve the solution exactly when this is negative, i.e. when `πᵀP > c`. The vector `B⁻¹P` (the representation of the new column in the current basis) is computed as part of every simplex iteration, so the multipliers `π` are always on hand. The optimality certificate is dual feasibility: if no column has negative reduced cost — `πᵀP ≤ c` for *every* feasible column — the current basic solution is LP-optimal. This certificate refers to *all* columns, including the ones never listed; that is the hook a large-column method must exploit.
 
-**The knapsack problem and its dynamic-programming solution.** The knapsack problem packs items of given "size" and "value" into a capacity to maximize total value. Dantzig had given both a fast greedy rule (take items in decreasing value-to-size ratio) and an exact dynamic program. In the integer (unbounded) form, with capacity `x`, sizes `ℓ₁, …, ℓ_s`, values `b₁, …, b_s`, define `F_s(x)` as the best achievable value with the first `s` item types. Then `F_{s+1}(x) = max_{0 ≤ r ≤ ⌊x/ℓ_{s+1}⌋} { r·b_{s+1} + F_s(x − r ℓ_{s+1}) }`, filling a table up to the capacity. One pass to the largest capacity yields the optima for all smaller capacities at once.
+**The knapsack problem and its dynamic-programming solution.** The knapsack problem packs items of given "size" and "value" into a capacity to maximize total value. Dantzig had given both a fast greedy rule (take items in decreasing value-to-size ratio) and an exact dynamic program. In the integer unbounded form, after measuring lengths on an integer grid, define `F_s(x)` as the best achievable value with the first `s` item types, capacity `x`, sizes `ℓ₁, …, ℓ_s`, and values `b₁, …, b_s`. Then `F_{s+1}(x) = max_{0 ≤ r ≤ ⌊x/ℓ_{s+1}⌋} { r·b_{s+1} + F_s(x − r ℓ_{s+1}) }`, filling a table up to the capacity. One pass to the largest capacity yields the optima for all smaller capacities at once.
 
 **Column generation as a known move on adjacent problems.** Two prior pieces of work had already, in effect, *generated* columns instead of storing them. Ford and Fulkerson (Management Science, 1958), attacking maximal multi-commodity network flows, proposed a "specialized computing scheme that takes advantage of the structure": when the simplex method needs a new column (here, a path), solve a *shortest-path* subproblem to produce a useful one rather than carry all path-columns explicitly. Dantzig and Wolfe (1960) generalized this into a decomposition principle for linear programs with block structure: a master LP over a few extreme points of a subsystem, with the subsystem's own LP solved to price in new extreme points. In both, the pricing scan over a vast implicit column set is replaced by an optimization that *constructs* the most attractive column.
 
@@ -34,19 +32,14 @@ The natural instance is specified by a set of stock lengths `L₁, …, L_k` wit
 
 ## Code framework
 
-The primitives that already exist: an LP solver exposing both the primal optimum and the dual prices on each constraint (e.g. `scipy.optimize.linprog`, whose result carries `ineqlin.marginals`; or an OR-Tools `pywraplp` solver whose constraints expose `dual_value()`), and an integer solver capable of the small knapsack subproblem. The slots the method will occupy are left empty.
+The existing primitives are an LP solver exposing both the primal optimum and the dual prices on each constraint, such as `scipy.optimize.linprog` with `ineqlin.marginals`, plus an integer optimizer for small packing subproblems.
 
 ```python
 import numpy as np
-from scipy.optimize import linprog
+from scipy.optimize import Bounds, LinearConstraint, linprog, milp
 
 # Instance: stock width L, item lengths, demands.
 # L: float ; lengths: array[m] ; demand: array[m]
-
-def initial_patterns(L, lengths):
-    # A trivially feasible starting set of cutting patterns to seed the LP.
-    # TODO
-    pass
 
 def solve_master(patterns, demand):
     # LP over the CURRENT, restricted set of patterns:
@@ -55,18 +48,22 @@ def solve_master(patterns, demand):
     # TODO
     pass
 
-def solve_pricing(L, lengths, duals):
-    # Given the dual prices, FIND the single most attractive new pattern.
-    # TODO  (this is the slot the method's central subproblem fills)
-    pass
-
-def generate_columns(L, lengths, demand):
-    # Outer loop: seed -> solve restricted LP -> price -> maybe add a column -> repeat.
+def solve_pricing(stock_len, lengths, duals):
+    # Given the current simplex prices, search the feasible one-stock patterns.
     # TODO
     pass
 
-def round_to_integer(patterns, x_lp, demand):
-    # Turn the (possibly fractional) LP plan into an integer cutting plan.
+def column_generation(stock_len, lengths, demand, eps=1e-6):
+    # Seed simple one-item patterns, alternate master solve and candidate search.
+    # TODO
+    pass
+
+def solve_integer(patterns, demand):
+    # Turn the generated pattern pool into an integer cutting plan.
+    # TODO
+    pass
+
+def solve_cutting_stock(stock_len, lengths, demand):
     # TODO
     pass
 ```

@@ -23,11 +23,11 @@ The goal: shrink the per-token KV cache by a large factor — ideally an order o
 | C-Eval (5-shot, acc) | 30.0 | 37.7 | **42.9** |
 | CMMLU (5-shot, acc) | 34.6 | 38.4 | **43.5** |
 
-Full multi-head attention is uniformly best; collapsing keys and values onto fewer heads (GQA) is worse, and collapsing onto one (MQA) is worst. So the cheap routes to a small cache trade away accuracy in a way that shows up clearly on demanding evaluations — the pre-method fact that any cache-shrinking design must reckon with.
+Full multi-head attention is uniformly best; collapsing keys and values onto fewer heads (GQA) is worse, and collapsing onto one (MQA) is worst. So the cheap routes to a small cache trade away accuracy in a way that shows up clearly on demanding evaluations.
 
 ## Baselines
 
-**Multi-Query Attention — MQA (Shazeer, 2019).** Keep `n_h` separate query heads but let *all* of them share a *single* key head and a *single* value head. The KV cache shrinks from `2·n_h·d_h·l` to `2·d_h·l` per token — a factor of `n_h`. This is the most aggressive cut available by head-sharing and it directly relieves the bandwidth bottleneck. The gap it leaves: with only one key/value subspace, every head attends through the same low-rank lens; reported quality degrades (mild on easy tasks, pronounced on hard ones), and training can become unstable.
+**Multi-Query Attention — MQA (Shazeer, 2019).** Keep `n_h` separate query heads but let *all* of them share a *single* key head and a *single* value head. The KV cache shrinks from `2·n_h·d_h·l` to `2·d_h·l` per token — a factor of `n_h`. This is the most aggressive cut available by head-sharing and it directly relieves the bandwidth bottleneck. The gap it leaves: with only one key/value subspace, every head attends through the same low-rank lens; reported quality degrades, mildly on easy tasks and more sharply on harder ones.
 
 **Grouped-Query Attention — GQA (Ainslie et al., 2023).** Interpolate between MHA and MQA: partition the `n_h` query heads into `G` groups and give each group its own shared key/value head. `G = n_h` recovers MHA; `G = 1` recovers MQA. The cache is `2·n_g·d_h·l` per token (`n_g = G`), so `G` tunes the quality/memory trade-off. GQA also comes with an uptraining recipe — convert an existing MHA checkpoint by mean-pooling each group's key/value heads, then continue training with ~5% of the original pre-training compute. The gap it leaves: it is still strictly on the same Pareto frontier as MQA — to approach MHA quality you need `G` large, which means the cache stays large; you cannot have both small cache *and* MHA-level quality. Every head in a group still shares one key/value subspace.
 
@@ -44,7 +44,7 @@ The natural yardstick is a like-for-like comparison at fixed parameter and token
 
 ## Code framework
 
-The pre-existing scaffold is a standard decoder attention block: linear projections, a per-head scaled-dot-product attention, an output projection, RoPE applied to queries and keys, and an append-only KV cache for decoding. The mechanism that reduces the cache is not yet known — it occupies the empty slot below.
+The scaffold is a standard decoder attention block: linear projections, per-head scaled-dot-product attention, an output projection, RoPE applied to queries and keys, and an append-only KV cache for decoding. The key/value projection path is the empty slot.
 
 ```python
 import torch
@@ -52,7 +52,7 @@ import torch.nn as nn
 
 def apply_rope(x, cos, sin, position_ids):
     # rotate coordinate pairs by position-dependent angles (Su et al., 2021)
-    ...
+    pass
 
 class DecoderAttention(nn.Module):
     def __init__(self, config):
@@ -62,9 +62,8 @@ class DecoderAttention(nn.Module):
         self.head_dim = config.head_dim
 
         # Projections: queries / keys / values / output.
-        # The KEY/VALUE side is the slot we will redesign to shrink the cache.
         # TODO: define the query path
-        # TODO: define the key/value path (the contribution goes here)
+        # TODO: define the key/value path
         self.o_proj = nn.Linear(self.num_heads * self.head_dim,
                                 self.hidden_size, bias=False)
 
@@ -74,7 +73,6 @@ class DecoderAttention(nn.Module):
 
     def project_key_value(self, hidden_states):
         # TODO: produce per-head keys and values for this token.
-        # What gets WRITTEN INTO THE CACHE here is exactly what we must shrink.
         pass
 
     def forward(self, hidden_states, position_ids, past_key_value=None, attention_mask=None):

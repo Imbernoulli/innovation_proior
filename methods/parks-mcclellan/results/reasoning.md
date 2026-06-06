@@ -1,6 +1,6 @@
 I want a linear-phase FIR filter of a fixed length `N` that meets a magnitude spec — say a lowpass: gain 1 up to some passband edge, gain 0 past some stopband edge, with a transition gap between them I don't care about. And I want it to be as good as a length-`N` filter can possibly be. So before anything else I should be honest about what "as good as possible" means, because that single choice is going to decide the whole method.
 
-The way I'd build such a filter today is the window method. Take the ideal brick-wall lowpass, whose impulse response is the doubly-infinite sinc `h_d(n) = sin(ω_c n)/(π n)`, chop it down to `N` samples, and taper the ends with a window so the truncation isn't so violent. Let me think about what that actually buys me. Truncating to `N` samples and keeping the central `h_d(n)` is, term by term, the least-squares answer: if I want the `N`-tap response closest to the ideal in integral-squared error, I keep exactly the Fourier coefficients `h_d(n)` for `|n|≤M` and drop the rest, because the squared error is a sum of dropped-coefficient energies and I can't do better than dropping the smallest ones. Fine. So the rectangular window is *optimal in ISE*. But stare at what it does at the band edge. The truncation convolves the brick wall with the Dirichlet kernel (the transform of the rectangular window), and that produces the Gibbs phenomenon: a roughly 9% overshoot right at the discontinuity. And here's the thing that bugs me — that 9% doesn't go away as I make `N` larger. Longer filter, narrower "ears," same height. The worst-case ripple is *stuck* at about 9% no matter how many taps I spend.
+The obvious starting point is the window method. Take the ideal brick-wall lowpass, whose impulse response is the doubly-infinite sinc `h_d(n) = sin(ω_c n)/(π n)` away from the origin and `ω_c/π` at the origin, chop it down to `N` samples, and taper the ends with a window so the truncation isn't so violent. Let me think about what that actually buys me. Truncating to `N` samples and keeping the central `h_d(n)` is, term by term, the least-squares answer: if I want the `N`-tap response closest to the ideal in integral-squared error, I keep exactly the Fourier coefficients `h_d(n)` for `|n|≤M` and drop the rest, because the squared error is a sum of dropped-coefficient energies and I can't do better than dropping the smallest ones. Fine. So the rectangular window is *optimal in ISE*. But stare at what it does at the band edge. The truncation convolves the brick wall with the Dirichlet kernel (the transform of the rectangular window), and that produces the Gibbs phenomenon: a roughly 9% overshoot right at the discontinuity. And here's the thing that bugs me — that 9% doesn't go away as I make `N` larger. Longer filter, narrower "ears," same height. The worst-case ripple is *stuck* at about 9% no matter how many taps I spend.
 
 That's the tell. Least-squares is the wrong objective for a filter spec. A spec is a worst-case statement — "passband ripple no more than δ_p, stopband down at least so many dB" — and the rectangular window, which is the *best* ISE answer, fails the worst-case criterion no matter how much I spend on it. Tapered windows (Hamming, Blackman, Kaiser) fix the overshoot — they push the sidelobes down 40, 80 dB — but they do it by *not minimizing* anything; they trade main-lobe width for sidelobe height by a fixed recipe, and crucially the band edge ends up wherever the windowed sum happens to put it. I get no direct grip on the cutoff frequency. For meeting a spec that names the edges, that's disqualifying on its own.
 
@@ -40,25 +40,25 @@ Now, how do I use it to actually compute `P`? *If I knew the `r+1` extremal freq
 
 with `r+1` unknowns: the `r` coefficients of `P` plus the common level `δ`. That's a square linear system. I could just solve it. But solving an `(r+1)×(r+1)` system every iteration, for filters with `r` in the hundreds, is exactly the kind of cost I'm trying to avoid (it's why the LP approach was slow). Let me see if the structure gives me `δ` and `P` cheaper.
 
-Rewrite each equation as `P(F_i) = D̂(F_i) − (−1)^i δ / Ŵ(F_i)`. The right-hand side is a known number *once I know `δ`*. So `P` is the unique degree-`r−1` polynomial interpolating the `r` values `y_i := D̂(F_i) − (−1)^i δ/Ŵ(F_i)` — wait, I have `r+1` nodes but only `r` coefficients, so `P` interpolating *all* `r+1` of those values is one condition too many; that extra condition is precisely what determines `δ`. So `δ` is exactly the value that makes the `r+1` interpolation conditions consistent for a degree-`r−1` polynomial.
+Rewrite each equation as `P(F_i) = D̂(F_i) − (−1)^i δ / Ŵ(F_i)`. The right-hand side is a known number *once I know `δ`*. I have `r+1` nodes but only `r` coefficients, so forcing a degree-`r−1` polynomial through all `r+1` ordinates `y_i := D̂(F_i) − (−1)^i δ/Ŵ(F_i)` is one condition too many; that extra consistency condition is precisely what determines `δ`. So `δ` is exactly the value that makes the `r+1` interpolation conditions collapse to a degree-`r−1` polynomial instead of a degree-`r` one.
 
-How do I extract `δ` without forming `P`? Consider the `(r+1)`-node Lagrange picture in the `x`-variable, `x_i = cos(2πF_i)`. A degree-`r−1` polynomial through `r+1` prescribed values exists iff the `(r+1)`-th divided difference of those values is zero. The `(r+1)`-th divided difference is `Σ_i b_i · y_i` where `b_i = 1 / Π_{j≠i}(x_i − x_j)` are the Lagrange/barycentric weights. So setting the divided difference of `y_i = D̂(F_i) − (−1)^i δ/Ŵ(F_i)` to zero:
+How do I extract `δ` without forming `P`? Consider the `(r+1)`-node Lagrange picture in the `x`-variable, `x_i = cos(2πF_i)`. A degree-`r−1` polynomial through `r+1` prescribed values exists iff the order-`r` divided difference of those values is zero. That divided difference is `Σ_i b_i · y_i` where `b_i = 1 / Π_{j≠i}(x_i − x_j)` are the Lagrange/barycentric weights. So setting the divided difference of `y_i = D̂(F_i) − (−1)^i δ/Ŵ(F_i)` to zero:
 
 Σ_i b_i [ D̂(F_i) − (−1)^i δ/Ŵ(F_i) ] = 0
 ⟹ Σ_i b_i D̂(F_i) = δ Σ_i (−1)^i b_i / Ŵ(F_i)
 ⟹ δ = [ Σ_i b_i D̂(F_i) ] / [ Σ_i (−1)^i b_i / Ŵ(F_i) ].
 
-A closed form for `δ` — one dot product over another, no matrix solve. And once I have `δ`, I have the `r+1` ordinate values `y_i = D̂(F_i) − (−1)^i δ/Ŵ(F_i)` that `P` must interpolate, and I can evaluate `P` at *any* frequency by barycentric Lagrange interpolation through `r` of those nodes — I never have to compute the `α` coefficients during the iteration at all. (The barycentric form, `P(x) = [Σ_j b_j y_j/(x − x_j)] / [Σ_j b_j/(x − x_j)]`, is also the numerically stable way to do this for large `r`.) So per iteration I pay `O(r)` Lagrange weights plus an `O(r)` evaluation at each grid point — cheap.
+A closed form for `δ` — one dot product over another, no matrix solve. If the ratio is negative, that only means I guessed the starting alternation sign backwards; I flip all the signs and use positive `δ`. And once I have `δ`, I have the `r+1` ordinate values `y_i = D̂(F_i) − (−1)^i δ/Ŵ(F_i)` that are consistent with a degree-`r−1` `P`, and I can evaluate `P` at *any* frequency by barycentric Lagrange interpolation through all `r+1` nodes; the degree-`r` term has been killed by the zero divided difference. (The barycentric form, `P(x) = [Σ_j b_j y_j/(x − x_j)] / [Σ_j b_j/(x − x_j)]`, is also the numerically stable way to do this for large `r`.) So per iteration I pay `O(r)` Lagrange weights plus an `O(r)` evaluation at each grid point — cheap.
 
 But I *don't* know the extremal frequencies; that's the catch. That's what Remez's exchange idea is for, and now I can build it. Start with a guess of `r+1` reference frequencies — equally spaced across the bands is a fine cheap start. With that reference: compute `δ` by the formula above, and compute `P` by Lagrange interpolation. Now `P` equioscillates at `±δ` on the reference set *by construction*. But it is the best approximation only if those reference points are the *true* extrema — i.e. only if `|E(f)| = Ŵ(f)|D̂(f) − P(f)|` never exceeds `δ` anywhere off the reference. So check: sweep the actual error over a dense frequency grid and find where `|E|` is largest. If `max_grid |E| > δ`, my reference was wrong — there's a place the error overshoots `δ` that I didn't account for.
 
-The exchange: replace the reference set with the new set of local maxima of `|E|` on the grid. I have to keep exactly `r+1` of them, and they have to alternate in sign so the alternation structure is maintained — so at each candidate extremum I keep the one with the largest `|E|` among same-sign neighbors, and I sort them in frequency. Then iterate: recompute `δ` and `P` on the new reference, find the new error extrema, exchange again. Each pass, because the new reference points are places where `|E|` exceeded the old `δ`, the new `δ` (the level the alternation forces) can only go *up*: the computed `|δ|` is nondecreasing across iterations, bounded above by the true optimal `δ*`. So it climbs monotonically to `δ*`, and the reference points settle onto the true equioscillation frequencies. I stop when the dense-grid max of `|E|` no longer exceeds the current `δ` (within tolerance) — at that moment the error equioscillates at `r+1` points and is bounded by `δ` everywhere, which by the alternation theorem *is* the certificate of optimality. In practice this converges in something like six to a dozen exchanges. This whole-set exchange — moving all the references at once to the new extrema rather than one point at a time — is what makes it fast.
+The exchange: replace the reference set with the new set of local maxima of `|E|` on the grid. I have to keep exactly `r+1` of them, and they have to alternate in sign so the alternation structure is maintained — so at each candidate extremum I keep the one with the largest `|E|` among same-sign neighbors, and I sort them in frequency. Then iterate: recompute `δ` and `P` on the new reference, find the new error extrema, exchange again. Each pass, because the new reference points are places where `|E|` exceeded the old `δ`, the new positive `δ` (the level the alternation forces) can only go *up*: it is nondecreasing across iterations, bounded above by the true optimal `δ*`. So it climbs monotonically to `δ*`, and the reference points settle onto the true equioscillation frequencies. I stop when the dense-grid max of `|E|` no longer exceeds the current `δ` (within tolerance) — at that moment the error equioscillates at `r+1` points and is bounded by `δ` everywhere, which by the alternation theorem *is* the certificate of optimality. In practice this converges in something like six to a dozen exchanges. This whole-set exchange — moving all the references at once to the new extrema rather than one point at a time — is what makes it fast.
 
 One detail on "dense grid": the bands are continua, but I can only search finitely many points. I lay down a grid with on the order of `16·r` points across the bands (grid density 16 times the number of cosine terms). The continuous maximum over a band is well-approximated by the maximum over a grid that fine, so the grid extrema track the true extrema closely; if I worried, I could refine near each found extremum, but density 16 is empirically plenty for the extrema to land in the right place.
 
 Once the exchange has converged I have the optimal `δ` and the reference. Now I do need the actual cosine coefficients `α(k)` of `P` to build the filter. Since `P(f) = Σ_{k=0}^{r−1} α(k) cos(2πkf)` is a cosine series, I can get the `α` by sampling `P` at `r` equally spaced frequencies in `[0, ½]` and taking an inverse discrete cosine/Fourier transform — that's just reading off Fourier-cosine coefficients of a known band-limited cosine sum, exact because `P` has only `r` cosine terms. Then I undo the unification: the `α` are the coefficients of `P`, and `G = Q·P`, so I fold `Q` and the `α` back into the impulse response according to which of the four cases I'm in, and finally impose the symmetry `h(n) = h(N−1−n)` (or `= −h(N−1−n)`) to fill out the whole length-`N` filter. For the cases where `Q` is `cos πf` or `sin πf` or `sin 2πf`, "fold back" is a short recurrence that converts the `P`-coefficients into the `G`-coefficients (the product-to-sum identities, run in reverse), but it's all linear and finite.
 
-Let me write the core, mirroring the structure of the standard implementation. The heart is a `remez` routine that does the exchange given the dense grid, the desired `D̂` and weight `Ŵ` already prepared on it, and an initial reference; and a `pre_remez` wrapper that sets up the grid, picks the case from symmetry/parity, builds `D̂` and `Ŵ` by dividing/multiplying by `Q`, runs the exchange, and folds the result into `h`.
+Let me write the core in the same split I need for a working routine. The heart is a `remez` routine that does the exchange given the dense grid, the desired `D̂` and weight `Ŵ` already prepared on it, and an initial reference; and a `pre_remez` wrapper that sets up the grid, picks the case from symmetry/parity, builds `D̂` and `Ŵ` by dividing/multiplying by `Q`, runs the exchange, and folds the result into `h`.
 
 ```python
 import numpy as np
@@ -76,19 +76,53 @@ def lagrange_weights(x):
 def eval_P(xq, x, y, b):
     # Barycentric Lagrange evaluation of the cosine polynomial P at cos-mapped points xq,
     # interpolating values y on nodes x with weights b. (matches freq_eval: P = sum c*y / sum c)
-    num = np.zeros_like(xq); den = np.zeros_like(xq)
-    for xj, yj, bj in zip(x, y, b):
-        c = bj / (xq - xj)
-        num += c * yj
-        den += c
-    return num / den
+    xq = np.asarray(xq, dtype=float)
+    out = np.empty_like(xq, dtype=float)
+    for idx, xqi in np.ndenumerate(xq):
+        hit = np.isclose(xqi, x, rtol=0.0, atol=1e-14)
+        if np.any(hit):
+            out[idx] = y[np.argmax(hit)]
+        else:
+            c = b / (xqi - x)
+            out[idx] = (c @ y) / c.sum()
+    return out
+
+def pick_alternating_extrema(err, n_ext):
+    # Keep local maxima of |err|, collapsing adjacent lobes with the same sign to the larger one.
+    peaks = []
+    for i, value in enumerate(err):
+        left = abs(err[i - 1]) if i else -np.inf
+        right = abs(err[i + 1]) if i + 1 < len(err) else -np.inf
+        if abs(value) >= left and abs(value) >= right:
+            peaks.append(i)
+
+    def compress(indices):
+        out = []
+        for i in indices:
+            if err[i] == 0:
+                continue
+            if not out or np.sign(err[i]) != np.sign(err[out[-1]]):
+                out.append(i)
+            elif abs(err[i]) > abs(err[out[-1]]):
+                out[-1] = i
+        return out
+
+    ext = compress(peaks)
+    while len(ext) > n_ext:
+        drop = min(range(len(ext)), key=lambda k: abs(err[ext[k]]))
+        del ext[drop]
+        ext = compress(ext)
+    if len(ext) != n_ext:
+        raise RuntimeError("could not find enough alternating extrema")
+    return np.array(ext, dtype=int)
 
 def remez_exchange(grid, des, wt, n_cos, maxiter=25):
     # grid: dense frequencies in [0, 0.5]; des = D_hat, wt = W_hat already prepared on the grid.
     # n_cos = r = number of cosine terms; the reference set has r+1 points.
     r = n_cos
-    # initial reference: r+1 (roughly) equispaced grid indices  -- the cheap starting guess
-    ext = np.linspace(0, len(grid) - 1, r + 1).round().astype(int)
+    # initial reference: r+1 equispaced grid indices, matching the original program's cheap start
+    step = (len(grid) - 1) / r
+    ext = np.array([int(j * step) for j in range(r)] + [len(grid) - 1])
     dev = 0.0
     for _ in range(maxiter):
         F = grid[ext]
@@ -96,23 +130,37 @@ def remez_exchange(grid, des, wt, n_cos, maxiter=25):
         b = lagrange_weights(x)
         # closed-form deviation: delta = sum b_k D_k / sum (-1)^k b_k / W_k     (the alternation level)
         signs = (-1.0) ** np.arange(r + 1)
-        dev = (b @ des[ext]) / (signs * b @ (1.0 / wt[ext]))
-        # ordinates P must interpolate so the error is +-delta alternately on the reference
+        raw_dev = (b @ des[ext]) / ((signs * b) @ (1.0 / wt[ext]))
+        if raw_dev < 0:
+            signs = -signs
+            dev = -raw_dev
+        else:
+            dev = raw_dev
+        # ordinates P must interpolate so W*(D-P) is +-delta alternately on the reference
         y = des[ext] - signs * dev / wt[ext]
         # evaluate the weighted error on the whole dense grid
         xq = np.cos(2 * np.pi * grid)
         P = eval_P(xq, x, y, b)
-        err = (P - des) * wt
+        err = (P - des) * wt                         # the implementation uses the opposite sign of E
         # exchange: new reference = the r+1 alternating local maxima of |err|
-        new_ext = pick_alternating_extrema(err, abs(dev), r + 1)
-        if np.max(np.abs(err)) <= abs(dev) * (1 + 1e-6):   # grid max no longer beats delta -> optimal
-            ext = new_ext
+        new_ext = pick_alternating_extrema(err, r + 1)
+        if np.max(np.abs(err)) <= dev * (1 + 1e-6):   # grid max no longer beats delta -> optimal
             break
         ext = new_ext
     # recover the cosine coefficients alpha by inverse DFT of P sampled at r equispaced freqs
     fpts = np.arange(n_cos) / (2 * n_cos - 1)
-    Pvals = eval_P(np.cos(2 * np.pi * fpts), np.cos(2*np.pi*grid[ext]),
-                   des[ext] - ((-1.0)**np.arange(r+1)) * dev / wt[ext], lagrange_weights(np.cos(2*np.pi*grid[ext])))
+    F = grid[ext]
+    x = np.cos(2 * np.pi * F)
+    b = lagrange_weights(x)
+    signs = (-1.0) ** np.arange(r + 1)
+    raw_dev = (b @ des[ext]) / ((signs * b) @ (1.0 / wt[ext]))
+    if raw_dev < 0:
+        signs = -signs
+        dev = -raw_dev
+    else:
+        dev = raw_dev
+    y = des[ext] - signs * dev / wt[ext]
+    Pvals = eval_P(np.cos(2 * np.pi * fpts), x, y, b)
     alpha = idct_cosine_coeffs(Pvals)                  # alpha_k = Fourier-cosine coeffs of P
     return alpha, dev
 
@@ -134,7 +182,7 @@ def design_fir(numtaps, bands, desired, weight=None, type='bandpass', grid_densi
     return h
 ```
 
-In production I'd just call the vetted engine:
+The public call can stay as small as the specification itself:
 
 ```python
 from scipy.signal import remez

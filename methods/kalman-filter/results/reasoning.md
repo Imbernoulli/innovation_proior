@@ -1,14 +1,14 @@
 OK, let me think this through from scratch. I have a physical system that changes over time — say something moving — and I can't see its internal variables directly. All I get is a stream of measurements, one at a time, each noisy, and usually each measurement only sees part of the system, not all of it. At every instant I want the best guess of where the system actually is, and I want it to keep improving as more data arrive. That's the whole job: turn a running stream of dirty observations into a running estimate of a hidden state.
 
-The accepted tool for this is the Wiener filter, so let me start there and figure out exactly why it bothers me. Wiener models signal and noise as stationary random processes with known power spectra, and the optimal mean-squared-error linear filter falls out of the Wiener–Hopf integral equation, which you solve by spectral factorization in the frequency domain. Fine — it's the right answer when it applies. But look at what it costs me. First, the answer comes out as an impulse response, and turning an impulse response into an actual realizable filter is a separate chore. Second, computing that impulse response is numerically nasty and gets worse fast as the problem grows; it is not something I'd want to hand a computer to iterate. Third, and this is the one that really stings, every time I change the situation — finite data instead of an infinite record, nonstationary statistics, a growing memory — I have to go back and do a brand-new derivation, often a hard one. And fourth, the whole thing is opaque about what it's actually assuming. The stationarity, the rational spectra, the "use the entire record" — these are buried.
+The accepted tool for this is the Wiener filter, so let me start there and figure out exactly why it bothers me. Wiener models signal and noise as stationary random processes with known power spectra, and the optimal mean-squared-error linear filter falls out of the Wiener–Hopf integral equation, which you solve by spectral factorization in the frequency domain. Fine — it's the right answer when it applies. But look at what it costs me. The answer comes out as an impulse response, and turning an impulse response into an actual realizable filter is a separate chore. Computing that impulse response is numerically nasty and gets worse fast as the problem grows; it is not something I'd want to hand a computer to iterate. Every time I change the situation — finite data instead of an infinite record, nonstationary statistics, a growing memory — I have to go back and do a brand-new derivation, often a hard one. And the whole thing is opaque about what it's actually assuming. The stationarity, the rational spectra, the "use the entire record" — these are buried.
 
 So the pain isn't that Wiener is wrong. It's that it's *batch*, *frequency-domain*, *stationary*, and *one-off per problem*. What I want is the opposite of every one of those: something recursive that eats one measurement at a time, lives in the time domain, doesn't care whether anything is stationary, and is a single procedure a computer iterates regardless of the specific problem. And while I'm at it, I want it to tell me how uncertain it is, and to reconstruct the hidden coordinates from partial observations.
 
 Let me get precise about "best." I have an unknown `x(t1)` and observations `y(t0), …, y(t)`. Everything those observations tell me about `x(t1)` is in the conditional distribution `Pr[x(t1) ≤ ξ | y(t0), …, y(t)]`. Any estimate I form is some function of the observations, and I'll grade it by a loss `L(ε)` on the error `ε = x(t1) − x̂`. The natural loss is `L(0)=0`, even, non-decreasing in `|ε|`. I want to minimize the expected loss. Now, the expected loss splits: `E{L} = E[ E{L | y(t0),…,y(t)} ]`, and the outer expectation doesn't depend on my choice of `x̂` — only on the observations. So minimizing risk is the same as, for each realized set of observations, minimizing the *conditional* expected loss. Good, that localizes the problem.
 
-Take the squared-error loss `L(ε)=ε²` first, since it's the clean one. The conditional expected loss is `E[x² | ·] − 2 x̂ E[x | ·] + x̂²`; differentiate with respect to `x̂` and set to zero: `x̂ = E[x(t1) | y(t0),…,y(t)]`. The optimal squared-error estimate is the conditional mean. And actually this isn't special to squared loss — for the symmetric, convex-below-the-mean class of losses, as long as the conditional distribution is symmetric about its mean and convex on the appropriate side, the same conditional mean is optimal. So under broad conditions the thing I want is the conditional expectation. That's clean, but it's also useless as stated: in general I have no way to compute a conditional expectation as an explicit function of the data. I need structure.
+Take the squared-error loss `L(ε)=ε²` first, since it's the clean one. The conditional expected loss is `E[x² | ·] − 2 x̂ E[x | ·] + x̂²`; differentiate with respect to `x̂` and set to zero: `x̂ = E[x(t1) | y(t0),…,y(t)]`. The optimal squared-error estimate is the conditional mean. And actually the same point extends beyond squared loss: if the conditional distribution is symmetric about its mean and has the convex lower-side shape used in Sherman's theorem, then any even loss that grows with `|ε|` is minimized at that same mean. Gaussian conditional distributions have exactly that symmetry and shape. So under broad conditions the thing I want is the conditional expectation. That's clean, but it's also useless as stated: in general I have no way to compute a conditional expectation as an explicit function of the data. I need structure.
 
-Here's the structure. Suppose I restrict myself to estimates that are *linear* functions of the observations, and keep squared loss. Consider the set of all linear combinations `∑ a_i y(i)` of the observed variables — that's a vector space, call it `Y(t)`, and I can put an inner product on it via `⟨u,v⟩ = E[u v]`. Two observations are "orthogonal" if `E[u v]=0`. Now my estimate `x̂` is supposed to be the element of `Y(t)` closest to `x` in mean square. Decompose `x` into its projection onto `Y(t)` plus a remainder: `x = x̂ + x̃`, where `x̂ ∈ Y(t)` and `x̃ ⊥ Y(t)`. For any other candidate `w ∈ Y(t)`,
+Suppose I restrict myself to estimates that are *linear* functions of the observations, and keep squared loss. Consider the set of all linear combinations `∑ a_i y(i)` of the observed variables — that's a vector space, call it `Y(t)`, and I can put an inner product on it via `⟨u,v⟩ = E[u v]`. Two observations are "orthogonal" if `E[u v]=0`. Now my estimate `x̂` is supposed to be the element of `Y(t)` closest to `x` in mean square. Decompose `x` into its projection onto `Y(t)` plus a remainder: `x = x̂ + x̃`, where `x̂ ∈ Y(t)` and `x̃ ⊥ Y(t)`. For any other candidate `w ∈ Y(t)`,
 
   `E(x − w)² = E[(x̃) + (x̂ − w)]² = E x̃² + E(x̂ − w)² ≥ E x̃²`,
 
@@ -63,7 +63,9 @@ Define `Φ*(t+1;t) = Φ(t+1;t) − ∆*(t) M(t)` — the transition matrix of th
 
   `P*(t+1) = E[x̃(t+1|t) x̃'(t+1|t)] = Φ* E[x̃(t|t-1) x̃'(t|t-1)] Φ*' + E[u u']`.
 
-Now there's a small simplification. By the orthogonality used to define `∆*`, one of the `Φ*'` factors can be swapped for `Φ'`: writing it out, `Φ* P* Φ*' = Φ* P* (Φ − ∆* M)' = Φ* P* Φ' − Φ* P* M' ∆*'`, and the second term vanishes because `E[x̃(t+1|t-known part) ỹ'] = 0` is exactly the orthogonality I imposed — the cross term `Φ* P* M' ∆*'` is built from `E[(error) (innovation)'] = 0`. So
+The expression simplifies because the new error is orthogonal to the innovation. In symbols,
+`Φ* P* M' = (Φ − ∆* M)P*M' = ΦP*M' − ∆*MP*M' = 0`, using the gain equation above. Therefore
+`Φ*P*Φ*' = Φ*P*(Φ − ∆*M)' = Φ*P*Φ'`, and
 
   `P*(t+1) = Φ*(t+1;t) P*(t) Φ'(t+1;t) + Q(t)`,  `Q(t) = E[u(t)u'(t)]`.
 
@@ -75,7 +77,7 @@ Now I can eliminate `∆*` and `Φ*` and see the covariance evolve on its own. S
 
   `P*(t+1) = Φ(t+1;t) { P*(t) − P*(t) M'[M P*(t) M']⁻¹ M P*(t) } Φ'(t+1;t) + Q(t)`.
 
-That's a single nonlinear difference equation for the error covariance — quadratic in `P*`. It plays exactly the role the Wiener–Hopf equation played, but it's a recursion I iterate forward in time rather than an integral equation I solve once over the whole record. And if `M` were invertible (I measure everything), the bracket collapses and `P*(t+1) = Q(t)` — trivial, because then I observe the full state and the only residual uncertainty is the fresh excitation. The interesting case is partial observation, `p < n`, where this equation does real work reconstructing the hidden coordinates.
+That's a single nonlinear difference equation for the error covariance — quadratic in `P*`. It plays exactly the role the Wiener–Hopf equation played, but it's a recursion I iterate forward in time rather than an integral equation I solve once over the whole record. And in this no-explicit-measurement-noise state model, if `M` were invertible (I measure everything), the bracket collapses and `P*(t+1) = Q(t)` — trivial, because then I observe the full state and the only residual uncertainty is the fresh excitation. The interesting case is partial observation, `p < n`, where this equation does real work reconstructing the hidden coordinates.
 
 Let me sanity-check the gain against intuition in the scalar case, because matrices can hide sign errors. Take one state, `M = 1`, predict-error variance `P⁻` (writing `P⁻` for the prediction covariance and folding the dynamics aside), measurement variance `R`. There are really two pieces of information here: a prior `N(x̂⁻, P⁻)` from the prediction and a likelihood `N(z, R)` from the measurement. Combining two independent Gaussian pieces of information about the same quantity multiplies their densities, and the product of two Gaussians is again Gaussian with
 
@@ -85,9 +87,9 @@ Rewrite the mean: `x̂⁻ + [P⁻/(P⁻ + R)](z − x̂⁻)`. So the posterior i
 
 This last point is worth pinning down, because the cleaner engineering form splits the recursion into two named half-steps and keeps `R` explicit. Let me carry the belief as mean `x̂` and covariance `P`, and write the model as `x_{k+1} = F x_k + w_k`, `z_k = H x_k + v_k`, `w ~ N(0,Q)`, `v ~ N(0,R)` (renaming `Φ→F`, `M→H` to match how I'll code it).
 
-**Predict.** I push the belief through the dynamics, before seeing the measurement. The mean goes through `F`: `x̂⁻ = F x̂`. For the covariance, the covariance of a linear image `F x` is `F P F'` — that's just `E[(Fx̃)(Fx̃)'] = F E[x̃ x̃'] F'`. Then the independent process noise adds its own covariance: `P⁻ = F P F' + Q`. The key qualitative fact: prediction makes me *more* uncertain. `Q` is added, never subtracted; rolling the dynamics forward without new data can only inflate the spread. That's the right direction — extrapolation degrades knowledge.
+I push the belief through the dynamics before seeing the measurement. The mean goes through `F`: `x̂⁻ = F x̂`, or `x̂⁻ = F x̂ + B u` if a known control input is present. For the covariance, the covariance of a linear image `F x` is `F P F'` — that's just `E[(Fx̃)(Fx̃)'] = F E[x̃ x̃'] F'`. Then the independent process noise adds its own covariance: `P⁻ = F P F' + Q`. The key qualitative fact is that prediction makes me *more* uncertain. `Q` is added, never subtracted; rolling the dynamics forward without new data can only inflate the spread. That's the right direction — extrapolation degrades knowledge.
 
-**Update.** Now `z_k` arrives. The residual (innovation) is `y = z_k − H x̂⁻`: I subtract the part of the measurement I already predicted, because only the orthogonal remainder carries new information. Its covariance is `S = H P⁻ H' + R`. The gain is `K = P⁻ H' S⁻¹ = P⁻ H' (H P⁻ H' + R)⁻¹`. The state correction is `x̂ = x̂⁻ + K y`, and the covariance shrinks: `P = (I − K H) P⁻`.
+Then `z_k` arrives. The residual (innovation) is `y = z_k − H x̂⁻`: I subtract the part of the measurement I already predicted, because only the orthogonal remainder carries new information. Its covariance is `S = H P⁻ H' + R`. The gain is `K = P⁻ H' S⁻¹ = P⁻ H' (H P⁻ H' + R)⁻¹`. The state correction is `x̂ = x̂⁻ + K y`, and the covariance shrinks: `P = (I − K H) P⁻`.
 
 Let me actually *derive* the gain a second way, by minimizing the posterior error covariance directly, to be sure `(I−KH)P⁻` and the gain are mutually consistent — I don't want to just assert the trace-minimizing `K`. Posit the update form `x̂ = x̂⁻ + K(z − H x̂⁻)` with `K` unknown, and ask which `K` minimizes the posterior error spread. The posterior error is
 
@@ -118,9 +120,9 @@ import numpy as np
 from numpy.linalg import inv
 
 class LinearGaussianModel:
-    """ x_{k+1} = F x_k + w,  z_k = H x_k + v,  w~N(0,Q), v~N(0,R) """
-    def __init__(self, F, H, Q, R):
-        self.F, self.H, self.Q, self.R = F, H, Q, R
+    """ x_{k+1} = F x_k + B u_k + w,  z_k = H x_k + v,  w~N(0,Q), v~N(0,R) """
+    def __init__(self, F, H, Q, R, B=None):
+        self.F, self.H, self.Q, self.R, self.B = F, H, Q, R, B
 
 class StateBelief:
     """Two moments are a sufficient summary of a Gaussian belief."""
@@ -128,12 +130,12 @@ class StateBelief:
         self.x = x0      # mean: current best estimate
         self.P = P0      # covariance: our uncertainty about x
 
-def time_update(belief, model, u=None, B=None):
+def time_update(belief, model, u=None):
     # Predict: roll the belief forward through the dynamics, before the measurement.
-    # Mean through F (+ control); covariance of a linear image F x is F P F'.
+    # Mean through F (+ optional control); covariance of a linear image F x is F P F'.
     belief.x = model.F @ belief.x
-    if u is not None and B is not None:
-        belief.x = belief.x + B @ u
+    if u is not None and model.B is not None:
+        belief.x = belief.x + model.B @ u
     # Add process noise Q: extrapolation can only inflate uncertainty.
     belief.P = model.F @ belief.P @ model.F.T + model.Q
 

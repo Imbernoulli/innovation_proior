@@ -131,8 +131,8 @@ to optimize.
 
 ## Code framework
 
-A pre-method scaffold: a fixed-time-step rhythm generator feeding a robot through inverse
-kinematics and PD control, with the rhythm generator and the gait-coupling left as empty slots.
+A fixed-time-step rhythm generator feeds a robot through inverse kinematics and PD control, with
+the rhythm dynamics and gait-coupling left as empty slots.
 
 ```python
 import numpy as np

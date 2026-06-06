@@ -23,12 +23,13 @@ the recursion is exact, not approximate. Alternate two operations:
   by their inverse covariances (precisions). The correction is the *innovation* `z_k − H x̂⁻` (the
   part of the measurement not already predicted) scaled by the Kalman gain; the covariance shrinks.
 
-The gain `K = P⁻ H'(H P⁻ H' + R)⁻¹` is what minimizes the posterior error covariance. It equals the
+The gain `K = P⁻ H'(H P⁻ H' + R)⁻¹` is what minimizes the posterior error covariance. It gives the
 orthogonal projection of the state onto the span of the observations (the error is left uncorrelated
 with every measurement), which in the Gaussian case is exactly the conditional mean — hence the
 globally minimum-mean-square-error estimate. Without Gaussianity it is still the best *linear* (linear-MMSE)
-estimator. Limits make the weighting transparent: `R→0` gives `K→H⁻¹` (trust the measurement);
-`P⁻→0` gives `K→0` (trust the prediction).
+estimator. Limits make the weighting transparent: if the measured coordinates determine the state
+(`H` square and nonsingular), `R→0` gives `K→H⁻¹` (trust the measurement); `P⁻→0` gives `K→0`
+(trust the prediction).
 
 ## The algorithm
 
@@ -47,69 +48,57 @@ State: estimate `x̂` and error covariance `P`. Initialize with prior `x̂_0`, `
     x̂ = x̂⁻ + K y                     # corrected mean
     P = (I − K H) P⁻                  # corrected covariance (optimal-gain short form)
 
-The error covariance satisfies the Riccati-like recursion obtained by eliminating `K`:
-`P⁻_{k+1} = F { P − P H'(H P H' + R)⁻¹ H P } F' + Q`. The expected squared error per step is
-`trace P`. For numerical robustness the covariance update is implemented in **Joseph form**,
-`P = (I − K H) P⁻ (I − K H)' + K R K'`, which stays symmetric positive semidefinite even for a
-non-optimal `K` and under roundoff (it reduces to `(I − K H) P⁻` at the optimal gain).
+Eliminating `K` gives the Riccati-like covariance recursion in terms of the prior covariance:
+`P_{k+1|k}=F { P_{k|k-1} − P_{k|k-1}H'(H P_{k|k-1}H' + R)⁻¹ H P_{k|k-1} } F' + Q`.
+The expected squared error per step is `trace P`. For numerical robustness the covariance update is
+implemented in **Joseph form**, `P = (I − K H) P⁻ (I − K H)' + K R K'`, which stays symmetric positive
+semidefinite even for a non-optimal `K` and under roundoff (it reduces to `(I − K H) P⁻` at the
+optimal gain).
 
 ## Code
 
-Faithful to the `filterpy` `KalmanFilter` (predict / update with Joseph-form covariance).
+This mirrors the local FilterPy predict/update equations: predict uses `x = F x + B u`, `P = FPF' + Q`;
+update uses the innovation `z-Hx`, `S=HPH'+R`, `K=PH'S⁻¹`, and the Joseph-form covariance.
 
 ```python
 import numpy as np
+from numpy.linalg import inv
 
-class KalmanFilter:
-    """Recursive linear-Gaussian state estimator.
-    Model: x_{k+1} = F x_k + B u_k + w,  z_k = H x_k + v,
-           w ~ N(0, Q),  v ~ N(0, R)."""
+class LinearGaussianModel:
+    """x_{k+1} = F x_k + B u_k + w,  z_k = H x_k + v,  w~N(0,Q), v~N(0,R)."""
+    def __init__(self, F, H, Q, R, B=None):
+        self.F, self.H, self.Q, self.R, self.B = F, H, Q, R, B
 
-    def __init__(self, F, H, Q, R, x0, P0, B=None):
-        self.F, self.H, self.Q, self.R = F, H, Q, R   # dynamics, measurement, noise covariances
-        self.B = B                                    # optional control matrix
-        self.x = x0                                   # state estimate (belief mean)
-        self.P = P0                                   # error covariance (belief spread)
-        self.I = np.eye(F.shape[0])
+class StateBelief:
+    """Gaussian belief summarized by mean x and covariance P."""
+    def __init__(self, x0, P0):
+        self.x = x0
+        self.P = P0
 
-    def predict(self, u=None):
-        # Time update: x̂⁻ = F x̂ (+ B u),  P⁻ = F P F' + Q
-        if self.B is not None and u is not None:
-            self.x = self.F @ self.x + self.B @ u
-        else:
-            self.x = self.F @ self.x
-        self.P = self.F @ self.P @ self.F.T + self.Q
+def time_update(belief, model, u=None):
+    # Predict: x^- = F x (+ B u), P^- = F P F' + Q.
+    belief.x = model.F @ belief.x
+    if u is not None and model.B is not None:
+        belief.x = belief.x + model.B @ u
+    belief.P = model.F @ belief.P @ model.F.T + model.Q
 
-    def update(self, z):
-        # Measurement update.
-        y = z - self.H @ self.x                       # innovation z - H x̂⁻
-        S = self.H @ self.P @ self.H.T + self.R       # innovation covariance H P⁻ H' + R
-        K = self.P @ self.H.T @ np.linalg.inv(S)      # gain P⁻ H' S⁻¹
-        self.x = self.x + K @ y                       # x̂ = x̂⁻ + K y
-        I_KH = self.I - K @ self.H                    # Joseph-form covariance update
-        self.P = I_KH @ self.P @ I_KH.T + K @ self.R @ K.T
+def measurement_update(belief, model, z):
+    # Update: residual, innovation covariance, gain, corrected mean, Joseph covariance.
+    H, R = model.H, model.R
+    y = z - H @ belief.x
+    S = H @ belief.P @ H.T + R
+    K = belief.P @ H.T @ inv(S)
+    belief.x = belief.x + K @ y
+    I_KH = np.eye(belief.P.shape[0]) - K @ H
+    belief.P = I_KH @ belief.P @ I_KH.T + K @ R @ K.T
 
-
-# Example: constant-velocity tracking. State [position, velocity]; measure position only.
-if __name__ == "__main__":
-    dt = 1.0
-    F = np.array([[1, dt], [0, 1]])      # x_{k+1} = position + velocity*dt; velocity constant
-    H = np.array([[1.0, 0.0]])           # measure position only
-    Q = np.array([[0.05, 0.0], [0.0, 0.05]])
-    R = np.array([[1.0]])                # measurement-noise variance
-    x0 = np.array([[0.0], [1.0]])        # initial guess: at 0, moving at 1
-    P0 = np.eye(2) * 10.0                # large initial uncertainty
-
-    kf = KalmanFilter(F, H, Q, R, x0, P0)
-    rng = np.random.default_rng(0)
-    true_x = np.array([[0.0], [1.0]])
-    for _ in range(20):
-        true_x = F @ true_x                                  # true state evolves
-        z = H @ true_x + rng.normal(0, 1.0, size=(1, 1))     # noisy position measurement
-        kf.predict()
-        kf.update(z)
-        print(f"est pos {kf.x[0,0]:6.2f}  vel {kf.x[1,0]:5.2f}  "
-              f"trace(P) {np.trace(kf.P):6.3f}")
+def run_filter(model, belief, measurements, controls=None):
+    estimates = []
+    for k, z in enumerate(measurements):
+        time_update(belief, model, None if controls is None else controls[k])
+        measurement_update(belief, model, z)
+        estimates.append((belief.x.copy(), belief.P.copy()))
+    return estimates
 ```
 
 ## Why it is optimal

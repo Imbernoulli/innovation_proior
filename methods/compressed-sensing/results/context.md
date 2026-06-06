@@ -63,13 +63,15 @@ precise for the Fourier-sampling model: for an overwhelming fraction of supports
 random frequency sets $\Omega$ with $|T| \le \alpha\,|\Omega|/\log N$, the solutions of
 $(P_0)$ and $(P_1)$ coincide, so the convex program recovers the sparse signal *exactly*.
 Donoho (2006, *Compressed Sensing*, IEEE Trans. Inf. Theory 52:1289–1306) established the
-companion sampling-rate statement: a compressible $n$-vector can be reconstructed from a
-number of nonadaptive linear measurements far below $n$ — on the order of
-$O(m^{1/4}\log^{5/2} m)$ for natural image classes — by an $\ell_1$-type nonlinear
-reconstruction. The structural property of $A$ that makes this work is that $A$ acts as a
-near-isometry on sparse vectors (a *restricted isometry*): every small set of columns is
-approximately orthonormal, so distinct sparse signals stay separated under $A$ and the
-sparse solution is the unique one $\ell_1$ can find. Random and Fourier-subsampling
+companion sampling-rate statement: if an ambient object has $N$ samples but is compressible
+in a known transform, then nonadaptive linear measurements far below $N$ can be enough. In
+the abstract image model, certain $N$-pixel image classes need only
+$O(N^{1/4}\log^{5/2}N)$ nonpixel measurements for faithful recovery; in the sparse-coefficient
+model, on the order of $S\log N$ random measurements can match the error of keeping the
+$S$ largest transform coefficients. The structural property of $A$ that makes this work is
+that $A$ acts as a near-isometry on sparse vectors (a *restricted isometry*): every small set
+of columns is approximately orthonormal, so distinct sparse signals stay separated under $A$
+and the sparse solution is the unique one $\ell_1$ can find. Random and Fourier-subsampling
 matrices satisfy this with high probability.
 
 **Why $\ell_1$ induces sparsity (the geometry).** Tibshirani (1996, the lasso; reviewed
@@ -98,7 +100,8 @@ A^{\!\top}(Ax-y)$ alone.
 minimizes a smooth convex $g$ at rate $g(x_k)-g^\star = O(1/k)$ — but it needs
 differentiability, and our objective has the nondifferentiable $\ell_1$ term. The classical
 escape for nonsmooth convex problems, the subgradient method, converges only at $O(1/\sqrt
-k)$ and produces iterates that are never exactly sparse. A sharper tool comes from
+k)$ and has no coordinatewise dead-zone that deliberately snaps small entries to zero. A
+sharper tool comes from
 Moreau's *proximal mapping*
 $\operatorname{prox}_h(v) = \arg\min_u\, h(u) + \tfrac12\|u-v\|_2^2$, the resolvent that
 generalizes Euclidean projection: for an indicator it *is* projection, and for separable
@@ -142,9 +145,9 @@ objective.
   products are cheap.
 
 - **Plain (sub)gradient on the penalized objective.** Gradient descent ignores the
-  nonsmooth term; the subgradient method handles it but at $O(1/\sqrt k)$ and with iterates
-  that are never exactly sparse. Core idea: stay first-order and cheap. Gap: too slow, and
-  no clean mechanism for producing exact zeros.
+  nonsmooth term; the subgradient method handles it but at $O(1/\sqrt k)$ and without a
+  coordinatewise dead-zone. Core idea: stay first-order and cheap. Gap: too slow, and no
+  clean mechanism for producing exact zeros.
 
 ## Evaluation settings
 
@@ -168,45 +171,50 @@ of measurements $m$ scales with the sparsity $k$.
 
 The pieces that already exist: dense or operator-form $A$ with cheap $A$, $A^{\!\top}$
 products; the smooth least-squares data term and its gradient; and a generic first-order
-iteration loop. The sparsity-inducing nonsmooth penalty, the coordinatewise operation that
-will resolve it, and the acceleration scheme are the empty slots.
+iteration loop. The exact sparsity penalty, the inexpensive operation that handles it, and
+the update rule are the empty slots.
 
 ```python
 import numpy as np
 
-# --- known: the measurement operator and the smooth data term ---
 def apply_A(A, x):   return A @ x          # cheap matrix-vector product
-def apply_AT(A, r):  return A.T @ r        # adjoint, also cheap
+def apply_AT(A, r):  return A.conj().T @ r # adjoint, also cheap
 
-def f_smooth(A, y, x):                      # least-squares fit, ½‖Ax−y‖²
+def smooth_value(A, y, x):                  # least-squares fit, 1/2 ||Ax-y||^2
     r = apply_A(A, x) - y
-    return 0.5 * r @ r
+    return 0.5 * float(np.real(np.vdot(r, r)))
 
-def grad_f(A, y, x):                        # ∇f(x) = Aᵀ(Ax − y)
+def grad_smooth(A, y, x):                   # gradient of the smooth data term
     return apply_AT(A, apply_A(A, x) - y)
 
-def lipschitz_constant(A):                  # L = ‖A‖² = λmax(AᵀA), e.g. by power iteration
-    # TODO: estimate the largest eigenvalue of AᵀA
+def lipschitz_constant(A):
+    # TODO: estimate the largest eigenvalue of A.conj().T @ A
     pass
 
-# --- TODO: the nonsmooth sparsity penalty g(x) and the operation that resolves it ---
-def g_penalty(x, lam):
-    # TODO: the regularizer that should drive most coordinates to exactly zero
+def regularizer(x, lam):
+    # TODO: choose the nonsmooth penalty that expresses sparsity
     pass
 
-def resolve_nonsmooth(v, thresh):
-    # TODO: the per-coordinate map argmin_u  g(u) + (1/2thresh)‖u − v‖²
-    #       (the proximal operator of the penalty); this is where exact zeros must appear
+def resolve_regularizer(v, step, lam):
+    # TODO: solve argmin_u regularizer(u, lam) + (1/(2*step)) ||u-v||^2
     pass
 
-# --- the first-order solver: gradient information on f, the prox on g ---
-def solve(A, y, lam, n_iter):
-    x = np.zeros(A.shape[1])
-    L = lipschitz_constant(A)
-    tau = 1.0 / L                           # step = 1/L
+def _backtracking(point, step, A, y, lam, beta=0.5, n_back=100):
+    # TODO: shrink the step until the local quadratic model majorizes smooth_value
+    pass
+
+def solve(A, y, lam, x0=None, step=None, n_iter=500, backtracking=False,
+          beta=0.5, n_back=100, acceleration=None):
+    if x0 is None:
+        x0 = np.zeros(A.shape[1])
+    x = x0.copy()
+    z = x.copy()
+    if step is None:
+        # TODO: either estimate a fixed safe step or enable backtracking
+        pass
     for k in range(n_iter):
-        # TODO: take a gradient step on the smooth part, then resolve the nonsmooth part;
-        # TODO: optionally extrapolate to a look-ahead point to accelerate convergence
+        # TODO: use grad_smooth at the current evaluation point, then resolve_regularizer
+        # TODO: optionally update the next evaluation point from the last two iterates
         pass
     return x
 ```

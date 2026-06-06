@@ -1,121 +1,100 @@
-# Context: minimum-fuel powered-descent (soft landing) guidance
+# Context: minimum-fuel powered-descent guidance
 
 ## Research question
 
-A spacecraft on its final powered-descent phase — a Mars lander, a lunar descent stage, a vertical-takeoff-vertical-landing booster — must fly from a known position and velocity to a **soft landing** at (or as close as possible to) a target site: terminal velocity zero, terminal altitude zero, upright. It does this by throttling and steering a single rocket engine (or a fixed cluster) whose exhaust both decelerates the vehicle and **consumes the only mass it has to spend**. The objective that dominates everything else is **fuel**: every kilogram of propellant burned on descent is a kilogram of payload (science instruments, sample-return canister, crew consumables) that could not be carried. So the guidance problem is: among all descent trajectories that respect the vehicle's physics and its safety constraints, find the one that **burns the least fuel** — equivalently, the one that **lands with the most mass**.
+A spacecraft in final powered descent must fly from a known position and velocity to a soft landing at, or as close as possible to, a surface target. The engine thrust both changes the trajectory and consumes the mass margin available for payload, so the central objective is fuel: among all trajectories that satisfy the vehicle and safety constraints, choose the one that lands with maximum remaining mass.
 
-The trajectory must obey hard constraints that make the problem nontrivial: the engine is **throttleable only within a band** — it cannot run below a minimum thrust ρ_min (deep throttling causes combustion instability) and cannot exceed a maximum ρ_max; the vehicle must stay above the terrain on approach (a **glide-slope cone**); the thrust vector cannot tilt arbitrarily far from vertical (a **pointing / tilt** limit); speed may be capped; and the mass strictly decreases as fuel burns. The boundary conditions (initial state, zero terminal velocity, zero terminal altitude) are fixed.
-
-What a usable solution must additionally achieve, beyond just being optimal on paper: it must be computable **onboard, autonomously, within a bounded and predictable amount of time**, and it must return a **globally** optimal (or certified-infeasible) answer — not a local minimum that depends on a lucky initial guess. A lander firing its descent engine has seconds of margin; a guidance algorithm that might stall in a local minimum, or whose runtime is unbounded, cannot be trusted to fire the engine.
+The problem is hard because the engine cannot be treated as an ideal acceleration source. Once lit, a throttleable rocket has a lower usable thrust, set by combustion stability, and an upper thrust, set by performance. The vehicle must also stay inside a glide-slope cone above the terrain, respect a thrust pointing or tilt limit, avoid excessive speed, and end at rest with zero altitude. A useful guidance law must compute onboard in seconds, return a global optimum or a reliable infeasibility certificate, and avoid dependence on a carefully guessed initial trajectory.
 
 ## Background
 
-**The minimum-fuel soft-landing problem is a classical optimal control problem.** The vehicle is a point mass under constant gravity g (plus, in a rotating planet frame, Coriolis and centripetal terms through the planet's angular rate ω). Writing position r and velocity ṙ, and letting T_c be the commanded thrust vector and m the mass,
+The classical point-mass model uses position r, velocity ṙ, mass m, commanded thrust T_c, constant gravity g, and, in a rotating planet frame, the skew matrix S(ω):
 
-  r̈ = g + T_c/m − 2 S(ω) ṙ − S(ω)² r,  ṁ = −α ‖T_c‖,
+  r̈ = g + T_c/m − 2 S(ω) ṙ − S(ω)^2 r,  ṁ = −α ‖T_c‖,
 
-where S(ω) is the skew-symmetric cross-product matrix of ω and α = 1/(I_sp g₀) is the mass-flow-per-Newton constant from the rocket equation (propellant consumed in proportion to thrust magnitude). Minimum fuel is
+with α = 1/(I_sp g_0) in the usual rocket-equation units. Integrating the mass equation gives
 
-  minimize ∫₀^{tf} ‖T_c(t)‖ dt  ⇔  maximize m(tf),
+  m(tf) = m0 − α∫_0^tf ‖T_c(t)‖ dt,
 
-because integrating ṁ = −α‖T_c‖ gives m(tf) = m₀ − α∫‖T_c‖.
+so minimizing fuel is equivalent to maximizing final mass.
 
-**Pontryagin's maximum principle** characterizes the optimizer. Form the Hamiltonian with costates (adjoint variables) on r, ṙ, m; the necessary conditions say the optimal thrust at each instant maximizes the Hamiltonian over the admissible thrust set. Because the running cost ‖T_c‖ and the mass costate enter linearly in the thrust magnitude, the magnitude part of the problem is **bang-bang**: the optimal throttle sits at ρ_max or ρ_min and switches between them, governed by the sign of a scalar switching function built from the costates. The direction of optimal thrust aligns with the velocity costate (the "primer vector"): T_c* points along λ_v, with magnitude pinned to a bound. This bang-bang structure of minimum-fuel rocket control is the classical result the whole problem inherits — the engine is "on hard, off (to minimum), on hard."
+Pontryagin's maximum principle gives the first structural clue. The Hamiltonian is affine in the thrust direction through the velocity costate and affine in the thrust magnitude through the running fuel cost and mass costate. The optimal thrust direction follows the primer vector, and the optimal magnitude is pushed to an endpoint of the admissible interval. This is the bang-bang soft-landing structure studied in the older rocket-control literature: maximum thrust, minimum thrust, maximum thrust, with switch times determined by a scalar switching function.
 
-**The structural obstacle: the thrust magnitude lives in an annulus.** Combustion stability forbids running the engine below ρ_min; performance caps it at ρ_max. So at every instant
+The lower thrust bound is the obstacle. The admissible set
 
-  ρ_min ≤ ‖T_c(t)‖ ≤ ρ_max,  with 0 < ρ_min < ρ_max.
+  ρ_min ≤ ‖T_c(t)‖ ≤ ρ_max,  with 0 < ρ_min < ρ_max,
 
-The upper bound ‖T_c‖ ≤ ρ_max is a ball — a convex set. The lower bound ‖T_c‖ ≥ ρ_min is the **complement of a ball** — a nonconvex set. The admissible thrust set is therefore a nonconvex **annulus** (a shell). This is a known, load-bearing pathology: it is exactly the lower bound that makes the feasible control set nonconvex, and it is not removable by ignoring it — a trajectory that coasts at ‖T_c‖ < ρ_min is one the physical engine cannot fly.
+is an annulus in thrust space. The upper bound is a convex ball, but the lower bound is the complement of a ball, so a convex solver cannot accept the true control set directly. Removing the lower bound is not a faithful workaround, because the resulting optimizer can command coasting or arbitrarily small thrust during phases where the physical engine cannot operate.
 
-**Two further nonconvexities.** (i) The dynamics are **nonlinear**: T_c/m has the control divided by the (varying) mass state. (ii) A thrust **pointing** constraint that limits the tilt of T_c from a reference direction n̂, written n̂ᵀT_c ≥ ‖T_c‖cos θ_p, is nonconvex when θ_p > 90° (an obtuse "pie slice").
+The mass coupling adds another nonlinearity: acceleration is T_c/m, and m is a state. A pointing constraint of the form n^T T_c ≥ ‖T_c‖ cos θ_p can also be nonconvex when θ_p is obtuse, because the admissible directions cover more than a half-space but exclude a cone around the opposite direction.
 
-**Convex optimization and second-order cone programming (SOCP).** A convex program has a feasible set that is a convex set and a convex objective; for such problems every local minimum is global, and **interior-point methods** solve them to a specified accuracy in a deterministic, bounded number of iterations — the property a flight algorithm needs. A second-order cone program is the convex problem whose constraints are linear together with **second-order cone** constraints ‖A x + b‖₂ ≤ cᵀx + d (a vector's Euclidean norm bounded by an affine function). Norm-bounds on thrust, cone constraints like glide slope, and norm caps on velocity are all naturally second-order cone constraints; SOCP is therefore the right target class, and mature interior-point SOCP solvers (e.g. SeDuMi, ECOS, Clarabel) exist.
+Second-order cone programming is the natural computational target. Norm bounds, glide-slope cones, velocity caps, and many thrust constraints are second-order cone or affine constraints once the right variables are chosen. Interior-point SOCP solvers provide deterministic convergence behavior to a requested accuracy, which is why a convex transcription is attractive for autonomous descent.
 
-**Established empirical facts that frame the design.** It is well documented that minimum-fuel rocket thrust profiles are bang-bang (max–min–max). It is also a known property of this landing problem that the **minimum-fuel cost is unimodal in the time-of-flight** tf — a single-variable line search over tf finds the best flight time. And for the planetary-landing geometry, the glide-slope cone is observed to be touched by the optimal trajectory only at isolated instants (typically once mid-flight and at touchdown), never sustained over an interval — a fact that will matter for any guarantee involving the state constraints.
+Several empirical and structural facts shape the formulation. Minimum-fuel soft-landing profiles have the bang-bang max-min-max structure. For Mars-style powered descent, the fuel curve as a function of fixed flight time has a single useful minimum in the feasible interval, so an outer one-dimensional search over flight time is practical. For the glide-slope state constraint, the lossless-control argument is cleanest when the trajectory touches the cone only at isolated times rather than sliding along it over an interval; planetary landing geometries normally exhibit this isolated-contact behavior.
 
 ## Baselines
 
-**Direct nonlinear-programming / nonlinear optimal-control collocation.** Discretize the trajectory and hand the full nonconvex problem — annulus thrust bound, nonlinear dynamics and all — to a general nonlinear programming solver (SQP / interior-point on a nonconvex NLP), or solve the maximum-principle two-point boundary-value problem by shooting. Core idea: parameterize states/controls on a grid, enforce the dynamics as equality constraints, minimize fuel. Gap: these methods can converge to **local** minima, depend heavily on the initial guess, and carry **no bound on the number of iterations** to a solution — there is no certificate that the answer is globally optimal or that it will arrive in time. For an autonomous engine firing, "might find a good trajectory, eventually, if warm-started well" is not acceptable.
+**Direct nonlinear optimal-control transcription.** A collocation, pseudospectral, SQP, or shooting method can discretize the original dynamics and constraints, then solve the resulting nonlinear program. This keeps the physical model close to the original problem, but the annulus constraint and mass coupling make the NLP nonconvex. The solver may converge to a local minimum, may depend strongly on the initial guess, and does not provide the bounded global certificate needed for onboard firing decisions.
 
-**Polynomial / analytic guidance laws (Apollo-style, gravity-turn, explicit guidance).** Historically, descent guidance used closed-form or low-order polynomial acceleration profiles chosen to meet the boundary conditions. Core idea: pick a parameterized acceleration history (e.g. quadratic in time) and solve for coefficients hitting the terminal state. Gap: these are **not fuel-optimal** and cannot honor the full constraint set (annulus thrust band, glide slope, pointing, divert maneuvers) — they trade optimality and constraint fidelity for closed-form simplicity.
+**Apollo-style explicit or polynomial guidance.** Earlier powered-descent guidance laws choose an analytic acceleration or polynomial position profile and solve for coefficients that satisfy terminal conditions. These laws are simple and fast, but they do not optimize fuel under the full annular thrust band, glide slope, velocity, pointing, and large-divert constraints.
 
-**Convexify by simply dropping the lower thrust bound.** One could relax ρ_min ≤ ‖T_c‖ away entirely, leaving only ‖T_c‖ ≤ ρ_max (convex), and solve the resulting convex problem. Core idea: enlarge the feasible set to a ball so the problem becomes convex. Gap: the solution will, in general, **command thrust below ρ_min** (or zero) where the unconstrained optimum wants to coast — physically unflyable; the relaxation is not faithful, so its optimum is not a solution to the real problem.
+**One-dimensional soft-landing structure.** Meditch-style vertical soft-landing analysis gives useful insight into minimum-time and minimum-fuel feasibility along the vertical channel. It helps bracket feasible flight times, but it does not solve the full three-dimensional divert problem with lateral constraints and thrust-vector pointing.
+
+**Dropping the lower thrust bound.** Replacing ρ_min ≤ ‖T_c‖ ≤ ρ_max with only ‖T_c‖ ≤ ρ_max makes the thrust set convex. The gap is physical fidelity: the solution can live inside the forbidden hole of the annulus, so the computed trajectory can be impossible for the engine to fly.
 
 ## Evaluation settings
 
-The natural test bed is **Mars / planetary powered descent** to a target site. A scenario is defined by: gravity magnitude and direction; planet rotation rate ω; engine parameters ρ_min, ρ_max and specific impulse I_sp (hence α); wet (initial) and dry (minimum allowable) mass; the glide-slope cone half-angle; the thrust pointing/tilt limit; a maximum-velocity cap; and the initial position/velocity offset from the target (including large-divert cases where the lander must fly far cross-range to reach a safe site). The decision metrics are **propellant consumed / landed mass**, **landing miss distance** to the target, and — for onboard use — **solve time and iteration count**. The yardstick a new method is held to is whether it returns the global fuel optimum (or a certificate of infeasibility), honors every constraint, and does so in bounded time. Free-final-time scenarios add a one-dimensional search over the flight time tf.
+The standard setting is planetary powered descent, especially Mars-style pinpoint landing after parachute cutoff. A scenario specifies gravity, rotation rate, initial position and velocity relative to the target, wet and dry mass, thrust lower and upper limits, specific impulse, glide-slope angle, thrust pointing angle, speed limits, and a fixed or searched flight time. The natural metrics are final mass or propellant consumed, lateral landing error, terminal speed, constraint satisfaction, solver status, solve time, and iteration count. Large-divert cases also test whether the guidance law can land safely as close as possible when the prescribed target is unreachable.
 
 ## Code framework
 
-The pre-method scaffold is a discretized trajectory-optimization harness: a parameter block, a discrete dynamics/constraint builder, and a convex solve. The contribution to be filled in is *how the nonconvex thrust band and nonlinear mass dynamics are encoded so the builder emits a convex program* — that is the single empty slot.
+A starting software scaffold is a trajectory-optimization harness: parameters, dynamics matrices, a place to choose decision variables and encode the difficult vehicle constraints, and two solves for the reachable-target and closest-reachable-target cases. The empty methods below are the slots where the trajectory representation and thrust/mass constraint encoding still have to be designed.
 
 ```python
+from dataclasses import dataclass, field
 import numpy as np
 import cvxpy as cp
 
+@dataclass
 class DescentParameters:
-    """Vehicle, environment, and grid parameters known before any method."""
-    def __init__(self):
-        self.g = np.array([-3.71, 0.0, 0.0])     # gravity vector [m/s^2]
-        self.omega = np.array([2.53e-5, 0.0, 6.62e-5])  # planet rate [rad/s]
-        self.m_wet = 2000.0                       # initial mass [kg]
-        self.m_dry = ...                          # minimum allowable mass [kg]
-        self.rho_min = ...                        # lower thrust bound [N]
-        self.rho_max = ...                        # upper thrust bound [N]
-        self.alpha = ...                          # mass flow per Newton [s/m]
-        self.theta_p = ...                        # thrust tilt limit
-        self.gamma_gs = ...                       # glide-slope angle
-        self.v_max = ...                          # speed cap
-        self.r0 = ...; self.v0 = ...              # initial state
-        self.N = ...; self.dt = ...               # grid
+    x0: np.ndarray = field(default_factory=lambda: np.array([2400., 450., -330., -10., -40., 10.]))
+    target: np.ndarray = field(default_factory=lambda: np.array([0., 0.]))
+    m0: float = 2000.0
+    m_dry: float = 1700.0
+    alpha: float = 5e-4
+    rho_min: float = 0.2 * 24000.0
+    rho_max: float = 0.8 * 24000.0
+    tf: float = 50.0
+    dt: float = 1.0
+    glide_slope_deg: float = 30.0
+    pointing_deg: float = 120.0
+    velocity_max: float = 90.0
+    final_velocity_max: float = 2.0
+    omega: np.ndarray = field(default_factory=lambda: np.array([2.53e-5, 0., 6.62e-5]))
+    gravity: np.ndarray = field(default_factory=lambda: np.array([-3.71, 0., 0.]))
 
-    def Smatrix(self):
-        """Skew matrix of omega for Coriolis/centripetal terms."""
-        ...
+    def __post_init__(self):
+        pass
 
-def build_dynamics(p):
-    """Linear part of the translational dynamics (A, B) on [r; v]."""
-    # Known: r_ddot = g + (thrust term) - 2 S v - S^2 r
-    ...
-    return A, B
+def skew(w):
+    pass
 
-def encode_thrust_band(p, control_vars):
-    """
-    TODO — THE CONTRIBUTION.
-    The thrust magnitude must satisfy the nonconvex annulus
-        rho_min <= ||T_c|| <= rho_max,
-    and the mass dynamics m_dot = -alpha ||T_c|| are nonlinear (T_c / m).
-    Produce, from these, constraints a convex (SOCP) solver can accept,
-    WITHOUT giving up the true optimum. How to encode this is the open slot.
-    """
-    pass  # TODO
+class PoweredDescentGuidance:
+    def __init__(self, params: DescentParameters):
+        self.params = params
 
-def build_problem(p):
-    """Assemble the discretized trajectory-optimization problem."""
-    # state, control, (and whatever auxiliary variables the contribution needs)
-    x = cp.Variable((6, p.N))      # [r; v]
-    # ... mass / log-mass variable, control variable(s) ...
-    cons = []
-    A, B = build_dynamics(p)
-    for k in range(p.N - 1):
-        # discrete dynamics for [r; v]
-        pass  # TODO: x_{k+1} = x_k + (A x_k + B (...)) dt
-        # mass depletion update
-        pass  # TODO
-    cons += encode_thrust_band(p, None)   # TODO: the convex thrust encoding
-    # glide slope, pointing, velocity cap, boundary conditions
-    pass  # TODO
-    objective = cp.Minimize(...)          # TODO: minimum-fuel objective
-    return cp.Problem(objective, cons)
+    def _decision_variables(self):
+        pass
 
-def solve_descent(p):
-    prob = build_problem(p)
-    prob.solve(solver=cp.CLARABEL)
-    return prob
+    def _mass_profiles(self):
+        pass
 
-def time_of_flight_search(p):
-    """Outer 1-D search over the free final time tf (cost unimodal in tf)."""
-    # golden-section over tf, calling solve_descent on a fixed grid each time
-    pass  # TODO
+    def _set_common_constraints(self, x, z, u, gamma):
+        pass
+
+    def solve_minimum_error(self):
+        pass
+
+    def solve_minimum_fuel(self, landing_error_radius):
+        pass
 ```

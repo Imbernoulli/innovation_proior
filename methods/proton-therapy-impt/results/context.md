@@ -38,45 +38,61 @@ The natural yardstick is a planning CT of a real anatomy with the target volume(
 
 ## Code framework
 
-The pre-method primitives are exactly those already standard in beamlet-based inverse planning: a precomputed linear dose-influence operator, a vector of non-negative beam weights, a smooth scalar objective built from per-structure voxel penalties, and a bound-constrained numerical optimiser. The slots the method will fill are the per-structure penalty objective, its gradient back-projected through the influence operator, and the wrapper that combines structures (and, later, multiple error scenarios) into a single value and gradient handed to the solver.
+The primitives are those already standard in beamlet-based inverse planning: a precomputed linear dose-influence operator, a vector of non-negative beam weights, a smooth scalar objective built from per-structure voxel penalties, and a bound-constrained numerical optimiser. The empty slots are the per-structure penalty objective, the gradient back-projected through the influence operator, and the assembly of one scalar value and one weight-gradient for the solver.
 
 ```python
 import numpy as np
 from scipy.optimize import minimize
 
-# --- given (pre-method primitives) ---
-# P[scen] : sparse dose-influence matrix, dose to voxel i per unit weight of spot j,
-#           for error scenario `scen` (scen 0 = nominal). dose = P @ w. (linear model)
-# structures : list of dicts {mask (voxel indices), kind ('target'/'oar'),
-#                             dpres/dmax/dmin, penalty}
+# P_scenarios : list of sparse dose-influence matrices, one matrix per geometry.
+# structures  : list of dicts with voxel indices, role, and objective objects.
 
-def dose_from_weights(P_scen, w):
-    return P_scen @ w                      # d = P w  (linear superposition of spots)
+class DoseObjective:
+    def __init__(self, penalty=1.0, robustness="none"):
+        self.penalty = penalty
+        self.robustness = robustness
 
-class StructurePenalty:
-    """Per-structure voxel-based penalty (value + dose-gradient). TODO."""
-    def value(self, d_struct):
-        raise NotImplementedError          # TODO: the penalty we will design
-    def dose_grad(self, d_struct):
+    def value(self, dose):
         raise NotImplementedError          # TODO
 
-def objective(w, P, structures):
-    # TODO: dose d = P w; sum penalty.value over structures
+    def dose_grad(self, dose):
+        raise NotImplementedError          # TODO
+
+class DoseProjection:
+    def __init__(self, P_scenarios, scenario_prob=None, P_expected=None, omega=None):
+        self.P = P_scenarios
+        self.scenario_prob = scenario_prob
+        self.P_exp = P_expected
+        self.omega = omega
+
+    def dose(self, scen, w):
+        return self.P[scen] @ w
+
+    def expected_dose(self, w):
+        return self.P_exp @ w
+
+    def back_project(self, scen, dose_grad):
+        return self.P[scen].T @ dose_grad
+
+    def back_project_prob(self, dose_grad, omega_grad):
+        return self.P_exp.T @ dose_grad + 2.0 * omega_grad
+
+def max_value_and_weights(values, max_approx="logsumexp"):
+    # TODO: combine competing scalar objective values and return
+    #       both the combined value and the weights for their gradients.
     pass
 
-def objective_grad(w, P, structures):
-    # TODO: per-voxel delta = penalty.dose_grad; back-project ∂f/∂w = P^T delta
-    pass
-
-def robust_wrap(w, P_scenarios, structures):
-    # TODO: combine the objective across error scenarios
-    #       (expected value, or worst case) into one value + gradient
+def objective_and_gradient(w, projection, structures, scenarios, max_approx="logsumexp"):
+    # TODO: evaluate structure objectives, combine scenario contributions,
+    #       and return (objective_value, weight_gradient).
     pass
 
 def plan(P_scenarios, structures, n_spots):
     w0 = np.ones(n_spots)
-    bounds = [(0, None)] * n_spots         # w >= 0 : can't deliver negative protons
-    res = minimize(robust_wrap, w0, args=(P_scenarios, structures),
-                   jac=True, bounds=bounds, method="L-BFGS-B")
+    bounds = [(0.0, None)] * n_spots
+    projection = DoseProjection(P_scenarios)
+    scenarios = list(range(len(P_scenarios)))
+    res = minimize(lambda x: objective_and_gradient(x, projection, structures, scenarios),
+                   w0, jac=True, bounds=bounds, method="L-BFGS-B")
     return res.x
 ```

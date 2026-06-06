@@ -14,7 +14,7 @@ So I'll relax to
 
 $$ (P_1)\qquad \min_x \ \|x\|_1 \quad \text{s.t.}\quad Ax = y. $$
 
-This is convex — in fact a linear program. But why should its solution have anything to do with the $\ell_0$ solution I actually wanted? Here's the reassuring fact I can lean on: for the right kind of $A$ — one that acts as a near-isometry on sparse vectors, so that every small subset of columns is approximately orthonormal — distinct sparse signals stay well separated under $A$, and one can show the $\ell_1$ minimizer *coincides* with the $\ell_0$ minimizer for an overwhelming fraction of supports, as long as the sparsity is below a threshold like $|T| \lesssim |\Omega|/\log N$. Random and partial-Fourier matrices have this near-isometry property with high probability. So the convex relaxation isn't just a heuristic that's sometimes close; under a checkable condition on $A$ it recovers the true sparse signal *exactly*. Good — that's enough to commit to $\ell_1$ as the objective and turn my attention to *computing* it.
+This is convex — in fact a linear program. But why should its solution have anything to do with the $\ell_0$ solution I actually wanted? The geometry has to be backed by a property of $A$: it should act as a near-isometry on sparse vectors, so that every small subset of columns is approximately orthonormal and distinct sparse signals stay separated after measurement. Candès, Romberg, and Tao make that precise in the partial-Fourier setting: for an overwhelming fraction of supports and random frequency sets, the $\ell_1$ and $\ell_0$ solutions coincide when the support size is below a threshold of the form $|T| \lesssim |\Omega|/\log N$. Random and partial-Fourier matrices have this near-isometry behavior with high probability. So the convex relaxation isn't just a heuristic that's sometimes close; under the right measurement geometry it recovers the true sparse signal *exactly*. Good — that's enough to commit to $\ell_1$ as the objective and turn my attention to *computing* it.
 
 Now, the measurements are noisy ($y = Ax + w$), and the hard equality $Ax=y$ is wrong in that case — I shouldn't insist on fitting the noise. The clean way to trade fit against sparsity is the penalized form, which also matches the lasso: instead of "minimize $\|x\|_1$ subject to exact consistency," minimize a weighted sum,
 
@@ -24,7 +24,7 @@ $$ \min_x \ F(x) = \tfrac12\|Ax - y\|_2^2 + \lambda \|x\|_1. $$
 
 So how do I minimize it? The obvious thought: cast it as a second-order cone / linear program and call an interior-point method. That works, and it's accurate, but it's the wrong tool for *my* problem. In the applications I care about $n$ is in the millions and $A$ is dense — a blur convolution, a partial-Fourier operator. Interior-point methods take Newton steps; a Newton step needs me to form and factor a system involving $A^{\top}A$, and that's flatly impossible at this scale. The only operations I can afford are applying $A$ and $A^{\top}$ — cheap matrix–vector products. That single constraint — *first order only, $A$ and $A^{\top}$ products and nothing heavier* — pins me to gradient-style methods. Note $\nabla\big(\tfrac12\|Ax-y\|_2^2\big) = A^{\top}(Ax - y)$, which is exactly one application of $A$ then one of $A^{\top}$. Perfect, cheap. But gradient descent needs a differentiable objective, and mine isn't, because of $\|x\|_1$.
 
-Let me not panic at the nonsmoothness. The objective has a very particular structure: it's the sum of a *nice smooth* convex part $f(x) = \tfrac12\|Ax-y\|_2^2$ — differentiable, with a Lipschitz gradient — and a *simple but nonsmooth* convex part $g(x) = \lambda\|x\|_1$. The $\ell_1$ part is ugly to differentiate but it's *separable* across coordinates and dead simple in isolation. So maybe I shouldn't treat the whole thing as one monolithic nonsmooth function. The honest first try — the subgradient method — would do exactly that: pick a subgradient of $F$ and step along it. But subgradient descent crawls at $O(1/\sqrt{k})$, far worse than gradient descent's $O(1/k)$, and worse, its iterates are never *exactly* sparse — a subgradient step on $\lambda\|x\|_1$ nudges coordinates around but doesn't snap them to zero. I'd lose the very thing I'm chasing. So treating $f+g$ as one undifferentiated blob throws away the structure. I want to handle $f$ with its gradient and handle $g$ *exactly*, with whatever its own simple structure allows.
+Let me not panic at the nonsmoothness. The objective has a very particular structure: it's the sum of a *nice smooth* convex part $f(x) = \tfrac12\|Ax-y\|_2^2$ — differentiable, with a Lipschitz gradient — and a *simple but nonsmooth* convex part $g(x) = \lambda\|x\|_1$. The $\ell_1$ part is ugly to differentiate but it's *separable* across coordinates and dead simple in isolation. So maybe I shouldn't treat the whole thing as one monolithic nonsmooth function. The honest first try — the subgradient method — would do exactly that: pick a subgradient of $F$ and step along it. But subgradient descent crawls at $O(1/\sqrt{k})$, far worse than gradient descent's $O(1/k)$, and worse, it has no built-in dead-zone that deliberately snaps small coordinates to zero. I'd lose the very thing I'm chasing. So treating $f+g$ as one undifferentiated blob throws away the structure. I want to handle $f$ with its gradient and handle $g$ *exactly*, with whatever its own simple structure allows.
 
 How do I even take a "gradient step" that respects the nonsmooth $g$? Let me go back to what a plain gradient step *is*, because there's a reading of it that will generalize. For smooth $f$, the step $x_{k} = x_{k-1} - t\nabla f(x_{k-1})$ is the same as
 
@@ -48,7 +48,7 @@ $$ x_k = \operatorname{prox}_{t g}\big(x_{k-1} - t\nabla f(x_{k-1})\big) $$
 
 — gradient step on the smooth part, then prox of the nonsmooth part. This is exactly the split I wanted: $f$ enters only through its gradient (cheap, $A^{\top}(Ax-y)$), and $g$ is handled exactly through its prox. The whole method is only useful, though, if that prox is *cheap* to evaluate. So everything now hinges on: what is $\operatorname{prox}_{t g}$ when $g = \lambda\|\cdot\|_1$?
 
-This is the satisfying part. Because $\|x\|_1 = \sum_i |x_i|$ is *separable*, the prox decouples completely across coordinates: the minimization $\min_x \lambda\|x\|_1 + \tfrac{1}{2t}\|x-v\|^2$ splits into $n$ independent scalar problems
+Because $\|x\|_1 = \sum_i |x_i|$ is *separable*, the prox decouples completely across coordinates: the minimization $\min_x \lambda\|x\|_1 + \tfrac{1}{2t}\|x-v\|^2$ splits into $n$ independent scalar problems
 
 $$ \min_{u}\ \lambda|u| + \tfrac{1}{2t}(u - v_i)^2 \qquad\text{for each } i. $$
 
@@ -94,7 +94,7 @@ Sum over $n = 0,\dots,k-1$. The right side telescopes to $\|x^\star - x_k\|^2 - 
 
 $$ F(x_k) - F(x^\star) \ \le\ \frac{L\,\|x_0 - x^\star\|^2}{2k} = O(1/k). $$
 
-So ISTA matches plain gradient descent's sublinear rate — which makes sense, since with $g\equiv 0$ ISTA *is* gradient descent. And that's the problem. $O(1/k)$ means to drive the error down by another digit I need $10\times$ the iterations; in practice ISTA can be agonizingly slow, and one can show its asymptotic rate is in the worst case arbitrarily bad. I've got a correct, scalable method that's too slow. I need to go faster without giving up the one-cheap-prox-per-iteration budget.
+So ISTA matches plain gradient descent's sublinear rate — which makes sense, since with $g\equiv 0$ ISTA *is* gradient descent. And that's the problem. $O(1/k)$ means to drive the error down by another digit I need $10\times$ the iterations; in practice ISTA can be agonizingly slow, and rigorous worst-case examples make its asymptotic rate arbitrarily bad. I've got a correct, scalable method that's too slow. I need to go faster without giving up the one-cheap-prox-per-iteration budget.
 
 Where could the speed come from? I know that for *smooth* convex minimization, plain gradient descent's $O(1/k)$ is **not** the best a first-order method can do. Nesterov (1983) showed there's a gradient method achieving $O(1/k^2)$ — and Nemirovsky–Yudin had already shown $O(1/k^2)$ is the *best possible* rate for any method that only sees function values and gradients on this class, so it's optimal, not merely better. The remarkable thing about Nesterov's scheme is that it costs no more than ordinary gradient descent: still *one* gradient per iteration. The extra ingredient is just a cleverly chosen auxiliary point. Instead of taking the gradient/prox step from the previous iterate $x_{k-1}$, take it from an *extrapolated* point $y_k$ — a specific linear combination of the last two iterates that "looks ahead" along the direction of recent progress, a momentum-like overshoot. Since ISTA reduces to gradient descent when $g\equiv 0$, and the prox-gradient step $p_L$ is the natural generalization of a gradient step, the natural conjecture is that I can graft Nesterov's extrapolation directly onto ISTA: keep the exact same prox step, but evaluate it at $y_k$ rather than at $x_{k-1}$.
 
@@ -104,16 +104,16 @@ $$ x_k = p_L(y_k), \qquad y_{k+1} = x_k + \beta_k (x_k - x_{k-1}), $$
 
 with $y_1 = x_0$, and some momentum weights $\beta_k$ to be determined. The per-iteration cost is identical to ISTA — one prox, one $A$, one $A^{\top}$ — plus a couple of vector axpys, which is nothing. The only question is what the $\beta_k$ must be for the rate to improve, and *why those values*. I don't want to guess; I want the analysis to *force* the weights. Let me carry the master inequality through and see what the algebra demands.
 
-Introduce a scalar sequence $t_k \ge 1$ (to be pinned down) and set the momentum weight $\beta_k = \tfrac{t_k - 1}{t_{k+1}}$ — I'm writing it this way because the convergence proof for the smooth case naturally produces weights of this form, and I'll let the proof tell me the recursion $t_k$ must satisfy. Apply the master inequality twice, both times at the *extrapolation* point $z = y_{k+1}$ with $L = L_{k+1}$ (so $x_{k+1} = p_{L}(y_{k+1})$): once with $x = x_k$, once with $x = x^\star$. Writing $v_k = F(x_k) - F(x^\star)$:
+Introduce a scalar sequence $t_k \ge 1$ (to be pinned down) and set the momentum weight $\beta_k = \tfrac{t_k - 1}{t_{k+1}}$ — I'm writing it this way because the convergence proof for the smooth case naturally produces weights of this form, and I'll let the proof tell me the recursion $t_k$ must satisfy. For the clean constant-step derivation, apply the master inequality twice at the *extrapolation* point $z = y_{k+1}$ with the same $L$ each time (so $x_{k+1} = p_{L}(y_{k+1})$): once with $x = x_k$, once with $x = x^\star$. Writing $v_k = F(x_k) - F(x^\star)$:
 
 $$ \tfrac{2}{L}(v_k - v_{k+1}) \ \ge\ \|x_{k+1} - y_{k+1}\|^2 + 2\langle x_{k+1}-y_{k+1},\ y_{k+1} - x_k\rangle, $$
 $$ -\tfrac{2}{L}v_{k+1} \ \ge\ \|x_{k+1} - y_{k+1}\|^2 + 2\langle x_{k+1}-y_{k+1},\ y_{k+1} - x^\star\rangle. $$
 
-To produce a relation that telescopes in $v_k$, take a convex-ish combination: multiply the first by $(t_{k+1} - 1)$ and add the second:
+To produce a relation that telescopes in $v_k$, take the weighted combination that keeps the coefficient of $v_{k+1}$ negative: multiply the first by $(t_{k+1} - 1)$ and add the second:
 
 $$ \tfrac{2}{L}\big((t_{k+1}-1)v_k - t_{k+1}v_{k+1}\big) \ \ge\ t_{k+1}\|x_{k+1}-y_{k+1}\|^2 + 2\langle x_{k+1}-y_{k+1},\ t_{k+1}y_{k+1} - (t_{k+1}-1)x_k - x^\star\rangle. $$
 
-Now multiply through by $t_{k+1}$. On the left I get $\tfrac{2}{L}\big(t_{k+1}(t_{k+1}-1)v_k - t_{k+1}^2 v_{k+1}\big)$, and here is where I'll *want* $t_{k+1}(t_{k+1}-1) = t_k^2$, i.e.
+Now multiply through by $t_{k+1}$. On the left I get $\tfrac{2}{L}\big(t_{k+1}(t_{k+1}-1)v_k - t_{k+1}^2 v_{k+1}\big)$. For this to become a telescoping energy, the coefficient of $v_k$ has to be $t_k^2$, so I need $t_{k+1}(t_{k+1}-1) = t_k^2$, i.e.
 
 $$ t_{k+1}^2 - t_{k+1} = t_k^2, $$
 
@@ -145,50 +145,108 @@ So extrapolating the prox step to the look-ahead point $y_k$ — at no extra per
 
 Let me also sanity-check the momentum from a different angle, because the $t_k$ recursion is opaque. For large $k$, $t_{k+1} \approx t_k + \tfrac12$ (from $t_{k+1}^2 - t_k^2 = t_{k+1}$ and $t_{k+1}+t_k \approx 2t_k$), so $t_k \approx k/2$, and the weight $\beta_k = \tfrac{t_k - 1}{t_{k+1}} \approx \tfrac{k/2 - 1}{k/2 + 1/2} \to \tfrac{k}{k+3}$. So asymptotically FISTA is "add about $\tfrac{k}{k+3}$ of the last step as momentum" — momentum that starts near zero and climbs toward 1, exactly the increasing-overshoot profile of Nesterov acceleration. That's a useful equivalent form of the weight.
 
-Now let me land this in code, grounded in a standard proximal-gradient solver. The smooth part contributes $\nabla f(x) = A^{\top}(Ax - y)$; the step is $t = 1/L$ with $L = \lambda_{\max}(A^{\top}A) = \|A\|^2$, which I can estimate by a few power iterations on $A^{\top}A$ (or get by backtracking); and the prox is soft-thresholding. ISTA is the same loop with the momentum turned off.
+Now let me land this in code, grounded in the same structure a standard proximal-gradient solver uses. The smooth part contributes $\nabla f(x) = A^{\top}(Ax - y)$; the fixed step is $t = 1/L$ with $L = \lambda_{\max}(A^{\top}A) = \|A\|^2$, which I can estimate by power iteration; if I do not know a safe step, backtracking starts from a trial step and shrinks it until the quadratic model majorizes the smooth part. The nonsmooth part enters only through its prox, and the acceleration switch only changes the extrapolation point.
 
 ```python
 import numpy as np
 
+
+def smooth_value(A, y, x):
+    r = A @ x - y
+    return 0.5 * float(np.real(np.vdot(r, r)))
+
+
+def grad_smooth(A, y, x):
+    return A.conj().T @ (A @ x - y)
+
+
 def soft_threshold(v, thresh):
-    # prox of λ‖·‖₁ with step t (thresh = t·λ): per-coordinate dead-zone + shrink.
-    # the flat |v|≤thresh region is what produces exact zeros.
-    return np.sign(v) * np.maximum(np.abs(v) - thresh, 0.0)
+    # Prox of lam*||.||_1 at step t, with thresh = t*lam.
+    mag = np.abs(v)
+    if np.iscomplexobj(v):
+        return np.maximum(mag - thresh, 0.0) * np.exp(1j * np.angle(v))
+    return np.sign(v) * np.maximum(mag - thresh, 0.0)
 
-def power_iter_L(A, n_iter=50):
-    # L = ‖A‖² = λmax(AᵀA), the Lipschitz constant of ∇(½‖Ax−y‖²); largest safe step is 1/L.
-    x = np.random.randn(A.shape[1])
-    x /= np.linalg.norm(x)
+
+def lipschitz_constant(A, n_iter=100, seed=0):
+    # L = ||A||^2 = lambda_max(A.conj().T @ A), so the largest fixed step is 1/L.
+    rng = np.random.default_rng(seed)
+    x = rng.standard_normal(A.shape[1])
+    norm = np.linalg.norm(x)
+    if norm == 0.0:
+        raise ValueError("power iteration initialized at zero")
+    x = x / norm
     for _ in range(n_iter):
-        x = A.T @ (A @ x)
-        x /= np.linalg.norm(x)
-    return float(x @ (A.T @ (A @ x)))   # Rayleigh quotient ≈ λmax(AᵀA)
+        x = A.conj().T @ (A @ x)
+        norm = np.linalg.norm(x)
+        if norm == 0.0:
+            return 0.0
+        x = x / norm
+    return float(np.real(np.vdot(x, A.conj().T @ (A @ x))))
 
-def grad_f(A, y, x):
-    return A.T @ (A @ x - y)             # ∇f(x) = Aᵀ(Ax − y), one A then one Aᵀ
+
+def _backtracking(point, step, A, y, lam, beta=0.5, n_back=100):
+    grad = grad_smooth(A, y, point)
+    f_point = smooth_value(A, y, point)
+    for _ in range(n_back):
+        cand = soft_threshold(point - step * grad, step * lam)
+        d = cand - point
+        q = f_point + np.real(np.vdot(grad, d)) + (0.5 / step) * np.real(np.vdot(d, d))
+        if smooth_value(A, y, cand) <= q:
+            break
+        step *= beta
+    return cand, step
+
+
+def proximal_gradient_l1(A, y, lam, x0=None, step=None, n_iter=500,
+                         backtracking=False, beta=0.5, n_back=100,
+                         acceleration=None):
+    if x0 is None:
+        x0 = np.zeros(A.shape[1])
+    if step is None:
+        backtracking = True
+        step = 1.0
+    if acceleration not in (None, "fista", "vandenberghe"):
+        raise ValueError("acceleration must be None, 'fista', or 'vandenberghe'")
+
+    x = x0.copy()
+    z = x.copy()
+    tk = 1.0
+    for i in range(n_iter):
+        x_old = x.copy()
+        if backtracking:
+            x, step = _backtracking(z, step, A, y, lam, beta=beta, n_back=n_back)
+        else:
+            x = soft_threshold(z - step * grad_smooth(A, y, z), step * lam)
+
+        if acceleration == "fista":
+            tk_old = tk
+            tk = (1.0 + np.sqrt(1.0 + 4.0 * tk * tk)) / 2.0
+            omega = (tk_old - 1.0) / tk
+        elif acceleration == "vandenberghe":
+            omega = i / (i + 3.0)
+        else:
+            omega = 0.0
+        z = x + omega * (x - x_old)
+    return x
+
 
 def ista(A, y, lam, n_iter=500, L=None):
     if L is None:
-        L = power_iter_L(A)
-    t = 1.0 / L
-    x = np.zeros(A.shape[1])
-    for _ in range(n_iter):
-        x = soft_threshold(x - t * grad_f(A, y, x), t * lam)   # grad step, then prox
-    return x
+        L = lipschitz_constant(A)
+    if L <= 0.0:
+        raise ValueError("L must be positive")
+    step = 1.0 / L
+    return proximal_gradient_l1(A, y, lam, step=step, n_iter=n_iter)
+
 
 def fista(A, y, lam, n_iter=500, L=None):
     if L is None:
-        L = power_iter_L(A)
+        L = lipschitz_constant(A)
+    if L <= 0.0:
+        raise ValueError("L must be positive")
     step = 1.0 / L
-    x = np.zeros(A.shape[1])
-    z = x.copy()                          # extrapolation point y_k (starts at x_0)
-    tk = 1.0
-    for _ in range(n_iter):
-        x_new = soft_threshold(z - step * grad_f(A, y, z), step * lam)   # prox at look-ahead z
-        tk_new = (1.0 + np.sqrt(1.0 + 4.0 * tk * tk)) / 2.0              # forced by telescoping
-        z = x_new + ((tk - 1.0) / tk_new) * (x_new - x)                  # momentum (t_k−1)/t_{k+1}
-        x, tk = x_new, tk_new
-    return x
+    return proximal_gradient_l1(A, y, lam, step=step, n_iter=n_iter, acceleration="fista")
 ```
 
 The causal chain, start to finish: an underdetermined $y=Ax$ has no unique solution, but the signal is sparse, so I want the sparsest consistent $x$; that's $\ell_0$ minimization, which is NP-hard and combinatorial; I relax it to the convex $\ell_1$ — the tightest convex surrogate, whose cross-polytope geometry pushes solutions onto the axes — and under a near-isometry condition on $A$ the $\ell_1$ solution provably *is* the $\ell_0$ solution; with noise I use the penalized form $\tfrac12\|Ax-y\|^2 + \lambda\|x\|_1$, convex but nonsmooth; the scale forbids interior-point methods and demands a first-order, $A/A^{\top}$-only algorithm, so I split the objective into a smooth $f$ I treat by its gradient and a simple nonsmooth $g$ I treat by its prox; minimizing the quadratic-model-plus-$g$ collapses each step into a gradient step followed by $\operatorname{prox}_{tg}$, and for $g=\lambda\|\cdot\|_1$ that prox is soft-thresholding, whose dead-zone delivers exact sparsity — giving ISTA at $O(1/k)$; ISTA is too slow, so I evaluate the same prox step at a Nesterov-extrapolated point, and forcing the convergence inequality to telescope pins down both the $t_k = \tfrac{1+\sqrt{1+4t_{k-1}^2}}{2}$ recursion and the momentum weight $\tfrac{t_{k-1}-1}{t_k}$, yielding FISTA at the optimal $O(1/k^2)$ — all at one cheap prox per iteration.
