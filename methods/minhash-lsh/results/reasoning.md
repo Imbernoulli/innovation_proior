@@ -1,0 +1,142 @@
+OK, let me start from what actually hurts. I have a crawl — billions of web pages — and I keep finding the same page over and over: mirrors, syndicated copies, pages that differ only in a timestamp or an ad. I want to detect these near-duplicates and collapse them. Two pages are near-duplicate if they share almost all their text, so the first move is to turn each page into a set: chop it into w-shingles, every contiguous run of w tokens, and call two pages similar when their shingle sets overlap heavily. The natural number for "heavily" is the Jaccard resemblance, J(A,B) = |A∩B|/|A∪B| — fraction of the combined shingle vocabulary that both share, 1 if identical, 0 if disjoint.
+
+So the task reduces to: given sets, (a) estimate J(A,B) cheaply, and (b) across N of them, find the highly-similar pairs without doing all the work. And both pieces are brutal at this scale. Each page has thousands of shingles; the universe of all possible shingles is astronomical; and there are N ≈ 10⁹ pages, so N²/2 ≈ 10¹⁸ pairs. Exact J for one pair means intersecting two big sets, O(|A|+|B|), and I'd have to do it 10¹⁸ times while also storing every full set. That's a non-starter on both counts — the per-pair cost *and* the pair count. I have to compress each set into a tiny fixed-size sketch from which J pops out approximately, and I have to avoid ever looking at most pairs.
+
+Take the sketch first. I want a constant number of numbers per set, say a few hundred, such that comparing two sketches estimates J. The obvious idea: keep a small random sample of each set and compare the samples. Let me actually try it and see it fail, because the failure is instructive. Draw, independently for each set, a uniform random subset of fixed size; estimate |A∩B|/|A∪B| from how much the two samples overlap. But two *independently* drawn samples almost never pick the *same* shared shingles — even if A and B share half their elements, my sample of A and my sample of B are unlikely to both contain any particular shared one, so the measured overlap collapses toward zero and badly underestimates J. The samples aren't coordinated. Whatever I do, the two sketches must be drawn through a *shared* source of randomness, so that a shingle present in both sets gets selected the *same way* in both. The randomness has to be tied to the elements, not to the sets.
+
+That points straight at hashing. Push every shingle through a hash function and treat the output as a uniform random value in [0,1]. Two things fall out at once. Identical shingles hash identically, so any statistic I compute from the *bag* of hashed values is really a function of the *set* — repeats land on top of themselves, order is irrelevant, multiplicity-insensitive for free. And the randomness is now keyed to the element: the same shingle gets the same hash in every set it appears in, so the two sketches are automatically coordinated. From here I stop thinking about documents and think about: I have a set of uniform random values (the hashes of the shingles), and I want a cheap summary of it that, compared across two sets, reveals their Jaccard overlap.
+
+What single number summarizing a set of uniform values would do that? I need a statistic whose *agreement* between two sets happens with probability exactly J. Think about the overlap structure: among the elements of A∪B, some are in both (the intersection, fraction J of the union) and some in only one. I want a rule that picks one element of A∪B in a way that's blind to which set I'm looking at, so that when I apply it to A and to B I get the same answer precisely when the chosen element happens to be shared.
+
+The minimum does exactly this. Take a random permutation π of the universe — equivalently, hash every element and look at who hashes smallest. Define h(S) = the element of S with the smallest hash. Now compare h(A) and h(B). The element with the smallest hash *in all of A∪B* is some specific element; under a random permutation it's equally likely to be any of the |A∪B| elements. If that global-minimum element lies in A∩B, then it's the minimum of A and the minimum of B both, so h(A) = h(B). If it lies in only one of them — say only in A — then it's h(A), but B's minimum is some other, larger-hashed element, so h(A) ≠ h(B). So:
+
+  Pr[h(A) = h(B)] = Pr[the smallest-hashed element of A∪B is in A∩B] = |A∩B|/|A∪B| = J(A,B).
+
+Exactly J. Not approximately — the collision probability of this one statistic *equals* the thing I want to estimate. Let me re-derive it the other careful way to be sure, by classifying rows of the characteristic matrix. Restrict to the two columns A, B; each universe element is one of three types: X = in both (1,1), Y = in exactly one (a single 1), Z = in neither (0,0). Let x = |X| = |A∩B| and y = |Y|, so x + y = |A∪B| and J = x/(x+y). Now scan the elements in random permuted order and ignore all the Z's (they're 1 in neither set, they can't be anyone's minimum). The first non-Z element we hit: if it's an X, it's a 1 in both columns, so it's simultaneously the min of A and the min of B — they agree. If it's a Y, it's a 1 in only one column; that set takes it as its minimum, the other set's 1's are all further down the order, so the other set's minimum is a different, later element — they disagree. The first non-Z element is X with probability x/(x+y). Hence Pr[h(A)=h(B)] = x/(x+y) = J. Both derivations land on the same clean identity. This minimum-of-a-random-permutation statistic — the minhash — is the thing.
+
+Why the *minimum* specifically, and not, say, a sum of hashes, or the median, or "the element hashing closest to 0.5"? Because I need a statistic that (i) selects a single element of the set in a permutation-symmetric way, so that every element of A∪B is equally likely to be the selected one, and (ii) is determined by the set alone. The minimum is the order statistic that does this with a clean uniform selection — the argmin over A∪B is uniform over A∪B, which is exactly what makes the collision probability come out to the *ratio* |A∩B|/|A∪B|. A sum or mean wouldn't give an agree/disagree event at all, let alone one with probability J; the minimum gives me a single comparable token whose equality event is precisely "the selected element is shared."
+
+But one minhash is a single coin flip — it tells me h(A)=h(B) or not, a Bernoulli with success probability J. As a point estimate of J that's worthless; one bit. I need to average many. So take k independent permutations — k independent hash functions h₁,…,h_k — and form the signature (h₁(S),…,h_k(S)), a vector of k minima. The estimate is the fraction of coordinates that agree:
+
+  Ĵ = (1/k) · #{ i : h_i(A) = h_i(B) }.
+
+Each indicator 𝟙[h_i(A)=h_i(B)] is Bernoulli(J), and the k permutations are independent, so Ĵ is an average of k i.i.d. Bernoulli(J): unbiased, E[Ĵ] = J, with variance Var(Ĵ) = J(1−J)/k. Standard error √(J(1−J)/k) = O(1/√k). To get error ε I need k = O(1/ε²) hashes — a couple hundred for a few percent. No bias constant to chase, no Mellin transforms: it's a plain Monte-Carlo mean of a Bernoulli, and averaging k of them shrinks the noise like 1/√k. The signature is k 32-bit numbers regardless of how big the sets are — the constant-size sketch I wanted.
+
+Now a practical wall. The derivation says "random permutation of the universe." The universe of shingles is enormous — to *literally* draw and store a permutation of billions of row-indices, and sort by it, is impossible; that's more memory and time than the original problem. I don't actually need a true permutation, though. I only need, per hash function, a map from element-id to a number such that the minimum behaves like the minimum under a random permutation — i.e. the map is approximately min-wise independent: for any set X and any x ∈ X, x is the minimizer with probability ≈ 1/|X|. A cheap pairwise-independent hash does this well enough: pick a large prime p (a Mersenne prime, 2⁶¹−1, so the mod is cheap), random a ∈ [1,p), b ∈ [0,p), and map an element's base hash value v to (a·v + b) mod p, then reduce into a 32-bit range. Different (a,b) give the different "permutations" h₁,…,h_k. Collisions in this map are harmless as long as the range (2³²) dwarfs the number of distinct elements, so ties at the minimum are vanishingly rare. So in practice: hash each shingle once to a 32-bit value v; for each of the k functions compute (a_i·v + b_i) mod p reduced to 32 bits; keep the running minimum per function.
+
+And this computes in one pass and composes beautifully. Initialize each of the k signature slots to +∞ (the max 32-bit value). Stream the set's elements; for each element update slot i to min(slot i, (a_i·v+b_i) mod p). One pass, O(k) work per element. Even better: the signature of A∪B is the elementwise minimum of A's signature and B's signature — because the minimum over a union is the smaller of the two minima. So sketches *merge* under set union by taking elementwise min, which means I can shard a giant set, sketch the pieces, and combine. The whole MinHash sketch is just "k running minima of cheap hashes," mergeable and one-pass.
+
+Good — that solves piece (a), cheap pairwise Jaccard. But piece (b) is still standing there: I have N ≈ 10⁹ sketches and I want the highly-similar *pairs*. Comparing all sketches is still N²/2 comparisons — I shrank the per-comparison cost from O(set size) to O(k), but 10¹⁸·k is no better. I must avoid even *looking* at most pairs. I need similar sketches to *find each other* without an all-pairs sweep — which means hashing the sketches themselves into buckets, so that two sets only become a candidate pair if they collide in some bucket, and I only ever verify candidates.
+
+First naive try: hash each full signature (all k numbers) to one bucket; candidates are sets landing in the same bucket. But two sets collide here only if *all k* minhashes agree — probability Jᵏ, absurdly tiny even for J = 0.9 and k = 128. I'd never surface anything but exact duplicates. Wall. The opposite extreme: make a bucket per single minhash coordinate — one hash table per coordinate, sets sharing any single minhash collide. Now collision probability per table is J, far too *loose*: at J = 0.2, one in five tables already makes a pair, so dissimilar pages flood the candidate list and I'm nearly back to all-pairs. Neither "all agree" (too strict) nor "any one agrees" (too loose) works; I need a tunable middle that's *sharp* — high collision probability above some similarity threshold, low below it.
+
+Stare at what each extreme does to the collision-probability-vs-similarity curve. "All k agree" is sᵏ — convex, hugging zero until s is almost 1: very strict, kills false positives but also kills recall. "Any single agrees" is s — a straight line through the origin: lenient, good recall, terrible precision. The strict one is an AND of agreements (need every coordinate to match); the lenient one is an OR (need any one). What if I *compose* them — group coordinates so I AND within a group and OR across groups? Split the length-k signature into b bands of r rows each, k = b·r. Within a band, the band "matches" only if all r of its coordinates agree (an AND): probability sʳ. Two sets become a candidate if they match in *at least one* band (an OR across bands). So they fail to be candidates only if every band fails:
+
+  Pr[candidate] = 1 − (1 − sʳ)ᵇ.
+
+Let me feel this function. The sʳ is the AND-sharpening: raising s to the r-th power slams moderate similarities toward zero — at r = 5, s = 0.5 gives sʳ ≈ 0.03, a moderate pair almost never matches a given band. Then 1 − (1−·)ᵇ is the OR-recovery: with b independent bands, a truly similar pair (high sʳ per band) gets b chances and almost surely matches somewhere, while a dissimilar pair (sʳ ≈ 0) still matches in essentially no band. The product of these two effects is an S-curve: nearly flat and low for small s, a steep rise through a threshold, saturating near 1 for high s. That's exactly the separator I wanted — close pairs become candidates with high probability, distant pairs almost never do.
+
+Where does the rise sit? The curve crosses probability ½ at roughly the s where (1−sʳ)ᵇ = ½. A quick handle: the threshold is approximately s* ≈ (1/b)^(1/r). Check it — with b = 16, r = 4, (1/16)^(1/4) = 1/2, threshold ≈ 0.5; the band has to all-agree, sʳ = s⁴, and 1/16 of that crossing lines up at s = ½. So I *tune the threshold by choosing b and r*: increasing b (more bands, more OR) lowers the threshold and catches more — fewer false negatives, more candidates to verify; increasing r (longer bands, more AND) raises the threshold and tightens — fewer false positives, faster, at the cost of missing borderline pairs. And the steepness — how cleanly it separates above-threshold from below — grows with b and r together. So for a target resemblance t (say 0.8 for near-duplicates), pick b, r with b·r = k and (1/b)^(1/r) ≈ t, leaning to more bands if recall matters, longer bands if precision and speed matter.
+
+Let me put numbers on it to make sure it really separates. Take k = 100, b = 20 bands, r = 5 rows. Then Pr[candidate] = 1 − (1 − s⁵)²⁰. At s = 0.4 that's about 0.186; at s = 0.5, 0.470; at s = 0.6, 0.802; at s = 0.7, 0.975; at s = 0.8, 0.9996. So a 40%-similar pair is a candidate under 19% of the time, an 80%-similar pair over 99.96% of the time — the curve climbs by more than 0.6 between s = 0.4 and 0.6, a slope above 3 right through the middle. Concretely at s = 0.8: one band all-agrees with probability 0.8⁵ ≈ 0.328, so a single band misses 0.672 of the time, but over 20 bands the chance of missing *every* band is 0.672²⁰ ≈ 0.00035 — only about one in 3000 truly-80%-similar pairs slips through as a false negative. That's the false-negative rate I can read straight off the curve, and tune.
+
+How does this make retrieval cheap rather than just selective? Implement each band as a hash table: hash the r-tuple of a set's band to a bucket and drop the set's id there; do this for all b bands, b tables. Building all tables is one linear pass over the N sketches — N·b bucket insertions, not N². To find everything similar to a query set, hash its b bands, look only in those b buckets, and union the ids found: those are the candidates. Then verify each candidate by comparing full signatures (or, to be safe, the original sets). The candidate list is short because the S-curve let in almost only the genuinely-similar, so the expensive exact check runs on a tiny fraction of pairs. Similar items literally hash into the same buckets and find each other; I never enumerate the dissimilar pairs at all.
+
+There's a cleaner way to see *why* the banding produces an S-curve, which also tells me I can sharpen it as much as I like. Abstract the minhash to a "locality-sensitive" family: a family of hash functions where, for distances d₁ < d₂, anything at distance ≤ d₁ collides with probability ≥ p₁ and anything at distance ≥ d₂ collides with probability ≤ p₂. The minhash family is exactly this for Jaccard distance d = 1 − J: a single minhash agrees with probability s = 1 − d, so it's (d₁, d₂, 1−d₁, 1−d₂)-sensitive — close pairs (small d) collide more. Now two composition operators. The r-way AND: require all r functions to agree; a probability p becomes pʳ — this pushes the *low* probability p₂ toward 0 hard while only modestly lowering the high p₁. The b-way OR: require any of b to agree; p becomes 1 − (1−p)ᵇ — this pulls the *high* probability p₁ toward 1 while leaving the low p₂ small. AND-then-OR is the banding, 1 − (1 − pʳ)ᵇ, and I can see now it's not special to minhash: any LSH family, cascaded AND/OR, gets an arbitrarily steep separation between p₁ and p₂, paying only in the number of base functions I have to evaluate. The S-curve is the generic signature of AND-then-OR amplification.
+
+And that abstraction tells me how to make the *query itself* provably sublinear in N, not just "few candidates in practice." Here's the LSH near-neighbor structure. Given an (r₁, r₂, p₁, p₂)-sensitive family with p₁ > p₂, build L hash tables; in each, key a point by g_j(x) = (h₁(x), …, h_k(x)), the concatenation of k base functions (that's the AND, sharpening). For a query q, look in buckets g₁(q),…,g_L(q) and brute-force-check the points found, stopping after a bounded number. Two things must hold: a true near neighbor (distance ≤ r₁) must collide in *some* table, and the far points must not flood the buckets. Set k so that a far point's per-table collision probability p₂ᵏ ≈ 1/N — that is, k = log N / log(1/p₂). Then a *near* point survives one table with probability at least p₁ᵏ = N^{−ρ}, where
+
+  ρ = log(1/p₁) / log(1/p₂),
+
+and since p₁ > p₂ we have 0 < ρ < 1. To catch the near point across tables I need the probability of missing all L tables, (1 − N^{−ρ})^L, to be small — so L ≈ N^ρ tables makes (1 − N^{−ρ})^{N^ρ} ≈ e^{−1}, found with constant probability. Meanwhile the expected number of far-point collisions in the queried buckets is at most N · L · p₂ᵏ = L, so by Markov I examine O(L) = O(N^ρ) candidates. Query cost: O(N^ρ) hash evaluations and distance checks; space O(d·N + N^{1+ρ}). With ρ < 1 that's *sublinear query time* — for a bit-sampling family with approximation factor c one gets ρ ≤ 1/c, so a 2-approximate near-neighbor query costs about √N instead of N. That's the whole point: the curse of dimensionality, where exact high-dimensional NN degrades to a linear scan, is escaped by accepting an approximation and paying only N^ρ.
+
+So the two halves lock together: the same minhash that gives an unbiased Jaccard estimate *is* a locality-sensitive function for Jaccard distance, and banding/concatenation is the AND-then-OR amplification that both (in the b-bands form) generates a short candidate list for all-pairs near-duplicate detection and (in the L-tables form) answers single-queries in N^ρ sublinear time. Let me write it as a real program. The sketch keeps k running minima of pairwise-independent maps; similarity is the fraction of agreeing coordinates; the index slices the signature into b bands, hashes each band into its own table, and candidates are everything colliding in any band.
+
+```python
+import numpy as np
+import hashlib, struct
+from scipy.integrate import quad as integrate
+
+MERSENNE_PRIME = np.uint64((1 << 61) - 1)   # p for the a*x+b mod p maps
+MAX_HASH = np.uint64((1 << 32) - 1)         # reduce into a 32-bit range
+HASH_RANGE = 1 << 32
+
+def hash32(value):
+    # fixed pseudo-uniform hash: bytes -> {0,...,2^32-1}
+    return struct.unpack("<I", hashlib.sha1(value).digest()[:4])[0]
+
+
+class MinHash:
+    def __init__(self, num_perm=128, seed=1):
+        self.num_perm = num_perm
+        gen = np.random.RandomState(seed)
+        # k cheap pairwise-independent maps standing in for random permutations
+        self.a = np.array([gen.randint(1, MERSENNE_PRIME, dtype=np.uint64)
+                           for _ in range(num_perm)], dtype=np.uint64)
+        self.b = np.array([gen.randint(0, MERSENNE_PRIME, dtype=np.uint64)
+                           for _ in range(num_perm)], dtype=np.uint64)
+        # each slot starts at +inf so the running min is well-defined
+        self.hashvalues = np.ones(num_perm, dtype=np.uint64) * MAX_HASH
+
+    def update(self, value):
+        hv = np.uint64(hash32(value))
+        # the k "permuted" images of this element, reduced to 32 bits
+        phv = np.bitwise_and((self.a * hv + self.b) % MERSENNE_PRIME, MAX_HASH)
+        # each slot records the MINIMUM image seen across the set's elements
+        self.hashvalues = np.minimum(phv, self.hashvalues)
+
+    def merge(self, other):
+        # union of two sets == elementwise min of their minhash signatures
+        self.hashvalues = np.minimum(self.hashvalues, other.hashvalues)
+
+    def jaccard(self, other):
+        # fraction of agreeing coordinates is an unbiased estimate of J(A,B)
+        return float(np.count_nonzero(self.hashvalues == other.hashvalues)) / self.num_perm
+
+
+def _fp_prob(t, b, r):   # candidates below threshold (false positives), area under S-curve
+    return integrate(lambda s: 1 - (1 - s ** r) ** b, 0.0, t)[0]
+
+def _fn_prob(t, b, r):   # missed above threshold (false negatives)
+    return integrate(lambda s: 1 - (1 - (1 - s ** r) ** b), t, 1.0)[0]
+
+def optimal_bands(threshold, num_perm, fp_weight=0.5, fn_weight=0.5):
+    # pick b, r (b*r <= num_perm) placing the S-curve threshold ~ (1/b)^(1/r)
+    # by minimizing the weighted false-positive + false-negative area
+    best, opt = float("inf"), (0, 0)
+    for b in range(1, num_perm + 1):
+        for r in range(1, num_perm // b + 1):
+            err = fp_weight * _fp_prob(threshold, b, r) + fn_weight * _fn_prob(threshold, b, r)
+            if err < best:
+                best, opt = err, (b, r)
+    return opt
+
+
+class MinHashLSH:
+    def __init__(self, threshold=0.9, num_perm=128, weights=(0.5, 0.5)):
+        self.num_perm = num_perm
+        # AND within a band (r rows), OR across bands (b bands): 1-(1-s^r)^b S-curve
+        self.b, self.r = optimal_bands(threshold, num_perm, *weights)
+        self.ranges = [(i * self.r, (i + 1) * self.r) for i in range(self.b)]
+        self.tables = [dict() for _ in range(self.b)]
+        self.keys = {}
+
+    def _band_keys(self, m):
+        # each band is the r-tuple of minhashes in that slice, used as a bucket key
+        return [bytes(m.hashvalues[s:e].byteswap().data) for s, e in self.ranges]
+
+    def insert(self, key, m):
+        hs = self._band_keys(m)
+        self.keys[key] = hs
+        for h, table in zip(hs, self.tables):       # one linear pass: N*b insertions
+            table.setdefault(h, set()).add(key)
+
+    def query(self, m):
+        # candidates = everything colliding in ANY band; caller verifies exactly
+        candidates = set()
+        for h, table in zip(self._band_keys(m), self.tables):
+            candidates.update(table.get(h, ()))
+        return list(candidates)
+```
+
+So the chain is: near-duplicate detection is Jaccard on shingle sets, but exact J is O(set size) per pair and there are N² pairs — both costs fatal; independent sampling fails because two samples don't coordinate, so hash the elements to tie the randomness to the element and make every observable set-only; the minimum of a random permutation is uniform over the union, so two sets' minima agree exactly when the global-min element is shared, giving Pr[h(A)=h(B)] = J — an exact collision identity; one minhash is a Bernoulli(J), so average k of them for an unbiased Ĵ with variance J(1−J)/k, simulating permutations by cheap a·x+b mod p maps, one-pass and mergeable under union by elementwise min; that kills per-pair cost but not the N² pairs, so amplify — split the signature into b bands of r rows, AND within a band and OR across bands gives Pr[candidate] = 1 − (1 − sʳ)ᵇ, an S-curve whose threshold ≈ (1/b)^(1/r) is tuned by b and r to separate near from far; hash each band into its own table so similar sets collide and find each other in one linear pass, verifying only the short candidate list; and reading the minhash as a locality-sensitive family, the same AND/OR amplification with k-concatenation and L = N^ρ tables answers a single near-neighbor query in N^ρ time, ρ = log(1/p₁)/log(1/p₂) < 1 — sublinear, escaping the curse of dimensionality.

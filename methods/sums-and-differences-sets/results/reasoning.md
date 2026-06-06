@@ -1,0 +1,128 @@
+OK, let me think this through from scratch. I have a finite set of integers $A$, and I want to compare $|A+A|$ with $|A-A|$. The very first thing my instinct tells me is that differences should win. Here is the bookkeeping behind that instinct: take an unordered pair of distinct elements $\{a,a'\}$. It contributes exactly one sum, $a+a'=a'+a$, because addition commutes. But it contributes two differences, $a-a'$ and $a'-a$, which are different numbers because subtraction does not commute. One sum, two differences, per pair. So if I just count the raw potential, differences have twice the supply, and I should "usually" expect $|A-A|\ge|A+A|$.
+
+So the natural conjecture is: sets with $|A+A|>|A-A|$ — let me call them sum-dominant — are rare, maybe vanishingly rare. The vast majority of sets should be difference-dominant. That's the prevailing instinct, and I half-believe it. But "should be" is doing a lot of work in that sentence, and I want to see whether the instinct is actually correct, because the raw pair count is not the same as the cardinality of the sumset — collisions matter, and the two sets collide *differently*.
+
+Let me find the place where the supposed symmetry between sums and differences actually breaks, because if it's perfectly symmetric the instinct is just true and there's nothing to do. Stare at the difference set. If $c=a-a'\in A-A$, then $-c=a'-a\in A-A$ too. So $A-A$ is symmetric about $0$: it always contains $0$, and everything else comes in $\pm$ pairs. In particular $|A-A|$ is always *odd*. Now the sumset. Is there any analogous forced symmetry? $A+A$ sits in $[2\min A,\,2\max A]$, and there's no involution that pairs up its elements the way negation pairs up differences. A value near the bottom of the sum range can be missing all by itself, with nothing forced at the top. So the missing elements of $A-A$ are constrained to appear in $\pm$ pairs, while the missing elements of $A+A$ are free agents.
+
+That reframes the whole problem. Both $A+A$ and $A-A$ live inside intervals of the same length, with the same maximum possible cardinality $2(\max A-\min A)+1$ if everything were filled in. So the real contest isn't about who has more elements — it's about who has more *missing* elements. $|A+A|>|A-A|$ exactly when $A+A$ misses *fewer* values than $A-A$ does. And now the asymmetry I just found is suggestive in the *opposite* direction from my instinct: because missing differences come in pairs, a single structural omission in the difference set costs *two* from its budget, whereas a single omission in the sumset costs only one. So if I can engineer a set whose missing differences are forced to come in pairs while its missing sums stay solo, the difference set could end up *smaller*. Maybe sum-dominant sets aren't so impossible after all.
+
+Let me get concrete with the smallest known sum-dominant example I can get my hands on and dissect *why* it works, rather than just confirming that it does. Take $A_1=\{0,2,3,4,7,11,12,14\}$. Compute. The sumset: the possible sum range is $[0,28]$, and direct computation gives $A_1+A_1=[0,28]\setminus\{1,20,27\}$, so $|A_1+A_1|=29-3=26$. The difference set: range $[-14,14]$, and $A_1-A_1=[-14,14]\setminus\{\pm6,\pm13\}$, so $|A_1-A_1|=29-4=25$. There it is: $26>25$, sum-dominant by exactly one. And look at the missing counts: $3$ missing sums versus $4$ missing differences — but those $4$ missing differences are really $2$ values, $6$ and $13$, each doubled by the $\pm$ symmetry. So the difference set "wastes" its omissions in pairs. That's the lever, made flesh.
+
+Now I want to know how this set was *built*, because $\{0,2,3,4,7,11,12,14\}$ looks like noise. Let me pull the $4$ out and see what's left: $A_1\setminus\{4\}=\{0,2,3,7,11,12,14\}$. Is that symmetric? Symmetric about $a^*$ means $a^*-A=A$; the candidate center is $\min+\max=0+14=14$. Check: $14-\{0,2,3,7,11,12,14\}=\{14,12,11,7,3,2,0\}$ — yes, identical. So $A_1\setminus\{4\}$ is symmetric about $14$, and a symmetric set is *balanced*: $S+S=S+(a^*-S)=a^*+(S-S)$, a translate of the difference set, so $|S+S|=|S-S|$ exactly. The skeleton is balanced, and the single extra element $4$ is what tips it.
+
+So the recipe writes itself once I see it: *start from a symmetric (hence balanced) set, then adjoin one element that creates a new sum but no new difference.* Let me check that's exactly what $4$ does. Call the symmetric skeleton $A^*=\{0,2,3,7,11,12,14\}$. Adjoining $4$:
+
+For sums, the new candidates are $\{4+a:a\in A^*\}\cup\{8\}$. The value $8=4+4$ — is it already in $A^*+A^*$? The pairs in $A^*$ summing to $8$ would need two elements of $A^*$ adding to $8$: $\{0,?{=}8\}$ no, $\{2,?{=}6\}$ no, $\{3,?{=}5\}$ no, $\{7,?{=}1\}$ no. So $8\notin A^*+A^*$, and adjoining $4$ *adds* the sum $8$. Good — at least one new sum, so $|A+A|\ge|A^*+A^*|+1$.
+
+For differences, the new candidates are $\{4-a:a\in A^*\}$ and $\{a-4\}$ (the negatives, which take care of themselves by symmetry). I need *every* $4-a$ to already be in $A^*-A^*$, so that no new difference appears. Run through the positive ones: $4-3=1=3-2\in A^*-A^*$. $4-0=4=7-3\in A^*-A^*$. $4-2=2\in A^*-A^*$ (it's $2-0$). $4-7=-3$, already covered ($3=3-0$). And so on — each $4-a$ lands on a difference the skeleton already realizes. So $A-A=A^*-A^*$, the difference set does *not* grow. Net effect: $|A+A|=|A^*+A^*|+(\text{at least }1)>|A^*-A^*|=|A-A|$. Sum-dominant, and I understand *why*, not just *that*.
+
+Now I want this to be an infinite family, not a one-off. The skeleton was a perturbed arithmetic progression — $\{0,2\}\cup\{3,7,11\}\cup(14-\{0,2\})$, an AP $\{3,7,11\}$ with step $4$ flanked by symmetric fringe $\{0,2\}$ and $14-\{0,2\}=\{12,14\}$. Let me parametrize. Take a step $m$, drop one residue $d$ to make a hole, run a ladder $L$ across $k$ rungs, and symmetrize. Concretely: let $B=[0,m-1]\setminus\{d\}$, a near-complete block of residues with a single hole at $d$; let $L=\{m-d,2m-d,\dots,km-d\}$ be a ladder of step $m$; set $a^*=(k+1)m-2d$; and let
+$$A^*=B\cup L\cup(a^*-B),\qquad A=A^*\cup\{m\}.$$
+The element I adjoin is $m$ itself. Let me see if the same two things happen, in general.
+
+First, $A^*$ is symmetric about $a^*$ by construction ($a^*-B$ is glued in, and the ladder $L$ together with $a^*-B$ mirrors $B$). So $|A^*+A^*|=|A^*-A^*|$. Balanced skeleton: check.
+
+Second, the new sum. Adjoining $m$ creates the candidate $2m=m+m$. I claim $2m\notin A^*+A^*$. Suppose $2m=a+a'$ with $a\le a'$, so $a'\ge m$. Where can $a'$ live? Not in $B\subseteq[0,m-1]$ since $a'\ge m$. Not in the top block $a^*-B$: its minimum is $a^*-(m-1)=km-2d+1$, and that exceeds $2m$ as soon as $(k-2)m\ge 2d$, which holds under the hypotheses ($k\ge4$, or $k\ge3$ with $d\le m/2$). So if $a'\in A^*$ at all, it's on the ladder $L$; and since the ladder rungs above $2m-d$ are $\ge 3m-d>2m$, the only possibility is $a'=2m-d$, forcing $a=d$. But $d\notin B$ (it's the hole), and $d\ne m-d$ (since $d\ne m/2$), so $d\notin A^*$. Contradiction. Hence $2m\notin A^*+A^*$, the adjoined $m$ genuinely adds the sum $2m$, and $|A+A|>|A^*+A^*|$.
+
+Third, no new difference. I need $A^*-\{m\}\subseteq A^*-A^*$ (the negatives follow by symmetry). Because $0\in A^*$, I get $A^*\subseteq A^*-A^*$ for free. Now $\{m\}-B=[1,m]\setminus\{m-d\}$; and $m=(2m-d)-(m-d)\in L-L$, while the rest of $[1,m]$ is covered by $B-B$ (the holed block $[0,m-1]\setminus\{d\}$ still has $B-B=[-(m-1),m-1]$, because removing one interior point doesn't break the full difference set). So $\{m\}-B\subseteq A^*-A^*$, and symmetrically $B-\{m\}\subseteq A^*-A^*$. The ladder $L-\{m\}$ slides each rung down by $m$, landing on $L$ itself plus the single value $-d$, which sits in $B-B$ when $d$ is in range. And the top block $a^*-B-\{m\}$ I push through the identity $a^*-b-m=(a^*-(b+1))-(m-1)$ for $b$ away from the boundary, which is a difference of two elements of $A^*$; the few boundary $b$ get handled by similar one-off shifts (e.g. $b=m-1$ gives $(k-1)m-2d+1=((k-1)m-d)-(d-1)\in L-B$). Every case lands inside $A^*-A^*$. So $A-A=A^*-A^*$. Difference set frozen.
+
+Net: $|A+A|=|A^*+A^*|+1>|A^*-A^*|=|A-A|$. An infinite family of sum-dominant sets, one per valid $(m,d,k)$, and $(m,d,k)=(4,1,3)$ regenerates exactly Conway's $A_1$. The mechanism is uniform: symmetric AP-skeleton to be balanced, one element $m$ adjoined to manufacture a single fresh sum $2m$ while every fresh difference $m-A^*$ is pre-absorbed.
+
+I could push the same idea into two dimensions — take $B$ a near-complete block with $B+B=[0,2m-2]$ and $B-B=[-m+1,m-1]$, replace the ladder by a $(d{-}1)$-dimensional arithmetic progression $L^*$, lift to $L=(m-L^*)+m\cdot[1,k]$, symmetrize, adjoin $m$ — and the same three checks (balanced skeleton; $2m$ is a fresh sum because $A^*\cap[0,2m]$ omits the residue that would pair to it; $A^*-\{m\}\subseteq A^*-A^*$) go through. The general engine is: any block $B$ with full sumset and full difference set, plus an AP-ladder hung off it and symmetrized, plus one perturbing element. But all of these are the *same insight* dressed in more dimensions.
+
+And there's a slicker way to *manufacture* the seed in the first place, which I almost missed. The whole difficulty is finding a balanced object I can tip. Finite abelian groups make tipping trivial. Take $G=\mathbb{Z}/n\mathbb{Z}\times\mathbb{Z}/2\mathbb{Z}$ and the family of "graph" sets $A=\{(i,\varepsilon_i):0\le i<n\}$, one element per first coordinate. Then if $(0,\delta)\in A-A$, the first coordinates cancel so $i=j$, forcing $\varepsilon_i=\varepsilon_j$, so $\delta=0$. That means $(0,1)\notin A-A$ for *every* such $A$ — a guaranteed missing difference, so $|A-A|\le|G|-1=2n-1$. Meanwhile a counting argument shows $A+A=G$ for almost all such $A$: the number of $A$ missing a given $g$ from $A+A$ is small (about $2^{(n+1)/2}$ out of $2^n$), summed over the $2n$ group elements still leaves most $A$ with full sumset $|A+A|=2n$. So almost all of these $A$ are sum-dominant *in the group*, by the same "differences forced to omit a value, sums fill up" logic. Then I lift back to the integers: thicken each group element to a box of lattice points $\Lambda_G(0,t)$, which scales sums and differences the same way and preserves the inequality for large $t$; then collapse the lattice to $\mathbb{Z}$ by reading coordinates as digits in a large base $m$, $\psi(a)=\sum a_im^{i-1}$. As long as $m$ is bigger than twice the largest coordinate magnitude appearing in the few-fold sums/differences I care about, $\psi$ is injective on them, so $|hA-kA|=|h\psi(A)-k\psi(A)|$ — cardinalities ride along untouched. The base-$m$ digits don't interact.
+
+That last point — digits don't interact — is worth squeezing, because it gives me control over the *size* of the imbalance, not just its sign. If $A$ is sum-dominant with $|A+A|=s$, $|A-A|=t$, and I form
+$$A_N=A+bA+b^2A+\cdots+b^{N-1}A$$
+for $b$ large enough that no carries occur, then a sum in $A_N+A_N$ is determined digit-by-digit, independently per coordinate, so $|A_N+A_N|=s^N$ and $|A_N-A_N|=t^N$. The imbalance compounds geometrically: $|A_N+A_N|=|A_N-A_N|^{\log s/\log t}$. So a single good seed gives an exponent $\log s/\log t>1$ that I can push by choosing the seed to maximize $s/t$. And the same separation-of-digits trick lets me hit *any* prescribed imbalance. Want $|S+S|-|S-S|=2k+1$? Stack $k+1$ shifted copies of Conway's set at spacing larger than its diameter: $S_{2k+1}=A_1+\{0,29,58,\dots,29k\}$ with $A_1=\{0,2,3,4,7,11,12,14\}$ of diameter $14<29$. The copies don't collide, so $S_{2k+1}+S_{2k+1}=(A_1+A_1)+\{0,29,\dots,58k\}$, and counting residues mod $29$ gives $|S+S|=26(2k+1)$ while $|S-S|=25(2k+1)$, an imbalance of exactly $2k+1$. Drop one interior point to knock the imbalance down by one and reach the even values; for negative imbalance, $\{0,\dots,|x|+1\}\cup\{2|x|+2\}$ is difference-dominant by exactly $x$. So the imbalance ranges over all of $\mathbb{Z}$.
+
+Good — so sum-dominant sets exist in abundance and in explicit families, and I can dial the imbalance arbitrarily. But I still haven't answered the question that started all this: are they *rare*? All these families are sparse. The symmetric-perturbation family is parametrized by a couple of integers $(m,d,k)$ with $km\lesssim r$, so at most on the order of $r^2$ of them fit inside $\{0,\dots,r\}$ — utterly negligible against $2^r$ subsets. Even the base-expansion sets are sparse by design. So construction-counting can never settle the proportion question. Existence of families is one thing; the *density* among all $2^n$ subsets is another, and that's the deeper question.
+
+Let me think about a *typical* subset $S$ of $\{0,1,\dots,n-1\}$, drawn uniformly — each element in or out by a fair coin, so $|S|\approx n/2$. What does its sumset look like? Fix a candidate sum $k$ in the middle of the range, say $k\approx n$. How many ways could $k$ be a sum? It's $i+(k-i)$ for $i$ ranging over roughly $k/2$ values, and each such pair is present iff both $i$ and $k-i$ landed in $S$, probability $1/4$. There are on the order of $n/4$ such pairs for a middling $k$. With that many independent shots at probability $1/4$, the chance that *none* of them lands — i.e. $k\notin S+S$ — is around $(3/4)^{n/4}$, exponentially tiny. The same holds for a middling difference $k$. So a typical $S$ realizes essentially *every* sum and *every* difference in the middle of its range. Almost nothing is missing in the bulk.
+
+Then where do the few genuinely missing values live? Only at the **fringe**. A sum $k$ near $0$ — say $k=3$ — has just a couple of representations ($0+3$, $1+2$), so there's a real chance none of them is present. Likewise a sum near the top, and a difference near $\pm(n-1)$. The number of representations dwindles to a handful precisely at the edges, and that's the only place a coin flip can leave a hole. So the cardinalities $|S+S|$ and $|S-S|$ are determined, up to exponentially rare exceptions, by what $S$ looks like in two small windows: near $0$ and near $n-1$. *The middle of $S$ is irrelevant to whether it's sum-dominant.* Stare at that. It's the crack the whole thing opens through.
+
+Because if the fringe is what matters, then I don't have to leave it to chance — I can *fix* it. Pin down which elements near $0$ and near $n-1$ are in $S$, choosing them deliberately so the difference set is forced to miss more than the sumset does, and then let the middle of $S$ be an arbitrary random subset. With overwhelming probability the random middle fills in every non-fringe sum and difference, so the only omissions are the ones my fringe gadget hard-wired. And here's the punchline I should have seen coming: the fraction of all subsets that agree with my prescribed fringe on those two small windows is a *fixed positive constant* — if I pin $\ell+u$ elements, it's $2^{-(\ell+u)}$, independent of $n$. So a positive proportion of all $2^n$ subsets carry my engineered fringe, and almost all of *those* inherit the engineered imbalance. Positive proportion sum-dominant. The instinct that they're vanishingly rare is just wrong, and the reason is that "rare on average" and "positive proportion" are perfectly compatible.
+
+Let me make the probabilistic step rigorous, because "overwhelming probability" needs a real bound. I'll fix the fringe sets $L\subseteq\{0,\dots,\ell-1\}$ and $U\subseteq\{n-u,\dots,n-1\}$, and let the middle $R$ be a uniform random subset of $\{\ell,\dots,n-u-1\}$; set $A=L\cup R\cup U$. I want: with probability bounded below, $A+A$ contains the entire middle block of sums and $A-A$ contains the entire middle block of differences.
+
+Sums first. Index by $X_j=\mathbf 1[j\in A]$; for $\ell\le j\le n-u-1$ the $X_j$ are independent fair coins, the rest fixed by $L,U$. Now $k\notin A+A$ iff $X_jX_{k-j}=0$ for all $j\le k/2$. The key structural fact: as $j$ ranges over $0,1,\dots,\lfloor k/2\rfloor$, the pairs $\{j,k-j\}$ are *disjoint*, so the products $X_jX_{k-j}$ are mutually **independent**. Therefore $P[k\notin A+A]=\prod_j P[X_jX_{k-j}=0]$, an honest product. For a $j$ with both indices in the random middle, $P[X_jX_{k-j}=0]=1-\tfrac14=\tfrac34$. Pulling out the factors where one index is pinned in $L$ (probability $1/2$ each) and accounting for the parity term at $j=k/2$, the probability is at most $(\tfrac12)^{|L|}(\tfrac34)^{(k+1)/2-\ell}$ for odd $k$ (and a matching even-$k$ form). Summing the geometric tail over $k\ge 2\ell-1$ gives $\sum_k P[k\notin A+A]<6(\tfrac12)^{|L|}$ from the left edge, and by the reflection $A\mapsto(n-1)-A$ another $6(\tfrac12)^{|U|}$ from the right. So
+$$P\big[\text{the middle sum-block}\subseteq A+A\big]>1-6\big(2^{-|L|}+2^{-|U|}\big).$$
+Pin enough fringe ($|L|,|U|$ moderately large) and this is close to $1$.
+
+Differences need a touch more care, and finding out exactly *why* is instructive. Now $k\notin A-A$ iff $X_jX_{k+j}=0$ for all $j$. But the pairs $\{j,k+j\}$ are *not* disjoint when $k$ is small: $j$, $k+j$, and $2k+j$ chain together, so the products $X_jX_{k+j}$ are no longer all independent and the clean product fails. I can't just copy the sum argument. Two regimes save me. For large $k$ (say $k\ge n/2$), the chain doesn't have room to form within the window, the products *are* independent again, and I get the same kind of exact product $P[k\notin A-A]=(\tfrac12)^{|L|+|U|}(\tfrac34)^{n-\ell-u-k}$, whose geometric sum is tiny. For small $k$, I don't need an exact formula — the probability is already minuscule, so a crude bound suffices: I pick out a *sub*-collection $J$ of indices, spaced so that $j\in J\Rightarrow j+k\notin J$ (take blocks of $k$ in, $k$ out, repeating), giving $|J|\ge(b-a)/3$ genuinely independent products, hence $P[k\notin R-R]\le(\tfrac34)^{(b-a)/3}$. Combine the two regimes:
+$$P\big[\text{the middle difference-block}\subseteq A-A\big]>1-4\cdot 2^{-(|L|+|U|)}-\tfrac n2\big(\tfrac34\big)^{(n-\ell-u)/3},$$
+again close to $1$ for moderate fringe. The asymmetry I had to work around — sums independent, differences only partly so — is exactly the commutativity asymmetry resurfacing inside the proof.
+
+Now the gadget. I want a fringe that *forces a missing difference* (which, being a $\pm$ pair, costs two) while *forcing at most as few missing sums*. The cleanest realization: take $L=\{0,2,3,7,8,9,10\}$ and $U=\{n-11,n-10,n-9,n-8,n-6,n-3,n-2,n-1\}$. Why this $U$? It's $\{n-11,\dots,n-1\}$ with the residues $n-7,n-5,n-4$ deleted. The deletion of $n-7$ is the load-bearing one. Compute $U-L$: does it contain $n-7$? Going through it, no element of $U$ minus an element of $L$ equals $n-7$ — the gap was placed precisely so that $n-7$ has no representation as (top element) $-$ (bottom element), and there's no other way to realize a difference that large. So $n-7\notin A-A$, hence $-(n-7)\notin A-A$ too, and the difference set loses the pair $\{\pm(n-7)\}$:
+$$|A-A|\le 2n-1-2=2n-3.$$
+That's the engineered two-for-one loss in the difference budget.
+
+What does this fringe cost the sumset? Compute the forced sums. $L+L=\{0,\dots,20\}\setminus\{1\}$ — the value $1$ is missing because no two elements of $L$ sum to $1$ ($0+1$ would need $1\in L$, but $1\notin L$). So $A+A$ misses $1$, and that's the *only* forced low-end omission. $L+U=\{n-11,\dots,n+9\}$, a solid block; $U+U=\{2n-22,\dots,2n-2\}$, another solid block reaching the top. Between them, the random middle $R$ fills in everything by the sum-block proposition. So with probability $>1-6(2^{-|L|}+2^{-|U|})=1-6(2^{-7}+2^{-8})=119/128$, the sumset is exactly $\{0,\dots,2n-2\}\setminus\{1\}$:
+$$|A+A|=(2n-1)-1=2n-2.$$
+Put the two together: $|A+A|=2n-2$ while $|A-A|\le 2n-3$. Sum-dominant, guaranteed, for *every* choice of the random middle that fills the bulk — and that's at least $\tfrac{119}{128}$ of the $2^{n-22}$ ways to choose the middle. Counting, the number of sum-dominant subsets is at least $2^{n-22}\cdot\tfrac{119}{128}$, which is a positive constant times $2^n$. A positive proportion of all subsets of $\{0,\dots,n-1\}$ are sum-dominant.
+
+Let me make sure I haven't fooled myself about the original instinct, because both things should be true at once. Compute the *average* sizes over all $2^n$ subsets, via linearity of expectation: $\sum_S|S+S|=\sum_k 2^nP[k\in S+S]$, and the per-$k$ miss probabilities I just bounded sum to a constant. The arithmetic gives $\mathbb E|S+S|\sim 2n-11$ and $\mathbb E|S-S|\sim 2n-7$: on average $10$ sums are missing and only $6$ differences. So *on average* the difference set beats the sumset by $4$ — the commutativity instinct is correct as an average statement. And the reason for the gap is exactly the asymmetry I found at the very start: a typical potential sum has about half as many independent chances to be realized as the corresponding potential difference (the disjoint-pairs-for-sums versus chained-pairs-for-differences distinction), so sums are missed about twice as often, $10$ versus $\sim$ half that. Yet "average difference of $4$" and "positive proportion sum-dominant" coexist with no contradiction: the average is dragged down by the many sets near the typical, while a fixed positive slice — those whose fringe I engineered — sits on the sum-dominant side. The instinct was right about the *mean* and wrong about *rarity*.
+
+Let me land this in code: the invariants, the explicit symmetric-perturbation family, the digit/base-expansion stacking that dials the imbalance, and the fringe-controlled sampler that exhibits the positive proportion.
+
+```python
+from itertools import product
+
+def sumset(A):
+    A = sorted(set(A))
+    return {a + b for a in A for b in A}
+
+def diffset(A):
+    A = sorted(set(A))
+    return {a - b for a in A for b in A}
+
+def imbalance(A):                       # |A+A| - |A-A|; > 0 means sum-dominant
+    return len(sumset(A)) - len(diffset(A))
+
+def is_sum_dominant(A):
+    return imbalance(A) > 0
+
+
+# Construction #1: symmetric perturbed-AP skeleton + one adjoined element m.
+# B has a single hole at d; L is the step-m ladder; a* symmetrizes; adjoin m.
+# The fresh sum 2m appears (no element pairs to it in A*), while every fresh
+# difference m - A* was already present, so A-A is frozen and A+A grows by 1.
+def nathanson_family(m, d, k):
+    assert m >= 4 and 1 <= d <= m - 1 and d != m / 2
+    assert (k >= 3 if d < m / 2 else k >= 4)
+    B = [x for x in range(0, m) if x != d]
+    L = [i * m - d for i in range(1, k + 1)]
+    a_star = (k + 1) * m - 2 * d
+    A_star = set(B) | set(L) | {a_star - b for b in B}   # symmetric => balanced
+    return sorted(A_star | {m})                          # adjoin m => sum-dominant
+
+
+# Construction #2: base-b digit stacking. Spacing larger than the diameter means
+# the copies never collide, so sums/differences separate digit-by-digit and the
+# per-copy imbalance compounds; this dials any prescribed positive imbalance.
+def stacked_family(seed, copies, spacing):
+    shifts = [spacing * i for i in range(copies)]
+    return sorted({s + t for s in seed for t in shifts})
+
+
+# The positive-proportion gadget: pin the fringe so A-A loses the pair +/-(n-7)
+# (cost 2) while A+A loses only the sum 1 (cost 1); fill the middle at random.
+def fringe(n):
+    L = {0, 2, 3, 7, 8, 9, 10}
+    U = {n - 11, n - 10, n - 9, n - 8, n - 6, n - 3, n - 2, n - 1}
+    return L, U
+
+def fringe_controlled_sample(n, trials, rng):
+    L, U = fringe(n)
+    middle = list(range(11, n - 11))
+    hits = 0
+    for _ in range(trials):
+        R = {x for x in middle if rng.random() < 0.5}   # random bulk: irrelevant
+        A = sorted(L | R | U)
+        if is_sum_dominant(A):                            # forced by the fringe
+            hits += 1
+    return hits / trials                                 # -> bounded below by c>0
+```
+
+The causal chain: the difference set is forced to be symmetric about $0$, so its omissions come in $\pm$ pairs and cost double, while the sumset's omissions are free; that asymmetry is the only opening, and it pushes the *opposite* way from the naive one-sum-two-differences count. Exploit it locally by starting from a balanced symmetric set and adjoining a single element that buys a fresh sum while every fresh difference is pre-absorbed — giving explicit families, base-$b$ digit-stacking to dial the imbalance to any integer. Then, globally, observe that for a random subset the bulk sums and differences are all present with overwhelming probability, so the cardinalities are decided entirely at the fringe; fix the fringe to force a $\pm$-pair of missing differences against a single missing sum, let the middle be random, and since a positive fraction of all subsets share any prescribed fringe, a positive proportion are sum-dominant — even though, on average, differences still win by four.
