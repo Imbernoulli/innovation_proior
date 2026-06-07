@@ -12,8 +12,9 @@ rank, so the target is a guaranteed approximation in polynomial time.
 ## Key idea
 
 A lattice has no canonical short basis, but Gram-Schmidt orthogonalization of any
-basis gives an orthogonal sequence `b*_1, ..., b*_n` whose lengths are intrinsic:
-`prod_i |b*_i| = d(L)` (the basis-invariant covolume), and every nonzero
+basis gives an orthogonal sequence `b*_1, ..., b*_n` whose lengths capture the
+real geometry: the individual `|b*_i|` depend on the ordered basis, but their
+product is the basis-invariant covolume `prod_i |b*_i| = d(L)`, and every nonzero
 `x in L` satisfies `|x| >= |b*_i|` for the largest index `i` it reaches. So a
 "good" basis is one whose Gram-Schmidt lengths decay slowly. Demand two things of
 the basis, with `mu_{i,j} = <b_i, b*_j>/<b*_j, b*_j>`:
@@ -50,11 +51,13 @@ factor 2) balances approximation quality against the per-swap potential drop
 1. Compute the Gram-Schmidt orthogonalization `b*_i` and the coefficients
    `mu_{i,j}`. Set `k = 2`.
 2. While `k <= n`:
-   - Size-reduce `b_k` against `b_{k-1}, ..., b_1`: for `j` from `k-1` down to
-     `1`, if `|mu_{k,j}| > 1/2` set `b_k <- b_k - round(mu_{k,j}) b_j` and update
-     the Gram-Schmidt data. (Only the `mu_{k,k-1}` reduction is needed before the
-     test; finishing the rest can be deferred to the advance branch.)
-   - If `|b*_k|^2 >= (delta - mu_{k,k-1}^2) |b*_{k-1}|^2`, set `k <- k + 1`.
+   - Reduce only `mu_{k,k-1}`: if `|mu_{k,k-1}| > 1/2` set
+     `b_k <- b_k - round(mu_{k,k-1}) b_{k-1}` and update the Gram-Schmidt data.
+     (This is all the Lovász test below depends on.)
+   - If `|b*_k|^2 >= (delta - mu_{k,k-1}^2) |b*_{k-1}|^2`: finish size-reducing
+     `b_k` against `b_{k-2}, ..., b_1` (for `j` from `k-2` down to `1`, if
+     `|mu_{k,j}| > 1/2` set `b_k <- b_k - round(mu_{k,j}) b_j` and update), then
+     set `k <- k + 1`.
    - Else swap `b_k` and `b_{k-1}`, update the Gram-Schmidt data, and set
      `k <- max(k - 1, 2)`.
 3. When `k = n + 1`, the basis is reduced; return it.
@@ -90,17 +93,22 @@ def lll(B, delta=Fraction(3, 4)):
 
     k = 1                                          # 0-based pointer
     while k < n:
-        # size-reduction: drive every |mu_{k,j}| <= 1/2
-        for j in range(k - 1, -1, -1):
-            if abs(mu[k][j]) > Fraction(1, 2):
-                r = round(mu[k][j])                # nearest integer
-                B[k] = [a - r * b for a, b in zip(B[k], B[j])]
-                Bstar, mu = gram_schmidt(B)        # keep mu and b* exact
+        # reduce only mu_{k,k-1} before the test
+        if abs(mu[k][k - 1]) > Fraction(1, 2):
+            r = round(mu[k][k - 1])                # nearest integer
+            B[k] = [a - r * b for a, b in zip(B[k], B[k - 1])]
+            Bstar, mu = gram_schmidt(B)            # keep mu and b* exact
 
         # Lovasz condition: |b*_k|^2 >= (delta - mu_{k,k-1}^2) |b*_{k-1}|^2
         lhs = dot(Bstar[k], Bstar[k])
         rhs = (delta - mu[k][k - 1] ** 2) * dot(Bstar[k - 1], Bstar[k - 1])
         if lhs >= rhs:
+            # finish size-reducing b_k against b_{k-2},...,b_0, then advance
+            for j in range(k - 2, -1, -1):
+                if abs(mu[k][j]) > Fraction(1, 2):
+                    r = round(mu[k][j])
+                    B[k] = [a - r * b for a, b in zip(B[k], B[j])]
+                    Bstar, mu = gram_schmidt(B)
             k += 1                                 # advance
         else:
             B[k], B[k - 1] = B[k - 1], B[k]        # swap shrinks |b*_{k-1}|^2 < delta

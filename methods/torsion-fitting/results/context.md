@@ -39,14 +39,15 @@ series. In the AMBER form (Cornell et al. 1995) each dihedral contributes
 
 with amplitudes V_n, integer periodicities n, and phase offsets gamma_n. In the OPLS all-atom form
 (Jorgensen, Maxwell, Tirado-Rives 1996) the phases are pinned to 0 or 180 degrees and absorbed into
-the sign of the amplitude, giving
+the sign of the cosine, giving
 
-    E_tors(phi) = (1/2) [ V1 (1 + cos phi) + V2 (1 + cos 2phi) + V3 (1 + cos 3phi) + V4 (1 + cos 4phi) ].
+    E_tors(phi) = (1/2) [ V1 (1 + cos phi) + V2 (1 - cos 2phi) + V3 (1 + cos 3phi) + V4 (1 - cos 4phi) ].
 
 The periodicities carry chemical meaning known before any fit: an sp3–sp3 bond has three staggered
 minima, so n = 3 dominates; conjugation or a planarity preference (cis/trans) shows up as n = 2;
-an asymmetry between gauche and anti appears as n = 1. The "1 +" offset is a convention that keeps
-each term non-negative so the series has a well-defined zero. An equivalent re-expression as a
+an asymmetry between gauche and anti appears as n = 1. The "1 +" offset is a baseline convention:
+with conventional non-negative amplitudes each term stays >= 0, so the series has a well-defined
+zero, but the offset only shifts the energy baseline and does not change the shape. An equivalent re-expression as a
 polynomial in cos(phi), the Ryckaert–Bellemans form E = sum_{m=0}^{5} C_m cos(psi)^m with
 psi = phi - 180, is used by some engines; the C_m are exact linear combinations of the coefficients
 used in the chosen Fourier convention.
@@ -77,7 +78,8 @@ restrict which periodicities are allowed (use only the chemically expected n), o
 periodicities up to some cutoff and regularize — shrink redundant amplitudes toward zero (an L1 /
 Lasso penalty drives them exactly to zero), or bound the amplitudes to a physical range. A second,
 orthogonal choice is how to weight scan points: a uniform least-squares weight treats every angle
-equally, whereas a Boltzmann weight exp(-DeltaE / kT) or a flat-then-attenuating weight emphasizes
+equally, whereas a Boltzmann weight exp(-E_rel / kT) in the conformer's relative energy E_rel above
+the minimum, or a flat-then-attenuating weight, emphasizes
 the low-energy, thermally populated regions of the profile that actually matter for simulation and
 de-emphasizes high, sparsely visited barriers.
 

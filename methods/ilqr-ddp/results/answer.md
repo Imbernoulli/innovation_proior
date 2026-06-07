@@ -34,11 +34,11 @@ Substituting back propagates the value model one step backward:
 
 This is the LQR backward Riccati pass generalized to time-varying linearizations `f_x, f_u`; LQR is the special case where `f` is linear (so `f_xx = f_ux = f_uu = 0`) and a single pass is exact.
 
-**iLQR vs. full DDP.** The bracketed terms `V'_x · f_xx`, `V'_x · f_uu`, `V'_x · f_ux` are the value gradient contracted with the *dynamics curvature* (rank-three tensors). Keeping them gives a true Newton step on the trajectory — **full DDP**, quadratic local convergence. Dropping them gives the **Gauss–Newton** approximation — **iLQR**: only the Jacobians `f_x, f_u` are needed (much cheaper), `Q_uu = ℓ_uu + f_uᵀ V'_xx f_u` stays positive (semi)definite by construction when `ℓ_uu ≻ 0`, and the step is nearly the full Newton step near the solution.
+**iLQR vs. full DDP.** The bracketed terms `V'_x · f_xx`, `V'_x · f_uu`, `V'_x · f_ux` are the value gradient contracted with the *dynamics curvature* (rank-three tensors). Keeping them gives a true Newton step on the trajectory — **full DDP**, quadratic local convergence. Dropping them gives the **Gauss–Newton** approximation — **iLQR**: only the Jacobians `f_x, f_u` are needed (much cheaper), `Q_uu = ℓ_uu + f_uᵀ V'_xx f_u` stays positive (semi)definite by construction when `ℓ_uu ≻ 0` and `V'_xx ⪰ 0`, and the step is nearly the full Newton step near the solution.
 
 **Regularization (Levenberg–Marquardt).** Far from the optimum `Q_uu` can lose positive-definiteness. Adding `μI` to the *next-step value Hessian* before pulling it back,
 
-    Q̃_uu = ℓ_uu + f_uᵀ (V'_xx + μI) f_u,    Q̃_ux = ℓ_ux + f_uᵀ (V'_xx + μI) f_x,
+    Q̃_uu = ℓ_uu + f_uᵀ (V'_xx + μI) f_u  (+ V'_x · f_uu),    Q̃_ux = ℓ_ux + f_uᵀ (V'_xx + μI) f_x  (+ V'_x · f_ux),
 
 penalizes the induced *state* deviation; unlike the simpler control-based `Q_uu + μI`, the feedback gain `K` does not vanish as `μ → ∞` — it instead pulls the new trajectory toward the trusted nominal. `μ` grows fast when the backward pass hits an indefinite `Q̃_uu` and decays toward 0 (snapping to 0 below `μ_min`) on success.
 
@@ -46,7 +46,7 @@ penalizes the induced *state* deviation; unlike the simpler control-based `Q_uu 
 
     x̂_0 = x̄_0,    û_i = ū_i + α k_i + K_i (x̂_i − x̄_i),    x̂_{i+1} = f(x̂_i, û_i).
 
-The step is accepted when the realized reduction matches the model's predicted reduction `ΔJ(α) = α Σ kᵢᵀQ_u + (α²/2) Σ kᵢᵀQ_uu kᵢ`, via `z = [J(ū) − J(û)] / ΔJ(α) > c_1`; otherwise `α` shrinks (and, if even the smallest fails, `μ` grows and the backward pass repeats).
+The step is accepted when the realized reduction matches the model's predicted reduction. The model's signed cost change `ΔJ(α) = α Σ kᵢᵀQ_u + (α²/2) Σ kᵢᵀQ_uu kᵢ` is negative on a descent step (since `k = −Q_uu⁻¹Q_u`), so the predicted reduction is `−ΔJ(α) > 0`; the test is `z = [J(ū) − J(û)] / (−ΔJ(α)) > c_1`; otherwise `α` shrinks (and, if even the smallest fails, `μ` grows and the backward pass repeats).
 
 ## Algorithm
 

@@ -10,7 +10,7 @@ Why would Kerr distortion ever look like white Gaussian noise? Because of the di
 
 Let me set up the propagation. Single polarization first, I'll fix the dual-pol factor later. In frequency, the NLSE is ∂E/∂z = −jβ(f)E − αE + Q_NLI, where α is the *field* loss (power goes as e^{−2αz}, careful with that factor of two), β(f) is the propagation constant — its curvature is dispersion, and to the orders I care about β(f) = 2π²β₂f² + (4/3)π³β₃f³ — and the Kerr term is Q_NLI(z,f) = −jγ E(z,f) * E*(z,−f) * E(z,f), a double convolution. Two convolutions: three field components at f₁, f₂, f₃ combine and land at f₁ − f₂ + f₃. That's four-wave mixing, and it's exactly the structure I was worried about.
 
-Now I need a signal model that makes this double convolution tractable *and* respects the Gaussianization I just argued for. The convolution over a continuous spectrum is hopeless to average by hand. But if the spectrum were a set of discrete spectral lines, the convolutions become sums over line indices and the deltas do the integrals for me. So let me model the WDM signal as a periodic process — period T₀, very long — which forces its spectrum onto a grid of lines spaced f₀ = 1/T₀. I'll make it a filtered periodic complex white Gaussian process: start from white Gaussian lines, PWGN(f) = √f₀ Σₙ ξₙ δ(f − nf₀) with ξₙ independent unit-variance complex Gaussians, then shape it by √G_Tx(f) so the average line powers follow the actual transmitted PSD. In time, E(t) = √(f₀ G_Tx(nf₀)) Σₙ ξₙ e^{j2πnf₀t}. This is a zero-mean complex Gaussian process (matches Gaussianization), it's periodic (so I get spectral lines), and its average PSD is shaped like a real WDM signal. The periodicity is just a device — I'll let T₀ → ∞, i.e. f₀ → 0, at the very end, and the line spectrum thickens back into a continuum. The average signal power is P_E = ∫G_E df = f₀ Σ G_Tx(nf₀) ≈ ∫G_Tx df = P_Tx, exact as f₀ → 0. Good.
+Now I need a signal model that makes this double convolution tractable *and* respects the Gaussianization I just argued for. The convolution over a continuous spectrum is hopeless to average by hand. But if the spectrum were a set of discrete spectral lines, the convolutions become sums over line indices and the deltas do the integrals for me. So let me model the WDM signal as a periodic process — period T₀, very long — which forces its spectrum onto a grid of lines spaced f₀ = 1/T₀. I'll make it a filtered periodic complex white Gaussian process: start from white Gaussian lines, PWGN(f) = √f₀ Σₙ ξₙ δ(f − nf₀) with ξₙ independent unit-variance complex Gaussians, then shape it by √G_Tx(f) so the average line powers follow the actual transmitted PSD. In time, E(t) = Σₙ √(f₀ G_Tx(nf₀)) ξₙ e^{j2πnf₀t}. This is a zero-mean complex Gaussian process (matches Gaussianization), it's periodic (so I get spectral lines), and its average PSD is shaped like a real WDM signal. The periodicity is just a device — I'll let T₀ → ∞, i.e. f₀ → 0, at the very end, and the line spectrum thickens back into a continuum. The average signal power is P_E = ∫G_E df = f₀ Σ G_Tx(nf₀) ≈ ∫G_Tx df = P_Tx, exact as f₀ → 0. Good.
 
 Substitute this into the Kerr term at the fiber input, z = 0. The double convolution with three copies of E gives a triple sum:
 Q_NLI(0,f) = −jγ f₀^{3/2} Σₘ Σₙ Σ_k ξₘ ξₙ* ξ_k √(G_Tx(mf₀)G_Tx(nf₀)G_Tx(kf₀)) δ(f − [m−n+k]f₀).
@@ -48,11 +48,11 @@ So the per-channel SNR is SNR = P/(P_ASE + ηP³). Two competing terms: ASE in t
 
 For multiple spans the phased-array factor matters. When per-span dispersion is large, Δβ L_s sweeps fast across the integration region and the phased-array factor averages, so the NLI just accumulates as the number of spans: P_NLI ∝ N_s (incoherent accumulation). That's also the regime where channels get added and dropped in a network, breaking span-to-span coherence anyway — so for network use I take the incoherent assumption and let NLI scale linearly with N_s.
 
-The double integral is still a double integral, and I want something cheaper still for an optimizer that calls this per channel-pair millions of times. Approximate. Real Nyquist-WDM channels have nearly rectangular PSDs with tiny guard bands, so model each channel as a flat-top rectangle. Then in the f₁–f₂ plane the integrand's weight is concentrated where the three rectangles overlap, and that splits into a small set of "islands": the self-channel-interference (SCI) island where the channel beats with itself, the cross-channel-interference (XCI) islands where it beats with one neighbor, and the multi-channel-interference (MCI) where three distinct channels mix. The weight kernel decays fast away from the channel center, so MCI — three different neighbors — is negligible, and dropping it turns a triple sum into a double sum (cost ∝ N_ch instead of N_ch³). Over a single rectangular island the 2D FWM-efficiency integral has an analytic value: it integrates to an inverse-hyperbolic-sine. Writing L_a = 1/(2α) for the power-loss asymptotic length and L_eff = (1−e^{−2αL_s})/(2α) for the effective length, the integral over the island where the channel at f_cut (baud rate R) interacts with a pump channel of baud rate B at offset Δf evaluates to
+The double integral is still a double integral, and I want something cheaper still for an optimizer that calls this per channel-pair millions of times. Approximate. Real Nyquist-WDM channels have nearly rectangular PSDs with tiny guard bands, so model each channel as a flat-top rectangle. Then in the f₁–f₂ plane the integrand's weight is concentrated where the three rectangles overlap, and that splits into a small set of "islands": the self-channel-interference (SCI) island where the channel beats with itself, the cross-channel-interference (XCI) islands where it beats with one neighbor, and the multi-channel-interference (MCI) where three distinct channels mix. The weight kernel decays fast away from the channel center, so MCI — three different neighbors — is negligible, and dropping it turns a triple sum into a double sum (cost ∝ N_ch² instead of N_ch³). Over a single rectangular island the 2D FWM-efficiency integral has an analytic value: it integrates to an inverse-hyperbolic-sine. To write the engineering formula the way fiber software usually stores loss, I switch from field loss α to power attenuation a = 2α. Then L_a = 1/a is the power-loss asymptotic length and L_eff = (1−e^{−aL_s})/a is the span effective length. The integral over the island where the channel at f_cut (baud rate R) interacts with a pump channel of baud rate B at offset Δf evaluates to
 ψ ≈ {asinh(π² L_a |β₂| R (Δf + B/2)) − asinh(π² L_a |β₂| R (Δf − B/2))}/2 · L_eff²/(2π|β₂|L_a),
-and the self term (Δf = 0, B = R) is ψ_SCI ≈ asinh((π²/2)|β₂|L_a R²)/(2π|β₂|L_a) · L_eff². The asinh is just the closed-form value of that rectangular 2D integral, with the L_eff² carrying the span-length dependence; it makes physical sense too — NLI grows only logarithmically with bandwidth/offset once dispersion is strong, because dispersion progressively de-phases distant beats. If I store a local PSD coefficient at the cut-channel center, it is γ²·w·ψ/(R·B²), but the channel noise power multiplies that PSD by the cut bandwidth R. Those two R factors cancel in the final power coefficient, so the per-pair η used in the NLI-power sum is γ²·w·ψ/B². The weight is w = 16/27 for the self (SCI) contribution and w = 2·(16/27) for each cross (XCI) contribution, because the cross beat counts both orderings. Multiply by P_cut·P_pump², sum over pump channels, and I have the NLI on the channel — a handful of asinh evaluations.
+and the self term (Δf = 0, B = R) is ψ_SCI ≈ asinh((π²/2)|β₂|L_a R²)/(2π|β₂|L_a) · L_eff². The asinh is just the closed-form value of that rectangular 2D integral, with the L_eff² carrying the span-length dependence; it makes physical sense too — NLI grows only logarithmically with bandwidth/offset once dispersion is strong, because dispersion progressively de-phases distant beats. If I store a local PSD coefficient at the cut-channel center, it is γ²·w·ψ/(R·B²). The channel noise power multiplies that local PSD by the cut bandwidth R, so the per-pair power coefficient is η = R·γ²·w·ψ/(R·B²) = γ²·w·ψ/B². The weight is w = 16/27 for the self (SCI) contribution and w = 2·(16/27) for each cross (XCI) contribution, because the cross beat counts both orderings. Multiply by P_cut·P_pump², sum over pump channels, and I have the NLI on the channel — a handful of asinh evaluations.
 
-Let me write it as code. The data structure I want is an η matrix over channel pairs: compute each asinh interaction once from the span and channel geometry, then form NLI = P_cut·P_pump²·η over pumps, then SNR and the cube-root optimum power follow directly.
+Let me write it as code. The data structure I want is a coefficient matrix over channel pairs: compute each asinh interaction once from the span and channel geometry, keep the local-white-noise conversion explicit, then form NLI = P_cut·P_pump²·η over pumps, and the SNR and cube-root optimum power follow directly.
 
 ```python
 import numpy as np
@@ -60,14 +60,33 @@ import numpy as np
 SPM_WEIGHT = 16.0 / 27.0          # same-polarization / self-channel weight (Manakov 8/9 bookkeeping)
 XPM_WEIGHT = 2.0 * 16.0 / 27.0    # cross-channel weight: both beat orderings
 
+class Channel:
+    def __init__(self, f0, baud_rate, power, roll_off=0.0):
+        self.f0 = f0
+        self.baud_rate = baud_rate
+        self.power = power
+        self.roll_off = roll_off
+
+class Span:
+    def __init__(self, length, alpha, beta2, gamma, beta3=0.0):
+        self.length = length
+        self.alpha = alpha      # power attenuation [1/m]
+        self.beta2 = beta2
+        self.beta3 = beta3
+        self.gamma = gamma
+
 def effective_length(alpha, length):
-    # alpha is FIELD loss; power decays as exp(-2*alpha*z)
-    return (1.0 - np.exp(-2.0 * alpha * length)) / (2.0 * alpha)
+    return (1.0 - np.exp(-alpha * length)) / alpha
 
 def asymptotic_length(alpha):
-    return 1.0 / (2.0 * alpha)    # 1/(2 alpha): the power-loss asymptotic length
+    return 1.0 / alpha
 
-def psi(df, baud_cut, baud_pump, beta2_cut, beta2_pump, L_eff, L_a):
+def ase_power(gain, noise_figure, nu, bandwidth):
+    h = 6.62607015e-34
+    F = 10 ** (noise_figure / 10.0)
+    return F * (gain - 1.0) * h * nu * bandwidth
+
+def interaction_factor(df, baud_cut, baud_pump, beta2_cut, beta2_pump, L_eff, L_a):
     # closed-form value of the rectangular SCI/XCI FWM-efficiency island,
     # the asinh that the 2D integral collapses to.
     beta2 = (beta2_cut + beta2_pump) / 2.0
@@ -79,7 +98,7 @@ def psi(df, baud_cut, baud_pump, beta2_cut, beta2_pump, L_eff, L_a):
     val *= L_eff**2 / (2.0 * np.pi * abs_beta2 * L_a)
     return val
 
-def eta_matrix(channels, span):
+def coefficient_matrix(channels, span):
     # eta[i, j]: NLI on channel i contributed per (P_i * P_j^2) by pump channel j.
     n = len(channels)
     alpha, beta2, gamma = span.alpha, span.beta2, span.gamma
@@ -90,14 +109,14 @@ def eta_matrix(channels, span):
         for j, pump in enumerate(channels):
             df = pump.f0 - cut.f0
             weight = SPM_WEIGHT if i == j else XPM_WEIGHT   # SCI vs XCI
-            p = psi(df, cut.baud_rate, pump.baud_rate, beta2, beta2, L_eff, L_a)
+            p = interaction_factor(df, cut.baud_rate, pump.baud_rate, beta2, beta2, L_eff, L_a)
             eta_density = gamma**2 * weight * p / (cut.baud_rate * pump.baud_rate**2)
             eta[i, j] = cut.baud_rate * eta_density
     return eta
 
 def nli_power(channels, span, n_spans):
     # cubic-in-power NLI; incoherent (linear) accumulation over identical spans.
-    eta = eta_matrix(channels, span) * n_spans
+    eta = coefficient_matrix(channels, span) * n_spans
     P = np.array([c.power for c in channels])
     Pcut  = np.outer(P, np.ones(len(P)))        # P_i
     Ppump = np.outer(np.ones(len(P)), P)         # P_j
@@ -105,9 +124,9 @@ def nli_power(channels, span, n_spans):
     return nli                                   # the P^3 scaling lives here
 
 def channel_snr(channels, span, n_spans, p_ase):
-    p_nli = nli_power(channels, span, n_spans)
+    p_nli = nli_power(channels, span, n_spans)   # accumulated over n_spans
     P = np.array([c.power for c in channels])
-    return P / (p_ase + p_nli)                   # ASE and NLI add in variance
+    return P / (p_ase + p_nli)                   # p_ase = total link ASE; ASE and NLI add in variance
 
 def optimum_launch_power(eta_self, p_ase):
     # for a channel with NLI = eta_self * P^3: maximize P/(p_ase + eta_self*P^3)

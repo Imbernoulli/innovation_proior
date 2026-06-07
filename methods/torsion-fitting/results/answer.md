@@ -47,7 +47,8 @@ the rest of the force field, the model reproduces the QM barrier.
 5. **Control overfitting.** Restrict the allowed periodicities, or admit n=1..4 and regularize
    (L1/Lasso drives redundant amplitudes to zero), or bound the amplitudes and solve a bounded
    residual problem for the assembled linear system. Optionally weight scan points (Boltzmann
-   exp(-DeltaE/kT), or flat-then-attenuating) to emphasize populated conformers.
+   exp(-E_rel/kT) in the relative conformer energy, or flat-then-attenuating) to emphasize populated
+   conformers.
 
 6. **Export.** Convert the fitted Fourier amplitudes to Ryckaert–Bellemans coefficients (psi=phi-180,
    E = sum_{m=0}^5 C_m cos(psi)^m) exactly:
@@ -72,7 +73,7 @@ input: matched scan of N conformations
 ## Code
 
 ```python
-import os, json
+import os
 import numpy as np
 import pandas as pd
 from numpy.linalg import inv
@@ -95,6 +96,8 @@ def estimate_rotational_coefficients(qm_file, mm_file, dih_dir, coeff=4,
     mm_file: second column is no-torsion MM relative energy for the same conformations.
     dih_dir: *.dih files; first line is the atom-type quadruplet, followed by angle rows.
     """
+    if coeff not in (3, 4):
+        raise ValueError("coeff must be 3 or 4 (the RB export covers up to the 4th harmonic)")
     qm = pd.read_csv(qm_file, sep=r"\s+", header=None)[0]
     zero_term = pd.read_csv(mm_file, sep=r"\s+", header=None)[1]
     target = (qm - zero_term).to_numpy()

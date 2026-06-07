@@ -39,7 +39,8 @@ edges, and speed by exploiting the equioscillation structure of the optimum.
    ```
 
    and `P` is evaluated anywhere by barycentric Lagrange interpolation through all `r+1`
-   ordinates `y_i = D̂(F_i) - (-1)^i δ/Ŵ(F_i)` after that `δ` makes the order-`r`
+   ordinates `y_i = D̂(F_i) - s_i δ/Ŵ(F_i)` (with `s_i = (-1)^i`, flipped to `-(-1)^i`
+   when `δ_raw < 0`) after that `δ` makes the order-`r`
    divided difference vanish — no coefficient solve per iteration.
 
 5. **Remez exchange.** Guess `r+1` references (equispaced); compute `δ` and `P`; evaluate the error
@@ -53,18 +54,19 @@ edges, and speed by exploiting the equioscillation structure of the optimum.
 
 ```
 Inputs: numtaps N, bands, desired gains D, weights W, filter type.
-1. From symmetry/parity pick the case; r = number of cosine terms; build dense grid on the bands.
+1. From symmetry/parity pick the case; r = number of cosine terms; build dense grid on the bands,
+   dropping the endpoints where Q vanishes (f=0.5 for cos(pi f); f=0 for sin(pi f); both for sin(2 pi f)).
 2. Form D_hat = D/Q, W_hat = W*Q on the grid (Q from the case).
 3. Initialize r+1 equispaced extremal indices.
 4. Repeat (<= maxiter):
      x_i = cos(2*pi*F_i);  b_i = Lagrange weights;
      raw_delta = (sum b_i D_hat_i) / (sum (-1)^i b_i / W_hat_i);
-     delta = abs(raw_delta), flipping the starting sign if raw_delta < 0;
-     y_i = D_hat_i - (-1)^i delta / W_hat_i;
+     delta = abs(raw_delta);  s_i = (-1)^i, flipped to -(-1)^i if raw_delta < 0;
+     y_i = D_hat_i - s_i * delta / W_hat_i;
      signed_err(f) = W_hat(f)*(P(f) - D_hat(f)) on the dense grid;
      new extrema = r+1 alternating local maxima of |signed_err|;
      if max|signed_err| <= delta: converged.
-5. alpha = inverse-DFT of P at r equispaced freqs; fold alpha (undo Q) into symmetric h(n).
+5. alpha = inverse-DFT of P at r equispaced freqs; fold alpha (undo Q) into the symmetric or antisymmetric h(n) selected by the case.
 ```
 
 ## Code
@@ -94,7 +96,7 @@ hilb = remez(31, [0.05, 0.45], [1.0], type='hilbert')
 w, H = freqz(taps, worN=2000, fs=fs)   # inspect the equiripple magnitude response
 ```
 
-A faithful from-scratch implementation of the exchange core (mirroring the engine — barycentric
+A from-scratch implementation of the exchange core (mirroring the engine's main path — barycentric
 `freq_eval`, the closed-form `δ`, the alternating extremal search, inverse-DFT recovery):
 
 ```python
@@ -122,14 +124,17 @@ def eval_P(xq, x, y, b):
             out[idx] = (c @ y) / c.sum()
     return out
 
-def pick_alternating_extrema(err, n_ext):
-    """Return n_ext alternating local maxima of |err|, keeping the largest same-sign lobe."""
+def pick_alternating_extrema(err, n_ext, edges=()):
+    """Return n_ext alternating local maxima of |err|, keeping the largest same-sign lobe.
+    Band edges and the two grid endpoints (edges) are always candidate extrema."""
+    forced = set(edges)
     peaks = []
     for i, value in enumerate(err):
         left = abs(err[i - 1]) if i else -np.inf
         right = abs(err[i + 1]) if i + 1 < len(err) else -np.inf
-        if abs(value) >= left and abs(value) >= right:
+        if i in forced or (abs(value) >= left and abs(value) >= right):
             peaks.append(i)
+    peaks.sort()
 
     def compress(indices):
         out = []
@@ -143,16 +148,23 @@ def pick_alternating_extrema(err, n_ext):
         return out
 
     ext = compress(peaks)
+    # signs strictly alternate now; trim any surplus by dropping the smaller-|err| endpoint,
+    # which keeps the interior alternation intact (an interior drop would merge two same-sign lobes)
     while len(ext) > n_ext:
-        drop = min(range(len(ext)), key=lambda k: abs(err[ext[k]]))
-        del ext[drop]
-        ext = compress(ext)
+        if abs(err[ext[0]]) <= abs(err[ext[-1]]):
+            ext = ext[1:]
+        else:
+            ext = ext[:-1]
     if len(ext) != n_ext:
         raise RuntimeError("could not find enough alternating extrema")
     return np.array(ext, dtype=int)
 
 def remez_exchange(grid, des, wt, r, maxiter=25):
     """grid: dense freqs in [0,0.5]; des=D_hat, wt=W_hat prepared on the grid; r cosine terms."""
+    # band edges = grid endpoints + the indices straddling each transition gap (frequency jump)
+    df = np.diff(grid)
+    gap = np.where(df > 1.5 * np.median(df))[0]
+    edges = sorted({0, len(grid) - 1, *gap.tolist(), *(gap + 1).tolist()})
     step = (len(grid) - 1) / r
     ext = np.array([int(j * step) for j in range(r)] + [len(grid) - 1])
     dev = 0.0
@@ -168,7 +180,7 @@ def remez_exchange(grid, des, wt, r, maxiter=25):
         y = des[ext] - signs * dev / wt[ext]                      # ordinates P interpolates
         P = eval_P(np.cos(2*np.pi*grid), x, y, b)
         err = (P - des) * wt                                      # weighted error on dense grid
-        new_ext = pick_alternating_extrema(err, r + 1)             # r+1 alternating local maxima
+        new_ext = pick_alternating_extrema(err, r + 1, edges)      # r+1 alternating extrema
         if np.max(np.abs(err)) <= dev * (1 + 1e-6):
             break
         ext = new_ext
@@ -194,5 +206,8 @@ def remez_exchange(grid, des, wt, r, maxiter=25):
 
 The `pick_alternating_extrema` step keeps, among same-sign error lobes, the grid point of largest
 `|E|`, returning `r+1` of them sorted in frequency so the alternation pattern is preserved; the full
-engine adds endpoint bookkeeping around this same exchange rule. Folding `alpha` back through `Q` and imposing
+engine adds endpoint bookkeeping around this same exchange rule. The coefficient recovery here
+samples `P` on the full `[0, 0.5]` interval; when the bands do not span `[0, 0.5]` the full engine
+first linearly remaps the cosine variable onto the active interval before the inverse transform.
+Folding `alpha` back through `Q` and imposing
 `h(n) = ±h(N-1-n)` produces the final impulse response.

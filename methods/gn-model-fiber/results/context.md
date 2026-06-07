@@ -1,5 +1,3 @@
-# Context: predicting nonlinear performance of uncompensated coherent fiber links
-
 ## Research question
 
 A long-haul wavelength-division-multiplexed (WDM) optical link carries dozens of densely packed channels down hundreds of kilometers of single-mode fiber, with an optical amplifier at the end of every span to make up the loss. Two things degrade the received signal: amplified-spontaneous-emission (ASE) noise from the amplifiers, and signal distortion from the fiber's Kerr nonlinearity. ASE is easy — it is additive white Gaussian noise whose power follows directly from amplifier gain and noise figure. The Kerr nonlinearity is the hard part: it couples every frequency to every other through four-wave mixing, and in a dense WDM comb the number of mixing products is astronomical.
@@ -19,7 +17,7 @@ What a solution must achieve: from the transmitted power spectral density (PSD) 
 
 **ASE noise and OSNR.** Each amplifier adds ASE with one-sided PSD G_ASE = F(G−1)hν per amplifier (F = 2n_sp the noise figure, G the gain), independent white Gaussian noise added at the channel power level. The linear-channel figure of merit is OSNR = P / P_ASE over a reference bandwidth; for an ideal coherent receiver with matched filtering the constellation SNR equals the in-band OSNR, and BER = Ψ(SNR) for a known function Ψ set by the modulation format (e.g. for PM-QPSK, BER = ½erfc(√(SNR/2))).
 
-**Why an uncompensated link makes the nonlinear distortion look like noise.** Here is the load-bearing observed phenomenon. Because dispersion is left uncompensated, each channel's waveform after a short distance is a sum of thousands of overlapping, dispersed symbols; by the central-limit tendency the field statistics approach those of a complex Gaussian process whose only relevant property is its average PSD. The signal "Gaussianizes" after launch. The Kerr nonlinearity then acts on this Gaussian-like, heavily dispersed field; the FWM beats that fall in-band come from enormously many uncorrelated frequency triples, and from span to span the large accumulated dispersion scrambles their relative phases. It is well established from FWM theory and from split-step observations of such links that the resulting in-band distortion behaves, statistically, like an additive zero-mean Gaussian perturbation, roughly white across a channel and roughly independent of the ASE — provided the link is uncompensated and the per-span dispersion is large. In dispersion-managed links, where dispersion is periodically zeroed optically, the beats stay phase-correlated, the distortion is structured and *not* Gaussian, and this picture breaks down. Two further facts are known a priori: at the launch power where systems are operated, the nonlinear distortion is comparable to or smaller than the ASE (the perturbation is mild), and the distortion power grows much faster with launch power than ASE does, so there is a sweet spot in launch power — push too hard and nonlinearity dominates, too soft and ASE dominates.
+**Why an uncompensated link makes the nonlinear distortion look like noise.** Because dispersion is left uncompensated, each channel's waveform after a short distance is a sum of thousands of overlapping, dispersed symbols; by the central-limit tendency the field statistics approach those of a complex Gaussian process whose only relevant property is its average PSD. The signal "Gaussianizes" after launch. The Kerr nonlinearity then acts on this Gaussian-like, heavily dispersed field; the FWM beats that fall in-band come from enormously many uncorrelated frequency triples, and from span to span the large accumulated dispersion scrambles their relative phases. It is well established from FWM theory and from split-step observations of such links that the resulting in-band distortion behaves, statistically, like an additive zero-mean Gaussian perturbation, roughly white across a channel and roughly independent of the ASE — provided the link is uncompensated and the per-span dispersion is large. In dispersion-managed links, where dispersion is periodically zeroed optically, the beats stay phase-correlated, the distortion is structured and *not* Gaussian, and this picture breaks down. Two further facts are known a priori: at the launch power where systems are operated, the nonlinear distortion is comparable to or smaller than the ASE (the perturbation is mild), and the distortion power grows much faster with launch power than ASE does, so there is a sweet spot in launch power — push too hard and nonlinearity dominates, too soft and ASE dominates.
 
 ## Baselines
 
@@ -31,7 +29,7 @@ What a solution must achieve: from the transmitted power spectral density (PSD) 
 
 ## Evaluation settings
 
-The natural yardstick is the split-step NLSE/Manakov simulator as ground truth, with agreement measured as the error in predicted per-channel SNR (equivalently NLI power, or the implied maximum reach / optimum launch power). Representative link/format settings of the time: standard single-mode fiber with dispersion D ≈ 16–17 ps/(nm·km) (β₂ ≈ −21 ps²/km), loss α ≈ 0.2 dB/km, nonlinearity γ ≈ 1.3 (W·km)⁻¹, spans of ~80–100 km with lumped EDFA gain compensating span loss and noise figure ~5 dB; PM-QPSK / PM-16QAM / PM-64QAM at symbol rates of tens of GBaud; Nyquist-WDM or quasi-Nyquist channel spacing on a ~50 GHz or flexible grid; tens of channels across the C-band. The metrics are NLI PSD G_NLI(f) per channel, the resulting SNR/GSNR per channel, the optimum per-channel launch power, and the maximum number of spans (reach) at a target SNR.
+The natural yardstick is the split-step NLSE/Manakov simulator as ground truth, with agreement measured as the error in predicted per-channel SNR (equivalently NLI power, or the implied maximum reach / optimum launch power). Representative link/format settings of the time: standard single-mode fiber with dispersion D ≈ 16-17 ps/(nm·km) (β₂ ≈ −21 ps²/km), power attenuation ≈ 0.2 dB/km, nonlinearity γ ≈ 1.3 (W·km)⁻¹, spans of ~80-100 km with lumped EDFA gain compensating span loss and noise figure ~5 dB; PM-QPSK / PM-16QAM / PM-64QAM at symbol rates of tens of GBaud; Nyquist-WDM or quasi-Nyquist channel spacing on a ~50 GHz or flexible grid; tens of channels across the C-band. The metrics are NLI PSD G_NLI(f) per channel, the resulting SNR/GSNR per channel, the optimum per-channel launch power, and the maximum number of spans (reach) at a target SNR.
 
 ## Code framework
 
@@ -51,14 +49,14 @@ class Channel:
 class Span:
     def __init__(self, length, alpha, beta2, gamma, beta3=0.0):
         self.length = length         # span length [m]
-        self.alpha = alpha           # FIELD loss [1/m]; power ~ exp(-2*alpha*z)
+        self.alpha = alpha           # power attenuation [1/m]; power ~ exp(-alpha*z)
         self.beta2 = beta2           # 2nd-order dispersion [s^2/m]
         self.beta3 = beta3           # 3rd-order dispersion [s^3/m]
         self.gamma = gamma           # nonlinearity [1/(W*m)]
 
 def effective_length(alpha, length):
-    # region over which nonlinearity acts; power-attenuation based
-    return (1.0 - np.exp(-2.0 * alpha * length)) / (2.0 * alpha)
+    # region over which nonlinearity acts
+    return (1.0 - np.exp(-alpha * length)) / alpha
 
 def ase_power(gain, noise_figure, nu, bandwidth):
     # amplifier ASE power in a reference bandwidth; F = 10**(NF/10)
@@ -67,12 +65,16 @@ def ase_power(gain, noise_figure, nu, bandwidth):
     return F * (gain - 1.0) * h * nu * bandwidth   # dual-pol handled by caller
 
 # ---- nonlinear-noise slot ---------------------------------------------------
-def nonlinear_interaction_factor(df, baud_cut, baud_pump, span):
+def asymptotic_length(alpha):
+    # TODO: derive the long-span loss length used by the interaction integral.
+    pass
+
+def interaction_factor(df, baud_cut, baud_pump, span):
     """Strength of one frequency-pair mixing island."""
     # TODO: derive the phase-matched interaction integral.
     pass
 
-def nonlinear_coefficients(channels, span):
+def coefficient_matrix(channels, span):
     """Pairwise coefficients for nonlinear noise on each cut channel."""
     # TODO: turn interaction factors into coefficients between channels.
     pass
@@ -84,7 +86,6 @@ def nli_power(channels, span, n_spans):
 
 def channel_snr(channels, span, n_spans, p_ase):
     """Per-channel SNR combining ASE and nonlinear interference."""
-    p_nli = nli_power(channels, span, n_spans)
     # TODO: how do ASE and NLI combine into one SNR?
     pass
 

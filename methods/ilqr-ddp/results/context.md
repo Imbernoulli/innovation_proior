@@ -46,7 +46,7 @@ The natural testbeds are nonlinear plants with smooth dynamics where a large-amp
 
 ## Code framework
 
-The primitives that already exist: dense linear algebra (matrix products, symmetric solves, an eigen/Cholesky check for positive-definiteness), a routine that integrates the plant `x_{i+1} = f(x_i, u_i)` forward from `x_0` under a control sequence, and a way to obtain the first (and optionally second) derivatives of `f` and of the stage cost `ℓ` along a trajectory — by analytic formulas, finite differences, or automatic differentiation. The slots to be filled are the backward recursion that turns those per-step derivatives into a correction with feedback, and the forward step that applies the correction to produce an improved trajectory.
+The primitives that already exist: dense linear algebra (matrix products, symmetric solves, an eigen/Cholesky check for positive-definiteness), a routine that integrates the plant `x_{i+1} = f(x_i, u_i)` forward from `x_0` under a control sequence, and a way to obtain along a trajectory the first derivatives of the dynamics `f` (and optionally its second derivatives) together with the first and second derivatives of the stage cost `ℓ` — by analytic formulas, finite differences, or automatic differentiation. The slots to be filled are the backward recursion that turns those per-step derivatives into a correction with feedback, and the forward step that applies the correction to produce an improved trajectory.
 
 ```python
 import numpy as np

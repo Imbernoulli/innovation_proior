@@ -12,7 +12,7 @@ Three things make this hard. First, the phase cannot be measured directly: optic
 
 **Sensing slopes, not phase — the Shack–Hartmann wavefront sensor.** A Shack–Hartmann sensor places an array of small lenslets across an image of the pupil. Each lenslet forms a focal spot from the light in its sub-aperture; if the wavefront over that sub-aperture is tilted, the spot shifts. The spot displacement in x and y is proportional to the **average wavefront slope (gradient)** over the sub-aperture. So the sensor returns, per sub-aperture, two numbers (sₓ, s_y) — local gradients — and never the phase itself. A whole sensor frame is a vector **s** of all sub-aperture slopes. Recovering φ from s is therefore a *gradient-integration* problem: a discrete derivative has been measured and the antiderivative is wanted. Because only gradients are seen, any spatially constant offset (piston) is invisible to the sensor — a fundamental ambiguity baked into slope sensing.
 
-**Sampling geometry and unsensed modes.** When the sub-aperture corners coincide with the corrector's actuator locations (the **Fried geometry**), a single sub-aperture's slopes relate to the four corner displacements d₁…d₄ by sₓ = −d₁ + d₂ − d₃ + d₄ and s_y = −d₁ − d₂ + d₃ + d₄. Stacking all sub-apertures gives a linear forward map s = A d. This map has a non-trivial null space. Besides global piston, the Fried geometry has the **waffle** mode: pushing the two diagonal corners c₁, c₄ up and the other diagonal c₂, c₃ down by equal amounts gives a checkerboard surface with w = d₁ − d₂ − d₃ + d₄ ≠ 0 but sₓ = s_y = 0 in every sub-aperture — the sensor is blind to it. Unsensed modes are not corrected by the loop, yet noise and numerical error can excite them, so they can grow on the corrector unchecked if nothing removes them.
+**Sampling geometry and unsensed modes.** When the sub-aperture corners coincide with the corrector's actuator locations (the **Fried geometry**), a single sub-aperture's slopes relate to the four corner displacements d₁…d₄ by sₓ = −d₁ + d₂ − d₃ + d₄ and s_y = −d₁ − d₂ + d₃ + d₄. Stacking all sub-apertures gives a linear forward map s = A d. This map has a non-trivial null space. Besides global piston, the Fried geometry has the **waffle** mode: pushing the two diagonal corners c₁, c₄ up and the other diagonal c₂, c₃ down by equal amounts gives a checkerboard surface with w = d₁ − d₂ − d₃ + d₄ ≠ 0 but sₓ = s_y = 0 in every sub-aperture — the sensor is blind to it in the ideal local stencil. In finite and misregistered systems the waffle-like component can be mixed across near-null directions rather than appearing as one clean singular vector, so ordinary SVD conditioning is not a complete waffle cure. Unsensed and poorly sensed modes are not corrected by the loop, yet noise and numerical error can excite them, so they can grow on the corrector unchecked if nothing removes them.
 
 **The deformable mirror.** The corrector is a thin reflective surface backed by an array of actuators; pushing an actuator deforms the surface locally (its *influence function*), and a command vector c of actuator amplitudes produces a mirror shape that is the linear superposition of influence functions. Its key parameters — actuator spacing and number, response time, stroke — must match what the turbulence demands (spacing set by r₀, response time by τ₀, stroke by the peak-to-valley aberration). Because the actuator count is finite, the mirror cannot reproduce spatial frequencies above its Nyquist; the residual high-frequency wavefront it cannot fit is the **fitting error**.
 
@@ -28,7 +28,7 @@ Three things make this hard. First, the phase cannot be measured directly: optic
 
 ## Evaluation settings
 
-The natural yardsticks are simulation and on-sky AO testbeds. A simulator generates Kolmogorov/von Kármán phase screens with a chosen r₀, L₀ (outer scale) and wind profile, propagates them through a modelled Shack–Hartmann sensor (lenslet array, finite photon flux and read noise, centroiding the spots) and a modelled deformable mirror with a given actuator grid, and runs the control loop at a fixed frame rate (e.g. ~1 kHz) with a fixed latency. Configuration knobs: telescope diameter D, sub-aperture / actuator counts (D/r₀ sampling), loop frame rate and delay, SVD conditioning threshold of the reconstructor, loop gain and leak. Performance is read out as the residual wavefront error variance (and its fit/recon/bandwidth split) and the resulting Strehl ratio or point-spread function, evaluated across r₀ values, guide-star magnitudes (photon noise), and wind speeds. On the bench, the same loop is closed on an optical setup with a known aberration source.
+The natural yardsticks are simulation and on-sky AO testbeds. A simulator generates Kolmogorov/von Kármán phase screens with a chosen r₀, L₀ (outer scale) and wind profile, propagates them through a modelled Shack–Hartmann sensor (lenslet array, finite photon flux and read noise, centroiding the spots) and a modelled deformable mirror with a given actuator grid, and runs the control loop at a fixed frame rate (e.g. ~1 kHz) with a fixed latency. Configuration knobs: telescope diameter D, sub-aperture / actuator counts (D/r₀ sampling), loop frame rate and delay, inversion conditioning, and loop gain. Performance is read out as the residual wavefront error variance (and its fit/recon/bandwidth split) and the resulting Strehl ratio or point-spread function, evaluated across r₀ values, guide-star magnitudes (photon noise), and wind speeds. On the bench, the same loop is closed on an optical setup with a known aberration source.
 
 ## Code framework
 
@@ -49,27 +49,31 @@ class Reconstructor:
     """Turn a wavefront-sensor slope vector into corrector commands."""
     def __init__(self):
         self.interaction_matrix = None
-        self.command_matrix = None
+        self.control_matrix = None
+        self.actuator_values = None
 
     def build_interaction_matrix(self, dm, wfs, poke=1.0, imat_noise=False):
-        # TODO: poke each actuator, record the slope response -> forward map
+        # TODO: poke each actuator, record the signed slope response -> forward map
         pass
 
     def build_command_matrix(self, conditioning=1e-3, alpha=None):
-        # TODO: invert the forward map with a hard cutoff or soft regularization
+        # TODO: invert the stored forward map with a hard cutoff or soft regularization
         pass
 
     def reconstruct(self, slopes):
-        # TODO: commands = command_matrix . slopes
+        # TODO: command increment from the current slope vector
         pass
 
-def close_loop(reconstructor, dm, wfs, atmos, gain, leak, n_iter):
+    def apply_gain(self, command_increment, gain, leak=0.0):
+        # TODO: update the running command in closed loop
+        pass
+
+def close_loop(reconstructor, dm, wfs, atmos, gain, n_iter, leak=0.0):
     commands = np.zeros(dm.n_act)
+    slopes = np.zeros(wfs.n_measurements)
     for k in range(n_iter):
         phase = atmos.step()                      # turbulence evolves
-        residual_phase = phase - dm.shape(commands)
-        slopes = wfs.measure(residual_phase)      # sense the residual
-        # TODO: control law that updates `commands` from `slopes`
+        # TODO: update `commands`, apply the corrector, then read residual slopes
         pass
     return commands
 ```

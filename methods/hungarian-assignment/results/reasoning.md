@@ -13,8 +13,8 @@ maximizing `Σ_ij r_ij x_ij`, a linear objective. So I could throw the simplex m
 feels like the wrong tool, and it's worth being precise about why. A `10 × 10` instance is a linear
 program with `100` variables and `20` equality constraints — and it's brutally degenerate: every
 assignment is a vertex where `90` of the `100` variables are zero, lots of bases describe the same
-vertex, and simplex grinds through degenerate pivots that don't move the objective. The machine in
-front of me in 1953 can barely fit a general LP of that size at all. There has to be a method that
+vertex, and simplex grinds through degenerate pivots that don't move the objective. An early-1950s
+machine can barely fit a general LP of that size at all. There has to be an algorithm that
 uses the fact that this isn't a generic LP — its constraint matrix is all `0`'s and `1`'s, the
 incidence structure of a bipartite graph — instead of pretending it's arbitrary.
 
@@ -146,9 +146,9 @@ Dual objective: the total budget is `Σ_i u_i + Σ_j v_j`. I subtracted `δ` fro
 `−δ(n − r) + δ s = −δ(n − r − s) = −δ(n − (r + s))`. And König gave me `r + s < n`, so `n − (r + s)`
 is a positive integer, and the budget strictly *decreases* by at least `δ`. (With integer ratings I
 can start the budget at integers — e.g. `u_i =` row maximum, `v_j = 0` — and `δ` comes out a positive
-integer, so each step drops the budget by at least `1` and stays integral.) Since the budget is
-bounded below by zero and drops by a positive integer each time, only finitely many updates can
-happen; between updates the matching only grows (bounded by `n`); so the whole process terminates,
+integer, so each step drops the budget by at least `1` and stays integral.) Since the budget is an
+upper bound on every assignment — so it is bounded below by the value of any assignment, in particular
+the optimum — and drops by a positive integer each time, only finitely many updates can happen; between updates the matching only grows (bounded by `n`); so the whole process terminates,
 and it can only terminate by the tight pairs admitting a full matching — which is the optimal,
 certified assignment. This is Egerváry's step lifting König from `0/1` to integers: a finite sequence
 of König problems, stitched together by budget updates that each expose at least one new tight pair.
@@ -191,10 +191,13 @@ covered row and covered column gets `+d` only, so it gains `d`; an entry in an u
 covered column gets `−d + d = 0`, unchanged; and an entry in a covered row and uncovered column is
 touched by neither, also unchanged. All entries stay `≥ 0` because `d` was the
 smallest uncovered value, so the uncovered cells can't go negative. Repeat: re-match on the new zeros,
-re-cover, re-subtract, until a full set of independent zeros appears. Every cover step strictly lowers
-the dual objective, so this halts. (The bookkeeping is identical whether I phrase the update as
-"uncovered rows minus / covered columns plus" or the mirror "covered rows plus / uncovered columns
-minus" — they differ by a global constant on the matrix and reach the same zeros.)
+re-cover, re-subtract, until a full set of independent zeros appears. The dual objective `Σ u + Σ v`
+is now a *lower* bound on the cost (I flipped the sign), and each cover step strictly *raises* it — by
+`d·(n − |cover|) > 0`, the same count as before — so it climbs toward the optimum and this halts.
+(The bookkeeping is identical whether I phrase the update as "uncovered rows minus / covered columns
+plus" or the mirror "covered rows plus / uncovered columns minus" — writing `R` for "row covered" and
+`C` for "column covered", both move cell `(i, j)` by `d·(R + C − 1)`, so they are literally the same
+update cell by cell and reach the same zeros.)
 
 That's the matrix form, and it's exactly what I'd do with pencil on a tableau. But for a machine I'd
 rather not re-scan the whole matrix and recompute a maximum matching from scratch every iteration —
@@ -207,7 +210,7 @@ recomputing a global matching after a global dual update.
 
 Here's the reorganization. Keep potentials `u_i, v_j` (dual-feasible, reduced cost
 `c_ij − u_i − v_j ≥ 0`) and a partial matching `p[j] =` the row matched to column `j`. To add row
-`i`, I do a Dijkstra-like search over columns: maintain `minv[j]`, the smallest reduced cost of
+`i`, I do a minimum-slack alternating-tree search over columns: maintain `minv[j]`, the smallest reduced cost of
 reaching column `j` along an alternating path grown so far, and a predecessor `way[j]` so I can
 trace the path back. Repeatedly pick the unused column `j1` with the smallest `minv[j1]`; call that
 value `δ`. That `δ` is exactly the König minimum-uncovered-slack, computed incrementally for *this*
@@ -236,7 +239,7 @@ def hungarian_potential(cost):
     the minimum slack (the Koenig/Egervary step) until a free column is reached.
     """
     n, m = len(cost), len(cost[0])         # allow m >= n (rectangular)
-    u = [0]*(n+1); v = [0]*(m+1)           # dual potentials (feasible throughout)
+    u = [0]*(n+1); v = [0]*(m+1)           # dual potentials (reduced costs >= 0 on processed rows)
     p = [0]*(m+1)                          # p[j] = row matched to column j (0 = free)
     way = [0]*(m+1)                        # predecessor column, to trace the path
     for i in range(1, n+1):

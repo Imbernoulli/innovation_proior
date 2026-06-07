@@ -1,4 +1,4 @@
-# Full-Waveform Inversion via the adjoint-state method
+# Gauss-Newton Full-Waveform Inversion
 
 ## Problem
 
@@ -20,8 +20,10 @@ Treat the wave equation as a constraint F(u,m)=0 and apply the adjoint-state met
 the waveform misfit with respect to *all* model parameters is obtained from **one forward wavefield
 plus one adjoint wavefield**, independent of the number of parameters, instead of one simulation per
 parameter. The adjoint of the wave operator is the wave equation run **backward in time, sourced by
-the data residual injected at the receiver positions**; with the change of variable q(t)=λ(T−t) it is
-just another forward solve. Because the model parameter m=1/c² multiplies ∂²u/∂t² in the wave
+the data residual injected at the receiver positions**. For the absorbing-boundary damping term, the
+adjoint stencil must transpose the first time derivative, so its sign flips in the reverse-time
+operator. With the change of variable q(t)=λ(T−t), the lossless part is just another forward solve.
+Because the model parameter m=1/c² multiplies ∂²u/∂t² in the wave
 operator, the gradient is the **zero-lag time correlation of the forward wavefield's second time
 derivative with the back-propagated residual wavefield**:
 
@@ -37,8 +39,9 @@ parameterization the chain rule m=1/c² (∂m/∂c=−2/c³) gives
     ∂J/∂c(x) = (2/c³) Σ_s ∫₀ᵀ λ_s(x,t) ∂²u_s(x,t)/∂t² dt.
 
 Steepest descent on this gradient is mis-scaled by the geometrical spreading of the waves
-(over-updating shallow, under-updating deep). The **Gauss–Newton** model J=½‖r‖² with Hessian
-H_GN = Re(JᴴJ) (dropping the multiple-scattering second-derivative term) corrects this: its diagonal
+(over-updating shallow, under-updating deep). The **Gauss–Newton** model J=½‖r‖² with residual
+Jacobian G=∂r/∂m and Hessian H_GN = Re(GᴴG) (dropping the multiple-scattering second-derivative term)
+corrects this: its diagonal
 is the zero-lag autocorrelation of the partial-derivative wavefields — a source-illumination
 preconditioner — and the full step δm = −H_GN⁻¹∇J is solved matrix-free by conjugate gradients
 (each H_GN-vector product = one Born forward-sensitivity solve + one adjoint solve).
@@ -56,12 +59,13 @@ Per shot s, per outer iteration:
 1. **Forward solve.** March m ∂²u_s/∂t² − Δu_s = f_s forward in time; record the trace S u_s at
    receivers and store the wavefield u_s.
 2. **Residual.** r_s = S u_s − d_s^obs; accumulate J += ½‖r_s‖².
-3. **Adjoint solve.** March the same wave operator sourced by the **time-reversed residual** injected
-   at the receivers (q_s(t)=λ_s(T−t), forward-in-time), getting the back-propagated field.
+3. **Adjoint solve.** March the transposed wave stencil backward in time, sourced by the residual
+   injected at the receivers.
 4. **Gradient (zero-lag correlation).** Accumulate g(x) += −∫ λ_s(x,t) ∂²u_s(x,t)/∂t² dt over time and
-   shots. (Multiply by 2/c³ if updating velocity.)
-5. **Precondition.** Divide g by the source-illumination diagonal pseudo-Hessian (or take a matrix-free
-   Gauss–Newton step via CG).
+   shots; in the Devito reverse loop this is implemented equivalently as `grad += -u * v.dt2`.
+   (Multiply g by −2/c³ if updating velocity, so ∂J/∂c = (2/c³)∫λ∂²u/∂t² dt.)
+5. **Precondition.** Divide g by a diagonal pseudo-Hessian based on virtual-source illumination
+   such as Σ_s∫(∂²u_s/∂t²)²dt, or take a matrix-free Gauss–Newton step via CG.
 6. **Update.** Line-search a step α and set m ← m − α·g_pc.
 
 Wrap steps 1–6 in a multiscale loop: low-pass the wavelet/data to the lowest band, iterate, raise the
@@ -69,131 +73,166 @@ corner frequency, repeat.
 
 ## Code
 
-A self-contained 2D constant-density acoustic FD modeler, residual at receivers, adjoint
-(time-reversed residual) simulation, gradient by correlating the forward field's ∂²/∂t² with the
-back-propagated field, and a preconditioned gradient-descent / Gauss–Newton update.
+The core Devito implementation is the acoustic stencil, forward operator, adjoint-gradient operator,
+and Born operator used for Gauss–Newton products. The residual stored in `rec` is `d_pred - d_obs`,
+matching the derivative of the least-squares objective.
 
 ```python
-import numpy as np
+from devito import Eq, Function, Inc, Operator, TimeFunction, solve
+from devito.tools import memoized_meth
 
-# ---------------------------------------------------------------- forward modeling
-def laplacian(u, dx):
-    lap = np.zeros_like(u)
-    lap[1:-1, 1:-1] = (u[2:, 1:-1] + u[:-2, 1:-1] + u[1:-1, 2:] + u[1:-1, :-2]
-                       - 4.0 * u[1:-1, 1:-1]) / dx**2
-    return lap
+def laplacian(field, model, kernel):
+    """Spatial operator H(u); OT4 adds the double-laplacian correction."""
+    if kernel not in ("OT2", "OT4"):
+        raise ValueError("Unrecognized kernel")
+    s = model.grid.time_dim.spacing
+    biharmonic = field.biharmonic(1 / model.m) if kernel == "OT4" else 0
+    return field.laplace + s**2 / 12.0 * biharmonic
 
-def damping_mask(shape, nb, dx, amp=0.0015):
-    """Multiplicative absorbing sponge in a border of nb cells."""
-    nz, nx = shape
-    d = np.ones((nz, nx))
-    for i in range(nb):
-        w = (1.0 - amp * (nb - i)**2)
-        d[i, :] *= w; d[nz-1-i, :] *= w; d[:, i] *= w; d[:, nx-1-i] *= w
-    return d
+def iso_stencil(field, model, kernel, forward=True, q=0):
+    """model.m * u.dt2 - H(u) - q + damp*u.dt = 0, or its reverse-time adjoint."""
+    unext = field.forward if forward else field.backward
+    udt = field.dt if forward else field.dt.T
+    eq_time = solve(model.m * field.dt2 - laplacian(field, model, kernel)
+                    - q + model.damp * udt, unext)
+    return [Eq(unext, eq_time, subdomain=model.grid.subdomains["physdomain"])]
 
-def forward(m, wavelet, src, rec, nt, dt, dx, damp, store=False):
-    """March  m u_tt - Lap(u) = f .  m = 1/c^2 per cell.  Return shot record (and wavefield)."""
-    nz, nx = m.shape
-    u_prev = np.zeros((nz, nx)); u_cur = np.zeros((nz, nx))
-    d = np.zeros((nt, len(rec)))
-    U = np.zeros((nt, nz, nx)) if store else None
-    sz, sx = src
-    for it in range(nt):
-        lap = laplacian(u_cur, dx)
-        f = np.zeros((nz, nx)); f[sz, sx] += wavelet[it]            # source injection
-        u_next = (2.0 * u_cur - u_prev + (dt**2) * (lap + f) / m)   # leapfrog: m u_tt = Lap u + f
-        u_next *= damp                                             # absorbing boundary
-        for k, (rz, rx) in enumerate(rec): d[it, k] = u_cur[rz, rx]  # sample receivers
-        if store: U[it] = u_cur
-        u_prev, u_cur = u_cur * damp, u_next
-    return (d, U) if store else d
+def ForwardOperator(model, geometry, space_order=4, save=False, kernel="OT2", **kwargs):
+    m = model.m
+    u = TimeFunction(name="u", grid=model.grid, save=geometry.nt if save else None,
+                     time_order=2, space_order=space_order)
+    src = geometry.src
+    rec = geometry.rec
+    s = model.grid.stepping_dim.spacing
+    eqn = iso_stencil(u, model, kernel, forward=True)
+    src_term = src.inject(field=u.forward, expr=src * s**2 / m)
+    rec_term = rec.interpolate(expr=u)
+    return Operator(eqn + src_term + rec_term, subs=model.spacing_map,
+                    name="Forward", **kwargs)
 
-def residual_misfit(d_pred, d_obs):
-    r = d_pred - d_obs
-    return r, 0.5 * np.sum(r * r)
+def GradientOperator(model, geometry, space_order=4, save=True, kernel="OT2", **kwargs):
+    m = model.m
+    grad = Function(name="grad", grid=model.grid)
+    u = TimeFunction(name="u", grid=model.grid, save=geometry.nt if save else None,
+                     time_order=2, space_order=space_order)
+    v = TimeFunction(name="v", grid=model.grid, save=None,
+                     time_order=2, space_order=space_order)
+    rec = geometry.rec
+    s = model.grid.stepping_dim.spacing
+    eqn = iso_stencil(v, model, kernel, forward=False)
 
-# ---------------------------------------------------------------- adjoint + gradient
-def gradient_one_shot(m, wavelet, src, rec, d_obs, nt, dt, dx, damp):
-    """dJ/dm for one shot:  forward field, then SAME solver sourced by the time-reversed
-       residual at receivers; gradient = - sum_t (d^2u/dt^2)(t) * lambda(t),  lambda(t)=q(T-t)."""
-    d_pred, U = forward(m, wavelet, src, rec, nt, dt, dx, damp, store=True)
-    r, J = residual_misfit(d_pred, d_obs)                          # data residual at receivers
-    nz, nx = m.shape
+    if kernel == "OT2":
+        gradient_update = Inc(grad, -u * v.dt2)
+    elif kernel == "OT4":
+        gradient_update = Inc(grad, -u * v.dt2
+                              - s**2 / 12.0 * u.biharmonic(m**(-2)) * v)
+    else:
+        raise ValueError("unknown acoustic kernel")
 
-    Utt = np.zeros_like(U)                                         # forward field 2nd time deriv
-    Utt[1:-1] = (U[2:] - 2.0 * U[1:-1] + U[:-2]) / dt**2
+    receivers = rec.inject(field=v.backward, expr=rec * s**2 / m)
+    return Operator(eqn + receivers + [gradient_update], subs=model.spacing_map,
+                    name="Gradient", **kwargs)
 
-    q_prev = np.zeros((nz, nx)); q_cur = np.zeros((nz, nx))
-    g = np.zeros((nz, nx))
-    for it in range(nt):                                          # adjoint marched forward in q
-        lap = laplacian(q_cur, dx)
-        fa = np.zeros((nz, nx))
-        for k, (rz, rx) in enumerate(rec):
-            fa[rz, rx] += r[nt - 1 - it, k]                       # time-reversed residual source
-        q_next = (2.0 * q_cur - q_prev + (dt**2) * (lap + fa) / m)
-        q_next *= damp
-        g += - Utt[nt - 1 - it] * q_cur                          # zero-lag correlation, lambda=q(T-t)
-        q_prev, q_cur = q_cur * damp, q_next
-    return g, J          # g = dJ/dm ;  for velocity update multiply by 2/c^3 = 2 * m**1.5
+def BornOperator(model, geometry, space_order=4, kernel="OT2", **kwargs):
+    """Apply the residual Jacobian G to a model perturbation dm."""
+    m = model.m
+    src = geometry.src
+    rec = geometry.rec
+    u = TimeFunction(name="u", grid=model.grid, save=None,
+                     time_order=2, space_order=space_order)
+    U = TimeFunction(name="U", grid=model.grid, save=None,
+                     time_order=2, space_order=space_order)
+    dm = Function(name="dm", grid=model.grid, space_order=0)
+    s = model.grid.stepping_dim.spacing
+    eqn1 = iso_stencil(u, model, kernel, forward=True)
+    eqn2 = iso_stencil(U, model, kernel, forward=True, q=-dm * u.dt2)
+    source = src.inject(field=u.forward, expr=src * s**2 / m)
+    receivers = rec.interpolate(expr=U)
+    return Operator(eqn1 + source + eqn2 + receivers, subs=model.spacing_map,
+                    name="Born", **kwargs)
 
-# ---------------------------------------------------------------- inversion driver
-def line_search(m, p, g, eval_J, J0, frac=0.05, c1=1e-4, shrink=0.5, n=20):
-    """Backtracking Armijo for the step m <- m - alpha*p (descent direction -p).
-       Directional derivative of J along -p is -g.p, so sufficient decrease is
-       J(m - alpha p) <= J0 - c1 * alpha * (g.p).  The trial step is scaled so the
-       first model perturbation is a small fraction of the model magnitude."""
-    gdotp = float(np.sum(g * p))
-    if gdotp <= 0.0:
-        return 0.0                                      # not a descent direction
-    alpha = frac * (np.max(np.abs(m)) / (np.max(np.abs(p)) + 1e-30))
-    for _ in range(n):
-        if eval_J(m - alpha * p) <= J0 - c1 * alpha * gdotp:
-            return alpha
-        alpha *= shrink
-    return 0.0
+class AcousticWaveSolver:
+    def __init__(self, model, geometry, kernel="OT2", space_order=4, **kwargs):
+        self.model = model
+        self.model._initialize_bcs(bcs="damp")
+        self.geometry = geometry
+        self.kernel = kernel
+        self.space_order = space_order
+        self._kwargs = kwargs
 
-def invert(m0, wavelet, src_list, rec, d_obs_list, nt, dt, dx, damp, n_iter):
-    m = m0.copy()
-    def total_misfit(mm):
-        J = 0.0
-        for src, d_obs in zip(src_list, d_obs_list):
-            d_pred = forward(mm, wavelet, src, rec, nt, dt, dx, damp)
-            J += residual_misfit(d_pred, d_obs)[1]
-        return J
-    for k in range(n_iter):
-        g = np.zeros_like(m); illum = np.zeros_like(m); J = 0.0
-        for src, d_obs in zip(src_list, d_obs_list):
-            _, U = forward(m, wavelet, src, rec, nt, dt, dx, damp, store=True)
-            gs, Js = gradient_one_shot(m, wavelet, src, rec, d_obs, nt, dt, dx, damp)
-            g += gs; J += Js
-            illum += np.sum(U * U, axis=0)                        # diag(H_GN) ~ source illumination
-        g_pc = g / (illum + 1e-6 * illum.max())                  # Gauss-Newton-like rescaling
-        alpha = line_search(m, g_pc, g, total_misfit, J)
-        m = m - alpha * g_pc                                     # model update (in slowness m=1/c^2)
-        print(f"iter {k:3d}  J = {J:.4e}  step = {alpha:.2e}")
-    return m
+    @property
+    def dt(self):
+        return self.model.dtype(1.73 * self.model.critical_dt) if self.kernel == "OT4" else self.model.critical_dt
 
-# ---------------------------------------------------------------- multiscale wrapper
-def ricker(nt, dt, f0):
-    t = (np.arange(nt) * dt) - 1.0 / f0
-    a = (np.pi * f0 * t)**2
-    return (1.0 - 2.0 * a) * np.exp(-a)
+    @memoized_meth
+    def op_fwd(self, save=None):
+        return ForwardOperator(self.model, self.geometry, save=save, kernel=self.kernel,
+                               space_order=self.space_order, **self._kwargs)
 
-def lowpass(trace_or_wavelet, dt, fmax):
-    """Crude spectral low-pass to band-limit data/wavelet for a multiscale stage."""
-    X = np.fft.rfft(trace_or_wavelet, axis=0)
-    freqs = np.fft.rfftfreq(trace_or_wavelet.shape[0], dt)
-    X[freqs > fmax] = 0.0
-    return np.fft.irfft(X, n=trace_or_wavelet.shape[0], axis=0)
+    @memoized_meth
+    def op_grad(self, save=True):
+        return GradientOperator(self.model, self.geometry, save=save, kernel=self.kernel,
+                                space_order=self.space_order, **self._kwargs)
 
-def multiscale_invert(m0, wavelet, src_list, rec, d_obs_list, nt, dt, dx, damp,
-                      freq_bands, iters_per_band):
-    """Invert lowest frequencies first, then raise the band -> stay within half a period."""
-    m = m0.copy()
-    for fmax in freq_bands:                                       # e.g. [3, 6, 10] Hz
-        w_b   = lowpass(wavelet, dt, fmax)
-        d_b   = [lowpass(d, dt, fmax) for d in d_obs_list]
-        m = invert(m, w_b, src_list, rec, d_b, nt, dt, dx, damp, iters_per_band)
-    return m
+    @memoized_meth
+    def op_born(self):
+        return BornOperator(self.model, self.geometry, kernel=self.kernel,
+                            space_order=self.space_order, **self._kwargs)
+
+    def forward(self, src=None, rec=None, u=None, save=None, model=None, **kwargs):
+        src = src or self.geometry.src
+        rec = rec or self.geometry.rec
+        u = u or TimeFunction(name="u", grid=self.model.grid,
+                              save=self.geometry.nt if save else None,
+                              time_order=2, space_order=self.space_order)
+        model = model or self.model
+        kwargs.update(model.physical_params(**kwargs))
+        summary = self.op_fwd(save).apply(src=src, rec=rec, u=u,
+                                          dt=kwargs.pop("dt", self.dt), **kwargs)
+        return rec, u, summary
+
+    def gradient(self, rec, u, v=None, grad=None, model=None, **kwargs):
+        grad = grad or Function(name="grad", grid=self.model.grid)
+        v = v or TimeFunction(name="v", grid=self.model.grid,
+                              time_order=2, space_order=self.space_order)
+        model = model or self.model
+        kwargs.update(model.physical_params(**kwargs))
+        summary = self.op_grad().apply(rec=rec, grad=grad, v=v, u=u,
+                                       dt=kwargs.pop("dt", self.dt), **kwargs)
+        return grad, summary
+
+    def jacobian(self, dm, src=None, rec=None, u=None, U=None, model=None, **kwargs):
+        src = src or self.geometry.src
+        rec = rec or self.geometry.rec
+        u = u or TimeFunction(name="u", grid=self.model.grid,
+                              time_order=2, space_order=self.space_order)
+        U = U or TimeFunction(name="U", grid=self.model.grid,
+                              time_order=2, space_order=self.space_order)
+        model = model or self.model
+        kwargs.update(model.physical_params(**kwargs))
+        summary = self.op_born().apply(dm=dm, u=u, U=U, src=src, rec=rec,
+                                       dt=kwargs.pop("dt", self.dt), **kwargs)
+        return rec, u, U, summary
+
+def fwi_objective_and_gradient(solver, observed_rec):
+    predicted_rec, u, _ = solver.forward(save=True)
+    residual_rec = predicted_rec
+    residual_rec.data[:] = predicted_rec.data - observed_rec.data
+    phi = 0.5 * float((residual_rec.data ** 2).sum())
+    grad, _ = solver.gradient(rec=residual_rec, u=u)
+    return phi, grad, u
+
+def gauss_newton_matvec(solver, dm, u_bg=None):
+    # G^T G dm. The adjoint Jacobian (G^T) needs the FULL saved background
+    # wavefield for the -u*v.dt2 correlation, so build it once with save=True
+    # and cache it across CG iterations. The Born forward (G) propagates its
+    # own rolling background internally, so it does not take u_bg.
+    if u_bg is None:
+        u_bg = TimeFunction(name="u", grid=solver.model.grid,
+                            save=solver.geometry.nt, time_order=2,
+                            space_order=solver.space_order)
+        solver.forward(u=u_bg, save=True)
+    scattered_rec, _, _, _ = solver.jacobian(dm)
+    Hg, _ = solver.gradient(rec=scattered_rec, u=u_bg)
+    return Hg
 ```

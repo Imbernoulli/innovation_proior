@@ -14,13 +14,13 @@ The decomposition rule is the contribution. Sweep a vertical line — a *slice* 
 - **OUT event:** connectivity decreases, two intervals become one (obstacle's right tip; free space rejoins). Close the two cells; open one.
 - **MIDDLE event:** connectivity unchanged — no cut, just update the current cell's boundary.
 
-Every IN-to-OUT stretch collapses into one cell with a wiggly top/bottom but monotone in the slice direction — exactly what a boustrophedon sweep covers cleanly. Keying on connectivity rather than vertices also lifts the method off polygons onto curved and sampled spaces for free, since "did the interval count change?" is askable anywhere.
+Between critical events, each continuing slice interval remains one cell. A one-interval region stays one cell; after an IN event, the upper and lower intervals are two separate live cells until the OUT event rejoins them. MIDDLE vertices only update those cells' wiggly top/bottom boundaries, so each cell stays monotone in the slice direction — exactly what a boustrophedon sweep covers cleanly. Keying on connectivity rather than vertices also lifts the method off polygons onto curved and sampled spaces for free, since "did the interval count change?" is askable anywhere.
 
 ## Algorithm
 
 1. **Slice connectivity.** For each column, find the maximal runs of free cells and their `(start, end)` intervals; the count is the connectivity.
-2. **Decompose (single left-to-right sweep).** Compare each column's intervals to the previous via vertical overlap. A left interval overlapping exactly one right interval → cell continues; overlapping several → IN event, open a new cell per right interval; a right interval overlapping several lefts → OUT event, open one new cell; a right interval overlapping none → fresh free space, open a cell. Whenever a cell closes and cells open at the same event, add adjacency edges between them. One pass yields cells + adjacency graph.
-3. **Order cells.** Depth-first exhaustive walk over the adjacency graph — every node visited. This gives **completeness, deliberately not optimality** (optimal coverage is NP-complete; a near-optimal path is recovered cheaply by re-running over a few sweep directions and scoring path length/turns).
+2. **Decompose (single left-to-right sweep).** Compare each column's intervals to the previous via vertical overlap. A left interval overlapping exactly one right interval → cell continues, unless the right interval is part of a merge; overlapping several → IN event, open a new cell per right interval; a right interval overlapping several lefts → OUT event, open one new cell; a right interval overlapping none → fresh free space, open a cell. Whenever a cell closes and cells open at the same event, add adjacency edges between them. One pass yields cells + adjacency graph.
+3. **Order cells.** Depth-first exhaustive walk over the adjacency graph, including backtracking entries through already covered cells. This gives **completeness, deliberately not optimality** (optimal coverage is NP-complete; cheaper paths can be sought by re-running over a few sweep directions and scoring path length/turns).
 4. **Sweep each cell.** Boustrophedon: step through the cell's columns by the side-step, running the footprint up or down and flipping direction each column. Transit through already-covered cells without re-sweeping.
 
 Union of swept cells = union of cells = free space ⟹ provably complete coverage.
@@ -98,7 +98,7 @@ def decompose(grid_map):
                     for r in np.flatnonzero(A[l]):
                         cells.append({"id": next_id, "start": x, "end": x, "bounds": []})
                         adjacency.setdefault(next_id, set())
-                        adjacency[last_ids[l]].add(next_id)   # closing cell ~ each new cell
+                        adjacency[last_ids[l]].add(next_id)   # closing cell shares a boundary
                         adjacency[next_id].add(last_ids[l])
                         ids[r] = next_id; next_id += 1
             for r in range(A.shape[1]):
@@ -127,17 +127,18 @@ def decompose(grid_map):
 
 
 def order_cells(adjacency, start):
-    """Depth-first exhaustive walk: every cell visited (complete, not optimal)."""
-    order, seen = [], set()
+    """Depth-first exhaustive walk with backtracking through covered cells."""
+    walk, seen = [], set()
 
     def dfs(node):
         seen.add(node)
-        order.append(node)
+        walk.append(node)
         for nb in sorted(adjacency.get(node, ())):
             if nb not in seen:
                 dfs(nb)
+                walk.append(node)
     dfs(start)
-    return order
+    return walk
 
 
 def sweep_cell(cell, side_step):
@@ -154,18 +155,17 @@ def sweep_cell(cell, side_step):
 
 
 def plan_coverage(grid_map, side_step=1):
-    """Decompose, take an exhaustive cell walk, sweep each uncovered cell in turn
-    (transiting through already-covered cells without re-sweeping)."""
+    """Return coverage sweeps plus the exhaustive cell walk used for transits."""
     seg_map, cells, adjacency = decompose(grid_map)
     by_id = {c["id"]: c for c in cells}
-    order = order_cells(adjacency, start=cells[0]["id"])
+    walk = order_cells(adjacency, start=cells[0]["id"])
     covered, path = set(), []
-    for cid in order:
+    for cid in walk:
         if cid in covered:
-            continue                          # already swept: pass through
-        path += sweep_cell(by_id[cid], side_step)   # plus a transit to the next cell
+            continue                          # the walk records transit; don't re-cover
+        path += sweep_cell(by_id[cid], side_step)
         covered.add(cid)
-    return path, seg_map
+    return path, seg_map, walk
 ```
 
 The discrete side-step can skip slivers where an obstacle boundary meets the runs at an acute angle (shrink the side-step, or add a dedicated boundary pass); and over a long path dead-reckoning error accumulates, so the executor needs sensor feedback to stay registered — the planner supplies the geometry, not the localization.

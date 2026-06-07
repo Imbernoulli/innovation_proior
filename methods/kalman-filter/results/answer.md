@@ -18,10 +18,11 @@ the recursion is exact, not approximate. Alternate two operations:
 
 - **Predict (time update):** roll the belief through the dynamics before seeing data. The mean goes
   through `F`; the covariance of the linear image is `F P F'`, plus the process-noise covariance `Q`.
-  Prediction always inflates uncertainty.
+  The fresh process noise `Q` only adds to the propagated covariance, never subtracts.
 - **Update (measurement update):** fold in `z_k` by weighting the prediction against the measurement
   by their inverse covariances (precisions). The correction is the *innovation* `z_k − H x̂⁻` (the
-  part of the measurement not already predicted) scaled by the Kalman gain; the covariance shrinks.
+  part of the measurement not already predicted) scaled by the Kalman gain; the covariance never
+  increases (and strictly shrinks wherever the measurement is informative).
 
 The gain `K = P⁻ H'(H P⁻ H' + R)⁻¹` is what minimizes the posterior error covariance. It gives the
 orthogonal projection of the state onto the span of the observations (the error is left uncorrelated
@@ -51,9 +52,9 @@ State: estimate `x̂` and error covariance `P`. Initialize with prior `x̂_0`, `
 Eliminating `K` gives the Riccati-like covariance recursion in terms of the prior covariance:
 `P_{k+1|k}=F { P_{k|k-1} − P_{k|k-1}H'(H P_{k|k-1}H' + R)⁻¹ H P_{k|k-1} } F' + Q`.
 The expected squared error per step is `trace P`. For numerical robustness the covariance update is
-implemented in **Joseph form**, `P = (I − K H) P⁻ (I − K H)' + K R K'`, which stays symmetric positive
-semidefinite even for a non-optimal `K` and under roundoff (it reduces to `(I − K H) P⁻` at the
-optimal gain).
+implemented in **Joseph form**, `P = (I − K H) P⁻ (I − K H)' + K R K'`, a sum of two congruence terms
+that is symmetric positive semidefinite for any `K` in exact arithmetic and resists drifting asymmetric
+or indefinite under roundoff (it reduces to `(I − K H) P⁻` at the optimal gain).
 
 ## Code
 
@@ -112,5 +113,5 @@ moments, and the same recursion computes the orthogonal projection of the state 
 span — the best *linear* estimator. A nonlinear estimator can improve on it only when the process is
 non-Gaussian *and* third-or-higher-order statistics are available. The gain weights the two
 information sources (prediction and measurement) by their inverse covariances, so each is trusted in
-proportion to its certainty; prediction inflates the covariance by `Q`, and each measurement shrinks
-it, the steady balance of the two giving the constant-gain limit when `F, H, Q, R` are time-invariant.
+proportion to its certainty; prediction adds the process-noise covariance `Q` while a measurement never
+increases the covariance, the steady balance of the two giving the constant-gain limit when `F, H, Q, R` are time-invariant.

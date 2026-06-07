@@ -8,7 +8,7 @@ solve, and negate the total.) Naively this is `n!` permutations. The problem is 
 minimize `Σ_ij c_ij x_ij` subject to unit row/column sums and `x_ij ≥ 0` — but a degenerate one, and
 its constraint matrix is **totally unimodular**, so the LP relaxation is integral (its vertices are
 permutation matrices, Birkhoff). The Hungarian Method exploits this structure to solve it in `O(n^3)`
-*and* return a dual certificate of optimality.
+*and* produce a dual certificate of optimality (the potentials `u, v`).
 
 ## Key idea
 
@@ -19,7 +19,7 @@ assignment. **Complementary slackness:** an assignment is optimal iff it uses on
 (reduced cost `0`). So:
 
 1. Build a **maximum matching on the tight (zero-reduced-cost) edges** via **augmenting paths**
-   (a matching is maximum iff it has no augmenting path — Berge).
+   (a matching is maximum iff it admits no augmenting path).
 2. If it is **perfect**, complementary slackness certifies optimality — done.
 3. If not, **König's theorem** (max matching = min vertex cover in a bipartite graph) gives a
    minimum vertex cover. Every uncovered edge has reduced cost `> 0`; let `δ` be the **minimum
@@ -30,7 +30,8 @@ In **reduced-matrix** form the duals are folded into the matrix `a_ij = c_ij −
 row-reduce, column-reduce (creating zeros = tight edges), match the zeros, cover them with the
 minimum number of lines (König); if fewer than `n` lines, take `d =` minimum uncovered entry, subtract
 `d` from every uncovered row and add `d` to every covered column (this keeps all entries `≥ 0`,
-creates a new zero, and lowers the dual objective), and repeat until `n` independent zeros exist.
+creates a new zero, and raises the dual objective — now a lower bound on the cost), and repeat until
+`n` independent zeros exist.
 
 ## Algorithm
 
@@ -51,7 +52,7 @@ magnitudes).
 
 ## Code
 
-Two faithful, self-contained forms; both verified against brute force.
+Two self-contained forms; both verified against brute force.
 
 ```python
 INF = float("inf")
@@ -60,7 +61,7 @@ INF = float("inf")
 def hungarian_potential(cost):
     """Min-cost assignment. cost is n x m with m >= n. Returns (assignment, total)."""
     n, m = len(cost), len(cost[0])
-    u = [0]*(n+1); v = [0]*(m+1)          # dual potentials, feasible throughout
+    u = [0]*(n+1); v = [0]*(m+1)          # dual potentials (reduced costs >= 0 on processed rows)
     p = [0]*(m+1)                         # p[j] = row matched to column j (0 = free)
     way = [0]*(m+1)                       # predecessor column, to trace the path
     for i in range(1, n+1):

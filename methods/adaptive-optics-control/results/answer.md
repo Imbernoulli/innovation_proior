@@ -6,16 +6,16 @@ Atmospheric turbulence imprints a rapidly varying phase aberration φ(x, y, t) o
 
 ## Key idea
 
-1. **Forward map (interaction matrix).** Poke each actuator in turn and record the slope vector it produces. Column *j* is the slope signature of actuator *j*, giving a linear model **s = A c** from commands to measured slopes, calibrated on the real mirror and sensor.
-2. **Least-squares reconstructor.** Commands are recovered by minimizing ‖A c − s‖². The solution c = (AᵀA)⁻¹Aᵀs uses the Moore–Penrose pseudo-inverse **R = A⁺**, computed via SVD. The forward map is rank-deficient (piston and the Fried-geometry **waffle** checkerboard produce zero slopes) and ill-conditioned, so the pseudo-inverse is **regularized** — truncate singular values below `rcond·σ_max`, or apply Tikhonov filtering σ/(σ²+α) — discarding the unsensed and noise-dominated modes that would otherwise blow up the noise.
-3. **Closed-loop leaky integrator.** Place the corrector before the sensor so it sees the *residual*. Update the running command each frame:
+1. **Forward map (interaction matrix).** Poke each actuator in turn and record the signed slope vector it produces. With the correction phase subtracted from the incoming wavefront, the stored response is the negative of the raw WFS response to a mirror-only poke. In the Soapy-style layout, the interaction matrix has shape actuator-by-slope; `pinv(interaction_matrix)` is later applied as a transpose.
+2. **Least-squares reconstructor.** Commands are recovered by minimizing ‖A c − s‖² under the equivalent slope-by-actuator convention. The solution c = (AᵀA)⁻¹Aᵀs uses the Moore–Penrose pseudo-inverse **R = A⁺**, computed via SVD. The forward map is rank-deficient and ill-conditioned: piston is unseen, and the Fried-geometry **waffle** checkerboard is zero in the ideal local stencil but can be mixed into near-null directions in finite systems. The pseudo-inverse is **regularized** — truncate singular values below `rcond·σ_max`, or apply Tikhonov filtering σ/(σ²+α) — suppressing unsensed and noise-dominated directions without treating SVD conditioning as a complete waffle-removal mechanism.
+3. **Closed-loop integrator.** Place the corrector before the sensor so it sees the *residual*. With the stored correction-sign convention, update the running command each frame:
 
-   **c_{k+1} = (1 − ℓ) c_k − g · R s_k**
+   **c_{k+1} = (1 − ℓ) c_k + g · R s_k**
 
-   - Negative feedback drives the residual slopes to zero.
-   - Integral action gives zero steady-state error and high gain at low temporal frequency, where the red turbulence spectrum concentrates its power.
+   - The plus sign is negative feedback because the mirror phase is subtracted from the incoming wavefront.
+   - With ℓ = 0, integral action gives zero steady-state error and high gain at low temporal frequency, where the red turbulence spectrum concentrates its power.
    - Gain **g** is held below ≈ 0.5 for damping against the ≈ 2-frame loop delay (the exact pure-integrator bounds are 0 < g < 2 for one frame and 0 < g < 1 for two frames), and tuned to trade closed-loop bandwidth / servo-lag (σ²_servo = 28.4(f_G Δt)^(5/3), driven by the Greenwood frequency f_G = 0.426 v/r₀) against noise propagation.
-   - The leak **ℓ** (small, e.g. 0.01) bleeds off unsensed modes (piston, waffle) that the loop can never correct, and moves the integrator pole from z = 1 to z = 1 − ℓ for strict stability — at the cost of a slight residual DC error.
+   - A small optional leak **ℓ** bleeds off components the sensor cannot reliably report, and moves the integrator pole from z = 1 to z = 1 − ℓ for strict stability — at the cost of a slight residual DC error. Piston can also be removed directly by mean-subtracting the mirror shape.
 
 ## Algorithm
 
@@ -23,13 +23,13 @@ Atmospheric turbulence imprints a rapidly varying phase aberration φ(x, y, t) o
 Calibration (offline):
   for each actuator j:
       command actuator j by a small poke
-      A[:, j] = (resulting slope vector) / poke
-  R = regularized_pseudo_inverse(A, rcond)      # SVD, drop small singular values
+      interaction_matrix[j, :] = -(raw WFS slope response) / poke
+  control_matrix = pinv(interaction_matrix, rcond)
 
 Closed loop (per frame k, ~1 kHz):
   measure residual slopes  s_k       (Shack-Hartmann centroids)
-  delta  = R @ s_k                    # least-squares residual command
-  c_{k+1} = (1 - leak) * c_k - gain * delta
+  delta  = control_matrix.T @ s_k      # least-squares residual command
+  c_{k+1} = (1 - leak) * c_k + gain * delta
   apply c_{k+1} to deformable mirror
 ```
 
@@ -44,58 +44,73 @@ class Reconstructor:
 
     def __init__(self):
         self.interaction_matrix = None
-        self.command_matrix = None
+        self.control_matrix = None
+        self.actuator_values = None
 
     def build_interaction_matrix(self, dm, wfs, poke=1.0, imat_noise=False):
-        """Poke each actuator, record its slope response -> A in s = A c."""
+        """Poke each actuator, store signed actuator-by-slope responses."""
         n_act = dm.n_act
         n_slope = wfs.n_measurements             # 2 (sx, sy) per sub-aperture
-        A = np.zeros((n_slope, n_act))
+        interaction = np.zeros((n_act, n_slope))
         for j in range(n_act):
             cmd = np.zeros(n_act)
             cmd[j] = poke
             mirror = dm.shape(cmd)
-            A[:, j] = wfs.measure(mirror, noise=imat_noise) / poke
-        self.interaction_matrix = A
-        return A
+            slopes = wfs.measure(
+                phase_correction=mirror,
+                noise=imat_noise,
+                calibration=True,
+            )
+            interaction[j] = -slopes / poke
+        self.interaction_matrix = interaction
+        return interaction
 
     def build_command_matrix(self, conditioning=1e-3, alpha=None):
         """SVD pseudo-inverse; Tikhonov when alpha is supplied."""
         if alpha is None:
-            self.command_matrix = np.linalg.pinv(
+            self.control_matrix = np.linalg.pinv(
                 self.interaction_matrix, rcond=conditioning
             )
         else:
             U, sig, Vt = np.linalg.svd(self.interaction_matrix, full_matrices=False)
             filt = sig / (sig**2 + alpha)
-            self.command_matrix = (Vt.T * filt) @ U.T
-        return self.command_matrix
+            self.control_matrix = (Vt.T * filt) @ U.T
+        return self.control_matrix
 
     def reconstruct(self, slopes):
-        return self.command_matrix @ slopes
+        return self.control_matrix.T @ slopes
+
+    def apply_gain(self, command_increment, gain=0.4, leak=0.0):
+        if self.actuator_values is None:
+            self.actuator_values = np.zeros(command_increment.size)
+        self.actuator_values = (
+            (1.0 - leak) * self.actuator_values + gain * command_increment
+        )
+        return self.actuator_values
 
 
-def close_loop(reconstructor, dm, wfs, atmos, gain=0.4, leak=0.01, n_iter=1000):
-    """Leaky integrator: c_{k+1} = (1 - leak) c_k - gain * R @ s_k.
+def close_loop(reconstructor, dm, wfs, atmos, gain=0.4, leak=0.0, n_iter=1000):
+    """Integrator: c_{k+1} = (1 - leak) c_k + gain * R @ s_k.
 
     Sensor sees the residual after correction; the loop nulls it. gain < ~0.5
-    keeps the ~2-frame-delay loop stable; leak drains unsensed modes and pins
-    the integrator pole at z = 1 - leak.
+    keeps the ~2-frame-delay loop damped. Optional leak drains modes the sensor
+    cannot reliably report and pins the integrator pole at z = 1 - leak.
     """
     commands = np.zeros(dm.n_act)
+    slopes = np.zeros(wfs.n_measurements)
     for _ in range(n_iter):
         phase = atmos.step()                     # turbulence evolves
-        residual = phase - dm.shape(commands)    # post-correction wavefront
-        slopes = wfs.measure(residual)           # local gradients on the grid
         delta = reconstructor.reconstruct(slopes)
-        commands = (1.0 - leak) * commands - gain * delta
+        commands = reconstructor.apply_gain(delta, gain=gain, leak=leak)
+        correction = dm.shape(commands)
+        slopes = wfs.measure(phase, phase_correction=correction)
     return commands
 
 
 reconstructor = Reconstructor()
 reconstructor.build_interaction_matrix(dm, wfs)
 reconstructor.build_command_matrix(conditioning=1e-3)
-final_commands = close_loop(reconstructor, dm, wfs, atmos, gain=0.4, leak=0.01)
+final_commands = close_loop(reconstructor, dm, wfs, atmos, gain=0.4)
 ```
 
-AO simulators often store the same matrices transposed: Soapy builds an actuator-by-slope interaction matrix by poking actuators, computes `numpy.linalg.pinv(interaction_matrix, conditioning)`, applies it as `control_matrix.T.dot(slopes)`, and accumulates the resulting residual commands with the loop gain. With the positive command-to-slope convention used above, the equivalent matrix is `R = A^+` and the closed-loop feedback subtracts `gain * R @ slopes`.
+Soapy uses this actuator-by-slope storage directly: it builds the interaction matrix by poking actuators and storing `-1 * wfs.frame(..., phase_correction=phase, iMatFrame=True)`, computes `numpy.linalg.pinv(interaction_matrix, conditioning)`, applies it as `control_matrix.T.dot(slopes)`, and in closed loop accumulates the resulting residual commands with `actuator_values += gain * new_actuator_values`.

@@ -76,6 +76,14 @@ def build_uc(data):
     def U(g, t):   # status of unit g entering hour t (t may be <= 0)
         return gens[g]['u0'] if t < 1 else m.u[g, t]
 
+    def W(g, t):   # turn-off indicator at hour t; a pre-horizon shut shows up at t<1
+        gen = gens[g]
+        if t >= 1:
+            return m.w[g, t]
+        # entering off with `off0` accrued down-hours == a shut at hour `1-off0`
+        off0 = -gen['init_status_hours'] if gen['u0'] == 0 else 0
+        return 1 if t == 1 - off0 else 0
+
     # --- objective: production + min-output running cost + start-up cost ---
     def obj(m):
         return sum(
@@ -117,25 +125,28 @@ def build_uc(data):
 
             # a start at t falls in exactly one cost category
             m.con.add(m.v[g, t] == sum(m.d[g, s, t] for s in range(nS[g])))
-            # category s allowed only if off for >= its lag (look-back over prior statuses)
-            for s in range(nS[g]):
-                lag = gen['startup'][s][0]
-                onlast = sum(U(g, t - i) for i in range(1, lag + 1))
-                m.con.add(m.d[g, s, t] <= m.v[g, t] - onlast +
-                          (lag if s + 1 < nS[g] else 0) * 0      # hottest catch-all stays feasible
-                          )
-            # ensure the *hottest* category can always cover a start (catch-all)
-            m.con.add(m.d[g, 0, t] >= m.v[g, t] - sum(m.d[g, s, t] for s in range(1, nS[g])))
+            # category s (a hotter, cheaper one) is allowed only if the unit shut down
+            # within s's offline window [lag_s, lag_{s+1}) hours ago; the coldest
+            # category nS-1 is the catch-all (unconstrained), and since startup cost is
+            # minimized the LP picks the cheapest *eligible* category for free
+            for s in range(nS[g] - 1):
+                lag, lag_next = gen['startup'][s][0], gen['startup'][s + 1][0]
+                m.con.add(m.d[g, s, t] <=
+                          sum(W(g, t - i) for i in range(lag, lag_next)))
 
-            # generation: lower band via Pmin*u below; upper with start-up tightening
+            # generation: lower band via Pmin*u below; upper with start-up tightening,
+            # and a shut-down tightening at t (a unit shutting at t+1 can't be at the top)
             m.con.add(m.p[g, t] + m.r[g, t] <=
                       (Pmax - Pmin) * m.u[g, t] - max(Pmax - gen['SU'], 0.0) * m.v[g, t])
+            if t < T:
+                m.con.add(m.p[g, t] + m.r[g, t] <=
+                          (Pmax - Pmin) * m.u[g, t]
+                          - max(Pmax - gen['SD'], 0.0) * m.w[g, t + 1])
 
-            # ramps couple consecutive hours (normal rate if already on; SU/SD on transition)
-            p_prev = gen['p0'] - Pmin if t == 1 else m.p[g, t - 1]
-            m.con.add(m.p[g, t] + m.r[g, t] - p_prev <= gen['RU'] * U(g, t - 1)
-                      + gen['SU'] * m.v[g, t])
-            m.con.add(p_prev - m.p[g, t] <= gen['RD'] * m.u[g, t] + gen['SD'] * m.w[g, t])
+            # ramps couple consecutive hours' output-above-minimum
+            p_prev = gen['u0'] * (gen['p0'] - Pmin) if t == 1 else m.p[g, t - 1]
+            m.con.add(m.p[g, t] + m.r[g, t] - p_prev <= gen['RU'])
+            m.con.add(p_prev - m.p[g, t] <= gen['RD'])
 
             # piecewise-linear convex production cost (segments fill cheap-first automatically)
             m.con.add(m.p[g, t]   == sum((pc[l][0] - pc[0][0]) * m.lam[g, l, t] for l in range(nL[g])))

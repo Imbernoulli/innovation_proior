@@ -93,7 +93,7 @@ def power_of_two_jrp(A, a, h, D, max_iter=100):
     return T, k, [k[i] * T for i in range(len(k))], jrp_cost(T, k, A, a, h, D)
 
 def brute_force(A, a, h, D, kmax=12):
-    # exact reference: enumerate integer multipliers, closed-form T for each
+    # bounded reference: enumerate integer multipliers in [1,kmax]^M, closed-form T for each
     best = None
     for k in itertools.product(range(1, kmax + 1), repeat=len(a)):
         T = optimal_T(list(k), A, a, h, D)
@@ -101,6 +101,12 @@ def brute_force(A, a, h, D, kmax=12):
         if best is None or c < best[0]:
             best = (c, T, list(k))
     return best
+
+def coordinate_items(A, a, h, D):
+    # entry point: coordinate M items sharing major cost A via the basic-period policy
+    # -> per-item order intervals k_i*T and the total average cost
+    T, k, intervals, cost = iterative_jrp(A, a, h, D)
+    return intervals, cost
 
 if __name__ == "__main__":
     A = 100.0

@@ -30,33 +30,31 @@ The clean way to see and control all of this at once is the singular value decom
 
   d̂ = Σ_i (u_iᵀ s / σ_i) v_i = V Σ⁺ Uᵀ s,
 
-where Σ⁺ inverts the nonzero σ_i. Now I can read off everything. The exactly-unsensed modes (piston, waffle) have σ_i = 0 — they sit in V with no slope signature, and Σ⁺ simply leaves them out; the reconstructor never commands them, which is exactly right since the sensor can't see them. The barely-sensed modes have small σ_i, and the factor 1/σ_i is the noise gain on that mode: a slope-noise component along u_i lands on the command as (noise/σ_i) v_i. So the whole danger lives in the small singular values. The cure is to truncate or soften them: drop every mode with σ_i below a threshold (set by a conditioning parameter rcond, relative to σ_max), i.e. set its 1/σ_i to 0. That's the pseudo-inverse with conditioning — keep the well-sensed modes, discard the noise-dominated and unsensed ones.
+where Σ⁺ inverts the nonzero σ_i. Now I can read off most of the danger. Piston has no slope signature, so it belongs in the null space and the pseudo-inverse leaves it out. The checkerboard waffle pattern is zero in the ideal local stencil too, but I have to be more careful with a finite real pupil: edge effects, invalid actuators, influence-function overlap, and misregistration can mix the waffle-like shape across several small-singular-value directions instead of giving me one clean singular vector to throw away. So SVD conditioning reduces the damage from unsensed and barely sensed modes, but it does not by itself guarantee "no waffle." The barely-sensed modes have small σ_i, and the factor 1/σ_i is the noise gain on that mode: a slope-noise component along u_i lands on the command as (noise/σ_i) v_i. So the whole numerical danger lives in the small singular values. The cure I have at this stage is to truncate or soften them: drop every mode with σ_i below a threshold (set by a conditioning parameter rcond, relative to σ_max), i.e. set its 1/σ_i to 0. That's the pseudo-inverse with conditioning — keep the well-sensed modes, discard directions whose slope signal is mostly noise or absent.
 
 I can make the trade smoother instead of a hard cut. Add a penalty on the command size to the least-squares cost — minimize ‖A d − s‖² + α‖d‖², which says "fit the slopes, but don't reach for a huge command to do it". Differentiate: 2Aᵀ(A d − s) + 2α d = 0 → (AᵀA + αI) d = Aᵀ s → d̂ = (AᵀA + αI)⁻¹ Aᵀ s. In SVD terms each singular value's inverse 1/σ_i becomes the filtered factor σ_i/(σ_i² + α). For σ_i ≫ √α it's ≈ 1/σ_i (well-sensed modes pass through untouched); for σ_i ≪ √α it's ≈ σ_i/α → 0 (poorly-sensed modes are smoothly suppressed instead of exploding). That's Tikhonov regularization, and α is the knob trading reconstruction noise against fidelity. The αI also makes the matrix strictly invertible, so even the exact null modes are handled — they just get reconstructed as zero. Truncated-SVD and Tikhonov are two faces of the same thing: refuse to divide by singular values that are mostly noise.
 
-So now the offline recipe is: form A, take its regularized pseudo-inverse R, done. But I left a question open — do I write A from the analytic corner stencil or measure it? The analytic stencil assumes ideal tent influence functions and an ideal averaging sensor; the real mirror's f_j leak into neighbours, the real sensor has its own response, and there are alignment errors. If I instead *poke* the system — command actuator j alone to a small amplitude, read the actual slope vector it produces, and make that the j-th column of A — then A captures the true end-to-end response of *this* mirror and *this* sensor, calibration and all. That's the interaction matrix, built column by column by poking. It's also typically better conditioned than the idealized matrix, because it reflects what the hardware can actually do. So: build A by poking each actuator and recording the slope response; that's the forward map; R = regularized pinv(A) is the command matrix.
+So now the offline recipe is: form A, take its regularized pseudo-inverse R, done. But I left a question open — do I write A from the analytic corner stencil or measure it? The analytic stencil assumes ideal tent influence functions and an ideal averaging sensor; the real mirror's f_j leak into neighbours, the real sensor has its own response, and there are alignment errors. If I instead *poke* the system — command actuator j alone to a small amplitude, read the actual slope vector it produces, and make that the j-th response of the forward map — then the map captures the true end-to-end response of *this* mirror and *this* sensor, calibration and all. There is a sign trap here because the corrector is applied by subtracting its phase from the incoming wavefront. If I poke the mirror with no atmospheric phase in the path, the WFS is effectively seeing `-mirror`, so the raw measured slopes are the negative of the correction slope the mirror can provide. I store the negative of that raw WFS response. Then a positive stored row says "this actuator can supply this slope correction," and a measured residual slope gives the command increment I need to add. In the common simulator layout this interaction matrix is stored actuator-by-slope rather than slope-by-actuator: I has shape `(n_actuators, n_slopes)`, `pinv(I)` has shape `(n_slopes, n_actuators)`, and the command increment is `pinv(I).T @ slopes`. That's the same pseudo-inverse as R = A⁺, just transposed and with the correction sign made explicit.
 
 I now have a one-shot corrector: measure s, command d̂ = R s. Is that enough? No, and the reasons all push the same way. R inherits every imperfection in the single calibration — a slow drift in alignment, a temperature change in the mirror — and my open-loop command is then wrong with no way to notice. The WFS slope-vs-tilt relationship is only linear for small spot displacements, so a big aberration drives spots out of their linear range and a single multiply mis-estimates it. And, worst of all, the aberration is *moving* — by the time I've applied d̂, the turbulence has evolved, and a static one-shot is always correcting a stale wavefront.
 
-The fix for all three is the same: don't try to nail it in one shot, drive the *residual* to zero iteratively. Put the corrector in front of the sensor so the sensor sees the wavefront *after* correction — closed loop. Now s is the residual slope, the error signal, and I want a control law that nudges the commands each frame to push that error toward zero and keeps pushing as the turbulence wanders. The simplest law that does this is to accumulate corrections:
+The fix for all three is the same: don't try to nail it in one shot, drive the *residual* to zero iteratively. Put the corrector in front of the sensor so the sensor sees the wavefront *after* correction — closed loop. Now s is the residual slope, the error signal, and I want a control law that nudges the commands each frame to push that error toward zero and keeps pushing as the turbulence wanders. With the stored sign above, the reconstructed increment R s is the mirror command that should be added to cancel the current residual:
 
-  c_{k+1} = c_k − g · R s_k.
+  c_{k+1} = c_k + g · R s_k.
 
-Each frame, measure the residual slopes s_k, reconstruct the residual command R s_k, and subtract a fraction g of it from the running command. The minus sign is the feedback: I move the mirror to oppose the sensed residual. Why *accumulate* (an integrator) rather than just set c = −g R s (proportional)? Because the integrator has infinite gain at DC. Think about a steady aberration: a proportional law c = −gRs settles at a nonzero residual (it needs a nonzero error to hold a nonzero command), so it leaves a permanent error. The integrator keeps adding to c as long as *any* residual remains, so at steady state the residual is driven to zero — it's a type-1 system with zero steady-state error on a constant input. And turbulence is *red* — most of its power is at low temporal frequency — so a controller with huge low-frequency gain is exactly what rejects the bulk of the disturbance. This is also the cheapest possible predictor: feed back the latest measured phase with the opposite sign and hope the next frame looks like this one ("zero-order prediction"). It's not optimal, but it's the natural first thing, and it's what an integrator does.
+Each frame, measure the residual slopes s_k, reconstruct the residual command R s_k, and add a fraction g of it to the running command. The plus sign is still negative feedback: the mirror phase enters the residual as atmosphere minus mirror, so adding mirror command reduces the residual WFS signal. If I had stored the raw `-mirror` response instead, the same physical feedback law would show up with a minus sign. Why *accumulate* (an integrator) rather than just set c = g R s (proportional)? Because the integrator has infinite gain at DC. Think about a steady aberration: a proportional law settles at a nonzero residual because it needs a nonzero error to hold a nonzero command, so it leaves a permanent error. The integrator keeps adding to c as long as *any* residual remains, so at steady state the residual is driven to zero — it's a type-1 system with zero steady-state error on a constant input. And turbulence is *red* — most of its power is at low temporal frequency — so a controller with huge low-frequency gain is exactly what rejects the bulk of the disturbance. This is also the cheapest possible predictor: feed back the latest measured phase with the opposite sign and hope the next frame looks like this one ("zero-order prediction"). It's not optimal, but it's the natural first thing, and it's what an integrator does.
 
-Now the loop can go unstable, so I have to find the bound on g. There's delay around the loop: the sensor integrates for a frame, the centroids and the matrix multiply take time, the mirror takes time to move — at least one full frame, realistically closer to two, between sensing an error and correcting it. Model the pure integrator controller in the z-domain: the running sum c_{k+1} = c_k − g·(error) is, per mode (work in the SVD modal basis where everything decouples), the transfer function from error to command g/(1 − z⁻¹). Put it in a unit-feedback loop with a pure delay z⁻ᵈ for the d-frame latency; the open-loop transfer function for one mode is L(z) = g z⁻ᵈ / (1 − z⁻¹), and closed-loop stability needs the roots of 1 + L(z) = 0 inside the unit circle. For a single frame of delay (d = 1): 1 + g z⁻¹/(1 − z⁻¹) = 0 ⇒ 1 − z⁻¹ + g z⁻¹ = 0 ⇒ z = 1 − g, stable for 0 < g < 2 — marginal at g = 0 (pole sits at z = 1, the integrator's own pole) and pushed inside as g grows, going unstable past g = 2. But with the realistic two-frame delay (d = 2): 1 + g z⁻²/(1 − z⁻¹) = 0 ⇒ z²(1 − z⁻¹) + g = 0 ⇒ z² − z + g = 0. The roots multiply to g and sum to 1; the Jury conditions reduce to 0 < g < 1 for positive gain, with g = 1 sitting on the unit circle. That edge is too sharp for real hardware: the loop rings and any model error tips it over. To keep real damping and phase margin I have to back well off that edge; the standard rule of thumb lands the usable gain around g ≲ 0.5 for this two-step-delay loop. So with a couple of frames of latency I keep the loop gain below about a half — not because it's the bare stability boundary, but because that's where the loop is actually well-damped and robust.
+Now the loop can go unstable, so I have to find the bound on g. There's delay around the loop: the sensor integrates for a frame, the centroids and the matrix multiply take time, the mirror takes time to move — at least one full frame, realistically closer to two, between sensing an error and correcting it. Model one well-sensed mode after reconstruction. With no turbulence input, the residual slope is just the negative of the delayed mirror command, so the homogeneous update is c_{k+1} = c_k − g c_{k-d}. In transfer-function language the integrator from error to command is g/(1 − z⁻¹), the plant contributes the negative residual sign and a pure delay z⁻ᵈ, and the characteristic equation is 1 + g z⁻ᵈ/(1 − z⁻¹) = 0. For a single frame of delay (d = 1): 1 + g z⁻¹/(1 − z⁻¹) = 0 ⇒ 1 − z⁻¹ + g z⁻¹ = 0 ⇒ z = 1 − g, stable for 0 < g < 2 — marginal at g = 0 (pole sits at z = 1, the integrator's own pole) and pushed inside as g grows, going unstable past g = 2. But with the realistic two-frame delay (d = 2): 1 + g z⁻²/(1 − z⁻¹) = 0 ⇒ z²(1 − z⁻¹) + g = 0 ⇒ z² − z + g = 0. The roots multiply to g and sum to 1; the Jury conditions reduce to 0 < g < 1 for positive gain, with g = 1 sitting on the unit circle. That edge is too sharp for real hardware: the loop rings and any model error tips it over. To keep real damping and phase margin I have to back well off that edge; the standard rule of thumb lands the usable gain around g ≲ 0.5 for this two-step-delay loop. So with a couple of frames of latency I keep the loop gain below about a half — not because it's the bare stability boundary, but because that's where the loop is actually well-damped and robust.
 
 That ceiling collides with what I *want* from the gain, which is the next thing to reason through. A higher g closes the loop faster — more closed-loop bandwidth, so the correction keeps up with the moving turbulence and the servo-lag residual σ²_servo = 28.4 (f_G Δt)^(5/3) for a zero-order delay Δt shrinks as the loop reduces the effective lag. But a higher g also pumps more of the slope *noise* straight onto the commands every frame (the reconstruction error), and pushes the poles toward the unit circle. A lower g is quiet and stable but sluggish, and a sluggish loop sits behind the turbulence and pays a big servo-lag. So g is the knob balancing bandwidth/servo-lag against noise propagation, and the atmosphere's f_G tells me where the balance has to sit: the faster the turbulence (higher f_G), the more bandwidth I need, the harder I'm pressing against that g ≲ 0.5 stability wall. On a bright star (low noise) I push g up toward the stability limit; on a faint star (noisy slopes) I back g off to keep the noise term down and accept more servo-lag. There's no universally right g — it's tuned to r₀, v, and the guide-star brightness.
 
-One more thing nags at me, and it's the waffle/piston problem coming back. R correctly refuses to *command* the unsensed modes — they're in the null space, R s has no component along them. But the integrator accumulates, and over many frames numerical round-off, actuator cross-coupling, and noise can slowly inject a little waffle or piston onto the running command c. The sensor is blind to those modes, so the error signal never reports them, so the loop never corrects them — c_{k+1} = c_k − gRs_k leaves whatever waffle is on c exactly where it is, and a slow drift of it can build up without bound. I need to actively bleed off anything the loop can't see. The simplest way: make the integrator slightly *leaky* —
+One more thing nags at me, and it's the waffle problem coming back. Piston can be handled directly by mean-subtracting the mirror shape, but the high-frequency checkerboard is more slippery. The reconstructor is built to avoid small singular values, yet waffle-like content can still sneak into the running command through numerical round-off, actuator coupling, calibration mismatch, or noise projected through the imperfectly conditioned directions. The sensor is blind or nearly blind to that content, so the error signal does not reliably report it, and the pure integrator leaves whatever unsensed component is already on c exactly where it is. I need to actively bleed off anything the loop can't see. The simplest way: make the integrator slightly *leaky* —
 
-  c_{k+1} = (1 − ℓ) c_k − g · R s_k,
+  c_{k+1} = (1 − ℓ) c_k + g · R s_k,
 
 with a small ℓ (say 0.01). The (1 − ℓ) factor pulls every component of c gently toward zero each frame; for a sensed, actively-driven mode the loop just re-commands it and the leak is negligible, but for an unsensed mode — waffle, piston — which nothing ever re-commands, the (1 − ℓ)^k decay is the *only* force acting on it, and it drains away. Look at what the leak does to the pole, too: the integrator's transfer function becomes g/(1 − (1−ℓ)z⁻¹), moving its pole from z = 1 (marginally stable) to z = 1 − ℓ, strictly inside the unit circle — so the leak also pulls the loop off the stability edge and buys robustness to model error, which is exactly what protects the modes the gain bound alone doesn't. The cost is that I've broken the perfect DC rejection: with the leak, a truly constant aberration settles at a small nonzero residual instead of exactly zero (the (1 − ℓ) bleeds a bit of the correction away even for sensed modes). With ℓ tiny that residual is negligible, and the protection against waffle buildup is worth far more than the slight loss of DC gain. So: small leak, real gain, and the loop is both stable and self-cleaning.
 
-That's the whole method, and it falls out as: turbulence crumples the wavefront → the only thing I can measure is local slopes on a grid (Shack–Hartmann), not phase → so I have to invert a gradient, which means a forward map from commands to slopes (built by poking the real hardware: the interaction matrix A) and its least-squares inverse → which is degenerate and noise-sensitive, so the inverse is a regularized SVD pseudo-inverse R that discards the unsensed (piston/waffle) and noise-dominated modes → one shot isn't enough because the aberration moves and the loop has errors, so close the loop with an integrator c_{k+1} = (1−ℓ)c_k − g R s_k that drives the residual slopes to zero → with gain g kept under ~0.5 for stability against the loop delay and tuned for the bandwidth-vs-noise (servo-lag vs reconstruction) trade, and a small leak ℓ to bleed off the modes the sensor can't see.
-
-Let me write it.
+That's the whole method, and it falls out as: turbulence crumples the wavefront → the only thing I can measure is local slopes on a grid (Shack–Hartmann), not phase → so I have to invert a gradient, which means a forward map from commands to slopes (built by poking the real hardware and storing the correction sign in the interaction matrix) and its least-squares inverse → which is degenerate and noise-sensitive, so the inverse is a regularized SVD pseudo-inverse R that suppresses piston, near-null, and noise-dominated directions without pretending to solve waffle by itself → one shot isn't enough because the aberration moves and the loop has errors, so close the loop with an integrator c_{k+1} = (1−ℓ)c_k + g R s_k that drives the residual slopes to zero → with gain g kept under ~0.5 for stability against the loop delay and tuned for the bandwidth-vs-noise (servo-lag vs reconstruction) trade, and with either explicit mean removal or a small leak ℓ to bleed off the modes the sensor can't see.
 
 ```python
 import numpy as np
@@ -66,50 +64,67 @@ class Reconstructor:
 
     def __init__(self):
         self.interaction_matrix = None
-        self.command_matrix = None
+        self.control_matrix = None
+        self.actuator_values = None
 
     def build_interaction_matrix(self, dm, wfs, poke=1.0, imat_noise=False):
         n_act = dm.n_act
         n_slope = wfs.n_measurements          # 2 per sub-aperture (sx, sy)
-        A = np.zeros((n_slope, n_act))
+        interaction = np.zeros((n_act, n_slope))
         for j in range(n_act):
             cmd = np.zeros(n_act)
             cmd[j] = poke                     # push one actuator
             mirror = dm.shape(cmd)            # influence function of actuator j
-            A[:, j] = wfs.measure(mirror, noise=imat_noise) / poke
-        self.interaction_matrix = A
-        return A
+            # The corrector is subtracted from the incoming phase, so store
+            # the correction slope, not the raw residual slope from the poke.
+            slopes = wfs.measure(
+                phase_correction=mirror,
+                noise=imat_noise,
+                calibration=True,
+            )
+            interaction[j] = -slopes / poke
+        self.interaction_matrix = interaction
+        return interaction
 
     def build_command_matrix(self, conditioning=1e-3, alpha=None):
         if alpha is None:
-            # SVD pinv with a conditioning cutoff: d_hat = R @ s.
-            self.command_matrix = np.linalg.pinv(
+            # Stored as actuator-by-slope, so pinv has shape slope-by-actuator.
+            self.control_matrix = np.linalg.pinv(
                 self.interaction_matrix, rcond=conditioning
             )
         else:
             U, sig, Vt = np.linalg.svd(self.interaction_matrix, full_matrices=False)
             filt = sig / (sig**2 + alpha)     # soft filter: sigma/(sigma^2+alpha)
-            self.command_matrix = (Vt.T * filt) @ U.T
-        return self.command_matrix
+            self.control_matrix = (Vt.T * filt) @ U.T
+        return self.control_matrix
 
     def reconstruct(self, slopes):
-        return self.command_matrix @ slopes
+        return self.control_matrix.T @ slopes
+
+    def apply_gain(self, command_increment, gain=0.4, leak=0.0):
+        if self.actuator_values is None:
+            self.actuator_values = np.zeros(command_increment.size)
+        self.actuator_values = (
+            (1.0 - leak) * self.actuator_values + gain * command_increment
+        )
+        return self.actuator_values
 
 
-def close_loop(reconstructor, dm, wfs, atmos, gain=0.4, leak=0.01, n_iter=1000):
+def close_loop(reconstructor, dm, wfs, atmos, gain=0.4, leak=0.0, n_iter=1000):
     commands = np.zeros(dm.n_act)
+    slopes = np.zeros(wfs.n_measurements)
     for k in range(n_iter):
         phase = atmos.step()                          # turbulence evolves
-        residual = phase - dm.shape(commands)         # post-correction wavefront
-        s = wfs.measure(residual)                     # sensor sees the residual slopes
-        delta = reconstructor.reconstruct(s)          # least-squares residual command
-        commands = (1.0 - leak) * commands - gain * delta
+        delta = reconstructor.reconstruct(slopes)     # command from previous residual
+        commands = reconstructor.apply_gain(delta, gain=gain, leak=leak)
+        correction = dm.shape(commands)
+        slopes = wfs.measure(phase, phase_correction=correction)
     return commands
 
 reconstructor = Reconstructor()
 reconstructor.build_interaction_matrix(dm, wfs)
 reconstructor.build_command_matrix(conditioning=1e-3)
-final = close_loop(reconstructor, dm, wfs, atmos, gain=0.4, leak=0.01)
+final = close_loop(reconstructor, dm, wfs, atmos, gain=0.4)
 ```
 
-The causal chain, start to finish: the atmosphere imprints a moving phase aberration I can't measure directly; a Shack–Hartmann sensor turns it into local slopes on a grid; I build the command-to-slope forward map A by poking the real mirror; I invert it with a regularized SVD pseudo-inverse R that throws away the unsensed and noise-dominated modes; and I apply R inside a leaky integrator, c_{k+1} = (1−ℓ)c_k − gRs_k, whose negative feedback drives the residual slopes to zero, whose integral action rejects the low-frequency bulk of the turbulence, whose gain stays under the delay-set stability ceiling, and whose small leak quietly drains away the waffle and piston the sensor will never report. If I store the interaction matrix transposed, as some AO simulators do, the same operation appears as `control_matrix = numpy.linalg.pinv(interaction_matrix, conditioning)` followed by `control_matrix.T.dot(slopes)`; the transpose is bookkeeping, not a different reconstructor.
+The causal chain, start to finish: the atmosphere imprints a moving phase aberration I can't measure directly; a Shack–Hartmann sensor turns it into local slopes on a grid; I build the command-to-slope forward map by poking the real mirror and storing the correction sign; I invert the actuator-by-slope interaction matrix with a regularized SVD pseudo-inverse; and I apply `control_matrix.T.dot(slopes)` inside an integrator, c_{k+1} = (1−ℓ)c_k + gRs_k, whose negative feedback drives the residual slopes to zero, whose integral action rejects the low-frequency bulk of the turbulence, whose gain stays under the delay-set stability ceiling, and whose optional leak or mean removal drains away components the sensor will never report.

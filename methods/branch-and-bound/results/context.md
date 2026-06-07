@@ -156,33 +156,23 @@ def solve_lp(c, A_ub, b_ub, bounds):
     (linprog minimizes; to MAXimize c'x we pass -c and negate the value.)"""
     res = linprog(-np.asarray(c, float), A_ub=A_ub, b_ub=b_ub,
                   bounds=bounds, method="highs")
+    if res.status == 2:
+        return None, None            # infeasible node
+    if res.status == 3:
+        raise ValueError("LP relaxation is unbounded; no finite upper bound")
     if not res.success:
-        return None, None            # infeasible / unbounded node
+        raise RuntimeError(res.message)
     return res.x, -res.fun           # (vertex x, objective value)
 
 
-class IntegerSolver:
-    """Takes an LP (c, A_ub, b_ub, bounds) plus a set of variables that MUST
-    come out integer, and returns a PROVABLY optimal integer-feasible point.
-    The discrete-solving RULE is the empty slot below."""
+def select_fractional_integer_var(x, int_vars):
+    # TODO: choose one marked variable whose continuous value is not integer.
+    raise NotImplementedError
 
-    def __init__(self, c, A_ub, b_ub, bounds, int_vars):
-        self.c, self.A_ub, self.b_ub = c, A_ub, b_ub
-        self.bounds = list(bounds)        # per-variable [l_j, u_j]
-        self.int_vars = list(int_vars)    # indices forced to be integer
 
-    def solve(self):
-        # TODO: the continuous optimum is generally fractional in the marked
-        #       variables, and there are exponentially many integer points to
-        #       avoid enumerating. Using only the LP solver above as a bound,
-        #       find the optimal integer point without walking the whole lattice.
-        raise NotImplementedError
-
-    def select_branch_variable(self, x):
-        # TODO: which fractional integer-variable to split the problem on?
-        raise NotImplementedError
-
-    def optimality_gap(self):
-        # TODO: certify how far the best integer point found can be from optimal.
-        raise NotImplementedError
+def solve_integer_lp(c, A_ub, b_ub, n, int_vars, bounds, tol=1e-6):
+    # TODO: use solve_lp as a bound-giver, split the marked-integer feasible
+    #       set into smaller LP subproblems, carry an incumbent, and return an
+    #       optimal integer-feasible point without enumerating the lattice.
+    raise NotImplementedError
 ```

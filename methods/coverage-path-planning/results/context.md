@@ -18,7 +18,7 @@ Coverage is related to, but harder than, the *covering salesman problem* — a t
 
 **Cellular decomposition.** The classical tool for non-convex free space is to break it into pieces. An *exact cellular decomposition* is a set of non-intersecting regions (cells) whose union is exactly the free configuration space. Represent each cell as a node of an *adjacency graph*, with an edge between cells that share a boundary. If every individual cell is simple enough to be covered by a known motion, then covering the whole region reduces to a graph problem: find a walk through the adjacency graph that visits every node at least once. Such a walk is a traveling-salesman-flavored problem over the cells, for which a (possibly sub-optimal) solution always exists.
 
-**The trapezoidal (slab) decomposition.** The popular exact decomposition for a polygonal environment is the trapezoidal, or slab, decomposition (Latombe 1991; Preparata & Shamos 1985). A vertical line — a *slice* — sweeps from left to right across the bounded environment. The slice intersects the free space in one or more intervals. As the slice passes a vertex of an obstacle polygon, an *event* occurs, classified as **IN**, **OUT**, or **MIDDLE**: loosely, at an IN event the current cell closes and two new cells open (the free space splits around an obstacle); at an OUT event two cells close and one opens (the free space rejoins past an obstacle); a MIDDLE event is an intermediate vertex. The result is that the free space is carved into trapezoidal cells, each of which — being a trapezoid — is covered by simple back-and-forth motions, and coverage is achieved by visiting every cell of the adjacency graph. Its gap: because *every* polygon vertex produces an event and thus a cell boundary, the decomposition has many cells, and many cells mean many redundant lengthwise passes. Two adjacent trapezoids that are each, say, two-and-a-half robot-widths wide force three passes apiece — six lengthwise motions — where a single merged cell of the same total area needs only five. Fewer cells is better, because turning is the expensive part of a coverage path: the robot must decelerate, turn, accelerate, and each turn accrues dead-reckoning error. The trapezoidal approach also assumes the environment is polygonal.
+**The trapezoidal (slab) decomposition.** The popular exact decomposition for a polygonal environment is the trapezoidal, or slab, decomposition (Latombe 1991; Preparata & Shamos 1985). A vertical line — a *slice* — sweeps from left to right across the bounded environment. The slice intersects the free space in one or more intervals. As the slice passes a vertex of an obstacle polygon, an *event* occurs, classified as **IN**, **OUT**, or **MIDDLE**: loosely, at an IN event the current cell closes and two new cells open (the free space splits around an obstacle); at an OUT event two cells close and one opens (the free space rejoins past an obstacle); a MIDDLE event is an intermediate vertex. The result is that the free space is carved into trapezoidal cells, each of which — being a trapezoid — is covered by simple back-and-forth motions, and coverage is achieved by visiting every cell of the adjacency graph. Its gap: because *every* polygon vertex produces an event and thus a cell boundary, the decomposition has many cells, and many cells mean many redundant lengthwise passes. Two adjacent trapezoids that are each, say, two-and-a-half robot-widths wide force `ceil(2.5) + ceil(2.5) = 6` lengthwise motions, where one merged five-width monotone cell needs `ceil(5) = 5`. Fewer cells is better, because turning is the expensive part of a coverage path: the robot must decelerate, turn, accelerate, and each turn accrues dead-reckoning error. The trapezoidal approach also assumes the environment is polygonal.
 
 **Critical points and roadmaps.** Roadmap motion planning (Canny 1988; Canny & Lin's Opportunistic Path Planner, 1990, 1993, itself built on Canny's roadmap algorithm) introduced *critical points* — configurations where the connectivity of a sweeping slice of free space changes — as the structurally meaningful events of a continuous space, including curved and even sampled environments. This is a more intrinsic notion of "event" than "a vertex of a polygon."
 
@@ -46,7 +46,7 @@ The natural yardstick is a bounded, connected planar free space — a floor plan
 
 ## Code framework
 
-The primitives that already exist: a raster/occupancy representation of the bounded free space (free vs. obstacle), the notion of a vertical *slice* (one column) and of the connected free intervals within a slice, an adjacency-graph container with a generic graph-search routine, and a per-cell back-and-forth (boustrophedon) sweep that steps by the footprint side-step. What does **not** yet exist is the rule that turns the sequence of slices into cells, and the rule that stitches the per-cell sweeps into one coverage path. The empty stubs below are exactly those slots.
+The primitives that already exist: a raster/occupancy representation of the bounded free space (free vs. obstacle), the notion of a vertical *slice* (one column) and of the connected free intervals within a slice, an adjacency-graph container with a generic graph-search routine, and a per-cell back-and-forth (boustrophedon) sweep that steps by the footprint side-step. The missing rules are how the sequence of slices becomes cells, and how the per-cell sweeps are ordered into one coverage path.
 
 ```python
 import numpy as np
@@ -65,24 +65,29 @@ def slices_overlap(left_intervals, right_intervals):
     pass  # TODO: adjacency between segments of neighbouring slices
 
 def decompose(grid_map):
-    """Sweep the slice left to right; emit cells and the cell
-    adjacency graph. The rule for WHEN to open/close a cell as the
-    slice advances is the contribution to be designed."""
+    """Sweep the slice left to right; return a labelled cell map,
+    cell records, and the cell adjacency graph."""
     pass  # TODO: open/close cells as the slice sweeps; build adjacency graph
 
 def order_cells(adjacency_graph, start_cell):
-    """A walk over the adjacency graph that visits every cell."""
-    pass  # TODO: graph search producing an exhaustive cell ordering
+    """A walk over the adjacency graph that visits every cell,
+    including backtracking entries through already visited cells."""
+    pass  # TODO: graph search producing an exhaustive cell walk
 
-def sweep_cell(cell, grid_map, side_step):
+def sweep_cell(cell, side_step):
     """Cover one cell with back-and-forth passes spaced by side_step."""
     pass  # TODO: boustrophedon motion within a single cell
 
 def plan_coverage(grid_map, side_step):
-    cells, graph = decompose(grid_map)
-    order = order_cells(graph, start_cell=cells[0])
+    cell_labels, cells, graph = decompose(grid_map)
+    walk = order_cells(graph, start_cell=cells[0]["id"])
+    by_id = {cell["id"]: cell for cell in cells}
+    covered = set()
     path = []
-    for cell in order:
-        path += sweep_cell(cell, grid_map, side_step)  # plus transit to next cell
-    return path
+    for cell_id in walk:
+        if cell_id in covered:
+            continue
+        path += sweep_cell(by_id[cell_id], side_step)
+        covered.add(cell_id)
+    return path, cell_labels, walk
 ```

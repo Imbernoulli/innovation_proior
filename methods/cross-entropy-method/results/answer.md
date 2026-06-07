@@ -27,14 +27,14 @@ This is a **weighted maximum-likelihood fit of f(·;v) to the elite samples** {S
 
 whose stationarity Σ_i 1_{S(X_i)≥γ} W_i ∇_v ln f(X_i;v) = 0 has a closed form for natural exponential families (the parameter equals the elite-weighted sample moment).
 
-Rarity breaks a one-shot fit, so iterate a **two-phase multilevel loop**: set the working level γ_t to the (1−ρ)-sample-quantile of the current performances (so the elite has probability ≈ ρ and is never empty), refit v_t to that elite, and let γ_t ratchet up — toward γ (estimation) or toward the optimum (optimization). The **same scheme is both faces**: the likelihood ratio W stays for estimation (a specific law's tail must be reported); for optimization the associated problem is redefined around f(·;v_{t-1}) each step, so W = 1 and the update is plain elite-MLE.
+Rarity breaks a one-shot fit, so iterate a **two-phase multilevel loop**: set the working level γ_t to the (1−ρ)-sample-quantile of the current performances (so the elite has probability ≈ ρ and is never empty), refit v_t to that elite, and move γ_t toward γ (estimation) or toward the optimum (optimization). The **same scheme is both faces**: the likelihood ratio W stays for estimation (a specific law's tail must be reported); for optimization the associated problem is redefined around f(·;v_{t-1}) each step, so W = 1 and the update is plain elite-MLE.
 
 **Closed forms by family** (elite set E_t = {i : S(X_i) ≥ γ_t}):
 - Exponential f(x;v)=Π_j v_j⁻¹e^{−x_j/v_j}: v_{t,j} = Σ_i 1_{S≥γ_t} W_i X_{ij} / Σ_i 1_{S≥γ_t} W_i.
 - Bernoulli f(x;p)=Π_j p_j^{x_j}(1−p_j)^{1−x_j}: p_{t,j} = Σ_i 1_{S≥γ_t} 1_{X_{ij}=1} / Σ_i 1_{S≥γ_t} (elite fraction of ones).
 - Gaussian N(μ,σ²): μ_{t,j} = mean of elite X_{·j}, σ²_{t,j} = variance of elite X_{·j} (elite-sample mean and variance).
 
-**Stabilizers.** Smoothed update v_t = α ŵ_t + (1−α) v_{t-1}, α ∈ [0.4, 0.9], prevents the distribution from snapping to a degenerate point (a Bernoulli p_j locking at 0/1, a Gaussian σ collapsing) too early. Sample size N = c·(#parameters) with c > 1; ρ ∈ [0.01, 0.1]. As a sibling estimation-of-distribution method, the Gaussian form is the cross-entropy cousin of CMA-ES: both keep elite samples and refit a Gaussian, but CE refits by the KL/MLE moment projection rather than an evolution-path covariance rule.
+**Stabilizers.** Smoothed update v_t = α ŵ_t + (1−α) v_{t-1}, α ∈ [0.4, 0.9], prevents the distribution from snapping to a degenerate point (a Bernoulli p_j locking at 0/1, a Gaussian σ collapsing) too early. Sample size N = c·(#parameters) with c > 1; ρ ∈ [0.01, 0.1].
 
 ## Algorithm
 
@@ -51,70 +51,80 @@ Two-phase CE loop (v̂₀ = u, t = 1):
 ```python
 import numpy as np
 
-# ============================================================================
-# (i) RARE-EVENT ESTIMATION: iterated-threshold tilt with likelihood ratios.
-#     Family: independent exponential edge weights f(x; v) = prod_j (1/v_j) e^{-x_j/v_j}.
-#     Target: ell = P_u(S(X) >= gamma), S = shortest A->B path length.
-# ============================================================================
-
 def shortest_path(x):
-    # tiny bridge network, 5 edges: 0,1 upper; 2 cross; 3,4 lower. S = min route.
+    # Tiny bridge network, 5 edges: 0,1 upper; 2 cross; 3,4 lower. S = min route.
     return min(x[0] + x[3], x[1] + x[4], x[0] + x[2] + x[4], x[1] + x[2] + x[3])
 
-def ce_rare_event(u, gamma, rho=0.1, N=2000, N_final=100_000, rng=None):
-    rng = rng or np.random.default_rng(0)
+def exponential_log_likelihood_ratio(X, u, v):
+    # log f(X; u) - log f(X; v) for independent exponentials with mean vectors u and v.
+    X = np.asarray(X, float)
     u = np.asarray(u, float)
-    v = u.copy()                                            # v_0 := u (nominal law)
+    v = np.asarray(v, float)
+    return np.sum((1.0 / v - 1.0 / u) * X - np.log(u / v), axis=1)
+
+def choose_level(scores, target, rho):
+    # Algorithmic (1-rho) order statistic, capped at the prescribed rare-event level.
+    scores = np.asarray(scores, float)
+    idx = int(np.ceil((1.0 - rho) * len(scores))) - 1
+    idx = int(np.clip(idx, 0, len(scores) - 1))
+    level = np.sort(scores)[idx]
+    if target is not None and level >= target:
+        return target, True
+    return level, False
+
+def refit_exponential_means(X, scores, level, u, v):
+    # Weighted MLE: v_j = sum I{S>=level} W X_j / sum I{S>=level} W.
+    elite = scores >= level
+    weights = elite * np.exp(exponential_log_likelihood_ratio(X, u, v))
+    total = weights.sum()
+    if total == 0.0:
+        return np.asarray(v, float).copy()
+    return (weights[:, None] * X).sum(axis=0) / total
+
+def adaptive_rare_event(u, gamma, rho=0.1, N=2000, N_final=100_000, rng=None):
+    rng = np.random.default_rng(0) if rng is None else rng
+    u = np.asarray(u, float)
+    v = u.copy()
     while True:
-        X = rng.exponential(scale=v, size=(N, len(v)))      # sample f(.; v_{t-1})
-        S = np.array([shortest_path(x) for x in X])
-        gamma_t = np.quantile(S, 1.0 - rho)                 # (1-rho)-quantile level
-        reached = gamma_t >= gamma
-        if reached:
-            gamma_t = gamma
-        elite = S >= gamma_t                                # the top-rho elite set
-        # likelihood ratio W = f(.;u)/f(.;v): log W = sum (1/v-1/u) x - ln(u/v)
-        logW = np.sum((1.0 / v - 1.0 / u) * X - np.log(u / v), axis=1)
-        w = elite * np.exp(logW)                            # elite-and-LR weights
-        v = (w[:, None] * X).sum(0) / w.sum()               # CE update: weighted elite mean
+        X = rng.exponential(scale=v, size=(N, len(v)))
+        scores = np.array([shortest_path(x) for x in X])
+        level, reached = choose_level(scores, gamma, rho)
+        v = refit_exponential_means(X, scores, level, u, v)
         if reached:
             break
-    # final honest LR estimate under the learned tilt v_T
     X = rng.exponential(scale=v, size=(N_final, len(v)))
-    S = np.array([shortest_path(x) for x in X])
-    logW = np.sum((1.0 / v - 1.0 / u) * X - np.log(u / v), axis=1)
-    ell = np.mean((S >= gamma) * np.exp(logW))              # (1/N) sum 1_{S>=gamma} W
+    scores = np.array([shortest_path(x) for x in X])
+    ell = np.mean((scores >= gamma) * np.exp(exponential_log_likelihood_ratio(X, u, v)))
     return ell, v
 
-# ============================================================================
-# (ii) CONTINUOUS OPTIMIZATION: Gaussian family, elite mean/variance refit.
-#     max_x S(x); no privileged law, so W = 1 and the update is pure elite-MLE.
-# ============================================================================
+def refit_gaussian(X, scores, rho):
+    level, _ = choose_level(scores, target=None, rho=rho)
+    elite = X[scores >= level]
+    return elite.mean(axis=0), elite.std(axis=0)
 
-def ce_optimize(objective, mu, sigma, rho=0.1, N=100, alpha=0.7,
-                n_iter=100, tol=1e-8, rng=None):
-    rng = rng or np.random.default_rng(0)
+def adaptive_optimize(objective, mu, sigma, rho=0.1, N=100, alpha=0.7,
+                      n_iter=100, tol=1e-8, rng=None):
+    rng = np.random.default_rng(0) if rng is None else rng
     mu, sigma = np.asarray(mu, float), np.asarray(sigma, float)
-    n_elite = max(2, int(round(rho * N)))
+    best_score = -np.inf
     for _ in range(n_iter):
-        X = mu + sigma * rng.standard_normal((N, len(mu)))  # sample f(.; mu, sigma)
-        S = np.array([objective(x) for x in X])
-        elite = X[np.argsort(S)[-n_elite:]]                 # top-rho by performance
-        mu_hat = elite.mean(0)                              # elite-sample MEAN  (mu MLE)
-        sig_hat = elite.std(0)                              # elite-sample STD   (sigma MLE)
-        mu = alpha * mu_hat + (1 - alpha) * mu              # smoothed update
+        X = mu + sigma * rng.standard_normal((N, len(mu)))
+        scores = np.array([objective(x) for x in X])
+        best_score = max(best_score, float(scores.max()))
+        mu_hat, sig_hat = refit_gaussian(X, scores, rho)
+        mu = alpha * mu_hat + (1 - alpha) * mu
         sigma = alpha * sig_hat + (1 - alpha) * sigma
-        if np.max(sigma) < tol:                             # Gaussian has collapsed
+        if np.max(sigma) < tol:
             break
-    return mu, S.max()
+    return mu, best_score
 
 if __name__ == "__main__":
     rng = np.random.default_rng(0)
-    ell, v = ce_rare_event(u=[0.25, 0.4, 0.1, 0.3, 0.2], gamma=2.0, rng=rng)
+    ell, v = adaptive_rare_event(u=[0.25, 0.4, 0.1, 0.3, 0.2], gamma=2.0, rng=rng)
     print(f"P(S >= 2) ~ {ell:.3e}   learned tilt v = {np.round(v, 3)}")
 
     f = lambda x: np.exp(-(x[0] - 2.0) ** 2) + 0.8 * np.exp(-(x[0] + 2.0) ** 2)
-    mu, best = ce_optimize(f, mu=[0.0], sigma=[5.0], rng=rng)
+    mu, best = adaptive_optimize(f, mu=[0.0], sigma=[5.0], rng=rng)
     print(f"argmax ~ {mu[0]:.4f}   S ~ {best:.4f}")
 ```
 

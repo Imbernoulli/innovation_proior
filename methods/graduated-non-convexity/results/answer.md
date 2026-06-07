@@ -13,12 +13,14 @@ local minimum chosen by the initialization, not the correct global one.
 ## Key idea
 
 Do not minimize the non-convex robust cost directly. Build a one-parameter family of surrogate
-costs `ρ_μ` such that for one extreme of the control `μ` the total energy is **convex** (unique
-global minimum, reachable from any start), and as `μ` moves to the other extreme `ρ_μ` recovers
-the true non-convex `ρ`. Find the global minimum of the convex member with no initial guess, then
+costs `ρ_μ` such that for one extreme of the control `μ` the problem starts from an easy
+convexified member, and as `μ` moves to the other extreme `ρ_μ` recovers the true non-convex `ρ`.
+Minimize the easy member with no hand-built initial guess, then
 **slowly deform `μ` toward the true cost, re-minimizing from the previous solution each time**,
-tracking the minimizer from the easy landscape into the global basin of the hard one. This is a
-deterministic continuation — graduating the non-convexity in — far cheaper than stochastic
+tracking the minimizer along the continuation path from the easy landscape into the hard one. There
+is no global-optimality certificate for the non-convex cost; the bet is that small deformations keep
+the tracked minimizer in the basin descended from the easy solution, so no initial guess is needed.
+This is a deterministic continuation — graduating the non-convexity in — far cheaper than stochastic
 annealing.
 
 Each inner minimization is made cheap by the **Black–Rangarajan duality**: introduce explicit
@@ -38,7 +40,8 @@ Two concrete costs (`c̄²` = inlier noise bound; `r̂_i²` = current squared re
 
 - **Truncated least squares.** `ρ(r) = r²` if `r² ≤ c̄²`, else `c̄²`. Surrogate is a quadratic
   bowl, a concave bridge `2c̄|r|√(μ(μ+1)) − μ(c̄² + r²)` on `r² ∈ [μ/(μ+1) c̄², (μ+1)/μ c̄²]`,
-  and a flat shoulder; `ρ_μ'' = −2μ → 0` so it is **convex as `μ→0`** and recovers the true cost
+  and a flat shoulder; the bridge curvature `ρ_μ'' = −2μ` tends to zero as `μ→0`, giving the
+  convexified start, and the surrogate recovers the true cost
   as `μ→∞`. Penalty `Φ_{ρ_μ}(w) = μ(1−w)/(μ+w) c̄²`; weight is thresholded:
   `w_i = 0` if `r̂_i² ≥ (μ+1)/μ c̄²`, `w_i = 1` if `r̂_i² ≤ μ/(μ+1) c̄²`, else
   `w_i = √(c̄² μ(μ+1)/r̂_i²) − μ`. Continuation: `μ` **increases**.
@@ -49,9 +52,9 @@ Two concrete costs (`c̄²` = inlier noise bound; `r̂_i²` = current squared re
 2. Set the control to its convexifying value over the data: GM `μ = 2 r²_max/c̄²`;
    TLS `μ = c̄²/(2 r²_max − c̄²)`.
 3. Repeat (outer continuation):
-   a. **Variable update:** `x ← argmin_x Σ_i w_i r_i(x)²` (weighted least squares; for nonlinear
-      models, any global solver for the outlier-free problem).
-   b. **Weight update:** set each `w_i` by the closed form above from `r̂_i²`.
+   a. **Weight update:** set each `w_i` by the closed form above from the latest `r̂_i²`.
+   b. **Variable update:** `x ← argmin_x Σ_i w_i r_i(x)²` (weighted least squares; for nonlinear
+      models, any global solver for the outlier-free problem), then recompute residuals and cost.
    c. Step the control toward the true cost: GM `μ ← μ/1.4` (stop at `μ<1`);
       TLS `μ ← 1.4 μ` (stop when `Σ_i w_i r̂_i²` converges or all weights are binary).
 4. Return `x`; inliers are the measurements with `w_i ≈ 1`.
@@ -66,75 +69,53 @@ def weighted_least_squares(A, y, w):
     # Variable update: argmin_x sum_i w_i (A_i x - y_i)^2, closed form.
     W = np.sqrt(w)[:, None]
     Aw, yw = A * W, y * np.sqrt(w)
-    x, *_ = np.linalg.lstsq(Aw.T @ Aw, Aw.T @ yw, rcond=None)
-    return x
+    return np.linalg.solve(Aw.T @ Aw, Aw.T @ yw)
 
 
-def gnc_tls(A, y, barc2, factor=1.4, max_iter=1000, tol=1e-6):
-    """GNC with truncated-least-squares cost. mu runs 0 (convex) -> inf (true)."""
-    N = A.shape[0]
-    w = np.ones(N)
+def robust_weight_update(r2, mu, barc2):
+    """Closed-form TLS weight update for squared residuals."""
+    th_out = (mu + 1.0) / mu * barc2
+    th_in = mu / (mu + 1.0) * barc2
+    w = np.empty_like(r2, dtype=float)
+    out = r2 >= th_out
+    inn = r2 <= th_in
+    mid = ~(out | inn)
+    w[out] = 0.0
+    w[inn] = 1.0
+    w[mid] = np.sqrt(barc2 * mu * (mu + 1.0) / r2[mid]) - mu
+    return w
+
+
+def initial_control_value(r2, barc2):
+    return barc2 / (2.0 * float(np.max(r2)) - barc2)
+
+
+def are_binary_weights(w, threshold=1e-12):
+    return bool(np.all((w <= threshold) | (np.abs(1.0 - w) <= threshold)))
+
+
+def continuation_robust_fit(A, y, barc2, factor=1.4, max_iter=1000, cost_threshold=0.0):
+    """GNC-TLS port of the weighted-solver implementation."""
+    w = np.ones(A.shape[0])
     x = weighted_least_squares(A, y, w)
     r2 = (A @ x - y) ** 2
-    mu = barc2 / (2.0 * r2.max() - barc2)          # convexifying start
-    prev = np.inf
-    for _ in range(max_iter):
-        x = weighted_least_squares(A, y, w)        # variable update (global)
-        r2 = (A @ x - y) ** 2
-        th1 = (mu + 1) / mu * barc2                # above -> outlier (w=0)
-        th2 = mu / (mu + 1) * barc2                # below -> inlier  (w=1)
-        w = np.where(r2 >= th1, 0.0,               # closed-form weight update
-             np.where(r2 <= th2, 1.0,
-                      np.sqrt(barc2 * mu * (mu + 1) / r2) - mu))
-        cost = float(w @ r2)
-        if abs(cost - prev) < tol or np.all((w < 1e-10) | (w > 1 - 1e-10)):
-            break
-        prev = cost
-        mu *= factor                               # sharpen the non-convexity
-    return x, w
+    mu = initial_control_value(r2, barc2)
+    prev_cost = 0.0
 
-
-def gnc_gm(A, y, barc2, factor=1.4, max_iter=1000, tol=1e-6):
-    """GNC with Geman-McClure cost. mu runs large (convex) -> 1 (true)."""
-    N = A.shape[0]
-    w = np.ones(N)
-    x = weighted_least_squares(A, y, w)
-    r2 = (A @ x - y) ** 2
-    mu = 2.0 * r2.max() / barc2
-    prev = np.inf
     for _ in range(max_iter):
+        w = robust_weight_update(r2, mu, barc2)
         x = weighted_least_squares(A, y, w)
         r2 = (A @ x - y) ** 2
-        w = (mu * barc2 / (r2 + mu * barc2)) ** 2  # closed-form GM weight
         cost = float(w @ r2)
-        if mu <= 1.0 or abs(cost - prev) < tol:
+        cost_diff = abs(cost - prev_cost)
+        prev_cost = cost
+        if cost_diff < cost_threshold or are_binary_weights(w):
             break
-        prev = cost
-        mu /= factor
-    return x, w
+        mu *= factor
 
-
-if __name__ == "__main__":
-    rng = np.random.default_rng(0)
-    N, frac = 100, 0.8                             # 80% gross outliers
-    a_gt, b_gt = 2.0, 1.0
-    t = rng.uniform(-5, 5, N)
-    A = np.column_stack([t, np.ones(N)])
-    y = a_gt * t + b_gt + rng.normal(0, 0.1, N)
-    out = rng.choice(N, int(frac * N), replace=False)
-    y[out] += rng.uniform(-50, 50, len(out))
-
-    barc2 = (3 * 0.1) ** 2
-    x_ls, *_ = np.linalg.lstsq(A, y, rcond=None)
-    x_tls, w = gnc_tls(A, y, barc2)
-    x_gm, _ = gnc_gm(A, y, barc2)
-    print("ground truth :", [a_gt, b_gt])         # [2.0, 1.0]
-    print("plain LS     :", x_ls.round(3))         # ~[1.42, 2.76]  (wrecked)
-    print("GNC-TLS      :", x_tls.round(3))        # ~[2.00, 1.00]  (recovered)
-    print("GNC-GM       :", x_gm.round(3))         # ~[2.00, 1.02]
+    inliers = np.flatnonzero(w > 1.0 - np.finfo(float).eps)
+    return x, w, inliers
 ```
 
-Under 80% outliers, plain least squares is dragged far off the true line while both GNC variants
-recover it and the TLS weights correctly flag the inlier set. The method needs from each problem
-only a (weighted) global solver for the outlier-free model and a robust cost with the duality
-structure; everything else is the same continuation loop.
+The code needs from each problem only a weighted global solver for the outlier-free model and a
+noise-bound threshold `c̄²`; the continuation and thresholded weight update are otherwise unchanged.

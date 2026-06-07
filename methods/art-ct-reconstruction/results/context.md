@@ -6,13 +6,13 @@ A specimen — a biological macromolecule under an electron beam, a slice of a h
 
 **The Radon transform and the line-integral model.** The mathematical object underneath all of this is the Radon transform: the map from a 2-D function `f(x, y)` to the set of its line integrals `p(θ, s) = ∫ f along the line at angle θ, offset s`. The full set of projections over all angles is a *sinogram*. Reconstruction is inverting the Radon transform. There is a clean analytic inverse via the **projection-slice (central-slice) theorem**: the 1-D Fourier transform of a projection at angle θ equals a radial slice, at angle θ, of the 2-D Fourier transform of `f`. Assembling all slices fills Fourier space, and an inverse 2-D transform recovers `f`. This is the basis of the analytic reconstruction methods (see Baselines).
 
-**Discretization into a linear system.** Superimpose a square grid of `N` cells on the unknown image and assume `f` is constant `f_j` within cell `j`. A "ray" is a fat line of finite width; its measured ray-sum `p_i` is then a weighted sum of the cells it crosses, `Σ_j w_ij f_j = p_i`, where `w_ij` is the contribution of cell `j` to ray `i` — naturally, the length (or area) of the intersection of ray `i` with cell `j`. Stacking `M` rays gives a linear system `A f = p` with `A = [w_ij]`. Two facts about this matrix dominate everything: it is **enormous** (for a 256×256 image, `N ≈ 65000`, and `M` of comparable size, so `A` is ~65000×65000) and it is **extremely sparse** (each ray crosses only `O(√N)` cells, so almost every `w_ij` is zero). For a 100×100 grid with 100 views of 150 rays the weight count is ~10⁸ — too many to store densely. Direct inversion of a matrix this size is out of the question; and when measurement noise is present, or `M < N`, no exact inverse exists at all and one is forced into approximate/least-squares territory, itself computationally impractical at this scale by direct means.
+**Discretization into a linear system.** Superimpose a square grid of `N` cells on the unknown image and assume `f` is constant `f_j` within cell `j`. A "ray" is a fat line of finite width; its measured ray-sum `p_i` is then a weighted sum of the cells it crosses, `Σ_j w_ij f_j = p_i`, where `w_ij` is the contribution of cell `j` to ray `i` — naturally, the length (or area) of the intersection of ray `i` with cell `j`. Stacking `M` rays gives a linear system `A f = p` with `A = [w_ij]`. Two facts about this matrix dominate everything: it is **enormous** (for a 256×256 image, `N ≈ 65000`, and `M` of comparable size, so `A` is ~65000×65000) and it is **extremely sparse** (each ray crosses only `O(√N)` cells, so almost every `w_ij` is zero). For a 100×100 grid with 100 views of 150 rays the dense coefficient table has roughly `1.5e8` entries — too many to store or invert as a dense object. Direct inversion of a matrix this size is out of the question; and when measurement noise is present, or `M < N`, no exact inverse exists at all and one is forced into approximate/least-squares territory, itself computationally impractical at this scale by direct means.
 
 **The geometry of one equation: a hyperplane.** A grid image is a single point `f = (f_1, …, f_N)` in `N`-dimensional space. Each equation `Σ_j w_ij f_j = p_i` constrains that point to lie on a *hyperplane*: the set `{f : a_i · f = p_i}`, where `a_i = (w_i1, …, w_iN)` is the i-th row. The hyperplane is perpendicular to the vector `a_i`, and its signed distance from the origin is `p_i / ‖a_i‖`. If a unique solution exists, it is the single point where all `M` hyperplanes meet. This geometric picture — a solution as the common intersection of many hyperplanes — is the doorway to an iterative method that never forms or inverts `A`.
 
-**The method of projections (Kaczmarz, 1937).** Stefan Kaczmarz, in *Angenäherte Auflösung von Systemen linearer Gleichungen* (Bull. Acad. Polon. Sci. 1937), gave an iterative scheme for `A x = b` built entirely on orthogonal projection: starting from any guess, project the current point onto the hyperplane of the first equation, then onto the second, and so on, cycling through the equations repeatedly. The orthogonal projection of a point `x` onto the hyperplane `a_i · z = b_i` is the closest point on it; it moves `x` only along `a_i`. For a consistent, nonsingular system the cyclic projections converge to the solution. Two refinements of this fact were established and are load-bearing here. Tanabe (1971) showed that for an **underdetermined consistent** system (`M < N`, infinitely many solutions) the iteration started from `x_0` converges to the solution *closest to* `x_0` — the minimum-norm solution when `x_0 = 0`. And the *rate* depends on the angles between successive hyperplanes: if they are mutually orthogonal, one sweep suffices; if they are nearly parallel, convergence crawls, the iterate zig-zagging slowly into the corner. For an **overdetermined, noisy** system (`M > N`, no common intersection) the cyclic projections do not converge to a point but settle into a limit cycle, oscillating in the neighborhood of the mutual intersections of the noisy hyperplanes.
+**The method of projections (Kaczmarz, 1937).** Stefan Kaczmarz gave an iterative scheme for `A x = b` built entirely on orthogonal projection: starting from any guess, project the current point onto the hyperplane of the first equation, then onto the second, and so on, cycling through the equations repeatedly. The orthogonal projection of a point `x` onto the hyperplane `a_i · z = b_i` is the closest point on it; it moves `x` only along `a_i`. For a consistent, nonsingular system the cyclic projections converge to the solution. Two refinements of this fact were established and are load-bearing here. Tanabe (1971) showed that for an **underdetermined consistent** system (`M < N`, infinitely many solutions) the iteration started from `x_0` converges to the solution *closest to* `x_0` — the minimum-norm solution when `x_0 = 0`. And the *rate* depends on the angles between successive hyperplanes: if they are mutually orthogonal, one sweep suffices; if they are nearly parallel, convergence crawls, the iterate zig-zagging slowly into the corner. For an **overdetermined, noisy** system (`M > N`, no common intersection) the cyclic projections do not converge to a point but settle into a limit cycle, oscillating in the neighborhood of the mutual intersections of the noisy hyperplanes.
 
-**Diagnostic facts about the discrete system.** Three observations about the discretized problem frame what a good reconstruction method must overcome. First, the discrete forward model never exactly represents the continuous line integrals — the pixel-basis assumption (constant within a cell) makes the computed ray-sums only approximate, so the equation system is mildly **inconsistent** even with noiseless data. Second, when equations are taken one at a time and each is *exactly* satisfied, satisfying the equation for one ray lays down a visible **stripe** along that ray; the next ray, crossing the same cells from a different angle, disturbs what the previous one set. The competing per-ray corrections accumulate into a characteristic **salt-and-pepper noise** across the reconstruction. Third, the severity of this noise tracks the inconsistency of the system and the crudeness of the weights `w_ij`; cruder forward models (e.g. binary `0/1` weights) give worse computed ray-sums and noisier images, and the common remedy of piling on many redundant rays per view (overdetermining the system ~4×) trades computation for an averaging that washes the noise out. These are pre-method facts about the discretized Radon problem: the inconsistency, the stripe-then-salt-and-pepper mechanism, and the angle-dependent convergence rate.
+**Diagnostic facts about the discrete system.** Three observations about the discretized problem frame what a good reconstruction method must overcome. First, the discrete forward model never exactly represents the continuous line integrals — the pixel-basis assumption (constant within a cell) makes the computed ray-sums only approximate, so the equation system is mildly **inconsistent** even with noiseless data. Second, when equations are taken one at a time and each is *exactly* satisfied, satisfying the equation for one ray lays down a visible **stripe** along that ray; the next ray, crossing the same cells from a different angle, disturbs what the previous one set. The competing per-ray corrections accumulate into a characteristic **salt-and-pepper noise** across the reconstruction. Third, the severity of this noise tracks the inconsistency of the system and the crudeness of the weights `w_ij`; cruder forward models (e.g. binary `0/1` weights) give worse computed ray-sums and noisier images, and the common remedy of piling on many redundant rays per view (overdetermining the system ~4×) trades computation for an averaging that washes the noise out. A usable row-action reconstruction has to keep the sparse, cheap corrections while preventing those corrections from turning inconsistency into visible texture.
 
 ## Baselines
 
@@ -30,7 +30,7 @@ The natural test object is the **Shepp–Logan head phantom**: a configuration o
 
 ## Code framework
 
-The pieces that already exist before the method: a way to build the sparse forward operator (a ray tracer that, given a parallel-beam geometry, returns for each ray the list of cells it crosses and the intersection lengths), and the standard array/sparse-matrix and FFT primitives. The reconstruction routine itself is the empty slot.
+The available pieces are a sparse forward operator (a ray tracer that, given a parallel-beam geometry, returns for each ray the list of cells it crosses and the intersection lengths) plus the standard array and sparse-matrix primitives. The inverse routine is the empty slot.
 
 ```python
 import numpy as np
@@ -39,23 +39,24 @@ from scipy.sparse import csr_matrix
 def build_system_matrix(n, angles, n_rays=None, det_spacing=1.0):
     """Parallel-beam forward model: A[i, j] = intersection length of ray i with pixel j.
     Returns A (sparse, M x n*n) and, per ray, which projection/view it belongs to.
-    This is the known forward operator; the reconstruction below inverts it."""
+    The reconstruction routine below inverts it."""
     # ... trace each ray of each view across the n x n grid, accumulate lengths ...
     pass
 
 def forward_project(A, x):
-    """Computed ray-sums q = A x for the current image estimate (known operation)."""
+    """Computed ray-sums q = A x for the current image estimate."""
     return A.dot(x)
 
-# --- the slot the method fills: turn ray-sums b back into an image, iteratively ---
-def reconstruct(A, b, ray_view, **params):
+# --- iterative inverse ---
+def reconstruct(A, b, ray_view, x0=None, nonneg=True, order=None, **params):
     """Recover the image vector x from measured ray-sums b given the forward
     operator A, using only sparse row access to A (never forming A^{-1}).
-    # TODO: the iterative reconstruction scheme to be designed."""
+    """
+    # TODO: design the iterative sparse correction scheme.
     pass
 
 def apply_constraints(x, nonneg=True):
-    """Fold in physical priors: density >= 0, zero outside the support."""
+    """Fold in cheap physical priors such as density >= 0."""
     if nonneg:
         np.clip(x, 0.0, None, out=x)
     return x
@@ -66,5 +67,5 @@ if __name__ == "__main__":
     angles = np.linspace(0, np.pi, 30, endpoint=False)
     A, ray_view = build_system_matrix(n, angles, n_rays=n)
     b = forward_project(A, img.ravel())     # simulated projection data
-    x = reconstruct(A, b, ray_view)         # TODO fills this in
+    x = reconstruct(A, b, ray_view)         # iterative inversion step
 ```

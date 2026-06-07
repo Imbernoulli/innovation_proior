@@ -107,7 +107,7 @@ resample. Reasonable.
 Let me also reconsider the sampling, because there's a subtlety. If I draw every d_ij independently
 and uniformly, the distances won't be mutually consistent — they'll usually violate the triangle
 inequality among themselves even though each lies in its smoothed interval — and the embedding has to
-paper over that. It's been observed that independent uniform draws give over-expanded structures that
+smooth that out. It's been observed that independent uniform draws give over-expanded structures that
 are oddly similar to each other. The fix (metrization) is to fix one distance, re-smooth the bounds so
 the rest stay consistent with that choice, then fix the next, and so on — but that re-smooth is O(N³)
 per distance, expensive. A practical compromise: sample, embed, and let the subsequent refinement
@@ -174,7 +174,7 @@ pairwise distance bound captures; add proper-torsion terms on the bonds of small
 triple bonds linear. These are facts, so they get stiff terms.
 
 Now *where* do these terms act? Two choices. I could try to fold torsion preferences back into the
-distance bounds — and the experimental bond/angle information does sharpen the initial bounds matrix —
+distance bounds — the ordinary bond and angle bounds already do as much as a single interval can do —
 but a multimodal torsion preference can't be expressed as a single [L,U] interval on a 1-4 distance; a
 sharp double-welled preference isn't an interval at all. So the torsion and planarity knowledge has to
 act *after* the embedding, as a force field on the 3D coordinates. That's cheap: it's a short
@@ -183,13 +183,13 @@ the bounds satisfied), not a full classical force field, and because its wells a
 torsion basins, a few hundred steps slide each conformer into a realistic basin without homogenizing
 the ensemble — different draws started in different basins and stay there.
 
-So the pipeline becomes: build the bounds matrix, now *informed* by experimental bond/angle data;
-triangle-smooth; sample a distance matrix; metric-matrix embed (in 4D, for the chirality untangling);
-do the first error-function refinement (distance + chiral + fourth-dimension); then a second
-minimization with the *experimental-torsion* terms and the *basic-knowledge* planarity/linearity
-terms, alongside the distance-violation terms. Reseed for the next conformer. And after that I can
-often *skip* the heavy MMFF/UFF cleanup entirely, because the conformer already lands in an
-experimentally-preferred basin — which is the whole point: fewer conformers needed, no expensive
+So the pipeline becomes: build the bounds matrix from the usual bond, angle, torsion-range, and van der
+Waals rules; triangle-smooth; sample a distance matrix; metric-matrix embed (in 4D, for the chirality
+untangling); do the first error-function refinement (distance + chiral + fourth-dimension); then a
+second minimization with the *experimental-torsion* terms and the *basic-knowledge*
+planarity/linearity terms, alongside the distance-violation terms. Reseed for the next conformer. And
+after that I can often *skip* the heavy MMFF/UFF cleanup entirely, because the conformer already lands
+in an experimentally-preferred basin — which is the whole point: fewer conformers needed, no expensive
 generic minimization, and diversity preserved. This is experimental-torsion knowledge distance
 geometry — ET for the torsion histograms, K for the basic-knowledge rules.
 
@@ -224,7 +224,9 @@ this (squared distances → squared distances to centroid → Gram matrix T → 
 coordinates scaled by √λ):
 
 ```cpp
-// for each i: sqD0i[i] = (1/N) sum_j D_ij - sumSqD2     // sumSqD2 = (1/N^2) sum_{i,j} D_ij
+// sqD0i[i] = (1/N) sum_j D_ij - sumSqD2
+// RDKit's SymmMatrix storage sums each distinct off-diagonal D_ij once, so
+// sumSqD2 = (1/N^2) sum_{i<j} D_ij = (1/(2N^2)) sum_{i,j} D_ij for the full matrix.
 for (i = 0; i < N; i++)
   for (j = 0; j <= i; j++)
     T.setVal(i, j, 0.5 * (sqD0i[i] + sqD0i[j] - sqMat.getVal(i, j)));   // Gram matrix G_ij
@@ -277,7 +279,7 @@ embed many conformers with distinct seeds, optionally (no longer always) finish 
 
 ```python
 mol = Chem.AddHs(Chem.MolFromSmiles("CN1CCC(O)(CC1)c1ccccc1Cl"))
-params = AllChem.ETKDGv3()                 # exp-torsion prefs + basic knowledge on
+params = AllChem.ETKDG()                   # exp-torsion prefs + basic knowledge on
 params.randomSeed = 0xf00d
 cids = AllChem.EmbedMultipleConfs(mol, numConfs=50, params=params)   # one embed per seed
 # AllChem.MMFFOptimizeMoleculeConfs(mol)   # optional now, not required

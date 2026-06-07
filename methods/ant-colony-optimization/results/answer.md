@@ -20,7 +20,7 @@ where ρ ∈ [0,1) is the fraction of trail that *persists* (so 1−ρ evaporate
 
     Δτ^k_ij = Q / L_k   (and 0 on edges it did not use),
 
-with L_k the length of ant k's tour. Short tours deposit more, so the shared memory is biased by global solution quality — this *ant-cycle* deposit is what makes the method work; the local variants (constant Q per step, or Q/d_ij per step) ignore tour quality and perform worse. Evaporation is the brake on the autocatalytic positive feedback: it bounds the trail and lets the colony forget lucky early choices. The trail is initialized to a small positive constant c so visibility drives the first cycle and [τ]^α is never identically zero. An optional **elitist** bonus reinforces the best-so-far tour's edges each cycle by e·(Q/L*).
+with L_k the length of ant k's tour. Short tours deposit more, so the shared memory is biased by global solution quality; the local variants (constant Q per step, or Q/d_ij per step) are only local edge-reinforcement rules and do not encode completed-tour quality. Evaporation is the brake on the autocatalytic positive feedback: it bounds the trail and lets the colony forget lucky early choices. The trail is initialized to a small positive constant c so visibility drives the first cycle and [τ]^α is never identically zero. An optional **elitist** bonus reinforces the best-so-far tour's edges each cycle by e·(Q/L*).
 
 Why it converges on good tours: a lone greedy ant is structurally bad at the *end* of its tour (greedy-early forces long late edges), but its good early sub-paths are short edges that many ants, started from different cities, independently agree on. Superimposing m ants reinforces those shared good fragments while each ant's idiosyncratic bad forced edges get little pheromone and evaporate away. α, β, ρ (and elitist e) set the explore–exploit operating point: too much exploitation and every ant retraces one tour (stagnation, tour-length spread → 0); too little and the search never concentrates.
 
@@ -54,19 +54,17 @@ class Graph:
         self.pheromone = [[1 / (rank * rank) for _ in range(rank)] for _ in range(rank)]
 
 
-class ACO:
-    def __init__(self, ant_count, generations, alpha=1.0, beta=5.0, rho=0.5, q=1.0, strategy=0):
+class Colony:
+    def __init__(self, ant_count, generations, alpha=1.0, beta=5.0, rho=0.5, q=100.0):
         # alpha: weight on trail   beta: weight on visibility
         # rho:   fraction of trail that PERSISTS each cycle (1-rho evaporates)
         # q:     deposit scale Q
-        # strategy: 0 ant-cycle (Q/L, global quality), 1 ant-quality (Q), 2 ant-density (Q/d)
         self.ant_count = ant_count
         self.generations = generations
         self.alpha = alpha
         self.beta = beta
         self.rho = rho
         self.Q = q
-        self.update_strategy = strategy
 
     def _update_pheromone(self, graph, ants):
         # evaporate, then fold in every ant's deposit: tau <- rho*tau + sum_k delta_k
@@ -94,8 +92,8 @@ class ACO:
 
 
 class _Ant:
-    def __init__(self, aco, graph):
-        self.colony = aco
+    def __init__(self, colony, graph):
+        self.colony = colony
         self.graph = graph
         self.total_cost = 0.0
         self.tabu = []                                    # cities visited (legal-tour constraint)
@@ -132,16 +130,10 @@ class _Ant:
         self.current = selected
 
     def _update_pheromone_delta(self):
-        # what this ant deposits on each edge of its completed tour
+        # what this ant deposits on each edge of its completed closed tour
         self.pheromone_delta = [[0 for _ in range(self.graph.rank)] for _ in range(self.graph.rank)]
-        for k in range(1, len(self.tabu)):
-            i, j = self.tabu[k - 1], self.tabu[k]
-            if self.colony.update_strategy == 1:        # ant-quality: constant Q (quality-blind)
-                self.pheromone_delta[i][j] = self.colony.Q
-            elif self.colony.update_strategy == 2:      # ant-density: Q/d (distance-weighted, local)
-                self.pheromone_delta[i][j] = self.colony.Q / self.graph.matrix[i][j]
-            else:                                       # ant-cycle: Q/L, GLOBAL quality -> the good one
-                self.pheromone_delta[i][j] = self.colony.Q / self.total_cost
+        for i, j in zip(self.tabu, self.tabu[1:] + self.tabu[:1]):
+            self.pheromone_delta[i][j] = self.colony.Q / self.total_cost
 ```
 
-A default colony uses m = n ants (one per city, so a cycle costs O(n³) and lays a statistically meaningful trail), α = 1, β = 5, ρ = 0.5. The same construction-plus-shared-memory template transfers to any problem for which one can define a graph, a constructive step, and a greedy heuristic η.
+A default colony uses m = n ants (one per city, so a cycle costs O(n³) and lays a statistically meaningful trail), α = 1, β = 5, ρ = 0.5, and Q = 100 as the deposit scale. The same construction-plus-shared-memory template transfers to any problem for which one can define a graph, a constructive step, and a greedy heuristic η.

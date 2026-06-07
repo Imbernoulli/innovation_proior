@@ -73,7 +73,7 @@ So here's the trade I'll make. Drop the three dynamics-curvature tensor terms en
     Q_uu = ℓ_uu + f_u' V'_xx f_u
     Q_ux = ℓ_ux + f_u' V'_xx f_x.
 
-What I'm left with is exactly the *Gauss–Newton* approximation to the Hessian: I've kept the first-derivative-of-`f` outer products and discarded the residual-times-second-derivative term, just as Gauss–Newton does for nonlinear least squares. This buys three things at once. It's much cheaper — only the Jacobians `f_x, f_u` are needed, no rank-three tensors. It keeps `Q_uu` positive (semi)definite by construction whenever `ℓ_uu ≻ 0`, so the inverse exists and `δu*` is a real minimizer. And near a small-residual solution the dropped term is small, so the step is nearly the full Newton step and convergence is still fast (superlinear in practice), even if I've formally given up the exact quadratic rate. That's the iterative LQR: the dynamics enter only through their linearization, and the per-step problem is a time-varying LQR. The full second-order version — keeping `V'_x·f_xx` etc. — is differential dynamic programming proper; I'll keep it as a switchable option for problems where the curvature genuinely matters and stays benign, but the default is the Gauss–Newton drop.
+What I'm left with is exactly the *Gauss–Newton* approximation to the Hessian: I've kept the first-derivative-of-`f` outer products and discarded the residual-times-second-derivative term, just as Gauss–Newton does for nonlinear least squares. This buys three things at once. It's much cheaper — only the Jacobians `f_x, f_u` are needed, no rank-three tensors. It keeps `Q_uu` positive (semi)definite by construction whenever `ℓ_uu ≻ 0` *and* `V'_xx ⪰ 0` — the congruence `f_u'V'_xx f_u` is PSD only when the pulled-back `V'_xx` is — so in that regime the inverse exists and `δu*` is a real minimizer. And near a small-residual solution the dropped term is small, so the step is nearly the full Newton step and convergence is still fast (superlinear in practice), even if I've formally given up the exact quadratic rate. That's the iterative LQR: the dynamics enter only through their linearization, and the per-step problem is a time-varying LQR. The full second-order version — keeping `V'_x·f_xx` etc. — is differential dynamic programming proper; I'll keep it as a switchable option for problems where the curvature genuinely matters and stays benign, but the default is the Gauss–Newton drop.
 
 Two failure modes remain, and both are familiar from second-order optimization, so I'll import the familiar fixes rather than invent anything. First failure: even with the Gauss–Newton form, far from the optimum `Q_uu` can come out non-positive-definite — `V'_xx` itself can drift indefinite through the recursion, or `ℓ_uu` may be only semidefinite — and then `−Q_uu^{-1}Q_u` is garbage. This is precisely when Levenberg–Marquardt damps a Newton step. The textbook move is to add a multiple of the identity to the control-Hessian, `Q̃_uu = Q_uu + μ I`, with `μ` a Levenberg–Marquardt parameter: as `μ → 0` it's the full second-order step, as `μ → ∞` it's a tiny gradient step `−(1/μ)Q_u`, and somewhere in between is a positive-definite-enough matrix I can safely invert. This is just adding a quadratic penalty on the *control* deviation around the nominal, which makes the step more conservative.
 
@@ -93,11 +93,11 @@ Second failure mode: suppose the backward pass succeeded and `k, K` are fine, bu
 
 Two things to be careful about here. I scale only the feedforward `α k_i`, not the feedback: at `α = 0` the trajectory is unchanged (the feedforward is killed and `x̂_i ≡ x̄_i` so the feedback term is zero too), and as `α` grows from 0 to 1 I interpolate from "no change" to "full Newton/Gauss–Newton step." Keeping `K` at full strength means the feedback still corrects whatever divergence the smaller feedforward causes during the rollout. And the rollout uses the *true* nonlinear `f`, not the linear model — this is the step that makes `(x̂, û)` an actual feasible trajectory and gives the feedback gains their meaning. Computing the new controls by rolling forward through `f` while applying `K_i(x̂_i − x̄_i)` is precisely why the method converges fast: the feedback re-aims the control at the states actually being visited, so even when the feedforward is shortened the trajectory tracks sensibly.
 
-How do I decide whether to accept a given `α`? Compare the *actual* cost reduction to the reduction the quadratic model *predicted*. The model predicts, for step size `α`, a decrease
+How do I decide whether to accept a given `α`? Compare the *actual* cost reduction to the reduction the quadratic model *predicted*. The model predicts, for step size `α`, a signed cost change
 
     ΔJ(α) = α Σ_i k_i'Q_u(i) + (α²/2) Σ_i k_i'Q_uu(i) k_i
 
-— the first term linear in `α` from the feedforward gradient, the second quadratic in `α` from the feedforward curvature; this is just `Σ (α k'Q_u + ½α²k'Q_uu k)`, the `ΔV` tally evaluated at the scaled step. Then form the ratio of realized to predicted reduction, `z = [J(ū) − J(û)] / ΔJ(α)`, and accept only if `z` exceeds a small positive constant `c_1` (an Armijo-style sufficient-decrease test: the true cost has to come down by at least a fixed fraction of what the model promised). If `z` fails, or the rollout diverged, shrink `α` and re-roll. If even the smallest `α` fails, that's a signal the backward model was untrustworthy — bump `μ` and redo the backward pass.
+— the first term linear in `α` from the feedforward gradient, the second quadratic in `α` from the feedforward curvature; this is just `Σ (α k'Q_u + ½α²k'Q_uu k)`, the `ΔV` tally evaluated at the scaled step. This quantity is *negative* on a good step: `k = −Q_uu^{-1}Q_u`, so `k'Q_u = −Q_u'Q_uu^{-1}Q_u < 0` dominates the linear term and `ΔJ(α) < 0` is a predicted *decrease*. So the predicted reduction proper is `−ΔJ(α) > 0`. Then form the ratio of realized to predicted reduction, `z = [J(ū) − J(û)] / (−ΔJ(α))`, and accept only if `z` exceeds a small positive constant `c_1` (an Armijo-style sufficient-decrease test: the true cost has to come down by at least a fixed fraction of what the model promised). If `z` fails, or the rollout diverged, shrink `α` and re-roll. If even the smallest `α` fails, that's a signal the backward model was untrustworthy — bump `μ` and redo the backward pass.
 
 Putting the whole loop together: start from a nominal `(x̄, ū)`; roll forward through `f` collecting the per-step Jacobians `f_x, f_u` (and the cost derivatives `ℓ_x, ℓ_u, ℓ_xx, ℓ_ux, ℓ_uu`, and the dynamics Hessians only if doing full DDP); run the backward pass to get `k_i, K_i` and the predicted `ΔJ`, bumping `μ` and restarting if `Q̃_uu` goes indefinite; run the forward pass with line search on `α`, accepting the first `α` whose realized reduction passes the test; on acceptance, decrease `μ` and take the new trajectory as the nominal; repeat until the cost stops improving. Each accepted iteration re-linearizes around the improved trajectory, so the sequence of LQR subproblems chases the moving nonlinear optimum.
 
@@ -119,7 +119,8 @@ class iLQR:
         self.dynamics = dynamics      # f, f_x, f_u, (f_xx, f_ux, f_uu)
         self.cost = cost              # l, l_x, l_u, l_xx, l_ux, l_uu (+ terminal)
         self.N = N
-        self.use_hessians = use_hessians
+        # Only keep the dynamics Hessians if the model can supply them.
+        self.use_hessians = use_hessians and getattr(dynamics, "has_hessians", False)
         # Levenberg-Marquardt schedule: mu damps V_xx; grows fast on failure,
         # decays toward 0 on success (snap to 0 below mu_min).
         self.mu, self.mu_min, self.mu_max = 1.0, 1e-6, max_reg
@@ -129,9 +130,13 @@ class iLQR:
         self.mu, self.delta = 1.0, self.delta_0
         alphas = 1.1 ** (-np.arange(10) ** 2)   # backtracking 1 -> ~0
         us = us.copy()
+        na, ns = self.dynamics.action_size, self.dynamics.state_size
+        k = np.zeros((self.N, na))               # last accepted gains, kept warm
+        K = np.zeros((self.N, na, ns))
         changed, converged = True, False
 
         for _ in range(n_iterations):
+            accepted = False
             if changed:                          # re-linearize around nominal
                 xs, fx, fu, L, lx, lu, lxx, lux, luu, fxx, fux, fuu = \
                     self._forward_rollout(x0, us)
@@ -141,7 +146,6 @@ class iLQR:
             try:
                 k, K = self._backward_pass(fx, fu, lx, lu, lxx, lux, luu,
                                            fxx, fux, fuu)
-                accepted = False
                 for alpha in alphas:             # line search on feedforward
                     xs_new, us_new = self._control(xs, us, k, K, alpha)
                     J_new = self._trajectory_cost(xs_new, us_new)

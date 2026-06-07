@@ -6,7 +6,7 @@ The correction is exact, and it's the only lever I have. ℓ = ∫ 1_{S(x)≥γ}
 
   ℓ = ∫ 1_{S(x)≥γ} [f(x; u)/g(x)] g(x) dx = E_g[ 1_{S(X)≥γ} W(X) ],  W(x) = f(x; u)/g(x).
 
-So if I draw from g and reweight each sample by the likelihood ratio W = f/g, the average ℓ̂ = (1/N) Σ 1_{S(X_i)≥γ} W(X_i) is unbiased for *any* admissible g — the q cancels in expectation, valid because wherever the indicator times f is nonzero I required g > 0. The choice of g changes nothing about the bias; it changes only the variance. So the entire game is: pick g to crush the variance.
+So if I draw from g and reweight each sample by the likelihood ratio W = f/g, the average ℓ̂ = (1/N) Σ 1_{S(X_i)≥γ} W(X_i) is unbiased for *any* admissible g — g cancels in expectation, valid because wherever the indicator times f is nonzero I required g > 0. The choice of g changes nothing about the bias; it changes only the variance. So the entire game is: pick g to crush the variance.
 
 Which g? Let me write the second moment and let it tell me. Under g, each term is T = 1_{S≥γ} f/g, and E_g[T²] = ∫_{S≥γ} f²/g dx. So Var_g(T) = ∫_{S≥γ} f²/g − ℓ². I can complete the square: ∫_{S≥γ} f²/g − ℓ² = ∫ (1_{S≥γ} f − ℓ g)²/g dx (expand the numerator: (1_{S≥γ}f)² − 2ℓ g 1_{S≥γ}f + ℓ²g², over g and integrated, gives ∫_{S≥γ} f²/g − 2ℓ·ℓ + ℓ²). The integrand is a square over g, non-negative, and exactly zero when 1_{S(x)≥γ} f(x; u) − ℓ g(x) = 0 for all x, i.e. g(x) ∝ 1_{S(x)≥γ} f(x; u). Normalizing — the integral of 1_{S≥γ}f is ℓ itself — the constant is 1/ℓ:
 
@@ -57,13 +57,13 @@ There's still the wall I haven't dealt with: rarity. If I set w = u and γ to th
 
 So don't aim at γ in one shot. Bootstrap the level. I'll build two sequences at once — reference parameters v₀, v₁, … and working levels γ₁, γ₂, … — and march the level toward γ while the parameter chases it. Pick a rarity fraction ρ, not too small, say 0.01 to 0.1. At iteration t, having v_{t-1}, draw a sample from f(·; v_{t-1}) and set the working level γ_t to the (1−ρ)-quantile of the sampled performances: order S_{(1)} ≤ … ≤ S_{(N)} and take γ_t = S_{(⌈(1−ρ)N⌉)} (capped at γ — once the quantile would exceed γ, use γ). By construction {S ≥ γ_t} has probability about ρ under the current law, so the top ρ fraction of this very sample *are* the elite — never empty, never void. Then refit v_t by the weighted-MLE update above, using the same sample, with the likelihood ratio W(X_i; u, v_{t-1}) because I'm sampling under v_{t-1} but still estimating the property of the nominal law f(·; u).
 
-Why does the level *climb*? Because v_t is fitted to push mass onto {S ≥ γ_t}, the next sample drawn from f(·; v_t) has its performances shifted upward, so its (1−ρ)-quantile γ_{t+1} is higher than γ_t. Each iteration the elite set is a moving ρ-quantile that ratchets toward γ. When γ_t finally reaches γ, the loop has a reference parameter v_T under which {S ≥ γ} is no longer rare, and I spend a final batch on the honest LR estimate
+Why should the level move upward? Because v_t is fitted to push mass onto {S ≥ γ_t}, the next sample drawn from f(·; v_t) should have its performance distribution shifted upward, so its (1−ρ)-quantile tends to advance even though finite samples can wiggle. Each iteration the elite set is a moving ρ-quantile aimed toward γ. When γ_t finally reaches γ, the loop has a reference parameter v_T under which {S ≥ γ} is no longer rare, and I spend a final batch on the honest LR estimate
 
   ℓ̂ = (1/N₁) Σ_i 1_{S(X_i)≥γ} W(X_i; u, v_T),  X_i ∼ f(·; v_T).
 
 So the rare-event estimate comes out of the *last* distribution; the earlier iterations exist only to *find* a good v_T by chasing the level up. The variance-minimization origin of all this — picking v to minimize the IS estimator's second moment — is the same destination, but the cross-entropy detour is what made each step a closed-form weighted mean instead of a numerical search.
 
-Now back to the optimization problem, and the rhyme I started with. Maximizing S over X — turn it into a family of rare-event problems. Define, for each level γ, the associated stochastic problem ℓ(γ) = E_u[1_{S(X)≥γ}] under some initial law f(·; u). As γ rises toward γ* = max_x S(x), the set {S ≥ γ} shrinks down onto the optimizer(s) x*, and the density g* ∝ 1_{S≥γ} f, the one that puts all its mass there, becomes concentrated on x*. So *finding the optimum is finding the limiting concentrating density* — and I already have a machine that chases a density concentrating on {S ≥ γ_t} while ratcheting γ_t upward. Run the very same loop, but now don't stop at a prescribed γ; keep climbing the (1−ρ)-quantile until it stalls, and read off the state where f(·; v_t) has piled up its mass.
+Now back to the optimization problem, and the rhyme I started with. Maximizing S over X — turn it into a family of rare-event problems. Define, for each level γ, the associated stochastic problem ℓ(γ) = E_u[1_{S(X)≥γ}] under some initial law f(·; u). As γ rises toward γ* = max_x S(x), the set {S ≥ γ} shrinks down onto the optimizer(s) x*, and the density g* ∝ 1_{S≥γ} f, the one that puts all its mass there, becomes concentrated on x*. So *finding the optimum is finding the limiting concentrating density* — and I already have a machine that keeps refitting toward {S ≥ γ_t} while choosing γ_t from the current upper quantile. Run the very same loop, but now don't stop at a prescribed γ; keep pushing the quantile until it stalls, and read off the state where f(·; v_t) has piled up its mass.
 
 One thing genuinely changes, and it's worth being careful about. In the estimation problem, u was sacred — it was the law whose tail probability I had to report, so the likelihood ratio W(·; u, v_{t-1}) had to stay in the update to keep me honest about *that* law. In the optimization problem there is no privileged law: I only care about *where* S is large, not about any particular f. So the associated stochastic problem can be redefined every iteration around the current f(·; v_{t-1}) rather than a fixed f(·; u). When I do that, the "nominal" law for iteration t *is* f(·; v_{t-1}), the same law I'm sampling from, so W(·; v_{t-1}, v_{t-1}) = 1 and the likelihood ratio drops out entirely. The initial u becomes arbitrary — just a starting distribution — and the update is pure elite-sample maximum likelihood:
 
@@ -97,83 +97,91 @@ with ŵ_t the elite-MLE update and α a smoothing constant somewhere around 0.4 
 
 Second danger, on the estimation side: a badly chosen reference v can make the likelihood ratio W = f(·; u)/f(·; v) explode on the few samples that matter, blowing up the variance — the classic importance-sampling failure where the sampling density has lighter effective tails than the nominal one where the integrand lives. The multilevel ρ-quantile schedule is itself the safeguard: by only ever moving v to fit a set that currently has probability ≈ ρ under v_{t-1}, I never leap the distribution so far that it stops covering the region it just came from. Each step is a moderate change of measure, and the weights stay tame.
 
-One more knob to set deliberately rather than by accident: ρ and the sample size N. ρ governs how aggressively the level climbs — too large (close to 1) and γ_t barely moves each iteration, wasting iterations; too small and the elite set is a handful of samples and the refit is noisy. Around 0.01–0.1 is the working range, larger ρ when the parameter vector is short. N has to be large enough to estimate the number of parameters reliably — for d parameters, N = c·d with c a small constant above 1 — because each refit is fitting that many numbers from the elite fraction ρN of the sample. And I can replace the indicator 1_{S≥γ} by a soft weight ψ(S)·1_{S≥γ} that favors the very best elite samples more; ψ(S) = S gives a mild speedup, but steep weights like Sᵝ or e^{−S/β} push the sampler into local optima, so a gentle ψ or the plain indicator is safer.
+One more knob to set deliberately rather than by accident: ρ and the sample size N. ρ governs how aggressively the level climbs — too large (close to 1) and γ_t barely moves each iteration, wasting iterations; too small and the elite set is a handful of samples and the refit is noisy. Around 0.01–0.1 is the working range, larger ρ when the parameter vector is short. N has to be large enough to estimate the number of parameters reliably — for d parameters, N = c·d with c a small constant above 1 — because each refit is fitting that many numbers from the elite fraction ρN of the sample. I can replace the indicator 1_{S≥γ} by a gentle positive weight ψ(S)·1_{S≥γ} that favors better elite samples when scores are positive, but very steep monotone weights can let a few lucky samples dominate and increase local-optimum risk, so the plain indicator is the safer default.
 
 Let me assemble the whole thing as one machine with two faces.
 
 ```python
 import numpy as np
 
-# ============================================================================
-# (i) RARE-EVENT ESTIMATION: iterated-threshold tilt with likelihood ratios.
-#     Family: independent exponential edge weights f(x; v) = prod_j (1/v_j) e^{-x_j/v_j}.
-#     Target: ell = P_u(S(X) >= gamma), S = shortest A->B path length.
-# ============================================================================
-
 def shortest_path(x):
     # tiny bridge network with 5 edges; S = min over the two A->B routes.
     # edges: 0,1 (upper), 2 (cross), 3,4 (lower)
     return min(x[0] + x[3], x[1] + x[4], x[0] + x[2] + x[4], x[1] + x[2] + x[3])
 
-def ce_rare_event(u, gamma, rho=0.1, N=2000, N_final=100_000, rng=None):
-    rng = rng or np.random.default_rng(0)
+def exponential_log_likelihood_ratio(X, u, v):
+    # log f(X; u) - log f(X; v) for independent exponentials with mean vectors u and v.
+    X = np.asarray(X, float)
     u = np.asarray(u, float)
-    v = u.copy()                                  # v_0 := u  (start at the nominal law)
+    v = np.asarray(v, float)
+    return np.sum((1.0 / v - 1.0 / u) * X - np.log(u / v), axis=1)
+
+def choose_level(scores, target, rho):
+    # Algorithmic (1-rho) order statistic, capped at the prescribed rare-event level.
+    scores = np.asarray(scores, float)
+    idx = int(np.ceil((1.0 - rho) * len(scores))) - 1
+    idx = int(np.clip(idx, 0, len(scores) - 1))
+    level = np.sort(scores)[idx]
+    if target is not None and level >= target:
+        return target, True
+    return level, False
+
+def refit_exponential_means(X, scores, level, u, v):
+    # Weighted MLE: v_j = sum I{S>=level} W X_j / sum I{S>=level} W.
+    elite = scores >= level
+    weights = elite * np.exp(exponential_log_likelihood_ratio(X, u, v))
+    total = weights.sum()
+    if total == 0.0:
+        return np.asarray(v, float).copy()
+    return (weights[:, None] * X).sum(axis=0) / total
+
+def adaptive_rare_event(u, gamma, rho=0.1, N=2000, N_final=100_000, rng=None):
+    rng = np.random.default_rng(0) if rng is None else rng
+    u = np.asarray(u, float)
+    v = u.copy()
     while True:
-        X = rng.exponential(scale=v, size=(N, len(v)))      # sample from f(.; v_{t-1})
-        S = np.array([shortest_path(x) for x in X])
-        gamma_t = np.quantile(S, 1.0 - rho)                  # (1-rho)-quantile level
-        reached = gamma_t >= gamma
-        if reached:
-            gamma_t = gamma
-        elite = S >= gamma_t                                 # the top-rho elite set
-        # likelihood ratio W(x; u, v) = f(x; u)/f(x; v), exponential family:
-        logW = np.sum((1.0/v - 1.0/u) * X - np.log(u/v), axis=1)  # = sum (1/v-1/u)x - ln(u/v)
-        W = np.exp(logW)
-        w = (elite * W)                                      # elite-and-LR weights
-        # CE / weighted-MLE update: v_j = sum w x_j / sum w  (elite-weighted mean)
-        v = (w[:, None] * X).sum(0) / w.sum()
+        X = rng.exponential(scale=v, size=(N, len(v)))
+        scores = np.array([shortest_path(x) for x in X])
+        level, reached = choose_level(scores, gamma, rho)
+        v = refit_exponential_means(X, scores, level, u, v)
         if reached:
             break
-    # final honest LR estimate under the learned tilt v_T
     X = rng.exponential(scale=v, size=(N_final, len(v)))
-    S = np.array([shortest_path(x) for x in X])
-    logW = np.sum((1.0/v - 1.0/u) * X - np.log(u/v), axis=1)
-    ell = np.mean((S >= gamma) * np.exp(logW))               # (1/N) sum 1_{S>=gamma} W
+    scores = np.array([shortest_path(x) for x in X])
+    ell = np.mean((scores >= gamma) * np.exp(exponential_log_likelihood_ratio(X, u, v)))
     return ell, v
 
-# ============================================================================
-# (ii) CONTINUOUS OPTIMIZATION: Gaussian family, elite-mean/variance refit.
-#     max_x S(x); no privileged law, so W = 1 and the update is pure elite-MLE.
-# ============================================================================
+def refit_gaussian(X, scores, rho):
+    level, _ = choose_level(scores, target=None, rho=rho)
+    elite = X[scores >= level]
+    return elite.mean(axis=0), elite.std(axis=0)
 
-def ce_optimize(objective, mu, sigma, rho=0.1, N=100, alpha=0.7,
-                n_iter=100, tol=1e-8, rng=None):
-    rng = rng or np.random.default_rng(0)
+def adaptive_optimize(objective, mu, sigma, rho=0.1, N=100, alpha=0.7,
+                      n_iter=100, tol=1e-8, rng=None):
+    rng = np.random.default_rng(0) if rng is None else rng
     mu, sigma = np.asarray(mu, float), np.asarray(sigma, float)
-    n_elite = max(2, int(round(rho * N)))
+    best_score = -np.inf
     for _ in range(n_iter):
-        X = mu + sigma * rng.standard_normal((N, len(mu)))   # sample f(.; mu,sigma)
-        S = np.array([objective(x) for x in X])
-        elite = X[np.argsort(S)[-n_elite:]]                  # top-rho by performance
-        mu_hat = elite.mean(0)                               # elite-sample MEAN  (mu MLE)
-        sig_hat = elite.std(0)                                # elite-sample STD   (sigma MLE)
-        mu = alpha * mu_hat + (1 - alpha) * mu               # smoothed update
+        X = mu + sigma * rng.standard_normal((N, len(mu)))
+        scores = np.array([objective(x) for x in X])
+        best_score = max(best_score, float(scores.max()))
+        mu_hat, sig_hat = refit_gaussian(X, scores, rho)
+        mu = alpha * mu_hat + (1 - alpha) * mu
         sigma = alpha * sig_hat + (1 - alpha) * sigma
-        if np.max(sigma) < tol:                              # Gaussian has collapsed
+        if np.max(sigma) < tol:
             break
-    return mu, S.max()
+    return mu, best_score
 
 if __name__ == "__main__":
     rng = np.random.default_rng(0)
     # rare event: probability the shortest path exceeds gamma, nominal means u
-    ell, v = ce_rare_event(u=[0.25, 0.4, 0.1, 0.3, 0.2], gamma=2.0, rng=rng)
+    ell, v = adaptive_rare_event(u=[0.25, 0.4, 0.1, 0.3, 0.2], gamma=2.0, rng=rng)
     print(f"P(S >= 2) ~ {ell:.3e}   learned tilt v = {np.round(v, 3)}")
 
     # continuous optimization of a two-bump objective; global max near x = +2
     f = lambda x: np.exp(-(x[0] - 2.0) ** 2) + 0.8 * np.exp(-(x[0] + 2.0) ** 2)
-    mu, best = ce_optimize(f, mu=[0.0], sigma=[5.0], rng=rng)
+    mu, best = adaptive_optimize(f, mu=[0.0], sigma=[5.0], rng=rng)
     print(f"argmax ~ {mu[0]:.4f}   S ~ {best:.4f}")
 ```
 
-The causal chain, end to end: the quantity I need — a tail probability, or the location of a maximum — lives in a set that is far too rare for naive sampling to reach, so I rewrite the tail integral under a chosen sampling density f(·; v) and reweight by the likelihood ratio W = f(·; u)/f(·; v), unbiased for any v so v only affects variance; the variance-minimizing density g* ∝ 1_{S≥γ} f has zero variance but its normalizer is the unknown answer, so it's only a *target shape* — live on the rare set, look like f there — and I reach for it by minimizing the Kullback–Leibler cross-entropy from g* to f(·; v), which collapses into maximum-likelihood fitting of f(·; v) to the elite samples {S ≥ γ}, a closed-form elite-weighted moment update for any exponential family; the rarity that breaks a one-shot fit is defeated by a two-phase multilevel loop that sets the working level γ_t to the (1−ρ)-quantile of the current sample so the elite is never empty and refits v to that elite, ratcheting γ_t upward until it reaches γ (estimation) or stalls at the optimum (optimization); the same loop serves both faces, with the likelihood-ratio weight W present when a particular law's tail must be reported and equal to one when only the location of the maximum matters — Bernoulli giving the elite-fraction-of-ones update, Gaussian giving the elite mean and variance — smoothed by v_t = α ŵ_t + (1−α) v_{t-1} to keep the distribution from collapsing onto a local optimum too soon.
+The causal chain, end to end: the quantity I need — a tail probability, or the location of a maximum — lives in a set that is far too rare for naive sampling to reach, so I rewrite the tail integral under a chosen sampling density f(·; v) and reweight by the likelihood ratio W = f(·; u)/f(·; v), unbiased for any v so v only affects variance; the variance-minimizing density g* ∝ 1_{S≥γ} f has zero variance but its normalizer is the unknown answer, so it's only a *target shape* — live on the rare set, look like f there — and I reach for it by minimizing the Kullback–Leibler cross-entropy from g* to f(·; v), which collapses into maximum-likelihood fitting of f(·; v) to the elite samples {S ≥ γ}, a closed-form elite-weighted moment update for any exponential family; the rarity that breaks a one-shot fit is handled by a two-phase multilevel loop that sets the working level γ_t to the (1−ρ)-quantile of the current sample so the elite is never empty and refits v to that elite, moving γ_t toward γ (estimation) or toward the optimum (optimization); the same loop serves both faces, with the likelihood-ratio weight W present when a particular law's tail must be reported and equal to one when only the location of the maximum matters — Bernoulli giving the elite-fraction-of-ones update, Gaussian giving the elite mean and variance — smoothed by v_t = α ŵ_t + (1−α) v_{t-1} to keep the distribution from collapsing onto a local optimum too soon.

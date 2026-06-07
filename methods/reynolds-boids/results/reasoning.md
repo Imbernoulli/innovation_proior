@@ -24,7 +24,7 @@ That this also matches what biologists describe — birds aware of itself, its t
 
 Let me make "neighbor" precise, because everything rides on it. A boid is aware of another based on the offset vector between them — its distance and its direction. Distance gives a radius: ignore anything past some sensitivity range. But a pure radius isn't right, because a bird doesn't perceive equally in all directions. Real birds have an enormous field of view, around 300 degrees, but not a full 360 — there's a blind cone behind the head. A neighbor flying directly *behind* me shouldn't tug me; I can't see it, and being pulled by it would make the boids at the leading edge of a flock keep glancing backward and getting distracted by the mass behind them, which is exactly a glitch I'd expect. So the neighborhood is two things: a *distance* and a *view angle*. A boid considers another boid a neighbor only if it's within the radius *and* within the field-of-view cone around the boid's own heading. (Ideally I'd even stretch that cone forward and widen it with speed — being in motion demands more awareness of what's ahead — but distance-plus-angle is the essential structure.)
 
-And how should a neighbor's influence fall off with distance inside that zone? My first cut weighted attraction and repulsion *linearly* by distance — a spring-like law. When I picture it, the flock comes out bouncy, springy, oscillating in and out, fine for a cartoon but not natural. The fix is to make influence fall off faster — inverse square of distance, a more gravity-like law. That damps the bounce and reads as natural, and it isn't arbitrary: Partridge's measurements of schooling fish found each neighbor's contribution falling off roughly as 1/r² to 1/r³, which makes sense because a neighbor's visual silhouette area shrinks as 1/r² and pressure waves in water fall as 1/r³. So the repulsion of separation should be weighted by something like 1/r² — close neighbors shout, distant ones whisper.
+And how should a neighbor's influence fall off with distance inside that zone? My first cut weighted attraction and repulsion *linearly* by distance — a spring-like law. When I picture it, the flock comes out bouncy, springy, oscillating in and out, fine for a cartoon but not natural. The fix is to make influence fall off faster — inverse square of distance, a more gravity-like law. That damps the bounce and reads as natural, and it isn't arbitrary: Partridge's measurements of schooling fish found each neighbor's contribution falling off roughly as 1/r² to 1/r³, which makes sense because a neighbor's visual silhouette area shrinks as 1/r² and pressure waves in water fall as 1/r³. So separation's repulsion should fall off something like inverse-square — scale each neighbor's offset vector by 1/r² — close neighbors shout, distant ones whisper.
 
 Now I have three urges, each a steering suggestion. How do I express one cleanly and how do I combine three? Take steering generally. A behavior wants the boid to be moving a certain way — call that the *desired velocity*. But the boid is already moving with some current velocity. The honest thing the behavior is asking for is the *difference*: steering = desired_velocity − current_velocity. That's a velocity error, and it's a lovely formulation, because the steering force then automatically points toward the desired motion and shrinks to zero as the boid achieves it — no separate overshoot-handling, the correction fades out on its own as you turn into line. So for each rule I'll compute a desired velocity and subtract the boid's current velocity.
 
@@ -32,7 +32,7 @@ Seek a point — like the cohesion target — is then: desired_velocity = normal
 
 Alignment is even more direct, because the desired thing is *itself* a velocity: average the neighbors' velocities, call that the desired velocity, and steering = average_velocity − current_velocity. That difference rotates my heading toward the group's heading and nudges my speed toward theirs. Exactly velocity matching.
 
-Separation I want as repulsion summed over the close neighbors. For each neighbor that's too near, take the offset from the neighbor to me, normalize it to get the pure away-from-neighbor direction, and scale it by the inverse-square falloff so the nearest intruder dominates — then sum these over all close neighbors. I sum the per-neighbor repulsions rather than steering away from their averaged position on purpose: if I averaged positions, a boid hemmed in symmetrically — neighbors equally on all sides — would see them cancel to a centroid right on top of it and feel *no* push, which is the worst case for crowding. Summing the individual inverse-square repulsions, the geometry doesn't cancel away the urgency; each crowding neighbor adds its own shove. Then wrap that summed repulsion into the same desired-minus-velocity form so it composes with the others.
+Separation I want as repulsion summed over the close neighbors. For each neighbor that's too near, take the offset from the neighbor to me and scale it by 1/r² — equivalently, take the unit away-from-neighbor direction and scale it by 1/r — so the nearest intruder dominates; then sum these over all close neighbors. I sum the per-neighbor repulsions rather than steering away from their averaged position on purpose: if I averaged positions, a boid hemmed in symmetrically — neighbors equally on all sides — would see them cancel to a centroid right on top of it and feel *no* push, which is the worst case for crowding. Summing the individual repulsions, the geometry doesn't cancel away the urgency; each crowding neighbor adds its own shove. And the summed repulsion *is* the separation steering force — I leave its magnitude alone rather than renormalizing it to max_speed, because renormalizing would throw away exactly the distance falloff I just built in, flattening the near intruder's shove down to the same length as a far one's.
 
 Three steering vectors. Now the combination, and this is where the naive thing fails and I have to be careful. The easy move is to average them, weighting by some per-behavior strength. An early version of exactly this works "pretty well" under typical conditions — a boid steers a reasonable course. But averaging has a lurking catastrophe at precisely the moments that matter most. Suppose two urges point in nearly *opposite* directions — say avoidance says "hard left now, wall ahead" while centering says "right, toward your friends." Average them and they largely cancel: the boid makes a tiny turn and sails straight on, into the wall. During high-speed flight, hesitation in front of a brick wall is the one unforgivable response. And even when urges don't cancel, averaging produces nonsense compromises: flying through a grid of city streets, "fly north" is good and "fly east" is good, but their average, "fly northeast," flies you into a building. Averaging mushes together advice that should be taken one-at-a-time.
 
@@ -48,7 +48,7 @@ Second, environmental obstacles. I tried the force-field approach — a repulsio
 
 One honest caveat about cost. As written, each boid reasons about every other boid — if only to decide to ignore it — so the work grows as the square of the flock size; doubling the boids quadruples the time. Real birds clearly don't pay this, because each attends to only a few neighbors, so the natural fixes are to make neighbor-finding sub-linear: sort boids into spatial bins and only check bins near the boid, or do nearness-testing incrementally from the previous frame. With those, the per-boid cost tracks neighborhood density rather than flock size, which is the constant-time-per-bird character that lets real flocks grow without bound. For a first implementation, though, the all-pairs version is fine and correct.
 
-Now to real code. I'll write the flocking core plainly: a neighborhood query by distance and view-angle, the three steering vectors in desired-minus-velocity form with separation as inverse-distance-weighted repulsion, a combined-and-truncated steering force, and the integration step with the speed cap — computing all steerings before moving anyone.
+The flocking core, written plainly: a neighborhood query by distance and view-angle; the three steering vectors — separation as summed inverse-square repulsion, alignment as average-velocity-minus-mine, cohesion as a seek toward the local centroid in desired-minus-velocity form; a combined-and-truncated steering force; and the integration step with the speed cap, computing all steerings before moving anyone.
 
 ```python
 import numpy as np
@@ -100,24 +100,25 @@ def neighbors(boid, flock, radius, view_cos):
 
 def separation(boid, nbrs, max_speed):
     # steer away from crowding neighbors. each contributes a repulsion along
-    # (me - neighbor), inverse-square weighted so the nearest intruder dominates;
-    # SUM the per-neighbor repulsions (don't steer from their average position,
-    # which would cancel for a symmetric crowd and leave a hemmed-in boid unpushed).
+    # (me - neighbor): the offset vector scaled by 1/r^2, equivalently the unit
+    # away-vector scaled by 1/r, so the nearest intruder dominates. SUM the
+    # per-neighbor repulsions (don't steer from their average position, which
+    # would cancel for a symmetric crowd and leave a hemmed-in boid unpushed).
+    # the summed repulsion IS the steering force -- renormalizing it would throw
+    # away the very distance falloff just built in.
     acc = np.zeros_like(boid.position)
     for other, offset, d in nbrs:
-        away = -offset / d            # unit vector from the neighbor to me
-        acc += away / (d * d)         # 1/r^2 falloff (gravity-like, well damped)
-    if _norm(acc) == 0.0:
-        return acc
-    return desired_minus_velocity(acc, boid, max_speed)
+        acc += -offset / (d * d)      # offset scaled by 1/r^2 (gravity-like)
+    return acc
 
 def alignment(boid, nbrs, max_speed):
-    # velocity matching: the desired velocity IS the neighbors' average velocity;
+    # velocity matching: the desired velocity IS the neighbors' average velocity,
+    # so the steering is that average minus my current velocity (no renormalizing).
     # matching it keeps inter-boid distances ~invariant (predictive avoidance).
     if not nbrs:
         return np.zeros_like(boid.velocity)
     avg_vel = np.mean([o.velocity for o, _, _ in nbrs], axis=0)
-    return desired_minus_velocity(avg_vel, boid, max_speed)
+    return avg_vel - boid.velocity
 
 def cohesion(boid, nbrs, max_speed):
     # flock centering: seek the centroid of LOCAL neighbors. small deep inside the
@@ -148,4 +149,4 @@ def step(flock, params, dt):
         b.position = b.position + b.velocity * dt
 ```
 
-Tracing the chain once more: I refused to script paths and instead simulated a single bird many times, betting the flock would emerge from local interaction — and the bet pays because the motion I recognize as flocking *depends* on each bird seeing only locally; a global central force collapses the flock and forbids it from splitting. Two opposing zoological urges (stay close / don't collide) split into three rules once I notice that position-based avoidance only *establishes* separation while *matching velocity* maintains it predictively — so separation, alignment, and cohesion, each computed only over neighbors selected by distance and a view-angle, each expressed as desired_velocity − current_velocity so the force fades as the motion is achieved. Separation is summed inverse-square repulsion (gravity-like and well-damped, matching the fish data, and immune to the symmetric-crowd cancellation that averaging would suffer). The three are combined not by averaging — which cancels opposing urgent advice and crashes the boid into walls — but by priority with separation hardest, truncated to a fixed acceleration budget; and the flight model integrates with momentum and a magnitude-truncated speed cap so the limits shorten the command without ever rotating it. The result, run forward a frame at a time over a population of these actors, is polarized, non-colliding, splitting-and-merging aggregate motion that nobody scripted.
+Tracing the chain once more: I refused to script paths and instead simulated a single bird many times, betting the flock would emerge from local interaction — and the bet pays because the motion I recognize as flocking *depends* on each bird seeing only locally; a global central force collapses the flock and forbids it from splitting. Two opposing zoological urges (stay close / don't collide) split into three rules once I notice that position-based avoidance only *establishes* separation while *matching velocity* maintains it predictively — so separation, alignment, and cohesion, each computed only over neighbors selected by distance and a view-angle. Alignment and cohesion take the desired_velocity − current_velocity form so the force fades as the motion is achieved; separation is summed inverse-square repulsion taken directly as the steering force (gravity-like and well-damped, matching the fish data, and immune to the symmetric-crowd cancellation that averaging would suffer). The three are combined not by averaging — which cancels opposing urgent advice and crashes the boid into walls — but by priority with separation hardest, truncated to a fixed acceleration budget; and the flight model integrates with momentum and a magnitude-truncated speed cap so the limits shorten the command without ever rotating it. The result, run forward a frame at a time over a population of these actors, is polarized, non-colliding, splitting-and-merging aggregate motion that nobody scripted.

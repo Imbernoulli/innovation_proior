@@ -38,13 +38,15 @@ exchanges, locking each pair, then apply only the best prefix.
   `G_k = g_1 + ⋯ + g_k`.
 
 - **Best-prefix criterion.** Build the full sequence `(a_1,b_1), …, (a_n,b_n)` (its total gain is
-  `Σ g_i = 0`, so some `g_i` are negative), then choose `k` maximizing `G_k`. Do **not** stop at the
+  `Σ g_i = 0`, so unless every `g_i` is zero the positive gains must be offset by negative ones),
+  then choose `k` maximizing `G_k`. Do **not** stop at the
   first negative gain: the running sum is allowed to dip and recover, which is exactly how the
   procedure escapes a local minimum, and the depth `k` is set by the data rather than fixed.
 
 - **Apply and repeat.** If `G_k > 0`, exchange `{a_1,…,a_k}` with `{b_1,…,b_k}` (cost drops by
-  `G_k`) and run another pass; if `G_k ≤ 0`, the partition is locally optimal. Passes needed are few
-  in practice.
+  `G_k`) and run another pass; if `G_k ≤ 0`, no improving prefix exists in this greedy pass, so the
+  partition is taken as locally optimal. Each pass either improves the cut or certifies this local
+  optimum, and the gains shrink as the partition improves, so few passes are expected to be needed.
 
 Supporting facts: sorting the D-values per side and stopping the pair scan once `D_a + D_b` can no
 longer beat the best gain (valid because `c ≥ 0`, so `g ≤ D_a + D_b`) keeps a pass near `n² log n`;

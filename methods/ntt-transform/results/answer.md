@@ -2,7 +2,7 @@
 
 ## Problem
 
-Multiply two degree-`< n` polynomials in `O(n log n)` modular operations, exactly (no floating-point round-off), where the product is taken in `Z_q[x]/(x^n + 1)` with `n` a power of two and `q` a prime — the workhorse operation of R-LWE lattice cryptography, and (modulo `x^n - 1`, with CRT over several primes) of big-integer multiplication. The product modulo `x^n + 1` is the **negacyclic convolution** of the coefficient vectors: `c_k = Σ_{i+j=k} a_i b_j − Σ_{i+j=k+n} a_i b_j`.
+Multiply two degree-`< n` polynomials in `O(n log n)` modular operations, exactly (no floating-point round-off), where the product is taken in `Z_q[x]/(x^n + 1)` with `n` a power of two and `q` a prime — the workhorse operation of R-LWE lattice cryptography, and (via a zero-padded cyclic NTT, with CRT over several primes when one is too small) of big-integer multiplication. The product modulo `x^n + 1` is the **negacyclic convolution** of the coefficient vectors: `c_k = Σ_{i+j=k} a_i b_j − Σ_{i+j=k+n} a_i b_j`.
 
 ## Key idea
 
@@ -18,7 +18,7 @@ with `E, O` the NTTs of the even/odd-indexed subsequences. Then cyclic convoluti
 
 **Negacyclic via the ψ trick.** The cryptographic ring is `x^n + 1`, not `x^n − 1`. Let `ψ` be a primitive `2n`-th root of unity with `ψ^2 = ω` and `ψ^n = −1` (exists when `q ≡ 1 (mod 2n)`; take `ψ = g^{(q−1)/2n}`). Pre-weight the inputs by `ψ^i`. The cyclic convolution of `(ψ^i a_i)` and `(ψ^i b_i)` at index `k` is `Σ_{i+j≡k} ψ^{i+j} a_i b_j = ψ^k (Σ_{i+j=k} a_i b_j − Σ_{i+j=k+n} a_i b_j) = ψ^k c_k`, since the wrap term picks up `ψ^{k+n} = −ψ^k`. So post-weight by `ψ^{−i}` (keyed on the output index) and the **negacyclic** product falls out of a single length-`n` transform — no zero-padding to `2n`, no explicit reduction. Equivalently the weighted forward transform is `Â_j = Σ_i ψ^{(2j+1)i} a_i`: it evaluates at the odd `2n`-th roots, which are the roots of `x^n + 1`, so reducing mod `x^n + 1` is implicit.
 
-**Merged ψ, no bit-reversal.** Folding the `ψ^i`/`ψ^{−i}` weights into the twiddle factors (use odd powers of `ψ` instead of powers of `ω`) makes the pre/post weighting free. A decimation-in-time **Cooley–Tukey** forward transform takes standard order to bit-reversed order; a decimation-in-frequency **Gentleman–Sande** inverse takes bit-reversed to standard. Pairing them cancels the bit-reversal permutation, since pointwise multiplication ignores ordering.
+**Merged ψ, no bit-reversal.** Folding the `ψ^i`/`ψ^{−i}` weights into the twiddle factors (so the weighted transform evaluates at the odd `2n`-th roots `ψ^{2j+1}` — the roots of `x^n + 1` — with stage twiddles drawn from a bit-reversed table of `ψ`-powers rather than `ω`-powers) makes the pre/post weighting free. A decimation-in-time **Cooley–Tukey** forward transform takes standard order to bit-reversed order; a decimation-in-frequency **Gentleman–Sande** inverse takes bit-reversed to standard. Pairing them cancels the bit-reversal permutation, since pointwise multiplication ignores ordering.
 
 ## Algorithm
 

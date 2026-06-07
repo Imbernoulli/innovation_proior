@@ -142,49 +142,46 @@ or projection step plus a gather/broadcast.
 
 What already exists: routines to apply the blocks $A,B$ and their adjoints; the two objective
 pieces $f,g$ and whatever simple sub-solver each admits (a cached factorization for a quadratic $f$,
-a closed-form prox for a separable $g$); a generic iteration loop holding a primal block, a coupled
-block, and a dual vector. The block updates, the dual update, and the residual-based stopping test
-are the empty slots.
+a closed-form prox for a separable $g$, a projection for an indicator); vector norms, factorizations,
+and a generic driver that can repeat a candidate update rule. The open slot is the update rule that
+uses those pieces without sacrificing either robustness or decomposition.
 
 ```python
 import numpy as np
 
 
 def x_update(z, u, rho):
-    # TODO: minimize f(x) + (rho/2) || A x + B z - c + u ||^2 over x
+    # TODO: fill in the robust decomposable rule for the first objective block
     pass
 
 
 def z_update(x, u, rho):
-    # TODO: minimize g(z) + (rho/2) || A x + B z - c + u ||^2 over z
+    # TODO: fill in the robust decomposable rule for the second objective block
     pass
 
 
-def prox_g(v, rho):
-    # TODO: the simple per-block solve for g (closed form when g is separable / an indicator)
+def shrinkage(a, kappa):
+    # TODO: fill in the simple separable penalty operator
     pass
 
 
-def primal_residual(x, z):
-    # TODO: the equality-constraint residual A x + B z - c
+def factor(C, rho):
+    # TODO: cache the repeated linear solve for a quadratic data term
     pass
 
 
-def dual_residual(z, z_prev, rho):
-    # TODO: the residual of the second optimality condition, from the change in z
+def lasso(C, b, lam, rho=1.0, alpha=1.0, n_iter=1000, abstol=1e-4, reltol=1e-2):
+    # TODO: solve the split regularized least-squares template
     pass
 
 
-def solve(rho=1.0, n_iter=1000, abstol=1e-4, reltol=1e-2):
-    x = None  # primal block
-    z = None  # coupled block
-    u = None  # (scaled) dual vector
-    for k in range(n_iter):
-        z_prev = z
-        x = x_update(z, u, rho)
-        z = z_update(x, u, rho)
-        # TODO: dual update from the current primal residual
-        # TODO: form primal and dual residuals; stop when both are below their tolerances
-        pass
-    return x, z
+def solve_split_problem(x_update, z_update, A, B, c, n, m, p, rho=1.0,
+                        n_iter=1000, abstol=1e-4, reltol=1e-2):
+    # TODO: fill in the generic two-block loop
+    pass
+
+
+def consensus(prox_fi, N, d, rho=1.0, n_iter=1000, abstol=1e-4, reltol=1e-2):
+    # TODO: fill in the distributed agreement loop
+    pass
 ```

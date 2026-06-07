@@ -2,7 +2,7 @@
 
 ## Problem
 
-A flex-grid optical network slices each fibre's spectrum into fine 12.5 GHz frequency slots. Each traffic demand (source, destination, bit-rate) must be given a route and a block of slots that satisfies four constraints: **contiguity** — the slots are a single consecutive interval; **continuity** — the identical interval is used on every link of the route (no spectrum conversion in the line); **non-overlap** — demands sharing a link occupy disjoint intervals; and a **guard band** of `G` empty slots between adjacent intervals on a link. The width of a demand depends on its bit-rate and its modulation format, which is in turn limited by route length. The offline objective is to route and assign all demands so as to minimise the spectrum used — the maximum occupied slot index over all links. The problem is NP-hard: spectrum assignment with fixed routes is the fixed-machine multiprocessor scheduling problem `P|fix_j|C_max` (NP-hard on a ring of three links and on any path of four-plus links), and the fixed-grid routing-and-wavelength-assignment problem is the width-one special case, itself NP-hard.
+A flex-grid optical network slices each fibre's spectrum into fine 12.5 GHz frequency slots. Each traffic demand (source, destination, bit-rate) must be given a route and a block of slots that satisfies four constraints: **contiguity** — the slots are a single consecutive interval; **continuity** — the identical interval is used on every link of the route (no spectrum conversion in the line); **non-overlap** — demands sharing a link occupy disjoint intervals; and a **guard band** of `G` empty slots between adjacent intervals on a link. The width of a demand depends on its bit-rate and its modulation format, which is in turn limited by route length. The offline objective is to route and assign all demands so as to minimise the spectrum used — the maximum occupied slot index over all links. The problem is NP-hard: spectrum assignment with fixed routes is the fixed-machine multiprocessor scheduling problem `P|fix_j|C_max` (NP-hard on a ring of three links and on any path of four-plus links), and the fixed-grid routing-and-wavelength-assignment problem is the width-one, guard-free special case, itself NP-hard.
 
 ## Key idea
 
@@ -137,7 +137,7 @@ def ilp_rsa(G, demands, k=3):
     prob += Z
     for d in range(len(demands)):                            # one channel/demand
         prob += pulp.lpSum(x[(d, i)] for i in range(len(cand[d]))) == 1
-        for i, o in enumerate(cand[d]):                      # Z >= top occupied slot
+        for i, o in enumerate(cand[d]):                      # Z >= top index + 1 = slot count
             prob += Z >= (o[6] + 1) * x[(d, i)]
     links = {(min(u, v), max(u, v)) for u, v in G.edges()}
     for e in links:                                          # non-overlap (+guard)

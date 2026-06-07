@@ -1,6 +1,6 @@
 I want a linear-phase FIR filter of a fixed length `N` that meets a magnitude spec — say a lowpass: gain 1 up to some passband edge, gain 0 past some stopband edge, with a transition gap between them I don't care about. And I want it to be as good as a length-`N` filter can possibly be. So before anything else I should be honest about what "as good as possible" means, because that single choice is going to decide the whole method.
 
-The obvious starting point is the window method. Take the ideal brick-wall lowpass, whose impulse response is the doubly-infinite sinc `h_d(n) = sin(ω_c n)/(π n)` away from the origin and `ω_c/π` at the origin, chop it down to `N` samples, and taper the ends with a window so the truncation isn't so violent. Let me think about what that actually buys me. Truncating to `N` samples and keeping the central `h_d(n)` is, term by term, the least-squares answer: if I want the `N`-tap response closest to the ideal in integral-squared error, I keep exactly the Fourier coefficients `h_d(n)` for `|n|≤M` and drop the rest, because the squared error is a sum of dropped-coefficient energies and I can't do better than dropping the smallest ones. Fine. So the rectangular window is *optimal in ISE*. But stare at what it does at the band edge. The truncation convolves the brick wall with the Dirichlet kernel (the transform of the rectangular window), and that produces the Gibbs phenomenon: a roughly 9% overshoot right at the discontinuity. And here's the thing that bugs me — that 9% doesn't go away as I make `N` larger. Longer filter, narrower "ears," same height. The worst-case ripple is *stuck* at about 9% no matter how many taps I spend.
+The obvious starting point is the window method. Take the ideal brick-wall lowpass, whose impulse response is the doubly-infinite sinc `h_d(n) = sin(ω_c n)/(π n)` away from the origin and `ω_c/π` at the origin, chop it down to `N` samples, and taper the ends with a window so the truncation isn't so violent. Let me think about what that actually buys me. Truncating to `N` samples and keeping the central `h_d(n)` is, term by term, the least-squares answer: with the support fixed to the central `N` taps, the integral-squared error is by Parseval the sum of squared coefficient errors, so within that fixed support the best I can do is keep each `h_d(n)` exactly — it's the orthogonal projection of the ideal response onto the fixed length-`N` subspace, and the leftover error is just the energy of the coefficients `|n|>M` that the support forces me to drop. Fine. So the rectangular window is *optimal in ISE*. But stare at what it does at the band edge. The truncation convolves the brick wall with the Dirichlet kernel (the transform of the rectangular window), and that produces the Gibbs phenomenon: a roughly 9% overshoot right at the discontinuity. And here's the thing that bugs me — that 9% doesn't go away as I make `N` larger. Longer filter, narrower "ears," same height. The worst-case ripple is *stuck* at about 9% no matter how many taps I spend.
 
 That's the tell. Least-squares is the wrong objective for a filter spec. A spec is a worst-case statement — "passband ripple no more than δ_p, stopband down at least so many dB" — and the rectangular window, which is the *best* ISE answer, fails the worst-case criterion no matter how much I spend on it. Tapered windows (Hamming, Blackman, Kaiser) fix the overshoot — they push the sidelobes down 40, 80 dB — but they do it by *not minimizing* anything; they trade main-lobe width for sidelobe height by a fixed recipe, and crucially the band edge ends up wherever the windowed sum happens to put it. I get no direct grip on the cutoff frequency. For meeting a spec that names the edges, that's disqualifying on its own.
 
@@ -24,11 +24,11 @@ and `Q(f)` is one of `{ 1, cos πf, sin πf, sin 2πf }` — a fixed, known func
 
 D̂(f) = D(f) / Q(f),   Ŵ(f) = W(f) · Q(f),
 
-and the problem becomes `min max Ŵ(f)|D̂(f) − P(f)|` over the coefficients of the *single* cosine polynomial `P`. (I have to be a little careful at any band endpoint where `Q(f)=0` — divide-by-zero — so I drop those isolated points from the set `F`; they're measure zero and the weight `Ŵ=W·Q` vanishes there anyway, so the max isn't there.) One problem, one core, all four filter types and differentiators and Hilbert transformers fall out of it. That's worth a lot: I write the engine once.
+and the problem becomes `min max Ŵ(f)|D̂(f) − P(f)|` over the coefficients of the *single* cosine polynomial `P`. (I have to be a little careful at any band endpoint where `Q(f)=0` — divide-by-zero — so I drop those isolated points from the set `F`: at such a point `G=Q·P` is pinned to zero no matter what `P` does, so it carries no free approximation to optimize, and it simply isn't part of the set I'm fitting `P` on. So I exclude those endpoints from the grid before forming `D̂=D/Q`.) One problem, one core, all four filter types and differentiators and Hilbert transformers fall out of it. That's worth a lot: I write the engine once.
 
 So now the entire question is: best weighted-Chebyshev approximation of a continuous function `D̂` by a cosine polynomial `P` of `r` terms. Cosine polynomials feel special, but there's a substitution that makes them ordinary. Let `x = cos(2πf)`. Then `cos(2πkf) = T_k(cos 2πf) = T_k(x)`, the Chebyshev polynomial of degree `k`. So `P(f) = Σ_{k=0}^{r−1} α(k) T_k(x)` is just an **algebraic polynomial of degree `r−1` in `x`** on the interval `x ∈ [−1, 1]`. The trig problem *is* a polynomial Chebyshev-approximation problem in disguise. And polynomial Chebyshev approximation has a complete, classical theory. Let me reach for it.
 
-What does the best approximation look like? Suppose `P*` is best — it minimizes `max Ŵ|D̂ − P|`, call that minimum value `δ`. The weighted error `E(f) = Ŵ(f)[D̂(f) − P*(f)]` has `|E| ≤ δ` everywhere and equals `δ` in magnitude at the points where the max is attained. Claim: those max-attaining points must be many, and the error must *alternate* in sign across them. Why? Suppose the error touched `±δ` with the right alternating pattern at only a few points — fewer than `r+1`. Then I could find a cosine polynomial `R` of degree `r−1` (i.e. with `r` free coefficients) that has the *opposite* sign of `E` at each of those extremal points: that's an interpolation condition at, say, `m ≤ r` points, and a degree-`r−1` polynomial has `r` coefficients, so I can always satisfy `m ≤ r` sign conditions. Nudge `P* → P* + εR` for small `ε`. At each old extremum, I've pushed the error *toward zero* (because `R` opposes `E` there), so the error magnitude drops below `δ` at every extremum, and by continuity stays below `δ` in a neighborhood; for small enough `ε` nothing new reaches `δ`. So I strictly reduced the max error — contradicting that `P*` was best.
+What does the best approximation look like? Suppose `P*` is best — it minimizes `max Ŵ|D̂ − P|`, call that minimum value `δ`. The weighted error `E(f) = Ŵ(f)[D̂(f) − P*(f)]` has `|E| ≤ δ` everywhere and equals `δ` in magnitude at the points where the max is attained. Claim: those max-attaining points must be many, and the error must *alternate* in sign across them. Why? Suppose the error touched `±δ` with the right alternating pattern at only a few points — fewer than `r+1`. Then I could find a cosine polynomial `R` of degree `r−1` (i.e. with `r` free coefficients) that has the *same* sign as `E` at each of those extremal points: that's an interpolation condition at, say, `m ≤ r` points, and a degree-`r−1` polynomial has `r` coefficients, so I can always satisfy `m ≤ r` sign conditions. Nudge `P* → P* + εR` for small `ε`, so the new error is `E − εŴR`. At each old extremum, I've pushed the error *toward zero* (because `R` matches the sign of `E` there, so `E − εŴR` shrinks in magnitude), so the error magnitude drops below `δ` at every extremum, and by continuity stays below `δ` in a neighborhood; for small enough `ε` nothing new reaches `δ`. So I strictly reduced the max error — contradicting that `P*` was best.
 
 Let me count exactly how many alternations I'm forced into. The escape `R` exists whenever the number of sign-alternations in `E` at its extrema is `≤ r`. To block every such `R`, I need the error to hit `±δ`, alternating, at **at least `r+1`** points. And conversely, if the error *does* equioscillate at `r+1` points with `|E|=δ`, then no competitor can beat it: if some `P'` had `max Ŵ|D̂−P'| < δ`, then `P* − P' = (D̂−P') − (D̂−P*)` would, at the `r+1` alternation points, take the sign of `−(D̂−P*)` (since `D̂−P'` is uniformly smaller in magnitude than the `±δ/Ŵ` that `D̂−P*` equals there) — so `P*−P'` alternates sign `r+1` times, hence has `r` sign changes, hence `≥ r` roots in `x`; but `P*−P'` is a polynomial of degree `≤ r−1`, so it must be identically zero, i.e. `P' = P*`. So equioscillation is both necessary and sufficient, and it pins down the optimum uniquely.
 
@@ -48,11 +48,11 @@ How do I extract `δ` without forming `P`? Consider the `(r+1)`-node Lagrange pi
 ⟹ Σ_i b_i D̂(F_i) = δ Σ_i (−1)^i b_i / Ŵ(F_i)
 ⟹ δ = [ Σ_i b_i D̂(F_i) ] / [ Σ_i (−1)^i b_i / Ŵ(F_i) ].
 
-A closed form for `δ` — one dot product over another, no matrix solve. If the ratio is negative, that only means I guessed the starting alternation sign backwards; I flip all the signs and use positive `δ`. And once I have `δ`, I have the `r+1` ordinate values `y_i = D̂(F_i) − (−1)^i δ/Ŵ(F_i)` that are consistent with a degree-`r−1` `P`, and I can evaluate `P` at *any* frequency by barycentric Lagrange interpolation through all `r+1` nodes; the degree-`r` term has been killed by the zero divided difference. (The barycentric form, `P(x) = [Σ_j b_j y_j/(x − x_j)] / [Σ_j b_j/(x − x_j)]`, is also the numerically stable way to do this for large `r`.) So per iteration I pay `O(r)` Lagrange weights plus an `O(r)` evaluation at each grid point — cheap.
+A closed form for `δ` — one dot product over another, no matrix solve. If the ratio is negative, that only means I guessed the starting alternation sign backwards; I flip all the signs to a sequence `s_i` (which is `(−1)^i` or its negation) and use positive `δ`. And once I have `δ`, I have the `r+1` ordinate values `y_i = D̂(F_i) − s_i δ/Ŵ(F_i)` that are consistent with a degree-`r−1` `P`, and I can evaluate `P` at *any* frequency by barycentric Lagrange interpolation through all `r+1` nodes; the degree-`r` term has been killed by the zero divided difference. (The barycentric form, `P(x) = [Σ_j b_j y_j/(x − x_j)] / [Σ_j b_j/(x − x_j)]`, is also the numerically stable way to do this for large `r`.) So per iteration I pay `O(r)` Lagrange weights plus an `O(r)` evaluation at each grid point — cheap.
 
 But I *don't* know the extremal frequencies; that's the catch. That's what Remez's exchange idea is for, and now I can build it. Start with a guess of `r+1` reference frequencies — equally spaced across the bands is a fine cheap start. With that reference: compute `δ` by the formula above, and compute `P` by Lagrange interpolation. Now `P` equioscillates at `±δ` on the reference set *by construction*. But it is the best approximation only if those reference points are the *true* extrema — i.e. only if `|E(f)| = Ŵ(f)|D̂(f) − P(f)|` never exceeds `δ` anywhere off the reference. So check: sweep the actual error over a dense frequency grid and find where `|E|` is largest. If `max_grid |E| > δ`, my reference was wrong — there's a place the error overshoots `δ` that I didn't account for.
 
-The exchange: replace the reference set with the new set of local maxima of `|E|` on the grid. I have to keep exactly `r+1` of them, and they have to alternate in sign so the alternation structure is maintained — so at each candidate extremum I keep the one with the largest `|E|` among same-sign neighbors, and I sort them in frequency. Then iterate: recompute `δ` and `P` on the new reference, find the new error extrema, exchange again. Each pass, because the new reference points are places where `|E|` exceeded the old `δ`, the new positive `δ` (the level the alternation forces) can only go *up*: it is nondecreasing across iterations, bounded above by the true optimal `δ*`. So it climbs monotonically to `δ*`, and the reference points settle onto the true equioscillation frequencies. I stop when the dense-grid max of `|E|` no longer exceeds the current `δ` (within tolerance) — at that moment the error equioscillates at `r+1` points and is bounded by `δ` everywhere, which by the alternation theorem *is* the certificate of optimality. In practice this converges in something like six to a dozen exchanges. This whole-set exchange — moving all the references at once to the new extrema rather than one point at a time — is what makes it fast.
+The exchange: replace the reference set with the new set of local maxima of `|E|` on the grid. I have to keep exactly `r+1` of them, and they have to alternate in sign so the alternation structure is maintained — so at each candidate extremum I keep the one with the largest `|E|` among same-sign neighbors, and I sort them in frequency. The band edges themselves are always candidate extrema even though `|E|` may not be a grid-local maximum there (the desired response jumps across the transition gap), so I force them into the candidate set; if that leaves a surplus I drop the weaker endpoint, which leaves the interior alternation untouched. Then iterate: recompute `δ` and `P` on the new reference, find the new error extrema, exchange again. Each pass, because the new reference points are places where `|E|` exceeded the old `δ`, the new positive `δ` (the level the alternation forces) can only go *up*: it is nondecreasing across iterations, bounded above by the true optimal `δ*`. So it climbs monotonically to `δ*`, and the reference points settle onto the true equioscillation frequencies. I stop when the dense-grid max of `|E|` no longer exceeds the current `δ` (within tolerance) — at that moment the error equioscillates at `r+1` points and is bounded by `δ` everywhere, which by the alternation theorem *is* the certificate of optimality. In practice this converges in something like six to a dozen exchanges. This whole-set exchange — moving all the references at once to the new extrema rather than one point at a time — is what makes it fast.
 
 One detail on "dense grid": the bands are continua, but I can only search finitely many points. I lay down a grid with on the order of `16·r` points across the bands (grid density 16 times the number of cosine terms). The continuous maximum over a band is well-approximated by the maximum over a grid that fine, so the grid extrema track the true extrema closely; if I worried, I could refine near each found extremum, but density 16 is empirically plenty for the extrema to land in the right place.
 
@@ -87,14 +87,18 @@ def eval_P(xq, x, y, b):
             out[idx] = (c @ y) / c.sum()
     return out
 
-def pick_alternating_extrema(err, n_ext):
+def pick_alternating_extrema(err, n_ext, edges=()):
     # Keep local maxima of |err|, collapsing adjacent lobes with the same sign to the larger one.
+    # Band edges (and the two grid endpoints) are always candidate extrema, since |err| there is
+    # not a grid-local max across the transition gap yet a band-edge extremum the optimum lands on.
+    forced = set(edges)
     peaks = []
     for i, value in enumerate(err):
         left = abs(err[i - 1]) if i else -np.inf
         right = abs(err[i + 1]) if i + 1 < len(err) else -np.inf
-        if abs(value) >= left and abs(value) >= right:
+        if i in forced or (abs(value) >= left and abs(value) >= right):
             peaks.append(i)
+    peaks.sort()
 
     def compress(indices):
         out = []
@@ -108,10 +112,13 @@ def pick_alternating_extrema(err, n_ext):
         return out
 
     ext = compress(peaks)
+    # signs strictly alternate now; trim any surplus by dropping the smaller-|err| endpoint,
+    # which keeps the interior alternation intact (an interior drop would merge two same-sign lobes)
     while len(ext) > n_ext:
-        drop = min(range(len(ext)), key=lambda k: abs(err[ext[k]]))
-        del ext[drop]
-        ext = compress(ext)
+        if abs(err[ext[0]]) <= abs(err[ext[-1]]):
+            ext = ext[1:]
+        else:
+            ext = ext[:-1]
     if len(ext) != n_ext:
         raise RuntimeError("could not find enough alternating extrema")
     return np.array(ext, dtype=int)
@@ -120,6 +127,11 @@ def remez_exchange(grid, des, wt, n_cos, maxiter=25):
     # grid: dense frequencies in [0, 0.5]; des = D_hat, wt = W_hat already prepared on the grid.
     # n_cos = r = number of cosine terms; the reference set has r+1 points.
     r = n_cos
+    # band edges: grid endpoints plus the two indices straddling each transition gap (where the
+    # grid frequency jumps), which the exchange must always be allowed to keep as extrema
+    df = np.diff(grid)
+    gap = np.where(df > 1.5 * np.median(df))[0]
+    edges = sorted({0, len(grid) - 1, *gap.tolist(), *(gap + 1).tolist()})
     # initial reference: r+1 equispaced grid indices, matching the original program's cheap start
     step = (len(grid) - 1) / r
     ext = np.array([int(j * step) for j in range(r)] + [len(grid) - 1])
@@ -142,8 +154,8 @@ def remez_exchange(grid, des, wt, n_cos, maxiter=25):
         xq = np.cos(2 * np.pi * grid)
         P = eval_P(xq, x, y, b)
         err = (P - des) * wt                         # the implementation uses the opposite sign of E
-        # exchange: new reference = the r+1 alternating local maxima of |err|
-        new_ext = pick_alternating_extrema(err, r + 1)
+        # exchange: new reference = the r+1 alternating local maxima of |err| (band edges forced)
+        new_ext = pick_alternating_extrema(err, r + 1, edges)
         if np.max(np.abs(err)) <= dev * (1 + 1e-6):   # grid max no longer beats delta -> optimal
             break
         ext = new_ext
@@ -171,6 +183,8 @@ def design_fir(numtaps, bands, desired, weight=None, type='bandpass', grid_densi
     grid, des, wt = build_grid(numtaps, bands, desired, weight, grid_density, n_cos)
     # absorb Q into the target/weight so the core only ever sees a pure-cosine problem:
     #   Q = 1 (sym odd) | cos(pi f) (sym even) | sin(pi f) / sin(2 pi f) (antisym):
+    # build_grid drops the endpoints where the chosen Q vanishes (f=0.5 for cos(pi f);
+    # f=0 for sin(pi f); f=0 and f=0.5 for sin(2 pi f)) so this division is safe.
     if not neg and not nodd:
         ch = np.cos(np.pi * grid); des = des / ch; wt = wt * ch
     elif neg and nodd:

@@ -24,7 +24,7 @@ Wait. I waved my hand over "L = L'." Look again. If the two messages have *diffe
 
 Stare at why. The reduction needs: distinct messages ⟹ distinct padded block sequences (so somewhere the chains' inputs must differ). Plain zero-fill violates this — "ends in d zeros" and "padded with d zeros" become indistinguishable. The fix has to be in the *padding*: make the padding injective in a way the chain can see, especially across different lengths.
 
-Damgård's device, stated plainly: after splitting into blocks, append one *extra* block that holds d, the number of zeros I used to fill the last partial block. Now "a message that really ends in d zeros" and "a message padded with d zeros" disagree in that final length-bearing block, so their padded sequences differ, and the backward walk is guaranteed a differing step. And for the awkward edge case where f shrinks by only one bit per call (b minimal), the same idea works via prefix-free encoding of the message, or by seeding from a random first value and leaning on f's one-wayness — but the principle is the one device: encode enough about the length that no two distinct messages share a padded block sequence.
+Damgård's device, stated plainly: append a final *length-bearing* block that encodes the original message length. Now "a message that really ends in d zeros" and a shorter "message padded with d zeros" have different lengths, so they disagree in that final block, their padded sequences differ, and the backward walk is guaranteed a differing step. And for the awkward edge case where f shrinks by only one bit per call (b minimal), the same idea works via prefix-free encoding of the message, or by seeding from a random first value and leaning on f's one-wayness — but the principle is the one device: encode enough about the length that no two distinct messages share a padded block sequence.
 
 Generalize the requirement, because the *exact* encoding doesn't matter, only the property. The padding map Pad must be such that: (i) M is a prefix of Pad(M); (ii) equal-length messages get equal-length padding; (iii) messages of *different* length get a *different final block*. With those three, two cases of the backward walk close cleanly. Same length L = L': differ in some block, walk back, hit an f-collision before reaching the shared IV. Different length: the final blocks already differ (condition iii), so the very last step feeds f two distinct inputs with equal output — an f-collision immediately. Either way, an H-collision yields an f-collision. Contrapositive: f collision-resistant ⟹ H collision-resistant. The length encoding wasn't decoration; it's the hinge the whole reduction turns on. This is the design principle — "be able to cut one bit off the length in a collision-free way and you can hash arbitrary lengths" — and it tells me exactly what padding has to accomplish.
 
@@ -42,7 +42,7 @@ Now to hit a target c I'd need E_a(b) ⊕ b = c, i.e. E_a(b) ⊕ b = c with b ap
 
 This is the Davies–Meyer shape. Does the feed-forward actually buy collision resistance, or am I just hoping? Model E as an *ideal cipher*: each key M names an independent uniformly-random permutation E(M,·), and the only access is querying an oracle for E and E^{-1}. (I need the idealization to be this strong — independent across keys, no related-key structure, no weak keys, random even when the key is known — because a mere strong-PRP assumption isn't known to give collision resistance here; the proof leans on E(M,·) being a *fresh random permutation* per key.)
 
-Count an adversary's chances. It makes q queries. Each query, forward or backward, reveals one hash value f(M,H) = E_M(H) ⊕ H. On a forward query (M_i, H_i), E_{M_i}(H_i) is uniform over the l output values not yet pinned down by earlier queries under that same key — so the revealed hash is uniform over ≥ 2^l − (i−1) values; a backward query through E^{-1} is symmetric. So the probability the i-th query's hash equals a *fixed* earlier hash is at most 1/(2^l − (i−1)) for each of the forward/backward cases, ≤ 2/(2^l − (i−1)). With q < 2^{l/2} queries, 2^l − (i−1) ≈ 2^l, so each pair collides with probability ≲ 2/2^l, and there are C(q,2) ≤ q²/2 pairs. Union bound:
+Count an adversary's chances. Write l for the block width of E — the number of bits in H, which is also the digest length n. It makes q queries. Each query, forward or backward, reveals one hash value f(M,H) = E_M(H) ⊕ H. On a forward query (M_i, H_i), E_{M_i}(H_i) is uniform over the 2^l output values not yet pinned down by earlier queries under that same key — so the revealed hash is uniform over ≥ 2^l − (i−1) values; a backward query through E^{-1} is symmetric. So the probability the i-th query's hash equals a *fixed* earlier hash is at most 1/(2^l − (i−1)) for each of the forward/backward cases, ≤ 2/(2^l − (i−1)). With q < 2^{l/2} queries, 2^l − (i−1) ≈ 2^l, so each pair collides with probability ≲ 2/2^l, and there are C(q,2) ≤ q²/2 pairs. Union bound:
 
   Pr[collision in q queries] ≤ q²/2^l.
 
@@ -50,7 +50,7 @@ So a collision needs q ≈ 2^{l/2} queries — exactly the birthday ceiling, not
 
 Now I have to actually *instantiate* this in fast word operations, n = 256 bits of state, and pick the cipher E. I'll build E internally as a round-based permutation on the 256-bit state keyed by the 512-bit message block — so b = 512, the block size — and realize the Davies–Meyer feed-forward at the end. 256-bit output means a 128-bit collision ceiling, which is the point of going to 256 rather than 128.
 
-State as eight 32-bit words; arithmetic on 32-bit words because that's what hardware and software both do cheaply: bitwise AND/OR/NOT/XOR, rotate-right ROTR^n, shift-right SHR^n, and add mod 2^32. The mod-2^32 addition matters more than it looks: its carry chain is the one operation that mixes information *across* bit positions nonlinearly and cheaply — XOR and rotation are linear over GF(2), so without the carries everything would be a linear map and trivially invertible/collidable. Carries are my nonlinearity budget.
+State as eight 32-bit words; arithmetic on 32-bit words because that's what hardware and software both do cheaply: bitwise AND/OR/NOT/XOR, rotate-right ROTR^n, shift-right SHR^n, and add mod 2^32. The mod-2^32 addition matters more than it looks: its carry chain is the one operation that mixes information *across* bit positions nonlinearly and cheaply. The bitwise ops (AND/OR/NOT, and later Ch/Maj) are nonlinear, but each output bit depends only on the same-position input bits — they don't move information sideways; XOR and rotation do move it sideways but are linear over GF(2). So the carry chain is my only source of *cross-bit* nonlinearity — without it, the only coupling between bit positions would be linear, and a purely linear hash is trivially invertible and collidable. Carries are my cross-bit nonlinearity budget.
 
 First, padding — I derived exactly what it must do, now make it concrete and length-encoding. Append a single 1 bit (so the boundary between message and padding is unambiguous — that's a separator, giving condition (i)), then zeros, then the message bit-length L as a fixed 64-bit big-endian field, sized so the whole thing is a multiple of the 512-bit block. Concretely: after the 1 bit and zeros, reserve the final 64 bits of the last block for L, i.e. zero-fill until the length ≡ 448 mod 512, then append the 64-bit L. The 64-bit length field is the (iii) condition made concrete — different-length messages put a different number in that field, so they can't share a final block. (Note the design corollary: with a 64-bit length field the hash is only defined for messages under 2^64 bits, which is fine.) In bytes: append 0x80, then zero bytes, then the 8-byte big-endian bit length.
 
@@ -67,7 +67,7 @@ where σ0, σ1 each fold a word with two rotations and — crucially — one *sh
   σ0(x) = ROTR^7(x) ⊕ ROTR^18(x) ⊕ SHR^3(x)
   σ1(x) = ROTR^17(x) ⊕ ROTR^19(x) ⊕ SHR^10(x).
 
-Why a shift and not a third rotation? A shift loses the top/bottom bits — it's not a bijection — which breaks the clean rotational structure of the schedule so it isn't rotation-invariant; that asymmetry is exactly what stops a rotate-the-whole-message differential. The two source taps W_{t-2} (recent) and W_{t-15} (older) plus the raw adds of W_{t-7}, W_{t-16} spread each original message word across many future rounds: a one-bit change in M avalanches through the schedule.
+Why a shift and not a third rotation? A shift is *acyclic* — it drops bits off one end and feeds zeros in the other, rather than wrapping them around — so it breaks the clean rotational structure of the schedule and the σ map isn't rotation-invariant; that asymmetry is exactly what stops a rotate-the-whole-message differential. (The map stays bijective — the XOR of these particular rotations and the shift is still invertible — but it is no longer rotation-commuting, which is the property I'm after.) The two source taps W_{t-2} (recent) and W_{t-15} (older) plus the raw adds of W_{t-7}, W_{t-16} spread each original message word across many future rounds: a one-bit change in M avalanches through the schedule.
 
 Now the round itself. Working variables a,b,c,d,e,f,g,h initialized from the incoming chaining value H_0…H_7. I'll make most of the eight words a shift register — each round they just slide down (b←a, c←b, …) — and only *two* of them receive fresh nonlinear injection. That keeps each round cheap while 64 rounds still achieve full diffusion. Two injection points, call them the "a-track" and the "e-track."
 
@@ -76,14 +76,14 @@ The nonlinearity comes from two bitwise functions and the add-carries. Choose:
   Ch(e,f,g) = (e ∧ f) ⊕ (¬e ∧ g)       — e chooses, bit by bit, between f and g
   Maj(a,b,c) = (a ∧ b) ⊕ (a ∧ c) ⊕ (b ∧ c) — the per-bit majority of a,b,c.
 
-Ch and Maj are the nonlinear bitwise mixers; one feeds the e-track, one the a-track. And for intra-word diffusion I want each word's bits stirred among themselves before they propagate — use functions of *three rotations* (no shift this time, because here I want a bijective stir of the full word, all bits preserved):
+Ch and Maj are the nonlinear bitwise mixers; one feeds the e-track, one the a-track. And for intra-word diffusion I want each word's bits stirred among themselves before they propagate — use functions of *three rotations* (no shift this time, because here every input bit should survive into the output rather than some falling off the end as a shift would):
 
   Σ0(a) = ROTR^2(a) ⊕ ROTR^13(a) ⊕ ROTR^22(a)
   Σ1(e) = ROTR^6(e) ⊕ ROTR^11(e) ⊕ ROTR^25(e).
 
-(Contrast with the schedule's σ: there I *wanted* the symmetry-breaking shift; here in the round I want full-word bijective mixing, so three rotations, no shift. Same letter family, opposite choice, for opposite reasons.)
+(Contrast with the schedule's σ: there I *wanted* the symmetry-breaking acyclic shift; here in the round I keep every bit, so three rotations, no shift. Same letter family, opposite choice, for opposite reasons.)
 
-I also need per-round constants so the 64 rounds aren't identical (identical rounds invite slide/fixed-point attacks). Same nothing-up-my-sleeve trick, different irrational source so they're independent of the IV: first 32 bits of the fractional parts of the *cube* roots of the first 64 primes — K_0 = 428a2f98, … K_63 = c67178f2.
+I also need per-round constants so the 64 rounds aren't identical (identical rounds invite slide/fixed-point attacks). Same nothing-up-my-sleeve trick, a different public recipe from the IV's square roots: first 32 bits of the fractional parts of the *cube* roots of the first 64 primes — K_0 = 428a2f98, … K_63 = c67178f2.
 
 Assemble one round. Compute the two injections:
 
@@ -115,7 +115,7 @@ H0 = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
       0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19]
 
 # Per-round constants K_t: first 32 bits of the fractional parts of the cube
-# roots of the first 64 primes (independent of the IV).
+# roots of the first 64 primes (a distinct public recipe from the IV).
 K = [0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
      0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
      0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,

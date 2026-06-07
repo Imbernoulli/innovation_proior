@@ -74,7 +74,7 @@ def projected_scattering_signal(v_in, v_out):
     dtheta = projected_angles(v_out) - projected_angles(v_in)
     return 0.5 * float(dtheta @ dtheta)              # one projected variance sample
 
-def reconstruct_single_scatter(muons, grid):
+def reconstruct_poca(muons, grid):
     S = np.zeros(tuple(grid.n)); I = np.zeros(tuple(grid.n))
     for p_in, v_in, p_out, v_out in muons:
         p_in, v_in = np.asarray(p_in, float), np.asarray(v_in, float)
@@ -109,8 +109,8 @@ Rays are independent, so the data likelihood is the product. Take `-2 log` and d
 Notice this is *not* least squares — the unknown enters as the *variance*, so the cost has the `ln(v)` term that penalizes blowing the variance up to fit, balanced against `theta^2/v` that rewards fitting the observed scatter. It's the negative log-likelihood of a Gaussian with unknown variance, which is the correct object given that the muon's scatter *is* a variance measurement. The non-negativity constraint matters: a negative scattering density is physically meaningless, so I floor every voxel at `lambda_air`, the (tiny) scattering density of air, which also regularizes the under-determined cells. This is the upgrade that resolves what PoCA can't: distributed scattering and overlapping objects, because the signal is shared along the path and cross-constrained by many rays rather than collapsed to one point.
 
 ```python
-def reconstruct_path_variance(signals, path_lengths, lambda_air, lam0=None):
-    Lmat = np.asarray(path_lengths, float)
+def reconstruct_mls(signals, Lmat, lambda_air, lam0=None):
+    Lmat = np.asarray(Lmat, float)
     s2 = np.asarray(signals, float)**2
     def nll(lam):
         v = np.maximum(Lmat @ lam, 1e-12)

@@ -22,7 +22,7 @@ But now watch the parallelism evaporate. Suppose $f=\sum_i f_i(x_i)$, the separa
 
 That's the knot. Let me think about what's really doing the damage. It's the *joint* $x$-minimization of an objective whose coupling term mixes the blocks. What if I don't have to minimize jointly?
 
-Here's the reframing that opens it up. My objective genuinely has two natural halves, $f$ on one set of variables and $g$ on another — that's the structure I started with, $f(x)+g(z)$ with $Ax+Bz=c$. (And the separable consensus case is just this with the right copies; I'll come back to that.) Form the augmented Lagrangian of the *two-block* problem,
+My objective genuinely has two natural halves, $f$ on one set of variables and $g$ on another — that's the structure I started with, $f(x)+g(z)$ with $Ax+Bz=c$. (And the separable consensus case is just this with the right copies; I'll come back to that.) Form the augmented Lagrangian of the *two-block* problem,
 
 $$ L_\rho(x,z,y)=f(x)+g(z)+y^\top(Ax+Bz-c)+\tfrac{\rho}{2}\|Ax+Bz-c\|_2^2. $$
 
@@ -54,7 +54,7 @@ and dual feasible — stationarity of the Lagrangian in each block (using subdif
 
 $$ 0\in\partial f(x^\star)+A^\top y^\star,\qquad 0\in\partial g(z^\star)+B^\top y^\star. $$
 
-Three conditions. Now here's the payoff of the alternation and the $\rho$-step: let me check which of these the ADMM iterates satisfy *for free*. Start with the $z$-update. By definition $z^{k+1}$ minimizes $L_\rho(x^{k+1},z,y^k)$, so its optimality condition (in unscaled $y$) is
+Three conditions. Start with the $z$-update and see which of them the iterates satisfy for free. By definition $z^{k+1}$ minimizes $L_\rho(x^{k+1},z,y^k)$, so its optimality condition (in unscaled $y$) is
 
 $$ 0\in\partial g(z^{k+1})+B^\top y^k+\rho B^\top(Ax^{k+1}+Bz^{k+1}-c)=\partial g(z^{k+1})+B^\top y^k+\rho B^\top r^{k+1}. $$
 
@@ -78,13 +78,11 @@ To make "small" precise I want to know that small residuals actually bound subop
 
 $$ V^k=\tfrac1\rho\|y^k-y^\star\|_2^2+\rho\|B(z^k-z^\star)\|_2^2. $$
 
-It's a combination of how far the dual is from optimal and how far $Bz$ is from optimal — nonnegative, and unknown while running (it depends on the unknowns $z^\star,y^\star$), but a legitimate analysis object. The whole proof rides on three inequalities; let me derive them.
-
-Write $p^k=f(x^k)+g(z^k)$ and $p^\star$ the optimal value. **Inequality (A3):** since $(x^\star,z^\star,y^\star)$ is a saddle point, $L_0(x^\star,z^\star,y^\star)\le L_0(x^{k+1},z^{k+1},y^\star)$. The left side is $f(x^\star)+g(z^\star)+ (y^\star)^\top(Ax^\star+Bz^\star-c)=p^\star$ (the residual vanishes at feasibility). The right side is $p^{k+1}+(y^\star)^\top r^{k+1}$. So
+It combines how far the dual is from optimal and how far $Bz$ is from optimal — nonnegative, and unknown while running because it depends on $z^\star,y^\star$, but a legitimate analysis object. Write $p^k=f(x^k)+g(z^k)$ and $p^\star$ for the optimal value. The saddle-point inequality is the easiest one to pull out: since $(x^\star,z^\star,y^\star)$ is a saddle point, $L_0(x^\star,z^\star,y^\star)\le L_0(x^{k+1},z^{k+1},y^\star)$. The left side is $f(x^\star)+g(z^\star)+ (y^\star)^\top(Ax^\star+Bz^\star-c)=p^\star$ because the residual vanishes at feasibility. The right side is $p^{k+1}+(y^\star)^\top r^{k+1}$. So
 
 $$ p^\star\le p^{k+1}+(y^\star)^\top r^{k+1}\quad\Longleftrightarrow\quad p^\star-p^{k+1}\le (y^\star)^\top r^{k+1}.\tag{A3} $$
 
-**Inequality (A2):** I use that the updates are exact minimizers. From the $x$-update I derived $0\in\partial f(x^{k+1})+A^\top y^{k+1}-\rho A^\top B(z^{k+1}-z^k)$, i.e. $x^{k+1}$ minimizes $f(x)+\big(y^{k+1}-\rho B(z^{k+1}-z^k)\big)^\top Ax$ — convex, so comparing its value at $x^{k+1}$ against $x^\star$,
+Now I use that the two block updates are exact minimizers. From the $x$-update I derived $0\in\partial f(x^{k+1})+A^\top y^{k+1}-\rho A^\top B(z^{k+1}-z^k)$, so $x^{k+1}$ minimizes $f(x)+\big(y^{k+1}-\rho B(z^{k+1}-z^k)\big)^\top Ax$. Comparing that convex objective at $x^{k+1}$ and $x^\star$ gives
 
 $$ f(x^{k+1})+\big(y^{k+1}-\rho B(z^{k+1}-z^k)\big)^\top Ax^{k+1}\le f(x^\star)+\big(y^{k+1}-\rho B(z^{k+1}-z^k)\big)^\top Ax^\star. $$
 
@@ -92,7 +90,7 @@ Likewise $z^{k+1}$ minimizes $g(z)+(y^{k+1})^\top Bz$ (the second dual condition
 
 $$ g(z^{k+1})+(y^{k+1})^\top Bz^{k+1}\le g(z^\star)+(y^{k+1})^\top Bz^\star. $$
 
-Add the two, use $Ax^\star+Bz^\star=c$ to collapse the right-hand combination, and rearrange — the algebra is bookkeeping but it lands at
+Adding them, the $y^{k+1}$ terms give $(y^{k+1})^\top(Ax^\star+Bz^\star-Ax^{k+1}-Bz^{k+1})=-(y^{k+1})^\top r^{k+1}$. The penalty correction gives $-\rho(B(z^{k+1}-z^k))^\top A(x^\star-x^{k+1})$. Since $A(x^{k+1}-x^\star)=r^{k+1}-B(z^{k+1}-z^\star)$, this becomes $\rho(B(z^{k+1}-z^k))^\top(r^{k+1}-B(z^{k+1}-z^\star))$, or equivalently
 
 $$ p^{k+1}-p^\star\le -(y^{k+1})^\top r^{k+1}-\rho\big(B(z^{k+1}-z^k)\big)^\top\big(-r^{k+1}+B(z^{k+1}-z^\star)\big).\tag{A2} $$
 
@@ -106,23 +104,43 @@ The second term is $(x^{k+1}-x^\star)^\top s^{k+1}$. So
 
 $$ f(x^k)+g(z^k)-p^\star\le -(y^k)^\top r^k+(x^k-x^\star)^\top s^k. $$
 
-There's the suboptimality bound in terms of the two residuals: when $r^k$ and $s^k$ are small, the objective gap is small. I can't use it literally because $x^\star$ is unknown, but if I bound $\|x^k-x^\star\|\le d$ then $f(x^k)+g(z^k)-p^\star\le \|y^k\|\,\|r^k\|+d\,\|s^k\|$. So a sensible stopping rule is exactly "both residuals small": $\|r^k\|_2\le\varepsilon^{\text{pri}}$ and $\|s^k\|_2\le\varepsilon^{\text{dual}}$. In practice I set those tolerances with an absolute and a relative part scaled by the sizes of the quantities involved,
+There's the suboptimality bound in terms of the two residuals: when $r^k$ and $s^k$ are small, the objective gap is small. I can't use it literally because $x^\star$ is unknown, but if I bound $\|x^k-x^\star\|\le d$ then $f(x^k)+g(z^k)-p^\star\le \|y^k\|\,\|r^k\|+d\,\|s^k\|$. So a sensible stopping rule is exactly "both residuals small": $\|r^k\|_2\le\varepsilon^{\text{pri}}$ and $\|s^k\|_2\le\varepsilon^{\text{dual}}$. I set those tolerances with an absolute and a relative part scaled by the sizes of the quantities involved,
 
 $$ \varepsilon^{\text{pri}}=\sqrt{p}\,\varepsilon^{\text{abs}}+\varepsilon^{\text{rel}}\max\{\|Ax^k\|,\|Bz^k\|,\|c\|\},\qquad \varepsilon^{\text{dual}}=\sqrt{n}\,\varepsilon^{\text{abs}}+\varepsilon^{\text{rel}}\|A^\top y^k\|, $$
 
-the $\sqrt{p},\sqrt{n}$ accounting for the dimensions of the two residual vectors, with $\varepsilon^{\text{rel}}$ around $10^{-3}$–$10^{-4}$.
+the $\sqrt{p},\sqrt{n}$ accounting for the dimensions of the two residual vectors. A tighter general solve might use $\varepsilon^{\text{rel}}$ around $10^{-3}$ or $10^{-4}$; the small lasso loop below uses a looser modest-accuracy default.
 
-I still owe myself the *convergence* — that those residuals actually go to zero. That's the third inequality. **Inequality (A1):** I claim $V^{k+1}\le V^k-\rho\|r^{k+1}\|^2-\rho\|B(z^{k+1}-z^k)\|^2$. This comes out of $2\times[(A2)+(A3)]$ after rewriting. Adding (A2) and (A3) and multiplying by $2$ gives, after canceling $p^{k+1},p^\star$,
+I still owe myself the convergence — that those residuals actually go to zero. Adding (A2) and (A3) and multiplying by $2$ gives, after canceling $p^{k+1},p^\star$ and moving everything to the left,
 
 $$ 2(y^{k+1}-y^\star)^\top r^{k+1}-2\rho\big(B(z^{k+1}-z^k)\big)^\top r^{k+1}+2\rho\big(B(z^{k+1}-z^k)\big)^\top B(z^{k+1}-z^\star)\le 0. $$
 
-The first term I massage with $y^{k+1}=y^k+\rho r^{k+1}$ and $r^{k+1}=\tfrac1\rho(y^{k+1}-y^k)$: it becomes $\tfrac1\rho\big(\|y^{k+1}-y^\star\|^2-\|y^k-y^\star\|^2\big)+\rho\|r^{k+1}\|^2$ — that's the $y$-part of $V^{k+1}-V^k$ falling out. The remaining terms, using $z^{k+1}-z^\star=(z^{k+1}-z^k)+(z^k-z^\star)$, reorganize into $\rho\|r^{k+1}-B(z^{k+1}-z^k)\|^2+\rho\big(\|B(z^{k+1}-z^\star)\|^2-\|B(z^k-z^\star)\|^2\big)$ — and that second piece is the $Bz$-part of $V^{k+1}-V^k$. Collecting, the inequality reads $V^k-V^{k+1}\ge\rho\|r^{k+1}-B(z^{k+1}-z^k)\|^2$. Expand the squared norm: $\rho\|r^{k+1}\|^2-2\rho(r^{k+1})^\top B(z^{k+1}-z^k)+\rho\|B(z^{k+1}-z^k)\|^2$. The middle cross term I need to be nonnegative to get (A1); and it is, because $z^{k+1}$ minimizes $g(z)+(y^{k+1})^\top Bz$ while $z^k$ minimizes $g(z)+(y^k)^\top Bz$, so adding the two minimizer inequalities gives $(y^{k+1}-y^k)^\top B(z^{k+1}-z^k)\le 0$, and $y^{k+1}-y^k=\rho r^{k+1}$ turns that into $\rho(r^{k+1})^\top B(z^{k+1}-z^k)\le 0$, i.e. $-2\rho(r^{k+1})^\top B(z^{k+1}-z^k)\ge 0$. Dropping that nonnegative cross term gives
+The first term has the Lyapunov difference hidden in it. Substitute $y^{k+1}=y^k+\rho r^{k+1}$ and $r^{k+1}=\tfrac1\rho(y^{k+1}-y^k)$; the identity $2a^\top(a-b)=\|a\|^2-\|b\|^2+\|a-b\|^2$ gives
+
+$$ 2(y^{k+1}-y^\star)^\top r^{k+1}=\tfrac1\rho\big(\|y^{k+1}-y^\star\|^2-\|y^k-y^\star\|^2\big)+\rho\|r^{k+1}\|^2. $$
+
+For the $z$ part, let $\Delta_z=z^{k+1}-z^k$. The remaining terms, together with the extra $\rho\|r^{k+1}\|^2$ that just appeared, are
+
+$$ \rho\|r^{k+1}\|^2-2\rho(B\Delta_z)^\top r^{k+1}+2\rho(B\Delta_z)^\top B(z^{k+1}-z^\star). $$
+
+Writing $z^{k+1}-z^\star=\Delta_z+(z^k-z^\star)$ turns this into
+
+$$ \rho\|r^{k+1}-B\Delta_z\|^2+\rho\|B\Delta_z\|^2+2\rho(B\Delta_z)^\top B(z^k-z^\star). $$
+
+The last two terms are a difference of squares, because $\Delta_z=(z^{k+1}-z^\star)-(z^k-z^\star)$:
+
+$$ \rho\|B\Delta_z\|^2+2\rho(B\Delta_z)^\top B(z^k-z^\star)=\rho\|B(z^{k+1}-z^\star)\|^2-\rho\|B(z^k-z^\star)\|^2. $$
+
+Collecting the $y$ and $Bz$ differences, the inequality says
+
+$$ V^k-V^{k+1}\ge\rho\|r^{k+1}-B(z^{k+1}-z^k)\|^2. $$
+
+Expanding the squared norm gives $\rho\|r^{k+1}\|^2-2\rho(r^{k+1})^\top B(z^{k+1}-z^k)+\rho\|B(z^{k+1}-z^k)\|^2$. The middle term is nonnegative: $z^{k+1}$ minimizes $g(z)+(y^{k+1})^\top Bz$, while $z^k$ minimizes $g(z)+(y^k)^\top Bz$ from the previous iteration, so adding those two minimizer inequalities gives $(y^{k+1}-y^k)^\top B(z^{k+1}-z^k)\le 0$. With $y^{k+1}-y^k=\rho r^{k+1}$, this is $\rho(r^{k+1})^\top B(z^{k+1}-z^k)\le0$, so $-2\rho(r^{k+1})^\top B(z^{k+1}-z^k)\ge0$. Dropping that nonnegative term leaves
 
 $$ V^{k+1}\le V^k-\rho\|r^{k+1}\|^2-\rho\|B(z^{k+1}-z^k)\|^2.\tag{A1} $$
 
-So $V^k$ is a genuine Lyapunov function: nonincreasing, hence $y^k$ and $Bz^k$ are bounded, and summing (A1) over all $k$ gives $\rho\sum_{k}\big(\|r^{k+1}\|^2+\|B(z^{k+1}-z^k)\|^2\big)\le V^0<\infty$. A convergent series has terms going to zero, so $r^k\to0$ (primal feasibility) and $B(z^{k+1}-z^k)\to0$; multiplying the latter by $\rho A^\top$ shows the dual residual $s^k=\rho A^\top B(z^{k+1}-z^k)\to0$. Feed $r^k\to0$ into (A3) and the bounded $B(z^{k+1}-z^\star)$, $r^{k+1}$, $B(z^{k+1}-z^k)\to0$ into (A2): both sides squeeze, so $p^k\to p^\star$ — objective convergence. So the alternation *is* enough: one Gauss–Seidel sweep per iteration converges, the residuals vanish, and the stopping rule I built is guaranteed to eventually trigger. The bet paid off.
+So $V^k$ is a genuine Lyapunov function: nonincreasing, hence $y^k$ and $Bz^k$ are bounded, and summing (A1) over all $k$ gives $\rho\sum_{k}\big(\|r^{k+1}\|^2+\|B(z^{k+1}-z^k)\|^2\big)\le V^0<\infty$. A convergent series has terms going to zero, so $r^k\to0$ (primal feasibility) and $B(z^{k+1}-z^k)\to0$; multiplying the latter by $\rho A^\top$ shows the dual residual $s^k=\rho A^\top B(z^{k+1}-z^k)\to0$. Feed $r^k\to0$ into (A3), and feed bounded $B(z^{k+1}-z^\star)$ plus $r^{k+1}\to0$ and $B(z^{k+1}-z^k)\to0$ into (A2); the objective gap is squeezed to zero, so $p^k\to p^\star$. The same convergence result gives $y^k$ tending to a dual optimum, while $x^k$ and $z^k$ themselves need not converge without extra assumptions. One Gauss–Seidel sweep per iteration is enough: the residuals vanish, the objective converges, and the stopping rule is guaranteed to eventually trigger.
 
-That settles the abstract algorithm. Now let me make it concrete, because the whole point was decomposition and cheap per-block updates, and I want to see them actually fall out for the problems I care about. The cleanest case, and the one that shows the magic, is splitting a regularized loss. Take the lasso, $\min\tfrac12\|Cx-b\|_2^2+\lambda\|x\|_1$. It doesn't *look* like a two-block problem — there's one variable $x$. But I can manufacture the split by introducing a copy: set $f(x)=\tfrac12\|Cx-b\|^2$ and $g(z)=\lambda\|z\|_1$, and couple them with $x-z=0$. So $A=I$, $B=-I$, $c=0$. Now the two halves of the objective each get their own update and never have to be handled together. The scaled ADMM is
+The abstract loop is only useful if the substeps become cheap. The cleanest test is splitting a regularized loss. Take the lasso, $\min\tfrac12\|Cx-b\|_2^2+\lambda\|x\|_1$. It doesn't *look* like a two-block problem — there's one variable $x$. But I can manufacture the split by introducing a copy: set $f(x)=\tfrac12\|Cx-b\|^2$ and $g(z)=\lambda\|z\|_1$, and couple them with $x-z=0$. So $A=I$, $B=-I$, $c=0$. Now the two halves of the objective each get their own update and never have to be handled together. The scaled ADMM is
 
 $$ x^{k+1}=\arg\min_x\Big\{\tfrac12\|Cx-b\|^2+\tfrac\rho2\|x-z^k+u^k\|^2\Big\},\quad z^{k+1}=\arg\min_z\Big\{\lambda\|z\|_1+\tfrac\rho2\|x^{k+1}-z+u^k\|^2\Big\},\quad u^{k+1}=u^k+x^{k+1}-z^{k+1}. $$
 
@@ -130,13 +148,13 @@ The $x$-update is a smooth quadratic — set the gradient to zero: $C^\top(Cx-b)
 
 $$ x^{k+1}=(C^\top C+\rho I)^{-1}\big(C^\top b+\rho(z^k-u^k)\big). $$
 
-That's just **ridge regression** — quadratically regularized least squares — and $C^\top C+\rho I$ is always invertible since $\rho>0$, regardless of the shape of $C$. Better still, the matrix doesn't change across iterations, so I factor it *once* (a Cholesky), cache the factors, and every subsequent $x$-update is a cheap back-solve. (If $C$ is short-and-fat, $q\ll d$, I'd rather apply the matrix-inversion lemma and factor the smaller $q\times q$ system $I+\tfrac1\rho CC^\top$ instead.) So ADMM has turned the lasso into a sequence of ridge regressions — exactly the kind of robust, well-conditioned solve the augmented penalty promised.
+That's just ridge regression — quadratically regularized least squares — and $C^\top C+\rho I$ is always invertible since $\rho>0$, regardless of the shape of $C$. Better still, the matrix doesn't change across iterations, so I factor it *once* (a Cholesky), cache the factors, and every subsequent $x$-update is a cheap back-solve. (If $C$ is short-and-fat, $q\ll d$, I'd rather apply the matrix-inversion lemma and factor the smaller $q\times q$ system $I+\tfrac1\rho CC^\top$ instead.) So ADMM has turned the lasso into a sequence of ridge regressions — exactly the kind of robust, well-conditioned solve the augmented penalty promised.
 
 The $z$-update is where the $\ell_1$ lives, and I should solve it carefully because it's the prototype that recurs everywhere. With $A=I$ the penalty is $\tfrac\rho2\|z-v\|^2$ for $v=x^{k+1}+u^k$, so I need $\arg\min_z\{\lambda\|z\|_1+\tfrac\rho2\|z-v\|^2\}$. Because $\|z\|_1=\sum_i|z_i|$ is separable, this splits into $n$ identical scalar problems $\min_{z_i}\lambda|z_i|+\tfrac\rho2(z_i-v_i)^2$. Solve one. For $z_i>0$, $|z_i|=z_i$ is smooth: derivative $\lambda+\rho(z_i-v_i)=0\Rightarrow z_i=v_i-\lambda/\rho$, valid only when $v_i>\lambda/\rho$. For $z_i<0$, derivative $-\lambda+\rho(z_i-v_i)=0\Rightarrow z_i=v_i+\lambda/\rho$, valid when $v_i<-\lambda/\rho$. At $z_i=0$ there's a kink; $0$ is the minimizer exactly when $0$ is in the subdifferential $\lambda[-1,1]+\rho(0-v_i)$, i.e. $|v_i|\le\lambda/\rho$. Stitching the three regimes with $\kappa=\lambda/\rho$:
 
 $$ z_i^{k+1}=\begin{cases}v_i-\kappa,&v_i>\kappa\\ 0,&|v_i|\le\kappa\\ v_i+\kappa,&v_i<-\kappa\end{cases}\;=\;\operatorname{sign}(v_i)\,\max(|v_i|-\kappa,0)\;=\;S_\kappa(v_i). $$
 
-This is **soft-thresholding**, $S_\kappa(a)=(a-\kappa)_+-(-a-\kappa)_+=(1-\kappa/|a|)_+a$ — and in the language of the prox it's nothing but $\operatorname{prox}_{(\lambda/\rho)\|\cdot\|_1}$, the proximity operator of the $\ell_1$ norm. So the whole lasso reduces to: ridge-regress (cached factor), soft-threshold, update the running residual. Each step is dirt cheap, and the kink in $|\cdot|$ that made the problem nonsmooth is exactly the dead-zone that snaps small coordinates to zero. For this $A=I,B=-I,c=0$ instance the residuals specialize to $r^{k+1}=x^{k+1}-z^{k+1}$ and, since $A^\top B=-I$, $s^{k+1}=-\rho(z^{k+1}-z^k)$.
+This is soft-thresholding, $S_\kappa(a)=(a-\kappa)_+-(-a-\kappa)_+=(1-\kappa/|a|)_+a$ — and in the language of the prox it's nothing but $\operatorname{prox}_{(\lambda/\rho)\|\cdot\|_1}$, the proximity operator of the $\ell_1$ norm. So the whole lasso reduces to: ridge-regress (cached factor), soft-threshold, update the running residual. Each step is dirt cheap, and the kink in $|\cdot|$ that made the problem nonsmooth is exactly the dead-zone that snaps small coordinates to zero. For this $A=I,B=-I,c=0$ instance the residuals specialize to $r^{k+1}=x^{k+1}-z^{k+1}$ and, since $A^\top B=-I$, $s^{k+1}=-\rho(z^{k+1}-z^k)$.
 
 This generalizes immediately and that's the real prize. Any $\min \ell(x)+\lambda\|x\|_1$ for convex $\ell$ splits the same way, $x-z=0$, and ADMM becomes $x^{k+1}=\arg\min_x\{\ell(x)+\tfrac\rho2\|x-z^k+u^k\|^2\}$ (a *prox of $\ell$* — solvable by Newton or L-BFGS if $\ell$ is a smooth logistic loss, by a linear solve if it's quadratic) followed by the same soft-threshold $z$-update. Swap $\ell_1$ for any other simple regularizer and the only thing that changes is the $z$-update's prox: an indicator of a set $\mathcal C$ makes the $z$-update a Euclidean *projection* $\Pi_{\mathcal C}$ (the prox of an indicator is projection); a group/block norm $\sum\|z_g\|_2$ makes it *block* soft-thresholding $S_\kappa(a)=(1-\kappa/\|a\|_2)_+a$. The constrained problem $\min f(x)$ s.t. $x\in\mathcal C$ is just $f(x)+\iota_{\mathcal C}(z)$ with $x-z=0$: an $f$-prox alternating with a projection.
 
@@ -144,17 +162,17 @@ Now the distributed payoff, which is what I built the decomposition for in the f
 
 $$ \min\ \sum_{i=1}^N f_i(x_i)\quad\text{s.t.}\quad x_i-z=0,\ i=1,\dots,N. $$
 
-This is the **consensus** trick: turn a shared-variable sum, which doesn't separate, into a sum over private copies, which does, paying for it with consensus constraints. Form the augmented Lagrangian and run scaled ADMM. The $x$-update separates completely — each worker solves its own
+This is the consensus trick: turn a shared-variable sum, which doesn't separate, into a sum over private copies, which does, paying for it with consensus constraints. Form the augmented Lagrangian and run scaled ADMM. The $x$-update separates completely — each worker solves its own
 
 $$ x_i^{k+1}=\arg\min_{x_i}\Big\{f_i(x_i)+\tfrac\rho2\|x_i-z^k+u_i^k\|_2^2\Big\}, $$
 
 a private regularized fit pulling $x_i$ toward the current consensus $z^k$ minus its price $u_i^k$. The $z$-update minimizes $\tfrac\rho2\sum_i\|x_i^{k+1}-z+u_i^k\|^2$ over the single $z$, which is just an average: $z^{k+1}=\tfrac1N\sum_i(x_i^{k+1}+u_i^k)=\overline{x}^{k+1}+\overline{u}^k$. And then $u_i^{k+1}=u_i^k+x_i^{k+1}-z^{k+1}$. So every iteration is: each processor fits its own block in parallel (no communication), a single *gather* forms the average $z$, a *broadcast* sends it back, and each processor nudges its price by its own disagreement $x_i-z$. The only thing crossing the network is the average — exactly the decentralized structure dual decomposition promised, but now with the augmented-Lagrangian robustness that dual decomposition lacked. (One can check the prices average to zero after the first iteration, so $z^{k+1}=\overline{x}^{k+1}$ and the prices act purely to drive the copies into agreement.) If a regularizer $g$ sits on the global variable, $\min\sum_i f_i(x_i)+g(z)$ s.t. $x_i=z$, the $z$-update becomes the average followed by a single prox of $g$ — e.g. a soft-threshold for $g=\lambda\|z\|_1$, a projection for an indicator.
 
-The dual of consensus is the **sharing** problem $\min\sum_i f_i(x_i)+g(\sum_i x_i)$ — agents each pay a private cost and share a common term that sees only the *sum* of their choices. Copy the variables, $\min\sum_i f_i(x_i)+g(\sum_i z_i)$ s.t. $x_i-z_i=0$; the $x$-updates run in parallel, and the $z$-update — naively over $Nn$ variables — collapses to a problem in only $n$ variables by averaging, because the shared $g$ depends only on $\sum z_i$. The two templates are formally dual: running ADMM on a consensus problem is, up to conjugation, running it on the corresponding sharing problem. The exchange problem ($g$ the indicator of $\{\sum x_i=0\}$, agents trading commodities to net zero) is the headline special case.
+The dual of consensus is the sharing problem $\min\sum_i f_i(x_i)+g(\sum_i x_i)$ — agents each pay a private cost and share a common term that sees only the *sum* of their choices. Copy the variables, $\min\sum_i f_i(x_i)+g(\sum_i z_i)$ s.t. $x_i-z_i=0$; the $x$-updates run in parallel, and the $z$-update — naively over $Nn$ variables — collapses to a problem in only $n$ variables by averaging, because the shared $g$ depends only on $\sum z_i$. The two templates are formally dual: running ADMM on a consensus problem is, up to conjugation, running it on the corresponding sharing problem. The exchange problem ($g$ the indicator of $\{\sum x_i=0\}$, agents trading commodities to net zero) is the headline special case.
 
-One last thing pulls the whole construction together and explains *why* the convergence was so clean. Each block update is a prox/resolvent: the $x$-update is (a generalized) resolvent of $\partial f$, the $z$-update a resolvent of $\partial g$, and the iteration alternates them with a dual correction in between. That is precisely the shape of **Douglas–Rachford splitting** — Douglas and Rachford's 1956 alternating-resolvent scheme, extended by Lions and Mercier (1979) to find a zero of a sum of two maximal monotone operators by alternating their resolvents rather than touching the sum. Applied to the *dual* of my problem (where the two operators are built from $\partial f^*$ and $\partial g^*$), Douglas–Rachford splitting *is* this alternating minimization. And Douglas–Rachford is itself an instance of Rockafellar's proximal point algorithm on a maximal monotone operator, the same umbrella under which the method of multipliers lives. So the method I built by stubbornly insisting on "split the joint minimization into one Gauss–Seidel sweep" is, seen from the operator-splitting side, the canonical way to find a zero of $\partial f+\partial g$ — which is why the powerful proximal-point convergence theory applies to it directly, and why a self-contained Lyapunov proof like the one above exists at all. (The variant that slips an extra dual update *between* the $x$- and $z$-steps corresponds to Peaceman–Rachford splitting instead.)
+The operator-splitting view makes the convergence feel less mysterious. Each block update is a prox/resolvent: the $x$-update is (a generalized) resolvent of $\partial f$, the $z$-update a resolvent of $\partial g$, and the iteration alternates them with a dual correction in between. That is precisely the shape of Douglas–Rachford splitting — Douglas and Rachford's 1956 alternating-resolvent scheme, extended by Lions and Mercier (1979) to find a zero of a sum of two maximal monotone operators by alternating their resolvents rather than touching the sum. Applied to the *dual* of my problem (where the two operators are built from $\partial f^*$ and $\partial g^*$), Douglas–Rachford splitting *is* this alternating minimization. And Douglas–Rachford is itself an instance of Rockafellar's proximal point algorithm on a maximal monotone operator, the same umbrella under which the method of multipliers lives. So the method I built by stubbornly insisting on "split the joint minimization into one Gauss–Seidel sweep" is, seen from the operator-splitting side, the canonical way to find a zero of $\partial f+\partial g$ — which is why the powerful proximal-point convergence theory applies to it directly, and why a self-contained Lyapunov proof like the one above exists at all. (The variant that slips an extra dual update *between* the $x$- and $z$-steps corresponds to Peaceman–Rachford splitting instead.)
 
-Now let me land it in code, grounded in how a standard ADMM lasso solver is actually written: cache the factorization for the $x$-update, soft-threshold for the $z$-update, accumulate the scaled dual, and stop on the primal/dual residuals with absolute+relative tolerances.
+The lasso code is now just the pieces above: cache the factorization for the $x$-update, soft-threshold for the $z$-update, accumulate the scaled dual, and record the primal/dual residuals with absolute+relative tolerances.
 
 ```python
 import numpy as np
@@ -177,8 +195,12 @@ def factor(C, rho):
     return L, L.T.conj()                              # lower L and its transpose U
 
 
-def lasso_admm(C, b, lam, rho=1.0, alpha=1.0, n_iter=1000,
-               abstol=1e-4, reltol=1e-2):
+def objective(C, b, lam, x, z):
+    return 0.5 * np.sum((C @ x - b) ** 2) + lam * norm(z, 1)
+
+
+def lasso(C, b, lam, rho=1.0, alpha=1.0, n_iter=1000,
+          abstol=1e-4, reltol=1e-2):
     # Solve  min 1/2 ||C x - b||^2 + lam ||x||_1  by ADMM with the split x - z = 0
     # (so A = I, B = -I, c = 0):  f(x) = 1/2||Cx-b||^2,  g(z) = lam||z||_1.
     q, d = C.shape
@@ -188,6 +210,7 @@ def lasso_admm(C, b, lam, rho=1.0, alpha=1.0, n_iter=1000,
     x = np.zeros(d)
     z = np.zeros(d)
     u = np.zeros(d)                                   # scaled dual u = y / rho
+    history = {"objval": [], "r_norm": [], "s_norm": [], "eps_pri": [], "eps_dual": []}
 
     for k in range(n_iter):
         # x-update: ridge regression (CtC + rho I) x = Ct b + rho (z - u), via the cached factors.
@@ -209,15 +232,45 @@ def lasso_admm(C, b, lam, rho=1.0, alpha=1.0, n_iter=1000,
         # primal residual r = x - z ; dual residual s = -rho (z - z_old)  (since A'B = -I).
         r_norm = norm(x - z)
         s_norm = norm(-rho * (z - z_old))
-        eps_pri = np.sqrt(d) * abstol + reltol * max(norm(x), norm(z))
+        eps_pri = np.sqrt(d) * abstol + reltol * max(norm(x), norm(-z))
         eps_dual = np.sqrt(d) * abstol + reltol * norm(rho * u)
+        history["objval"].append(objective(C, b, lam, x, z))
+        history["r_norm"].append(r_norm)
+        history["s_norm"].append(s_norm)
+        history["eps_pri"].append(eps_pri)
+        history["eps_dual"].append(eps_dual)
         if r_norm < eps_pri and s_norm < eps_dual:    # both optimality residuals small
+            break
+
+    return z, history
+
+
+def solve_split_problem(x_update, z_update, A, B, c, n, m, p, rho=1.0,
+                        n_iter=1000, abstol=1e-4, reltol=1e-2):
+    # Generic scaled-form ADMM for min f(x)+g(z) s.t. A x + B z = c.
+    # x_update(z, u, rho) = argmin_x f(x) + (rho/2)||A x + B z - c + u||^2
+    # z_update(x, u, rho) = argmin_z g(z) + (rho/2)||A x + B z - c + u||^2
+    x = np.zeros(n)
+    z = np.zeros(m)
+    u = np.zeros(p)                                   # scaled dual
+
+    for k in range(n_iter):
+        z_old = z
+        x = x_update(z, u, rho)
+        z = z_update(x, u, rho)
+        r = A @ x + B @ z - c                         # primal residual
+        u = u + r                                     # scaled dual update
+        s = rho * (A.T @ (B @ (z - z_old)))           # dual residual rho A'B (z - z_old)
+
+        eps_pri = np.sqrt(p) * abstol + reltol * max(norm(A @ x), norm(B @ z), norm(c))
+        eps_dual = np.sqrt(n) * abstol + reltol * norm(rho * (A.T @ u))
+        if norm(r) < eps_pri and norm(s) < eps_dual:
             break
 
     return x, z
 
 
-def consensus_admm(prox_fi, N, d, rho=1.0, n_iter=1000, abstol=1e-4, reltol=1e-2):
+def consensus(prox_fi, N, d, rho=1.0, n_iter=1000, abstol=1e-4, reltol=1e-2):
     # Solve  min sum_i f_i(x)  by global consensus: private copies x_i agree with global z.
     # prox_fi[i](v, rho) returns argmin_xi f_i(xi) + (rho/2)||xi - v||^2.
     X = np.zeros((N, d))                              # local copies

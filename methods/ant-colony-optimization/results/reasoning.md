@@ -50,7 +50,7 @@ Step back and ask *why* this works at all, because I want to trust it, not just 
 
 That also tells me what stagnation *is*, precisely. As cycles pass, the transition probabilities at each city sharpen toward a near-stationary pattern. In the healthy regime most cities keep two or three live out-edges with non-negligible probability, so ants still branch and the search never stops finding variants. In the failed regime — too much α, too little evaporation, too much elitism — each city collapses to essentially one out-edge, every ant retraces the identical tour, and the standard deviation of tour lengths across the population drops to zero. So I can *watch* for health: track the spread of tour lengths (stays above zero = still exploring) and the average node branching (how many edges per city stay above a small trail threshold ε; stays above two = not stuck on one cycle). Those are my dials' read-outs.
 
-So here's the whole causal chain, and it feels inevitable now: I wanted general-purpose, population-based, constructive cooperation, which pointed at stigmergic ants; the choice rule is a product [τ]^α[η]^β so that learned trail and greedy closeness are both necessary and independently tunable; the deposit is Q/L per used edge so the shared memory is biased by *global solution quality*; evaporation ρ is the brake that bounds the runaway feedback and lets the colony forget early mistakes; α, β, ρ (and elitist e) set the explore–exploit operating point between fast convergence and stagnation; and the reason it produces good tours is that superimposing many greedy ants reinforces the good sub-paths they agree on and evaporates the bad forced edges they don't. Let me write it.
+The pieces are now pinned down: the choice rule is a product [τ]^α[η]^β so that learned trail and greedy closeness are both necessary and independently tunable; the deposit is Q/L per used edge so the shared trail is biased by global solution quality; evaporation ρ is the brake that bounds the runaway feedback and lets the colony forget early mistakes; and α, β, ρ, and elitist reinforcement set the operating point between fast convergence and stagnation. I can write the implementation.
 
 ```python
 import random
@@ -65,18 +65,17 @@ class Graph(object):
         self.pheromone = [[1 / (rank * rank) for _ in range(rank)] for _ in range(rank)]
 
 
-class ACO(object):
-    def __init__(self, ant_count, generations, alpha, beta, rho, q, strategy):
+class Colony(object):
+    def __init__(self, ant_count, generations, alpha, beta, rho, q):
         # alpha: weight on trail   beta: weight on visibility
         # rho:   fraction of trail that PERSISTS each cycle (1-rho evaporates)
-        # q:     deposit scale Q   strategy: 0 ant-cycle (Q/L), 1 ant-quality (Q), 2 ant-density (Q/d)
+        # q:     deposit scale Q
         self.Q = q
         self.rho = rho
         self.beta = beta
         self.alpha = alpha
         self.ant_count = ant_count
         self.generations = generations
-        self.update_strategy = strategy
 
     def _update_pheromone(self, graph, ants):
         # evaporate, then fold in every ant's deposit
@@ -104,8 +103,8 @@ class ACO(object):
 
 
 class _Ant(object):
-    def __init__(self, aco, graph):
-        self.colony = aco
+    def __init__(self, colony, graph):
+        self.colony = colony
         self.graph = graph
         self.total_cost = 0.0
         self.tabu = []                                   # cities visited (legal-tour constraint)
@@ -130,7 +129,7 @@ class _Ant(object):
                 probabilities[i] = self.graph.pheromone[self.current][i] ** self.colony.alpha \
                     * self.eta[self.current][i] ** self.colony.beta / denominator
         # roulette-wheel sample
-        selected = 0
+        selected = self.allowed[-1]
         rand = random.random()
         for i, probability in enumerate(probabilities):
             rand -= probability
@@ -143,20 +142,10 @@ class _Ant(object):
         self.current = selected
 
     def _update_pheromone_delta(self):
-        # what this ant deposits on each edge of its tour
+        # what this ant deposits on each edge of its closed tour
         self.pheromone_delta = [[0 for _ in range(self.graph.rank)] for _ in range(self.graph.rank)]
-        for k in range(1, len(self.tabu)):
-            i = self.tabu[k - 1]
-            j = self.tabu[k]
-            if self.colony.update_strategy == 1:        # ant-quality: constant Q (local, quality-blind)
-                self.pheromone_delta[i][j] = self.colony.Q
-            elif self.colony.update_strategy == 2:      # ant-density: Q/d (local, distance-weighted)
-                self.pheromone_delta[i][j] = self.colony.Q / self.graph.matrix[i][j]
-            else:                                       # ant-cycle: Q/L, GLOBAL solution quality -> the good one
-                self.pheromone_delta[i][j] = self.colony.Q / self.total_cost
+        for i, j in zip(self.tabu, self.tabu[1:] + self.tabu[:1]):
+            self.pheromone_delta[i][j] = self.colony.Q / self.total_cost
 ```
 
-One causal sentence to close: many simple agents build tours by a product rule that fuses learned trail and greedy closeness; they write quality-weighted pheromone (Q/L) back onto the edges of good tours; evaporation bounds the resulting positive feedback and lets the colony forget bad early choices; and α, β, ρ tune the operating point so that the superimposed agreement of many greedy ants on good sub-paths — with their idiosyncratic bad edges evaporated away — converges on short tours without all collapsing onto one.
-
-A natural next push: the [τ]^α factor with a roulette draw spends most of its randomness re-sampling edges it's already fairly sure about. If I instead, on most steps, just *take* the single best [τ][η] edge (pure exploit) and only occasionally fall back to the probabilistic draw (explore), I'd get a sharper, directly-tunable exploit/explore knob — a single q₀ threshold instead of reading it off α. And if I worry that best-only reinforcement would collapse the colony onto one tour, I could have each ant *lower* an edge's trail slightly the moment it traverses it, so within a single cycle the ants spread out instead of piling onto the same edges. That's the direction I'd refine next; the core engine is the trail-product choice, the quality-weighted deposit, and the evaporation brake.
-```
+Many simple agents build tours by a product rule that fuses learned trail and greedy closeness; they write quality-weighted pheromone (Q/L) back onto the edges of good tours; evaporation bounds the resulting positive feedback and lets the colony forget bad early choices; and α, β, ρ tune the operating point so that the superimposed agreement of many greedy ants on good sub-paths — with their idiosyncratic bad edges evaporated away — converges on short tours without all collapsing onto one.

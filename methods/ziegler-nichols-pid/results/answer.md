@@ -126,7 +126,7 @@ def tune_reaction_curve(R1, L, kind="PID"):
 
 # Cascaded quadrotor axis: inner attitude loop nested in outer position loop.
 # Tune the inner loop to its own ultimate cycle, close it, tune the outer loop.
-inner = PID(*tune_ultimate_cycle(Ku_rate, Tu_rate, "PID"), dt=0.002,
+inner = PID(*tune_ultimate_cycle(Ku_ang, Tu_ang, "PID"), dt=0.002,
             out_min=-1.0, out_max=1.0)     # motor-differential command
 outer = PID(*tune_ultimate_cycle(Ku_pos, Tu_pos, "PI"), dt=0.01,
             out_min=-0.3, out_max=0.3)     # commanded tilt angle

@@ -136,7 +136,7 @@ def projected_scattering_signal(v_in, v_out):
     return 0.5 * float(dtheta @ dtheta)
 
 # ----- PoCA reconstruction -----
-def reconstruct_single_scatter(muons, grid):
+def reconstruct_poca(muons, grid):
     S = np.zeros(tuple(grid.n)); I = np.zeros(tuple(grid.n))
     for p_in, v_in, p_out, v_out in muons:
         p_in, v_in = np.asarray(p_in, float), np.asarray(v_in, float)
@@ -157,8 +157,8 @@ def reconstruct_single_scatter(muons, grid):
     return lam
 
 # ----- Maximum-likelihood (MLS) reconstruction -----
-def reconstruct_path_variance(signals, path_lengths, lambda_air=LAMBDA_AIR, lam0=None):
-    Lmat = np.asarray(path_lengths, float)
+def reconstruct_mls(signals, Lmat, lambda_air=LAMBDA_AIR, lam0=None):
+    Lmat = np.asarray(Lmat, float)
     s2 = np.asarray(signals, float) ** 2
     n = Lmat.shape[1]
     def nll(lam):

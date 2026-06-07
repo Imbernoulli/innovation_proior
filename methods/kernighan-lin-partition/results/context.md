@@ -71,8 +71,9 @@ capacities; the max-flow–min-cut theorem gives a cut of minimum capacity separ
 nodes, i.e. a minimum-cost partition into two subsets of **unspecified** sizes. The fatal gap for
 this application is exactly that: the algorithm has no provision for constraining the sizes of the
 two subsets, and there is no natural way to bolt one on. If a balanced split is forced
-afterwards, further processing is needed and the benefit is essentially lost. (It does compute the
-minimum *unconstrained* 2-way cut, which is a valid lower bound on any partition's cost.)
+afterwards, further processing is needed and the benefit is essentially lost. (Minimizing over the
+choice of the two separated nodes gives the *global* unconstrained 2-way min-cut, which is a valid
+lower bound on any partition's cost.)
 
 **Clustering.** Identify "natural clusters" in the cost matrix — groups of strongly connected
 nodes — and build subsets around them. Intuitive, but provides no systematic way to satisfy the

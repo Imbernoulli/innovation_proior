@@ -14,7 +14,7 @@ The pain point common to both is that the *interesting* configurations are vanis
 
 ## Background
 
-**Crude Monte-Carlo and its relative error.** To estimate ℓ = E_u[1_{S≥γ}], draw X₁,…,X_N i.i.d. from f(·; u) and average the indicator. The estimator is unbiased with variance ℓ(1−ℓ)/N, so its *relative* error is ≈ √((1−ℓ)/(Nℓ)) ≈ 1/√(Nℓ). Pinning that to a fixed accuracy needs N on the order of 1/ℓ — about 10⁵/ℓ draws for 1% relative error. For ℓ = 10⁻⁵ that is already 10¹⁰ runs; the scaling is the wall.
+**Crude Monte-Carlo and its relative error.** To estimate ℓ = E_u[1_{S≥γ}], draw X₁,…,X_N i.i.d. from f(·; u) and average the indicator. The estimator is unbiased with variance ℓ(1−ℓ)/N, so its *relative* error is ≈ √((1−ℓ)/(Nℓ)) ≈ 1/√(Nℓ). Pinning that to 1% relative error needs N ≈ 10⁴/ℓ draws. For ℓ = 10⁻⁵ that is already 10⁹ runs; the scaling is the wall.
 
 **Importance sampling and the likelihood ratio.** The same expectation can be taken under a different sampling density g, as long as each sample is reweighted. If g(x) = 0 only where 1_{S(x)≥γ} f(x; u) = 0, then
 
@@ -26,7 +26,7 @@ with the *likelihood ratio* W(x) = f(x; u)/g(x). The estimator ℓ̂ = (1/N) Σ 
 
     g*(x) = 1_{S(x)≥γ} f(x; u) / ℓ,
 
-i.e. the nominal law restricted to the rare set and renormalized. Under g* the integrand 1_{S≥γ} f/g* equals ℓ identically, so the estimator has *zero* variance and one sample suffices. But g* contains the unknown ℓ in its normalizer — it presupposes the answer. It is unusable as a recipe, yet it states exactly what a good sampler should look like: live on {S ≥ γ}, and there be shaped like f.
+i.e. the nominal law restricted to the rare set and renormalized. Under g* the integrand 1_{S≥γ} f/g* equals ℓ identically, so the estimator has *zero* variance and one sample suffices. But g* contains the unknown ℓ in its normalizer — it presupposes the answer. It is unusable as a recipe, yet it states exactly what a good sampler should look like: live on {S ≥ γ}, and be shaped like f there.
 
 **Kullback–Leibler divergence (cross-entropy).** A standard measure of dissimilarity between two densities g and h is
 
@@ -36,13 +36,13 @@ It is non-negative, zero iff g = h, and not symmetric. The second term, −∫ g
 
 **Maximum likelihood and exponential families.** Given data x₁,…,x_N modelled as i.i.d. f(·; v), the maximum-likelihood estimate is v̂ = argmax_v Σ_i ln f(x_i; v). For a natural exponential family (Bernoulli, Gaussian, exponential, …) the stationary equation ∇_v Σ ln f(x_i; v) = 0 has a closed form: the fitted parameter is a sample moment of the data. For Bernoulli f(x; p) = p^x(1−p)^{1−x}, ∂_p ln f = (x − p)/[p(1−p)], so p̂ = (1/N) Σ x_i, the fraction of ones. For a Gaussian N(μ, σ²), ∂_μ ln f = (x − μ)/σ² and ∂_{σ²} ln f = −1/(2σ²) + (x − μ)²/(2σ⁴), so μ̂ = mean and σ̂² = variance of the data. For an exponential mean-parameterized density, v̂ = sample mean.
 
-**Exponential tilting / change of measure for light tails.** For light-tailed laws, the way to make a tail event typical without distorting the exponential decay rate is to reweight f by an exponential and renormalize — an exponential family of tilts. For a random walk that must climb to a far level, the drift-reversing tilt (the Lundberg root of E[e^{γΔ}] = 1) makes the rare crossing a sure event under the new measure; large-deviations theory identifies this tilt as the asymptotically efficient sampler. So a *parametric reference v* shifting the nominal law toward the rare set is the natural class of importance densities — the open question is which v.
+**Exponential tilting / change of measure for light tails.** For light-tailed laws, the way to make a tail event typical without distorting the exponential decay rate is to reweight f by an exponential and renormalize — an exponential family of tilts. For a random walk that must climb to a far level, large-deviations theory points to an exponential tilt that reverses the drift and makes the crossing typical under the new measure. So a *parametric reference v* shifting the nominal law toward the rare set is the natural class of importance densities — the open question is which v.
 
 **The recurring structure that ties the two problems together.** A maximization can be turned into a sequence of rare-event estimation problems: introduce the family of indicators {1_{S(x)≥γ}} and the *associated stochastic problem* ℓ(γ) = E_u[1_{S(X)≥γ}]. When γ approaches γ*, the set {S ≥ γ} shrinks to the optimizer(s), and a density that puts its mass on {S ≥ γ} therefore concentrates on x*. Both faces reduce to the same question: *how do you find a sampling density concentrated on {S ≥ γ}, when you cannot afford to wait for that set to be hit by chance?*
 
 ## Baselines
 
-**Crude Monte-Carlo (estimation).** Draw from f(·; u), count, divide. Unbiased and correct, but relative error ≈ 1/√(Nℓ); certifying a 10⁻⁵ probability to a few percent costs ~10¹⁰ runs. The gap it leaves: it never exploits *where* the rare mass concentrates.
+**Crude Monte-Carlo (estimation).** Draw from f(·; u), count, divide. Unbiased and correct, but relative error ≈ 1/√(Nℓ); certifying a 10⁻⁵ probability to 1% costs ~10⁹ runs, and even a few-percent estimate still costs ~10⁸ runs. The gap it leaves: it never exploits *where* the rare mass concentrates.
 
 **Static importance sampling with a hand-picked tilt.** Fix a single reference parameter v by analysis (large-deviations, a guessed shift), sample from f(·; v), reweight by W. This can cut variance by orders of magnitude *when* the tilt is right, but the optimal v is generally very hard to obtain in closed form for a complex system, and a poorly chosen v can make the variance *worse* than crude MC — the few relevant samples carry exploding weights. The gap: no constructive, self-tuning way to find a good v.
 
@@ -64,49 +64,48 @@ The natural test beds combine an estimation harness and an optimization harness 
 
 ## Code framework
 
-A generic adaptive-sampling harness: a parametric family from which one can sample and whose log-density gradient is known, a performance function S, and a loop that draws a sample, scores it, and refits the sampling parameter. The unresolved piece is the *refitting rule* — how to turn a scored sample into a better sampling parameter — and the *level schedule* that keeps the interesting set from being empty.
+A generic adaptive-sampling harness: a performance function S, a parametric sampler, a likelihood-ratio routine for the estimation setting, and loops that draw a sample, score it, and replace the sampling parameter. The unresolved pieces are the level choice and the refit from a scored sample.
 
 ```python
 import numpy as np
 
-# --- the parametric sampling family (sample + log-density), problem-specific ---
-class SamplingFamily:
-    """A family f(.; v): draw samples, evaluate the likelihood ratio f(.;u)/f(.;v)."""
-    def sample(self, v, N, rng):
-        raise NotImplementedError
-    def log_likelihood_ratio(self, x, u, v):
-        # log f(x; u) - log f(x; v); needed only for the estimation face
-        raise NotImplementedError
-
-def performance(x):
-    """S(x): shortest-path length, cut weight, or a continuous objective."""
-    raise NotImplementedError
-
-# --- the unresolved core: turn a scored sample into a better sampling parameter ---
-def refit_parameter(X, scores, gamma, u, v_prev, family):
-    """Choose the next reference parameter from the current sample.
-
-    TODO: pick v to bring the sampling density close to 'f restricted to {S >= gamma}'.
-    The elite-selection rule and the closed-form update both go here.
-    """
+def shortest_path(x):
+    """Performance S for the five-edge bridge network."""
     pass
 
-def level_update(scores, gamma_target, rho):
-    """Pick the working level gamma_t so {S >= gamma_t} is not empty.
-
-    TODO: keep the interesting set at a manageable rarity (~rho) and march it
-    toward gamma_target / the optimum.
-    """
+def exponential_log_likelihood_ratio(X, u, v):
+    """Log f(X; u) - log f(X; v) for independent exponential means."""
     pass
 
-def adaptive_loop(family, u, gamma_target, rho, N, rng):
+def choose_level(scores, target, rho):
+    """Choose the current working level from a scored sample."""
+    pass
+
+def refit_exponential_means(X, scores, level, u, v):
+    """Choose the next exponential mean vector from the scored sample."""
+    pass
+
+def adaptive_rare_event(u, gamma, rho, N, N_final, rng):
     v = u
     while True:
-        X = family.sample(v, N, rng)
-        scores = np.array([performance(x) for x in X])
-        gamma_t = level_update(scores, gamma_target, rho)   # TODO
-        v = refit_parameter(X, scores, gamma_t, u, v, family)  # TODO
-        # TODO: stopping rule; for estimation, a final reweighted average
-        break
-    return v
+        X = rng.exponential(scale=v, size=(N, len(v)))
+        scores = np.array([shortest_path(x) for x in X])
+        level, reached = choose_level(scores, gamma, rho)          # TODO
+        v = refit_exponential_means(X, scores, level, u, v)        # TODO
+        if reached:
+            break
+    # TODO: draw a final sample under v and form the reweighted tail estimate.
+    pass
+
+def refit_gaussian(X, scores, rho):
+    """Choose the next Gaussian location and scale from the scored sample."""
+    pass
+
+def adaptive_optimize(objective, mu, sigma, rho, N, alpha, n_iter, tol, rng):
+    for _ in range(n_iter):
+        X = mu + sigma * rng.standard_normal((N, len(mu)))
+        scores = np.array([objective(x) for x in X])
+        mu_hat, sigma_hat = refit_gaussian(X, scores, rho)         # TODO
+        # TODO: blend the refit with the current parameters and stop on collapse.
+        pass
 ```

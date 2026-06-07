@@ -51,7 +51,7 @@ no hand-grouping into separate GPs).
 
 1. **Warm-up.** Run `n_startup` (~20) random trials drawn from the prior generative process.
 2. **Split.** Sort the history by loss; the best `γ`-quantile forms the good set (→ `l`), the rest
-   the bad set (→ `g`). (Hyperopt uses `n_below = ⌈γ·√N⌉` good points; `γ = 0.25`.)
+   the bad set (→ `g`). (Hyperopt uses `n_below = min(⌈γ·√N⌉, 25)` good points; `γ = 0.25`.)
 3. **Fit densities.** Per variable, build an **adaptive Gaussian Parzen mixture**: one Gaussian per
    observation plus the box prior kept in the mixture; per-point bandwidth = the **greater of the
    distances to the sorted left/right neighbor** (endpoints count as neighbors), clipped to
@@ -150,5 +150,5 @@ node's leaf distribution (uniform → truncated Gaussian mixture, log-uniform �
 truncated Gaussian mixture, categorical → re-weighted categorical) is re-fit from the good / bad
 subsets, candidates are sampled by walking the generative process under `l`, and scored by
 `log l − log g` summed over the active nodes — exactly the design realized in `hyperopt`'s
-`TPESampler` (`γ = 0.25`, `n_EI_candidates = 24`, `n_startup_jobs = 20`, linear-forgetting `LF = 25`)
-and in Optuna's `TPESampler`.
+`tpe.suggest` (`γ = 0.25`, `n_below = min(⌈γ√N⌉, 25)`, `n_EI_candidates = 24`,
+`n_startup_jobs = 20`, linear-forgetting `LF = 25`).

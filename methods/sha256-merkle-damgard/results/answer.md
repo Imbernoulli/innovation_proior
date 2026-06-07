@@ -36,9 +36,9 @@ Two pieces that compose.
    input after encryption: f(H, M) = E_M(H) ⊕ H. Now H is tangled into the
    output and cannot be decrypted away. In the ideal-cipher model (each key names
    an independent uniform random permutation) each of q queries reveals a hash
-   value near-uniform over ≈ 2^l values, so Pr[collision] ≤ q²/2^l: a collision
-   needs q ≈ 2^{l/2} queries, the birthday ceiling. Chaining this f gives a full
-   hash collision-resistant to ≈ 2^{n/2}.
+   value near-uniform over ≈ 2^l values (l = the cipher's block width = the digest
+   length n), so Pr[collision] ≤ q²/2^l: a collision needs q ≈ 2^{l/2} queries, the
+   birthday ceiling. Chaining this f gives a full hash collision-resistant to ≈ 2^{n/2}.
 
 SHA-256 instantiates this with n = 256, b = 512: E is a 64-round permutation on
 the 256-bit state keyed by the 512-bit block, and the ⊕H feed-forward is realized
@@ -55,14 +55,15 @@ cheap cross-bit *nonlinearity* — XOR and rotation are GF(2)-linear).
 - **IV** H^(0): first 32 bits of the fractional parts of √p for the first 8
   primes (nothing-up-my-sleeve).
 - **Round constants** K_0…K_63: first 32 bits of the fractional parts of the
-  cube roots of the first 64 primes (independent source, so they don't correlate
-  with the IV; distinct per round to defeat slide/fixed-point attacks).
+  cube roots of the first 64 primes (a distinct public recipe from the IV's square
+  roots; distinct per round to defeat slide/fixed-point attacks).
 - **Message schedule.** Sixteen block words W_0…W_15, then for t = 16…63
   W_t = σ1(W_{t-2}) + W_{t-7} + σ0(W_{t-15}) + W_{t-16}, with
   σ0(x) = ROTR^7 x ⊕ ROTR^18 x ⊕ SHR^3 x, σ1(x) = ROTR^17 x ⊕ ROTR^19 x ⊕ SHR^10 x.
-  The *shift* makes σ non-bijective, breaking rotational symmetry so no
-  rotate-the-message differential survives; two recent/old taps avalanche each
-  block word across many rounds.
+  The *acyclic shift* (drops bits instead of wrapping) breaks rotational
+  symmetry so no rotate-the-message differential survives — σ stays bijective but
+  is no longer rotation-commuting; two recent/old taps avalanche each block word
+  across many rounds.
 - **Round.** Working register a…h from the chaining value; per round
   T1 = h + Σ1(e) + Ch(e,f,g) + K_t + W_t, T2 = Σ0(a) + Maj(a,b,c), then slide
   the register injecting d+T1 into the e-track and T1+T2 into the a-track:

@@ -2,7 +2,7 @@
 
 ## Problem
 
-Multi-objective optimization returns not a single optimum but a *Pareto front* of trade-off solutions. The dominance-based approach ranks a population by Pareto dominance — a *partial* order whose convergence pressure weakens as the number of objectives grows (almost every pair becomes mutually nondominated, so nearly everyone is rank 1 and selection loses its grip), and whose per-generation nondominated sort costs O(MN²). MOEA/D instead **decomposes** the problem into N scalar subproblems via a set of uniformly spread weight vectors, attaches one solution to each subproblem, and co-evolves them all in a single run. Each subproblem is a *total* order, so selection stays decisive at any M, and selection/update touch only a small neighborhood, costing O(N·T) per generation with no global sort.
+Multi-objective optimization returns not a single optimum but a *Pareto front* of trade-off solutions. The dominance-based approach ranks a population by Pareto dominance — a *partial* order whose convergence pressure weakens as the number of objectives grows (almost every pair becomes mutually nondominated, so nearly everyone is rank 1 and selection loses its grip), and whose per-generation nondominated sort costs O(MN²). MOEA/D instead **decomposes** the problem into N scalar subproblems via a set of uniformly spread weight vectors, attaches one solution to each subproblem, and co-evolves them all in a single run. Each subproblem is a *total* order, so selection stays decisive at any M, and selection/update touch only a small neighborhood, costing O(M·N·T) per generation with no global sort.
 
 ## Key idea
 
@@ -10,9 +10,9 @@ Multi-objective optimization returns not a single optimum but a *Pareto front* o
 
 2. **Tchebycheff aggregation (reaches concave fronts).** Subproblem i minimizes
    g^te(x | wⁱ, z*) = max₁≤ⱼ≤ₘ wⱼⁱ |fⱼ(x) − zⱼ*|,
-   where z* is the ideal point (running per-objective minimum). Unlike the weighted sum g^ws = Σⱼ wⱼ fⱼ(x), whose hyperplane contours only touch the convex hull of the front, the Tchebycheff function's box-corner contours can touch concave regions, and every Pareto-optimal point is the minimizer for some weight. (For three or more objectives the **PBI** alternative g^pbi = d₁ + θd₂, with d₁ = ‖(F(x)−z*)ᵀw‖/‖w‖ the distance along the reference direction and d₂ = ‖F(x) − (z* + d₁w)‖ the perpendicular distance off it, gives a smoother, more even spread for a penalty θ > 0.)
+   where z* is the ideal point (running per-objective minimum). Unlike the weighted sum g^ws = Σⱼ wⱼ fⱼ(x), whose hyperplane contours only touch the convex hull of the front, the Tchebycheff function's box-corner contours can touch concave regions, and (under mild conditions) every Pareto-optimal point is a minimizer for some weight — reachable, though not necessarily as a unique minimizer. (For three or more objectives the **PBI** alternative g^pbi = d₁ + θd₂, with d₁ = ‖(F(x)−z*)ᵀw‖/‖w‖ the signed distance along the reference direction (whose unit vector is w/‖w‖) and d₂ = ‖F(x) − (z* + d₁·w/‖w‖)‖ the perpendicular distance off it, gives a smoother, more even spread for a penalty θ > 0.)
 
-3. **Uniform weights = built-in diversity.** Weight vectors come from the Das & Dennis simplex lattice: components are nonnegative multiples of 1/H summing to 1, giving N = C(H+M−1, M−1) vectors. The population size equals N. Because each solution is pinned to a distinct, evenly spread weight, the diversity is structural — no crowding distance, no niche radius.
+3. **Uniform weights = built-in diversity.** Weight vectors come from the Das & Dennis simplex lattice: components are nonnegative multiples of 1/H summing to 1, giving N = C(H+M−1, M−1) vectors. The population size equals N. Because each solution is pinned to a distinct, evenly spread weight, the diversity is supplied structurally — no crowding distance, no niche radius. (Evenly spread weights bias the search toward an even spread of front points; the actual spacing in objective space also depends on the front's geometry, so it is encouraged, not guaranteed.)
 
 4. **Neighborhood collaboration.** B(i) = the T weight vectors nearest wⁱ (Euclidean, in weight space). Neighboring weights define near-identical subproblems with near-identical optima, so subproblems share: parents are drawn from B(i), and a fresh offspring updates *every* neighbor it improves under that neighbor's own weight. This is what makes co-evolution beat N independent runs.
 
@@ -37,11 +37,11 @@ repeat for n_gen generations:
 output EP (approximated Pareto front)
 ```
 
-Per-generation cost: O(N·T) scalar comparisons, **no global nondominated sort**. The neighborhoods are computed once in O(N²). Tchebycheff is the default for M ≤ 2; PBI for M ≥ 3.
+Per-generation cost: O(M·N·T) scalar comparisons (each comparison a max/projection over the M objectives), **no global nondominated sort**. The neighborhoods are computed once in O(N² log N) (an O(N²) pairwise-distance pass plus the per-row argsort). Tchebycheff is the default for M ≤ 2; PBI for M ≥ 3.
 
 ## Code
 
-Self-contained MOEA/D with the Das–Dennis lattice, T-nearest neighborhoods, Tchebycheff aggregation against a running ideal point z*, and the reproduce-from-neighborhood / update-neighbors loop. Returns the population and the external nondominated archive on ZDT1. Structure mirrors `pymoo`'s `MOEAD` (`NeighborhoodSelection` with `prob_neighbor_mating`, neighbors via `argsort(cdist(W, W))[:, :T]`, ideal point `np.min(F, axis=0)`, replacement where the decomposed offspring value is no worse) and its `Tchebicheff`/`PBI` decompositions.
+Self-contained MOEA/D with the Das–Dennis lattice, T-nearest neighborhoods, Tchebycheff aggregation against a running ideal point z*, and the reproduce-from-neighborhood / update-neighbors loop. Returns the population and the external nondominated archive on ZDT1. The high-level structure follows `pymoo`'s `MOEAD` (`NeighborhoodSelection` with `prob_neighbor_mating`, neighbors via `argsort(cdist(W, W))[:, :T]`, ideal point `np.min(F, axis=0)`, replacement on the decomposed offspring value) and its `Tchebicheff`/`PBI` decompositions. Two deliberate departures: the replacement uses the original "no worse" test `≤` (pymoo replaces only on strict improvement `<`), and zero lattice weights are nudged to a tiny ε so Tchebycheff keeps every objective visible.
 
 ```python
 import numpy as np
@@ -84,11 +84,18 @@ def sbx_crossover(p1, p2, xl, xu, eta, pc, rng):
             if rng.random() <= 0.5 and abs(p1[i] - p2[i]) > 1e-14:
                 x1, x2 = min(p1[i], p2[i]), max(p1[i], p2[i])
                 u = rng.random()
-                beta = 1.0 + 2.0 * (x1 - xl[i]) / (x2 - x1)
-                alpha = 2.0 - beta ** (-(eta + 1))
-                bq = (u * alpha) ** (1 / (eta + 1)) if u <= 1 / alpha \
-                    else (1 / (2 - u * alpha)) ** (1 / (eta + 1))
-                c[i] = 0.5 * ((x1 + x2) - bq * (x2 - x1))
+                if rng.random() <= 0.5:                      # lower child c1
+                    beta = 1.0 + 2.0 * (x1 - xl[i]) / (x2 - x1)
+                    alpha = 2.0 - beta ** (-(eta + 1))
+                    bq = (u * alpha) ** (1 / (eta + 1)) if u <= 1 / alpha \
+                        else (1 / (2 - u * alpha)) ** (1 / (eta + 1))
+                    c[i] = 0.5 * ((x1 + x2) - bq * (x2 - x1))
+                else:                                        # upper child c2
+                    beta = 1.0 + 2.0 * (xu[i] - x2) / (x2 - x1)
+                    alpha = 2.0 - beta ** (-(eta + 1))
+                    bq = (u * alpha) ** (1 / (eta + 1)) if u <= 1 / alpha \
+                        else (1 / (2 - u * alpha)) ** (1 / (eta + 1))
+                    c[i] = 0.5 * ((x1 + x2) + bq * (x2 - x1))
     return np.clip(c, xl, xu)
 
 
@@ -143,8 +150,8 @@ def zdt1(X):
 if __name__ == "__main__":
     X, F, EP = moead(zdt1, 30, np.zeros(30), np.ones(30),
                      n_partitions=99, n_gen=250, seed=1)
-    d = np.abs(F[:, 1] - (1 - np.sqrt(np.clip(F[:, 0], 0, 1))))   # vs true PF f2=1-sqrt(f1)
-    print(f"pop {len(F)}  EP {len(EP)}  mean|dist to PF| {d.mean():.2e}  f1∈[{F[:,0].min():.2f},{F[:,0].max():.2f}]")
+    d = np.abs(F[:, 1] - (1 - np.sqrt(np.clip(F[:, 0], 0, 1))))   # vertical residual to true PF f2=1-sqrt(f1)
+    print(f"pop {len(F)}  EP {len(EP)}  mean vert. residual to PF {d.mean():.2e}  f1∈[{F[:,0].min():.2f},{F[:,0].max():.2f}]")
 ```
 
 For three or more objectives, swap the Tchebycheff aggregation for PBI:

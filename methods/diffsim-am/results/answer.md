@@ -2,7 +2,7 @@
 
 ## Problem
 
-In metal AM, the part's thermal history governs microstructure, residual stress, geometric accuracy, and melt-pool depth, and that history is set by the process parameters — laser power, beam radius, material properties, and especially a *time-series* laser power P(t) over tens of thousands of explicit time steps. Designing those parameters to hit a target thermal/melt-pool behavior is an inverse problem over a very high-dimensional space. The obstacle is gradient cost: finite-difference or derivative-free optimization needs one full (minutes-long) simulation per parameter, so its cost scales with the parameter count and is hopeless for thousands of time-series degrees of freedom.
+In metal AM, the part's thermal history governs microstructure, residual stress, geometric accuracy, and melt-pool depth, and that history is set by the process parameters — laser power, beam radius, material properties, and especially a *time-series* laser power P(t) over tens of thousands of explicit time steps. Designing those parameters to hit a target thermal/melt-pool behavior is an inverse problem over a very high-dimensional space. The obstacle is gradient cost: finite-difference or derivative-free optimization needs one full (minutes-long) simulation per parameter, so its cost scales with the parameter count and becomes infeasible for thousands of time-series degrees of freedom.
 
 ## Key idea
 
@@ -10,7 +10,7 @@ Make the thermal **simulator itself differentiable** in Taichi. Implement the ex
 
 Two design rules make the gradients usable:
 - **Freeze the discrete machinery.** Element birth, surface birth, and toolpath are precomputed and held fixed behind boolean masks (`if birth ≤ t·Δt`); the gradient flows only through the *continuous* power and material properties, never across a material-deposition discontinuity.
-- **Smooth every step-like feature.** Melt-pool depth defined as "deepest molten node" is piecewise-constant → zero gradient. Replace it with a continuous surrogate: interpolate the temperature directly under the beam at several height levels from a fixed local stencil, then locate the melting-isotherm crossing by pairwise-linear interpolation → a smooth depth with nonzero gradient.
+- **Smooth every step-like feature.** Melt-pool depth defined as "deepest molten node" is piecewise-constant → zero gradient. Replace it with a continuous surrogate: interpolate the temperature directly under the beam at four height levels from nine fixed-by-toolpath neighboring nodes, then locate the liquidus-isotherm crossing by pairwise-linear interpolation → a smooth depth with nonzero gradient away from degenerate equal-temperature pairs.
 
 ## Method
 
@@ -22,11 +22,11 @@ Laser. Moving surface Gaussian,
 
   q_s(x,t) = 3 Q P(t) on(t) / (π r_b²) · exp(−3||x − x_L(t)||²/r_b²),
 
-where x_L(t) is the beam center and r_b is the beam radius. Under the outward-flux convention, incoming laser heat has R_F < 0, so the update's −R_F term is assembled as a positive heat-input contribution. Latent heat is folded into c_p across the solidus–liquidus band as L/(T_liq − T_solid).
+where x_L(t) is the beam center and r_b is the beam radius. Under the outward-flux convention, incoming laser heat has R_F < 0, so the update's −R_F term is assembled as a positive heat-input contribution. Latent heat is folded into a piecewise c_p across the solidus–liquidus band as L/(T_liq − T_solid); the branch is not smooth at the thresholds, so it is treated as a fixed material law rather than a design variable.
 
 Control parameterization. A tiny fully-connected network maps (normalized) time → P(t) in [0,1] (two hidden layers of 50, tanh), giving a compact, smooth schedule whose weights are the optimized variables; for static calibration the leaves are instead the scalar material/process parameters.
 
-Optimization. MSE loss between achieved and target response (full thermal history, melt-pool depth, or a partial top-layer observation), minimized with **Adam** (lr 1e-2, β₁=0.9, β₂=0.999, ε=1e-7). The host AD framework (an imperative, flexibly-indexed, atomic-accumulating differentiable-programming system — chosen over array DL libraries because FE assembly needs scatter/atomics, not dense ops) records a lightweight tape of the forward kernels and replays their adjoints in reverse.
+Optimization. Squared-error loss, averaged as MSE when reported, between achieved and target response (full thermal history, melt-pool depth, or a partial top-layer observation), minimized with **Adam** (lr 1e-2, β₁=0.9, β₂=0.999, ε=1e-7). The host AD framework (an imperative, flexibly-indexed, atomic-accumulating differentiable-programming system — chosen over array DL libraries because FE assembly needs scatter/atomics, not dense ops) records a lightweight tape of the forward kernels and replays their adjoints in reverse.
 
 Three tasks: (i) infer static material/process scalars from partially observed thermal data; (ii) match an arbitrary target thermal history by shaping P(t); (iii) stabilize melt-pool depth through the build by shaping P(t).
 
@@ -47,6 +47,7 @@ pi = 3.141592653589793
 n_input, n_hidden_1, n_hidden_2, n_hidden_3 = 3, 50, 50, 1
 learning_rate, beta_1, beta_2, epsilon = 1e-2, 0.9, 0.999, 1e-7
 loss_kind = "temperature_history"   # or "melt_pool" for the smooth-depth objective
+n_depth_levels = 4
 
 ti.init()
 # every state/parameter is a differentiable field; reverse-mode AD fills .grad
@@ -63,10 +64,21 @@ loss = ti.field(float, (), needs_grad=True)
 weight1 = ti.field(float, (n_hidden_1, n_input),  needs_grad=True); bias1 = ti.field(float, n_hidden_1, needs_grad=True)
 weight2 = ti.field(float, (n_hidden_2, n_hidden_1), needs_grad=True); bias2 = ti.field(float, n_hidden_2, needs_grad=True)
 weight3 = ti.field(float, (n_hidden_3, n_hidden_2), needs_grad=True); bias3 = ti.field(float, n_hidden_3, needs_grad=True)
+weight1_m = ti.field(float, (n_hidden_1, n_input));  weight1_v = ti.field(float, (n_hidden_1, n_input))
+weight2_m = ti.field(float, (n_hidden_2, n_hidden_1)); weight2_v = ti.field(float, (n_hidden_2, n_hidden_1))
+weight3_m = ti.field(float, (n_hidden_3, n_hidden_2)); weight3_v = ti.field(float, (n_hidden_3, n_hidden_2))
+bias1_m = ti.field(float, n_hidden_1); bias1_v = ti.field(float, n_hidden_1)
+bias2_m = ti.field(float, n_hidden_2); bias2_v = ti.field(float, n_hidden_2)
+bias3_m = ti.field(float, n_hidden_3); bias3_v = ti.field(float, n_hidden_3)
 output1 = ti.field(float, (steps, n_hidden_1), needs_grad=True)
 output2 = ti.field(float, (steps, n_hidden_2), needs_grad=True)
 output3 = ti.field(float, (steps, n_hidden_3), needs_grad=True)   # normalized power P(t)
 melt_depth = ti.field(float, steps, needs_grad=True)              # smooth depth proxy
+target = ti.field(float, (steps, nn))
+target_depth = ti.field(float, steps)
+beam_interp_node = ti.field(int, (steps, n_depth_levels, 9))
+beam_interp_weight = ti.field(float, (steps, n_depth_levels, 9))
+depth_level = ti.field(float, n_depth_levels)
 
 # control network: (normalized) time -> P(t) in [0,1]
 @ti.kernel
@@ -158,8 +170,22 @@ def update_fluxes_m(t: ti.i32, dt: ti.f32):
                 if surface_birth[el_id][sur_id, 0] <= t*dt and surface_birth[el_id][sur_id, 1] > t*dt:
                     for ip in ti.static(range(4)):
                         N = Nip_surface[ip]
-                        ip_pos = ...   # N . surface-node positions
-                        r2 = (ip_pos - laser_loc[t]).norm_sqr()
+                        ip_pos_x = N.dot(ti.Vector([
+                            node_position[element_surface_ids[el_id][sur_id, 0]][0],
+                            node_position[element_surface_ids[el_id][sur_id, 1]][0],
+                            node_position[element_surface_ids[el_id][sur_id, 2]][0],
+                            node_position[element_surface_ids[el_id][sur_id, 3]][0]]))
+                        ip_pos_y = N.dot(ti.Vector([
+                            node_position[element_surface_ids[el_id][sur_id, 0]][1],
+                            node_position[element_surface_ids[el_id][sur_id, 1]][1],
+                            node_position[element_surface_ids[el_id][sur_id, 2]][1],
+                            node_position[element_surface_ids[el_id][sur_id, 3]][1]]))
+                        ip_pos_z = N.dot(ti.Vector([
+                            node_position[element_surface_ids[el_id][sur_id, 0]][2],
+                            node_position[element_surface_ids[el_id][sur_id, 1]][2],
+                            node_position[element_surface_ids[el_id][sur_id, 2]][2],
+                            node_position[element_surface_ids[el_id][sur_id, 3]][2]]))
+                        r2 = (ip_pos_x - laser_loc[t][0])**2 + (ip_pos_y - laser_loc[t][1])**2 + (ip_pos_z - laser_loc[t][2])**2
                         qmov = 3.0 * Qin[None] * output3[t, 0] * laser_on[t] \
                                / (pi * r_beam[None]**2) * ti.exp(-3.0 * r2 / (r_beam[None]**2))
                         for i in ti.static(range(4)):
@@ -172,9 +198,14 @@ def update_fluxes_cr(t: ti.i32, dt: ti.f32):
         if element_birth[el_id] <= t*dt:
             for sur_id in ti.static(range(6)):
                 if surface_birth[el_id][sur_id, 0] <= t*dt and surface_birth[el_id][sur_id, 1] > t*dt:
+                    temperature_nodes = ti.Vector([
+                        temperature[t-1, element_surface_ids[el_id][sur_id, 0]],
+                        temperature[t-1, element_surface_ids[el_id][sur_id, 1]],
+                        temperature[t-1, element_surface_ids[el_id][sur_id, 2]],
+                        temperature[t-1, element_surface_ids[el_id][sur_id, 3]]])
                     for ip in ti.static(range(4)):
                         N = Nip_surface[ip]
-                        temperature_ip = N.dot(surface_temperature_nodes)
+                        temperature_ip = N.dot(temperature_nodes)
                         qconv = -1 * h_conv[None] * (temperature_ip - ambient[None])
                         qrad  = -1 * 5.67e-14 * h_rad * (temperature_ip**4 - ambient[None]**4)
                         for i in ti.static(range(4)):
@@ -209,7 +240,7 @@ def update_melt_pool_depth(t: ti.i32):
 @ti.kernel
 def compute_temperature_loss():
     for t, i in ti.ndrange(steps, nn):
-        ti.atomic_add(loss[None], (temperature[t, i] - target[t, i])**2)   # MSE (partial obs masks i)
+        ti.atomic_add(loss[None], (temperature[t, i] - target[t, i])**2)   # squared-error numerator; partial obs masks i
 @ti.kernel
 def compute_melt_pool_loss():
     for t in range(1, steps):
@@ -242,6 +273,27 @@ def adam(g, m, v, t):
     v = beta_2*v + (1-beta_2)*(g*g)
     update = (m/(1-beta_1**t)) / (ti.sqrt(v/(1-beta_2**t)) + epsilon)
     return m, v, update
+
+@ti.kernel
+def update_weights_adam(t: ti.i32):
+    for i in range(n_hidden_1):
+        for j in range(n_input):
+            weight1_m[i, j], weight1_v[i, j], step = adam(weight1.grad[i, j], weight1_m[i, j], weight1_v[i, j], t)
+            weight1[i, j] -= learning_rate * step
+        bias1_m[i], bias1_v[i], step = adam(bias1.grad[i], bias1_m[i], bias1_v[i], t)
+        bias1[i] -= learning_rate * step
+    for i in range(n_hidden_2):
+        for j in range(n_hidden_1):
+            weight2_m[i, j], weight2_v[i, j], step = adam(weight2.grad[i, j], weight2_m[i, j], weight2_v[i, j], t)
+            weight2[i, j] -= learning_rate * step
+        bias2_m[i], bias2_v[i], step = adam(bias2.grad[i], bias2_m[i], bias2_v[i], t)
+        bias2[i] -= learning_rate * step
+    for i in range(n_hidden_3):
+        for j in range(n_hidden_2):
+            weight3_m[i, j], weight3_v[i, j], step = adam(weight3.grad[i, j], weight3_m[i, j], weight3_v[i, j], t)
+            weight3[i, j] -= learning_rate * step
+        bias3_m[i], bias3_v[i], step = adam(bias3.grad[i], bias3_m[i], bias3_v[i], t)
+        bias3[i] -= learning_rate * step
 
 # optimize: one tape = the whole recurrence; one backward pass = the full gradient
 for it in range(iterations):

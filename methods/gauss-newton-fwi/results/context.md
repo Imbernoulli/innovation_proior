@@ -114,7 +114,7 @@ time-derivative weighting, second-order (Gauss–Newton) scaling, and the cure f
 **Gauss–Newton / Newton in frequency-space inversion (Pratt, Shin & Hicks 1998, *Gauss–Newton and
 full Newton methods in frequency-space seismic waveform inversion*).** The least-squares structure
 J = ½‖r(m)‖² admits a Gauss–Newton model: linearize the residual r about the current model via its
-Fréchet (Born) derivative J = ∂r/∂m, approximate the Hessian by H_GN = Re(JᴴJ), and take the step
+Fréchet (Born) derivative G = ∂r/∂m, approximate the Hessian by H_GN = Re(GᴴG), and take the step
 δm = −H_GN⁻¹ ∇J. Core idea: the Gauss–Newton Hessian deconvolves the gradient by the geometrical
 spreading and illumination, giving a far better-scaled update than steepest descent; its diagonal is
 the zero-lag autocorrelation of the partial-derivative wavefields. Its limitation at field scale is
@@ -140,46 +140,65 @@ expressed in forward-solve units.
 
 ## Code framework
 
-The primitives that already exist: a finite-difference acoustic wave-equation forward solver that,
-given a model and a source, marches the wavefield in time and samples it at receivers to produce a
-shot record; a routine that forms the data residual against observed traces and evaluates the
-least-squares misfit; and a generic gradient-descent loop with a line search. The one empty slot is
-the gradient of the misfit with respect to the millions of model parameters — everything routes
-through `gradient`, whose interesting branch is a `# TODO`.
+The primitives that already exist: a finite-difference acoustic wave-equation stencil, sparse source
+injection and receiver interpolation, a forward operator that can save the wavefield, a routine that
+forms the data residual against observed traces and evaluates the least-squares misfit, and a generic
+descent loop with a line search. The empty computational slot is the model-space derivative of that
+misfit; a second empty slot is the optional curvature scaling that turns a raw gradient into a useful
+descent direction.
 
 ```python
-import numpy as np
+from devito import Function
 
-# --- existing: forward acoustic FD modeler ---
-def forward(model, src_wavelet, src_pos, rec_pos, geom, save_wavefield=False):
-    """March  m u_tt - Lap(u) = f  in time; return the shot record at rec_pos
-    (and optionally the full forward wavefield u[t,x,z] for later reuse)."""
-    # ... leapfrog time loop, absorbing boundaries, source injection, receiver sampling ...
+def acoustic_stencil(field, model, kernel="OT2", forward=True, q=0):
+    """Finite-difference update for model.m * u.dt2 - H(u) - q + damping = 0."""
+    # existing time-stepping stencil, including absorbing-boundary damping
     pass
 
-def residual_and_misfit(d_pred, d_obs):
-    """r = d_pred - d_obs ;  J = 1/2 ||r||^2 (summed over receivers and time)."""
+def forward_operator(model, geometry, space_order=4, save=False, kernel="OT2"):
+    """Inject the physical source, march the wavefield, and interpolate receiver traces."""
+    pass
+
+def residual_misfit(d_pred, d_obs):
     r = d_pred - d_obs
-    J = 0.5 * np.sum(r * r)
-    return r, J
+    return r, 0.5 * float((r * r).sum())
 
-# --- gradient: the slot the method fills ---
-def gradient_FD(model, ...):
-    """Baseline: perturb each model point, re-run forward, difference. M+1 solves. Hopeless at scale."""
+class AcousticWaveSolver:
+    def __init__(self, model, geometry, kernel="OT2", space_order=4):
+        self.model = model
+        self.geometry = geometry
+        self.kernel = kernel
+        self.space_order = space_order
+
+    def forward(self, src=None, rec=None, u=None, save=None, **kwargs):
+        """Run the existing forward operator; optionally save u for a later derivative."""
+        pass
+
+    def model_gradient(self, residual, u, grad=None, **kwargs):
+        # TODO: derivative of the misfit with respect to every grid-cell parameter.
+        pass
+
+    def linearized_data(self, dm, src=None, rec=None, u=None, **kwargs):
+        # TODO: action of the residual Jacobian on a model perturbation for curvature scaling.
+        pass
+
+def descent_direction(g, solver, u_by_shot=None, mode="diagonal"):
+    # TODO: choose raw steepest descent or curvature-scaled descent.
     pass
 
-def gradient(model, src_wavelet, src_list, rec_pos, geom, d_obs):
-    # TODO: a gradient of J w.r.t. ALL model parameters at the cost of ~one extra
-    #       wave simulation per shot, independent of the number of model parameters.
-    pass
-
-# --- existing: generic descent loop with a line search ---
-def invert(model0, src_wavelet, src_list, rec_pos, geom, d_obs, n_iter):
-    model = model0.copy()
+def invert(model, solver, observed_data, n_iter):
     for k in range(n_iter):
-        g = gradient(model, src_wavelet, src_list, rec_pos, geom, d_obs)
-        # TODO: descent direction from the gradient (and any conditioning / Hessian scaling of it)
-        step = line_search(...)               # backtracking on the misfit
-        model = model + step                  # update the velocity model
+        g = Function(name="grad", grid=model.grid)
+        saved_wavefields = []
+        objective = 0.0
+        for shot, d_obs in observed_data:
+            d_pred, u, _ = solver.forward(src=shot, save=True)
+            r, value = residual_misfit(d_pred.data, d_obs)
+            objective += value
+            saved_wavefields.append(u)
+            solver.model_gradient(r, u, grad=g)
+        p = descent_direction(g, solver, saved_wavefields)
+        alpha = line_search(model, p, objective)
+        model = apply_model_update(model, -alpha * p)
     return model
 ```

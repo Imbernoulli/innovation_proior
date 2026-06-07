@@ -43,7 +43,7 @@ and drop it past a threshold.
 **Eliminating the line process → the truncated quadratic.** If no spatial constraints couple the
 line variables, one can minimize over `l_{st}` analytically and remove it. For each bond,
 `min_{l∈{0,1}} [ (u_s−u_t)²(1−l) + α l ] = min( (u_s−u_t)², α )`. The smoothness term becomes a sum
-of *truncated quadratics* `g(t) = min(λ²t², α)`: quadratic for small gradient, but capped at `α`
+of *truncated quadratics* `g(t) = min(t², α)` in the gradient `t = u_s−u_t`: quadratic for small gradient, but capped at `α`
 once the gradient exceeds a threshold, at which point the bond contributes a constant and the edge is
 free. This is the *weak string* (1D) / *weak membrane* (2D) energy. It is the right cost — and it is
 non-convex: the cap is where the local minima come from.
@@ -141,36 +141,36 @@ def weighted_least_squares(A, y, w):
     argmin_x  sum_i w_i (A_i x - y_i)^2.  Closed form for a linear model."""
     W = np.sqrt(w)[:, None]
     Aw, yw = A * W, y * np.sqrt(w)
-    x, *_ = np.linalg.lstsq(Aw.T @ Aw, Aw.T @ yw, rcond=None)
-    return x
+    return np.linalg.solve(Aw.T @ Aw, Aw.T @ yw)
 
 
-def surrogate_weight_update(r2, mu, barc2):
+def robust_weight_update(r2, mu, barc2):
     """Per-measurement weight w_i in [0,1] minimizing the dual outlier process
     for the surrogate cost at control value `mu`, given squared residuals r2."""
     # TODO: closed-form weight for the chosen robust cost / surrogate
     raise NotImplementedError
 
 
-def initial_control(r2, barc2):
+def initial_control_value(r2, barc2):
     """Pick the control value at which the surrogate is convex over the data."""
     # TODO: convexifying initial control
     raise NotImplementedError
 
 
-def robust_fit(A, y, barc2, factor, max_iter, tol):
+def continuation_robust_fit(A, y, barc2, factor=1.4, max_iter=1000, cost_threshold=0.0):
     """Recover the robust fit by continuation in the control parameter."""
     w = np.ones(A.shape[0])
     x = weighted_least_squares(A, y, w)
     r2 = (A @ x - y) ** 2
-    mu = initial_control(r2, barc2)
+    mu = initial_control_value(r2, barc2)
+    prev_cost = 0.0
     # TODO: outer continuation loop:
-    #   repeat { variable update (weighted LS); weight update;
-    #            move `mu` one step toward the true cost } until converged.
+    #   repeat { weight update from current residuals; weighted variable update;
+    #            residual/cost check; move `mu` one step toward the true cost }.
     raise NotImplementedError
 ```
 
 The open question the loop must answer is how to make each inner minimization easy (weighted least
 squares plus a closed-form weight), how to set the first control value so the landscape starts convex,
 and how to step the control toward the true non-convex cost slowly enough that the tracked minimizer
-lands at the global one.
+stays on the desired continuation path.

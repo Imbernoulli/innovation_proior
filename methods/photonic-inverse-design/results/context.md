@@ -26,14 +26,15 @@ way to improve the whole pattern systematically and cheaply.
 
 **Maxwell's equations and frequency-domain simulation.** A time-harmonic field
 at frequency ω in a non-magnetic dielectric obeys ∇×∇×E − ω²/c² ε_r(r) E =
-iωμ₀ J, driven by a current source J. Discretizing space (a Yee grid in
+−iωμ₀ J, driven by a current source J. Discretizing space (a Yee grid in
 finite-difference frequency domain, FDFD, or time stepping in FDTD) turns this
 into a large sparse linear system A(ε) e = b, where the operator A carries the
 curl-curl term and the permittivity, e is the stacked field, and b is
 proportional to the source. Solving it once yields the fields everywhere — this
 is the forward simulation, and it is the expensive primitive. In two dimensions
-with transverse-magnetic polarization only the out-of-plane field component is
-nonzero, which keeps illustrative problems tractable. Established solvers (FDTD
+with transverse-magnetic polarization only the out-of-plane electric component is
+nonzero (the in-plane magnetic components remain), which keeps illustrative
+problems tractable by reducing each field to a single scalar unknown per cell. Established solvers (FDTD
 packages, both commercial and open) provide this forward solve as a black box.
 
 **The figure of merit lives at a port.** Device performance is read out as a

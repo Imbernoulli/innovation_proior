@@ -12,16 +12,16 @@ Don't author the flock; author one bird and let the flock *emerge*. Model each b
 2. **Alignment (velocity matching):** steer to match the average velocity of nearby flockmates (velocity only — predictive collision avoidance: matching velocity keeps separations invariant).
 3. **Cohesion (flock centering):** steer toward the centroid of nearby flockmates (position, longer-range).
 
-Locality is the mechanism, not an optimization: a *global* central-force model collapses a scattered flock onto one point and cannot bifurcate around obstacles, whereas a localized centroid is near-zero deep inside the flock (neighbors surround you) and strong only at the boundary (neighbors are one-sided), which lets the flock split and re-merge. Each rule is expressed as `steering = desired_velocity − current_velocity`, a velocity error that points toward the wanted motion and fades to zero as it is achieved.
+Locality is the mechanism, not an optimization: a *global* central-force model collapses a scattered flock onto one point and cannot bifurcate around obstacles, whereas a localized centroid is near-zero deep inside the flock (neighbors surround you) and strong only at the boundary (neighbors are one-sided), which lets the flock split and re-merge. The velocity-matching and centering rules are expressed as `steering = desired_velocity − current_velocity`, a velocity error that points toward the wanted motion and fades to zero as it is achieved; separation is a summed repulsion taken directly as a force.
 
 ## Algorithm
 
 **Neighborhood (local perception).** A boid perceives another only if it is within a sensitivity **radius** *and* within a **view angle** (field-of-view cone) about the boid's heading — a neighbor directly behind is unseen.
 
-**The three steering vectors** (each a desired-velocity minus current-velocity, with `desired` normalized to `max_speed`):
-- Separation: sum over close neighbors of `(pos_self − pos_j)` normalized then scaled by `1/r²` (inverse-square, gravity-like and well-damped — matches the near-neighbor falloff measured in schooling fish; summing per-neighbor, not steering from their averaged position, so a symmetric crowd doesn't cancel to no push).
-- Alignment: desired velocity = the average velocity of neighbors.
-- Cohesion: target = the average position (centroid) of neighbors; desired velocity = `normalize(target − pos) · max_speed`.
+**The three steering vectors:**
+- Separation: sum over close neighbors of the offset vector `(pos_self − pos_j)` scaled by `1/r²` — equivalently the unit away-vector scaled by `1/r` (a gravity-like, well-damped falloff, milder than the raw repulsion — close neighbors dominate, distant ones whisper; summing per-neighbor, not steering from their averaged position, so a symmetric crowd doesn't cancel to no push). The summed repulsion is the steering force itself.
+- Alignment: desired velocity = the average velocity of neighbors; steering = `avg_velocity − current_velocity`.
+- Cohesion (a seek): target = the average position (centroid) of neighbors; desired velocity = `normalize(target − pos) · max_speed`; steering = `desired − current_velocity`.
 
 **Combination.** Combine by *priority*, not by averaging. Averaging cancels opposing urgent advice (a hard-left avoidance and a hard-right cohesion average to a tiny turn straight into a wall; "fly north" + "fly east" averages to "fly northeast" into a building). The robust scheme is **prioritized acceleration allocation**: take requests in priority order (separation first, cohesion last), accumulate into a budget equal to `max_force`, trim the request that would overflow, and drop the rest — in a crisis all acceleration goes to avoidance and cohesion is dropped. A simpler, common approximation gives the rules fixed weights with separation weighted hardest, sums the weighted steerings, and truncates the total to `max_force`.
 
@@ -36,7 +36,7 @@ position       = position + velocity·dt
 
 ## Code
 
-A faithful, self-contained 2-D/3-D simulation (works unchanged in any dimension since all operations are vector ops).
+A self-contained 2-D/3-D simulation built on the vector steering model above (works unchanged in any dimension since all operations are vector ops).
 
 ```python
 import numpy as np
@@ -81,20 +81,21 @@ def neighbors(boid, flock, radius, view_cos):
     return out
 
 def separation(boid, nbrs, max_speed):
-    # sum of inverse-square repulsions along (me - neighbor); nearest dominates
+    # sum of repulsions: each neighbor's offset vector scaled by 1/r^2 (i.e. the
+    # unit away-vector * 1/r) so the nearest dominates. the summed repulsion IS
+    # the steering force -- don't renormalize, or the distance falloff is erased.
     acc = np.zeros_like(boid.position)
     for other, offset, d in nbrs:
-        acc += (-offset / d) / (d * d)     # unit away-vector * 1/r^2
-    if _norm(acc) == 0.0:
-        return acc
-    return desired_minus_velocity(acc, boid, max_speed)
+        acc += -offset / (d * d)           # away-vector, offset scaled by 1/r^2
+    return acc
 
 def alignment(boid, nbrs, max_speed):
-    # velocity matching: desired velocity = neighbors' average velocity
+    # velocity matching: desired velocity = neighbors' average velocity; the
+    # steering is that average minus the current velocity (no renormalizing)
     if not nbrs:
         return np.zeros_like(boid.velocity)
     avg_vel = np.mean([o.velocity for o, _, _ in nbrs], axis=0)
-    return desired_minus_velocity(avg_vel, boid, max_speed)
+    return avg_vel - boid.velocity
 
 def cohesion(boid, nbrs, max_speed):
     # flock centering: seek the centroid of local neighbors
@@ -122,15 +123,15 @@ def step(flock, p, dt):
 if __name__ == "__main__":
     import math
     rng = np.random.default_rng(0)
-    params = dict(radius=25.0, view_cos=math.cos(math.radians(170.0)),  # wide field of view
+    params = dict(radius=25.0, view_cos=math.cos(math.radians(150.0)),  # ~300 deg field of view
                   max_speed=3.0, max_force=1.0,
                   w_sep=2.0, w_align=1.5, w_coh=2.0)
     flock = [Boid(rng.uniform(-15, 15, size=2), rng.uniform(-1, 1, size=2))
              for _ in range(50)]
     for _ in range(800):
         step(flock, params, dt=0.2)
-    # the flock is now polarized (aligned), non-colliding (separation),
-    # and clustered (cohesion) — none of it scripted.
+    # the rules now pull the flock toward polarization (alignment), held
+    # separation (separation), and clustering (cohesion) — none of it scripted.
 ```
 
 The whole model is the per-boid steering function plus the bounded-acceleration / bounded-speed flight step: separation keeps boids from crowding, alignment matches velocities (predictive avoidance), cohesion holds the group together, all over a purely local neighborhood — and coherent, splitting-and-merging flock motion emerges from running it across the population.

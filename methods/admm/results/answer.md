@@ -57,10 +57,12 @@ $$ \varepsilon^{\text{pri}}=\sqrt{p}\,\varepsilon^{\text{abs}}+\varepsilon^{\tex
 \varepsilon^{\text{dual}}=\sqrt{n}\,\varepsilon^{\text{abs}}+\varepsilon^{\text{rel}}\|A^\top y^k\|. $$
 
 **Convergence.** With $V^k=\tfrac1\rho\|y^k-y^\star\|^2+\rho\|B(z^k-z^\star)\|^2$ a Lyapunov function,
-$V^{k+1}\le V^k-\rho\|r^{k+1}\|^2-\rho\|B(z^{k+1}-z^k)\|^2$, giving $r^k\to0$, $s^k\to0$, and
-$f(x^k)+g(z^k)\to p^\star$. ADMM reaches modest accuracy fast and high accuracy slowly. A common
+$V^{k+1}\le V^k-\rho\|r^{k+1}\|^2-\rho\|B(z^{k+1}-z^k)\|^2$, giving $r^k\to0$, $s^k\to0$,
+$f(x^k)+g(z^k)\to p^\star$, and $y^k$ converging to a dual optimum; $x^k,z^k$ need not converge
+without extra assumptions. ADMM reaches modest accuracy fast and high accuracy slowly. A common
 practical refinement is residual balancing of $\rho$ (inflate when $\|r\|\gg\|s\|$, deflate when
-$\|s\|\gg\|r\|$; rescale $u\to u/\text{factor}$ when $\rho$ changes) and over-relaxation
+$\|s\|\gg\|r\|$; when $\rho$ changes, keep $y=\rho u$ fixed by setting
+$u\leftarrow(\rho_{\text{old}}/\rho_{\text{new}})u$) and over-relaxation
 $\alpha\in[1.5,1.8]$ (replace $Ax^{k+1}$ by $\alpha Ax^{k+1}-(1-\alpha)(Bz^k-c)$ in the $z$- and
 $u$-updates).
 
@@ -105,12 +107,17 @@ def factor(C, rho):
     return L, L.T.conj()
 
 
-def lasso_admm(C, b, lam, rho=1.0, alpha=1.0, n_iter=1000, abstol=1e-4, reltol=1e-2):
+def objective(C, b, lam, x, z):
+    return 0.5 * np.sum((C @ x - b) ** 2) + lam * norm(z, 1)
+
+
+def lasso(C, b, lam, rho=1.0, alpha=1.0, n_iter=1000, abstol=1e-4, reltol=1e-2):
     # min 1/2||C x - b||^2 + lam||x||_1  via the split x - z = 0
     q, d = C.shape
     Ctb = C.T @ b
     L, U = factor(C, rho)
     x = np.zeros(d); z = np.zeros(d); u = np.zeros(d)   # u = scaled dual y/rho
+    history = {"objval": [], "r_norm": [], "s_norm": [], "eps_pri": [], "eps_dual": []}
 
     for k in range(n_iter):
         rhs = Ctb + rho * (z - u)                       # x-update: ridge regression
@@ -127,15 +134,20 @@ def lasso_admm(C, b, lam, rho=1.0, alpha=1.0, n_iter=1000, abstol=1e-4, reltol=1
 
         r_norm = norm(x - z)                            # primal residual r = x - z
         s_norm = norm(-rho * (z - z_old))               # dual residual s = -rho(z - z_old)
-        eps_pri = np.sqrt(d) * abstol + reltol * max(norm(x), norm(z))
+        eps_pri = np.sqrt(d) * abstol + reltol * max(norm(x), norm(-z))
         eps_dual = np.sqrt(d) * abstol + reltol * norm(rho * u)
+        history["objval"].append(objective(C, b, lam, x, z))
+        history["r_norm"].append(r_norm)
+        history["s_norm"].append(s_norm)
+        history["eps_pri"].append(eps_pri)
+        history["eps_dual"].append(eps_dual)
         if r_norm < eps_pri and s_norm < eps_dual:
             break
-    return x, z
+    return z, history
 
 
-def admm(x_update, z_update, A, B, c, n, m, p, rho=1.0,
-         n_iter=1000, abstol=1e-4, reltol=1e-2):
+def solve_split_problem(x_update, z_update, A, B, c, n, m, p, rho=1.0,
+                        n_iter=1000, abstol=1e-4, reltol=1e-2):
     # Generic scaled-form ADMM for min f(x)+g(z) s.t. A x + B z = c.
     # x_update(z, u, rho) = argmin_x f(x) + (rho/2)||A x + B z - c + u||^2
     # z_update(x, u, rho) = argmin_z g(z) + (rho/2)||A x + B z - c + u||^2
@@ -156,7 +168,7 @@ def admm(x_update, z_update, A, B, c, n, m, p, rho=1.0,
     return x, z
 
 
-def consensus_admm(prox_fi, N, d, rho=1.0, n_iter=1000, abstol=1e-4, reltol=1e-2):
+def consensus(prox_fi, N, d, rho=1.0, n_iter=1000, abstol=1e-4, reltol=1e-2):
     # min sum_i f_i(x) ; prox_fi[i](v, rho) = argmin_xi f_i(xi) + (rho/2)||xi - v||^2
     X = np.zeros((N, d)); z = np.zeros(d); Ud = np.zeros((N, d))
 

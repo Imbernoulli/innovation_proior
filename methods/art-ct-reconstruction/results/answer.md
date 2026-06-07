@@ -22,7 +22,7 @@ softens each step so contradictions average instead of fight (smoother, more swe
 
   `g_j ← g_j + λ · [ Σ_{i∈V} a_ij (p_i − q_i)/(Σ_k a_ik) ] / ( Σ_{i∈V} a_ij ),   q_i = Σ_k a_ik g_k`
 
-— residual normalized by **row sum** (ray length `L_i = Σ_k a_ik`), back-projected with weight `a_ij`, then normalized by **column sum** (per-pixel coverage `Σ_{i∈V} a_ij`) so a pixel's correction is independent of how many rays graze it. SART also uses bilinear (pyramid) basis elements for a continuous, more accurate forward model — with first/last ray weights adjusted so `Σ_j a_ij = L_i` — and a longitudinal Hamming window emphasizing mid-ray over entry/exit corrections. The result has ART's speed and SIRT's smoothness in essentially one pass.
+— residual normalized by **row sum** (ray length `L_i = Σ_k a_ik`), back-projected with weight `a_ij`, then normalized by **column sum** (per-pixel coverage `Σ_{i∈V} a_ij`) so a pixel's correction is independent of how many rays graze it; if that column sum is zero, the view did not touch that pixel and the update leaves it unchanged. SART also uses bilinear (pyramid) basis elements for a continuous, more accurate forward model — with first/last ray weights adjusted so `Σ_j a_ij = L_i` — and a longitudinal Hamming window emphasizing mid-ray over entry/exit corrections. The compact implementation below keeps the same ART projection and SART row/column weighting with a sparse length matrix; the bilinear/windowed version changes how the weights are built and back-distributed.
 
 ## Algorithm
 
@@ -31,7 +31,7 @@ ART (Kaczmarz), one sweep:
 2. For each ray `i`: residual `r = p_i − a_i·f`; update `f ← f + λ r/‖a_i‖² · a_i`; clip `f ≥ 0` (and to support). Repeat sweeps.
 
 SART, one iteration:
-1. For each view `V` (against the frozen image `g`): for rays `i∈V`, `r_i = p_i − Σ_k a_ik g_k`; correction `c_j = Σ_{i∈V} a_ij (r_i/Σ_k a_ik) / Σ_{i∈V} a_ij`; update `g ← g + λ c`; clip. Repeat over views, then iterate.
+1. For each view `V` (against the frozen image `g`): for rays `i∈V`, `r_i = p_i − Σ_k a_ik g_k`; for covered pixels, correction `c_j = Σ_{i∈V} a_ij (r_i/Σ_k a_ik) / Σ_{i∈V} a_ij`, while uncovered pixels get `c_j = 0`; update `g ← g + λ c`; clip. Repeat over views, then iterate.
 
 ## Code
 
@@ -74,7 +74,17 @@ def build_system_matrix(n, angles, n_rays=None, det_spacing=1.0):
     return A, ray_view
 
 
-def art(A, b, n_sweeps=8, lam=0.2, x0=None, nonneg=True, order=None):
+def forward_project(A, x):
+    return A.dot(x)
+
+
+def apply_constraints(x, nonneg=True):
+    if nonneg:
+        np.clip(x, 0.0, None, out=x)
+    return x
+
+
+def art(A, b, n_sweeps=10, lam=1.0, x0=None, nonneg=True, order=None):
     """Cyclic Kaczmarz / ART: project the estimate onto each ray's hyperplane.
         x <- x + lam * (b_i - a_i.x) / ||a_i||^2 * a_i"""
     m, ncol = A.shape
@@ -89,12 +99,11 @@ def art(A, b, n_sweeps=8, lam=0.2, x0=None, nonneg=True, order=None):
             ai = A.getrow(i)
             resid = b[i] - ai.dot(x)[0]                              # b_i - a_i.x
             x = x + lam * (resid / row_norm2[i]) * ai.toarray().ravel()
-            if nonneg:
-                np.clip(x, 0.0, None, out=x)                         # projection onto x>=0
+            apply_constraints(x, nonneg=nonneg)                      # projection onto x>=0
     return x
 
 
-def sart(A, b, ray_view, n_iters=8, lam=1.0, x0=None, nonneg=True):
+def sart(A, b, ray_view, n_iters=5, lam=1.0, x0=None, nonneg=True):
     """SART: per-view simultaneous update with row-sum and column-sum weighting.
         x_j <- x_j + lam * [sum_{i in V} a_ij (b_i - a_i.x)/(sum_k a_ik)]
                           / (sum_{i in V} a_ij)"""
@@ -113,9 +122,18 @@ def sart(A, b, ray_view, n_iters=8, lam=1.0, x0=None, nonneg=True):
             col = np.asarray(Av.sum(axis=0)).ravel()                # sum_i a_ij over view
             col = np.where(col == 0.0, 1.0, col)
             x = x + lam * num / col                                 # / per-pixel coverage
-            if nonneg:
-                np.clip(x, 0.0, None, out=x)
+            apply_constraints(x, nonneg=nonneg)
     return x
+
+
+def reconstruct(A, b, ray_view=None, mode="view", **params):
+    if mode == "row":
+        return art(A, b, **params)
+    if mode == "view":
+        if ray_view is None:
+            raise ValueError("ray_view is required for view-wise reconstruction")
+        return sart(A, b, ray_view, **params)
+    raise ValueError("mode must be 'row' or 'view'")
 
 
 if __name__ == "__main__":
@@ -129,14 +147,14 @@ if __name__ == "__main__":
 
     angles = np.linspace(0, np.pi, 30, endpoint=False)
     A, ray_view = build_system_matrix(n, angles, n_rays=n)
-    b = A.dot(img.ravel())                                          # simulated ray-sums
+    b = forward_project(A, img.ravel())                             # simulated ray-sums
 
     nv = len(angles)                                               # wide-angle ray order
     perm = np.argsort([(k * (nv // 2 + 1)) % nv for k in range(nv)])
     order = np.concatenate([np.where(ray_view == v)[0] for v in perm])
 
-    x_art = art(A, b, n_sweeps=8, lam=0.2, order=order).reshape(n, n)
-    x_sart = sart(A, b, ray_view, n_iters=8, lam=1.0).reshape(n, n)
+    x_art = reconstruct(A, b, ray_view, mode="row", n_sweeps=8, lam=0.2, order=order).reshape(n, n)
+    x_sart = reconstruct(A, b, ray_view, mode="view", n_iters=8, lam=1.0).reshape(n, n)
     rmse = lambda u: np.sqrt(np.mean((u - img) ** 2))
     print("ART RMSE:", round(rmse(x_art), 4), " SART RMSE:", round(rmse(x_sart), 4))
 ```

@@ -25,10 +25,11 @@ start, and (iii) prove the move-count is polynomially bounded.
 
 ## Background
 
-**Lattices and the determinant.** Writing the basis as columns, the determinant
-`d(L) = |det(b_1, ..., b_n)|` is a positive real that does not depend on which
-basis is chosen — it is the covolume of `L`. So any honest measure of basis
-quality must be one that the unimodular freedom cannot inflate away.
+**Lattices and the determinant.** The determinant `d(L) = sqrt(det(G))`, where
+`G = (<b_i, b_j>)_{i,j}` is the Gram matrix (so `d(L) = |det(b_1, ..., b_n)|`
+when `m = n`), is a positive real that does not depend on which basis is chosen —
+it is the covolume of `L`. So any honest measure of basis quality must be one
+that the unimodular freedom cannot inflate away.
 
 **Gram-Schmidt orthogonalization.** From any independent `b_1, ..., b_n` one
 builds an orthogonal sequence `b*_1, ..., b*_n` and real coefficients `mu_{i,j}`
@@ -63,18 +64,20 @@ classical theory are load-bearing here:
 
 - *Minkowski's convex-body bound / successive minima.* In a lattice of rank `i`
   and covolume `D_i`, there is a nonzero vector of squared length at most
-  `(4/3)^{(i-1)/2} D_i^{2/i}`. This is what eventually lower-bounds the GS
-  lengths and turns "the potential keeps dropping" into "the potential cannot
-  drop forever".
+  `(4/3)^{(i-1)/2} D_i^{2/i}`. Rearranged, this lower-bounds the partial
+  covolumes `D_i` themselves in terms of the lattice minimum, which is what
+  turns "the potential keeps dropping" into "the potential cannot drop forever".
 
 - *Gauss/Lagrange rank-2 reduction.* For two vectors `v_1, v_2`, repeatedly
   subtract `round(<v_1,v_2>/<v_1,v_1>)` copies of `v_1` from `v_2`, then swap if
   `|v_2| < |v_1|`; iterate. This is the lattice analogue of the Euclidean
   algorithm — Euclid subtracts integer multiples to shrink integers, this
   subtracts vector multiples to shrink a vector's component along another — and
-  it terminates with the genuinely shortest basis of the rank-2 lattice. The
-  product `|v_1||v_2|` strictly decreases at each swap, which is why it stops.
-  This rank-2 procedure is the only fully-understood reduction step, and it works
+  it terminates with the genuinely shortest basis of the rank-2 lattice. Each
+  round size-reduces `v_2` below `|v_1|` and then swaps, so the leading vector's
+  length strictly decreases every iteration; since lattice lengths are bounded
+  below away from zero, this cannot go on forever, which is why it stops. This
+  rank-2 procedure is the only fully-understood reduction step, and it works
   precisely because in two dimensions the rounding plus swap cannot loop.
 
 **The gap.** Classical high-rank reduction gives the best bases but no
@@ -86,10 +89,12 @@ guarantees a short `b_1`.
 
 ## Baselines
 
-**Hermite/Minkowski-reduced bases.** A Minkowski-reduced basis takes `b_1` to be
-a shortest nonzero lattice vector, `b_2` shortest independent of `b_1`, and so on.
-The guarantees are essentially optimal, but producing such a basis requires
-solving SVP-like subproblems; no polynomial-time algorithm in the rank is known.
+**Hermite/Minkowski-reduced bases.** These are the strong classical reduction
+notions: each `b_i` is chosen as short as possible subject to extending
+`b_1, ..., b_{i-1}` to a basis, so the basis tracks the successive minima closely
+(exactly, in low rank). The guarantees are essentially optimal, but producing
+such a basis requires solving shortest-vector-style subproblems; no
+polynomial-time algorithm in the rank is known.
 This is the quality target one would like to approximate cheaply.
 
 **Gauss/Lagrange rank-2 reduction.** Core idea and math as above: size-reduce

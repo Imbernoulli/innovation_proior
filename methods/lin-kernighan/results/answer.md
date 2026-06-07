@@ -176,7 +176,7 @@ class LinKernighan(TSP):
                 close = self.closest(t2, tour, gain, broken, set())   # y1 with g1 > 0
                 tries = 5                               # limited level-1 backtracking (~5)
                 for t3, (_, Gi) in close:
-                    if t3 in around:                    # y1 must not already be a tour link at t2
+                    if t3 in around:                    # t3 can't be a tour-neighbour of t1
                         continue
                     joined = {make_pair(t2, t3)}
                     if self.choose_x(tour, t1, t3, Gi, broken, joined):
@@ -219,7 +219,7 @@ class LinKernighan(TSP):
         return False
 
     def choose_y(self, tour, t1, t2i, gain, broken, joined):
-        """Choose y_i from the close-up-ordered candidates: 5 at level 2, nearest only deeper."""
+        """Choose y_i from the close-up-ordered candidates: 5 at level 2, top-ranked only deeper."""
         ordered = self.closest(t2i, tour, gain, broken, joined)
         top = 5 if len(broken) == 2 else 1
         for node, (_, Gi) in ordered:

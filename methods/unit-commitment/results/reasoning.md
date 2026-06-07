@@ -25,7 +25,7 @@ The exact thing is dynamic programming over commitment states: let the state be 
 
 The approach that actually ran the grid for two decades is Lagrangian relaxation, and it's worth understanding precisely *why* it was attractive and precisely *where* it falls short, because that's what motivates moving past it. Look at the constraint structure. Almost every constraint — the band, min up/down, ramps, start cost — involves a *single* unit. Only two kinds of constraint tie *different* units together: the hourly demand balance Σ_g p_g(t) = D(t), and the reserve requirement. So if I take those coupling constraints and pull them into the objective with multipliers λ(t) — a Lagrangian — the relaxed problem *separates*. It decomposes into G independent single-unit problems, each one a tiny dynamic program over that one unit's own on/off history (only that unit's states, so no 2^G blowup). Each subproblem is cheap. Then I do a subgradient iteration on λ(t) to push the system back toward demand balance. That's elegant and it scales, because the heavy lifting is per-unit and parallel.
 
-But here's the wall. The commitment variables are integers, so this problem is *nonconvex*. For a nonconvex problem the Lagrangian dual doesn't close the gap: the best bound I get from the dual sits strictly *below* the true optimum — there's a genuine duality gap. Worse, the schedule I read off the relaxed subproblems is almost never feasible — the individually-optimized units don't add up to exactly meet demand each hour. So I have to bolt on a heuristic to repair the schedule into something feasible, and now I've got a feasible schedule whose distance from optimal I can't certify, produced by a procedure with finicky step-size and repair tuning. I get a bound and a workable schedule, but not a *provably near-optimal* one. That residual gap and the lack of a certificate is the thing I'd want to remove.
+But here's the wall. The commitment variables are integers, so this problem is *nonconvex*. For a nonconvex problem the Lagrangian dual isn't guaranteed to close the gap: the best bound I get from the dual generally sits *below* the true optimum — there's a duality gap I have no way to drive to zero. Worse, the schedule I read off the relaxed subproblems is almost never feasible — the individually-optimized units don't add up to exactly meet demand each hour. So I have to bolt on a heuristic to repair the schedule into something feasible, and now I've got a feasible schedule whose distance from optimal I can't certify, produced by a procedure with finicky step-size and repair tuning. I get a bound and a workable schedule, but not a *provably near-optimal* one. That residual gap and the lack of a certificate is the thing I'd want to remove.
 
 So let me reconsider the whole frame. Instead of decomposing and patching, what if I write the *entire* commitment problem — all the binaries, all the coupling — as one single mixed-integer linear program, and hand it to a general-purpose branch-and-cut solver? The solver branches on the binaries, and at every node of its search tree it solves the *LP relaxation* (the same model but with u allowed to be fractional in [0,1]) to get a bound it uses to prune. Modern MILP solvers are extremely good at this — they'll prove a small optimality gap, which is exactly the certificate Lagrangian relaxation couldn't give me.
 
@@ -77,14 +77,14 @@ Introduce a single continuous auxiliary cost c^SU(t) ≥ 0 per hour, the start-u
 
 Read the bracket. At a genuine start, u(t)=1. The sum Σ_{i=1}^{T_s} u(t−i) counts how many of the previous T_s hours the unit was *on*. If the unit had been off throughout that look-back window — off for at least T_s hours — the sum is 0 and the bracket is 1, so this category-s bound becomes c^SU(t) ≥ K_s^SU. If the unit had been on at some point inside the window, the sum is ≥1 and the bracket is ≤0, so that category's bound is slack. So each category contributes a lower bound that is active exactly when the unit has been off long enough to be in (at least) that category. Now — crucially — c^SU(t) appears with a positive coefficient in the objective I'm *minimizing*. So the LP will drive c^SU(t) down to the largest of its active lower bounds. The categories nest: being off ≥ T_s hours implies off ≥ T_{s'} for any earlier (hotter, cheaper) category, so the colder the unit, the more category-bounds are active, and the *binding* one is the right, more-expensive cold-start cost. The minimization does the category selection for free — no selection binary, just one continuous variable and S linear inequalities per hour. Exactly the compactness I wanted, and it pins the correct time-dependent cost. (If I'm carrying v explicitly I can equally write these in terms of v(t) and the intervening w's; same mechanism.)
 
-Production cost next. The true cost-of-output curve is convex quadratic, a + b·p + c·p². I want a *linear* program inside each node, so I replace the quadratic by a piecewise-linear convex underestimate: split the output band into L segments, let δ_l(t) be the amount produced in segment l, with p(t) = P·u(t) + Σ_l (slope-widths)·δ_l(t) and the segment widths bounded, and charge Σ_l C_l·δ_l(t) with the marginal costs C_l increasing across segments (convexity). And here convexity hands me a gift: because the marginal cost rises segment by segment and I'm minimizing, the solver fills the cheap low segments before the expensive high ones automatically — I do *not* need ordering binaries or special-ordered-set machinery to enforce "fill segment 1 before segment 2." The convex objective enforces it for free. So piecewise cost is just continuous segment variables plus linear bounds. (Compactly, one can even drop the per-segment variables and bound p(t) ≤ (P̄_l − P̄_{l−1})·u(t) per segment as a simpler tightening.)
+Production cost next. The true cost-of-output curve is convex quadratic, a + b·p + c·p². I want a *linear* program inside each node, so I sample the curve at L breakpoints and replace it by the piecewise-linear function that interpolates them — a convex piecewise-linear *approximation* (the chords sit just above the convex curve, so it's a slight over-estimate that tightens as I add breakpoints). Split the output band into L segments, let δ_l(t) be the amount produced in segment l, with p(t) = P·u(t) + Σ_l (slope-widths)·δ_l(t) and the segment widths bounded, and charge Σ_l C_l·δ_l(t) with the marginal costs C_l increasing across segments (the slopes rise because the curve is convex). And here convexity hands me a gift: because the marginal cost rises segment by segment and I'm minimizing, the solver fills the cheap low segments before the expensive high ones automatically — I do *not* need ordering binaries or special-ordered-set machinery to enforce "fill segment 1 before segment 2." The convex objective enforces it for free. So piecewise cost is just continuous segment variables plus linear bounds. (Equivalently, I can carry one fill weight λ_l(t) ∈ [0,1] per breakpoint with Σ_l λ_l = u(t), and read p and the cost off as the same convex combination Σ_l (mw_l − mw_0)·λ_l and Σ_l (cost_l − cost_0)·λ_l — which is the form I'll write in code.)
 
 Ramp limits last — these are what genuinely make the problem inter-temporal in the *continuous* variables, not just the binary ones. Output can't jump too far hour to hour, except that a unit coming on or going off gets a special allowance (it's allowed to come up to its start-up rate SU, or down to its shut-down rate SD). Writing it directly:
 
   p(t) − p(t−1) ≤ RU·u(t−1) + SU·v(t)     (ramp up: normal rate RU if it was already on, the start-up rate SU on the hour it starts)
   p(t−1) − p(t) ≤ RD·u(t)  + SD·w(t)      (ramp down: rate RD if it stays on, shut-down rate SD on the hour it shuts)
 
-Both linear, both coupling consecutive hours through the same v, w I already have.
+Both linear, both coupling consecutive hours through the same v, w I already have. There's a tidier way to carry the same content, though, and it pairs naturally with how I'll write the generation band. If I track *output above the minimum*, q(t) = p(t) − P·u(t), then on the start-up hour the unit jumps from 0 up to at least P, and the special SU allowance is really a statement about how high the unit may sit *in that hour* — which is exactly an upper limit on q, not a hour-to-hour difference. So I fold the start-up allowance into the generation-*limit* constraint — cap q(t) + (reserve headroom) by (P̄ − P)·u(t) − max(P̄ − SU, 0)·v(t), so a just-started unit can't be above its start-up rate — and symmetrically cap it by −max(P̄ − SD, 0)·w(t+1) so a unit about to shut next hour isn't sitting at the top. With those caps doing the start/shut work, the ramp coupling on q collapses to the plain q(t) − q(t−1) ≤ RU and q(t−1) − q(t) ≤ RD. Same physics, fewer terms in the inter-temporal rows.
 
 And I still need the two system-coupling constraints — the ones Lagrangian relaxation used to dualize, but which I now just keep as hard linear constraints because branch-and-cut handles them directly: demand balance Σ_g p_g(t) = D(t) every hour, and the spinning-reserve requirement. Reserve is cleanest if each unit also reports its *maximum available* power p̄_g(t) (what it could ramp up to if needed), bounded by P̄_g·u_g(t) and by its ramp headroom, and require Σ_g p̄_g(t) ≥ D(t) + R(t).
 
@@ -97,8 +97,9 @@ import pyomo.environ as pyo
 
 def build_uc(data):
     gens   = data["thermal_generators"]    # each: Pmin, Pmax, UT, DT, RU, RD, SU, SD,
-                                            #       startup categories [(lag, cost)...],
-                                            #       piecewise [(mw, cost)...], init state
+                                            #       u0 (0/1), init (+on / -off hours entering t=1),
+                                            #       startup categories [{"lag":h,"cost":c}...],
+                                            #       piecewise [{"mw":x,"cost":c}...]
     T      = data["time_periods"]
     demand = data["demand"]; reserve = data["reserves"]
 
@@ -113,9 +114,11 @@ def build_uc(data):
     m.v = pyo.Var(m.G, m.T, within=pyo.Binary)             # turn-on
     m.w = pyo.Var(m.G, m.T, within=pyo.Binary)             # turn-off
     # startup-category indicator and piecewise-segment fill
-    m.d  = pyo.Var(((g,s,t) for g in m.G for s in startups(gens[g]) for t in m.T),
+    nS = {g: len(gens[g]["startup"])   for g in gens}
+    nL = {g: len(gens[g]["piecewise"]) for g in gens}
+    m.d  = pyo.Var(((g,s,t) for g in m.G for s in range(nS[g]) for t in m.T),
                    within=pyo.Binary)
-    m.lam = pyo.Var(((g,l,t) for g in m.G for l in pieces(gens[g]) for t in m.T),
+    m.lam = pyo.Var(((g,l,t) for g in m.G for l in range(nL[g]) for t in m.T),
                     within=pyo.UnitInterval)
     m.cprod = pyo.Var(m.G, m.T)                            # production cost above minimum
 
@@ -153,13 +156,32 @@ def build_uc(data):
             # a start at t is exactly one of its categories
             m.add_component(f"startsel_{g}_{t}",
                 pyo.Constraint(expr =
-                    m.v[g,t] == sum(m.d[g,s,t] for s,_ in enumerate(gen["startup"]))))
+                    m.v[g,t] == sum(m.d[g,s,t] for s in range(nS[g]))))
+            # a hotter (cheaper) category s is eligible only if the unit shut down within
+            # s's offline window [lag_s, lag_{s+1}) hours ago; coldest category is the
+            # unconstrained catch-all, and the minimized cost picks the cheapest eligible one.
+            # A pre-horizon shut (entering off) shows up at k = 1 - off0.
+            def W(k):
+                if k >= 1: return m.w[g,k]
+                off0 = -gen["init"] if gen["u0"] == 0 else 0
+                return 1 if k == 1 - off0 else 0
+            su = gen["startup"]
+            for s in range(nS[g]-1):
+                lag, lag_next = su[s]["lag"], su[s+1]["lag"]
+                m.add_component(f"startok_{g}_{s}_{t}",
+                    pyo.Constraint(expr =
+                        m.d[g,s,t] <= sum(W(t-i) for i in range(lag, lag_next))))
 
             # generation upper limit (with start/shut ramp tightening); lower band via P_min*u
             m.add_component(f"gmax_{g}_{t}",
                 pyo.Constraint(expr =
                     m.p[g,t] + m.r[g,t] <= (Pmax-Pmin)*m.u[g,t]
                                            - max(Pmax-gen["SU"],0)*m.v[g,t]))
+            if t < T:
+                m.add_component(f"gmax2_{g}_{t}",
+                    pyo.Constraint(expr =
+                        m.p[g,t] + m.r[g,t] <= (Pmax-Pmin)*m.u[g,t]
+                                               - max(Pmax-gen["SD"],0)*m.w[g,t+1]))
 
             # ramps couple consecutive hours
             if t > 1:

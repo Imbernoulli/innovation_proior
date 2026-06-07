@@ -136,8 +136,9 @@ Let me sanity-check the depth in the example. Start with tour `T`, pick adjacent
 (t_1, t_2)`. Let `t_3` be the nearest city to `t_2`; `y_1 = (t_2, t_3)`, with the proviso that `y_1`
 isn't already a tour link at `t_2` (disjointness). If `g_1 = |x_1| - |y_1|` isn't positive, back up and
 take `t_2` to be `t_1`'s other tour neighbor. Set `i = 2`. `t_4` is the tour neighbor of `t_3` such
-that breaking `x_2 = (t_3, t_4)` lets me close up; if I instead join `t_4` to `t_1` and `g_1 + g_2 >
-0`, that's a candidate 2-opt improvement — remember it as `G*`, `k = 2`. Otherwise pick `t_5` near
+that breaking `x_2 = (t_3, t_4)` lets me close up; if I instead join `t_4` to `t_1` with closing gain
+`g_2* = |x_2| - |(t_4, t_1)|` and `g_1 + g_2* > 0`, that's a candidate 2-opt improvement — remember it
+as `G*`, `k = 2`. Otherwise pick `t_5` near
 `t_4`, `y_2 = (t_4, t_5)`. Now there's a unique `x_3 = (t_5, t_6)` that allows close-up; check joining
 `t_6` to `t_1` against `G*`, update `k = 3` if it's better. If `g_1 + g_2 + g_3 ≤ G*`, the stopping
 rule says cash in the `k = 2` exchange. Otherwise continue with `t_7`, and so on. The depth just keeps
@@ -292,7 +293,7 @@ tour links), the initial gain is `|x1|`, and `closest` gives the `y1 = (t2, t3)`
                 close = self.closest(t2, tour, gain, broken, set())  # y1 candidates, g1 > 0
                 tries = 5                                 # limited level-1 backtracking (~5)
                 for t3, (_, Gi) in close:
-                    if t3 in around:                      # y1 must not already be a tour link at t2
+                    if t3 in around:                      # t3 can't be a tour-neighbour of t1
                         continue
                     joined = {makePair(t2, t3)}
                     if self.chooseX(tour, t1, t3, Gi, broken, joined):
@@ -335,9 +336,11 @@ backtracking is full only at level 2 but single-shot deeper is exactly the `len(
                 self.heuristic_cost -= relink
                 return True
             choice = self.chooseY(tour, t1, t2i, Gi, removed, joined)  # else extend the chain
-            if len(broken) == 2:
-                return choice if choice else self._next_x2(...)        # full backtracking at level 2
-            return choice                                              # single shot for i > 2
+            if len(broken) == 2:                                       # level 2: keep trying the other x_2
+                if choice:
+                    return True
+            else:
+                return choice                                          # single shot for i > 2
         return False
 ```
 
@@ -347,7 +350,7 @@ just the single best deeper, which is the asymmetric backtracking budget made co
 ```python
     def chooseY(self, tour, t1, t2i, gain, broken, joined):
         ordered = self.closest(t2i, tour, gain, broken, joined)
-        top = 5 if len(broken) == 2 else 1                # 5 candidates at level 2, else nearest only
+        top = 5 if len(broken) == 2 else 1                # 5 candidates at level 2, else top-ranked only
         for node, (_, Gi) in ordered:
             added = deepcopy(joined); added.add(makePair(t2i, node))   # y_i = (t2i, node)
             if self.chooseX(tour, t1, node, Gi, broken, added):

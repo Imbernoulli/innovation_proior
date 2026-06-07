@@ -58,9 +58,10 @@ dỹ/dt = Ã ỹ + B F(V_℘ ỹ),
    Ã = V_k^T A V_k,   B = V_k^T U (P^T U)^{-1} in R^{k×m},   V_℘ = P^T V_k in R^{m×k},
 ```
 
-with per-step cost `O(α(m) + 4mk)` — set by `m`, `k`, never `n`. (For a local/stencil `F` whose row
-`i` reads inputs `p_i`, only `∪_i p_{℘_i}` rows of `V_k` are touched, still `n`-independent when the
-stencils are sparse; componentwise is the case `p_i = {i}`.)
+with per-step cost `O(α(m) + 4mk)` — set by `m`, `k`, never `n`. (A steady Newton solve gets the
+same treatment: `J_red ≈ Ã + B diag(F'(V_℘ ỹ)) V_℘`, cost `O(α'(m) + 4mk + 2mk^2)`. For a
+local/stencil `F` whose row `i` reads inputs `p_i`, only `∪_i p_{℘_i}` rows of `V_k` are touched,
+still `n`-independent when stencils are sparse; componentwise is the case `p_i = {i}`.)
 
 **Error bound.** Split `f = f_* + w` with `f_* = U U^T f` the best `m`-term fit and
 `w = (I − U U^T) f`. Since `𝒫` is the identity on `Range(U)`, `𝒫 f_* = f_*`, so
@@ -165,7 +166,7 @@ SY, SF = np.array(SY).T, np.array(SF).T
 k, m = 10, 12
 Vk, _   = pod_basis(SY, k)                              # state POD basis  (n x k)
 U,  svf = pod_basis(SF, m)                              # nonlinear POD basis (n x m)
-P  = deim_indices(U)
+P = deim_indices(U)
 At = Vk.T @ A @ Vk                                      # k x k linear part
 B  = Vk.T @ U @ np.linalg.inv(U[P, :])                  # k x m, V_k^T U (P^T U)^{-1}
 Vp = Vk[P, :]                                           # m x k, rows of V_k = P^T V_k

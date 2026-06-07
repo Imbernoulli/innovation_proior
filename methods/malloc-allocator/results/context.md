@@ -130,9 +130,9 @@ the allocator. Two metrics are read off each trace:
 
 - **Throughput** — operations served per second (equivalently, average instructions per
   `malloc`/`free`).
-- **Peak memory utilization** — the maximum over the trace of (aggregate live payload) /
-  (heap size the allocator has requested from the OS at that point); i.e. how little of the
-  high-water heap was wasted.
+- **Peak memory utilization** — the maximum aggregate live payload reached over the trace,
+  divided by the heap high-water mark (the largest heap size the allocator ever requested from
+  the OS); i.e. how little of the high-water heap was wasted.
 
 The two are reported together precisely because they trade off, and an allocator is judged on
 the pair across a spread of workloads (the "minimize anomalies" goal: do well everywhere, not

@@ -79,7 +79,7 @@ indirectly, through a handful of free samples, and the sample grid pins the achi
 multiples of the sampling interval; it does not directly minimize the in-band worst-case error.
 
 **Linear-programming design.** Because the response `G(f) = Σ α_k cos(2πkf)` is linear in the
-coefficients, one can pose "minimize `δ` subject to `-δ ≤ Ŵ(f_i)[D(f_i) - G(f_i)] ≤ δ` on a dense
+coefficients, one can pose "minimize `δ` subject to `-δ ≤ W(f_i)[D(f_i) - G(f_i)] ≤ δ` on a dense
 frequency grid" as a linear program and let a simplex solver find the minimax coefficients. This
 *does* minimize the worst-case error and *does* allow exact band edges. **Limitation:** an LP with a
 constraint per grid point and one column per coefficient is heavy — practical only up to ~100
@@ -111,8 +111,8 @@ taps are within scope.
 
 The available primitives are forming the ideal impulse response, evaluating a real trigonometric
 amplitude on a dense frequency grid, solving finite interpolation systems, and using the DFT or
-inverse DFT. The scaffold is: set up the weighted approximation problem on the prescribed bands,
-send the amplitude fit to one solver slot, then fold the returned coefficients into a symmetric or
+inverse DFT. The shape of the design routine is: set up the weighted approximation problem on the
+prescribed bands, fit the amplitude, then fold the returned coefficients into a symmetric or
 antisymmetric impulse response.
 
 ```python
@@ -120,7 +120,8 @@ import numpy as np
 
 def desired_and_weight(grid, bands, desired, weight):
     """Sample the desired amplitude D(f) and weight W(f) on a dense frequency grid.
-    Piecewise-constant lookup over the prescribed bands."""
+    Per-band: constant for lowpass/bandpass specs, frequency-dependent for a
+    differentiator (D proportional to f, W a relative-error weight)."""
     D = np.empty_like(grid); W = np.empty_like(grid)
     # ... fill D, W per band (and leave transition gaps out of the grid) ...
     return D, W
@@ -134,7 +135,7 @@ def fit_amplitude(grid, D, W, num_cos):
 
 def design_fir(numtaps, bands, desired, weight=None, grid_density=16):
     grid, D, W = build_grid(numtaps, bands, desired, weight, grid_density)
-    num_cos = numtaps // 2 + (numtaps % 2)        # depends on symmetry/parity case
+    num_cos = num_amplitude_terms(numtaps)        # count of trig terms; depends on symmetry/parity case
     alpha, dev = fit_amplitude(grid, D, W, num_cos)
     h = cosine_coeffs_to_impulse_response(alpha, numtaps)  # impose h(n)=±h(N-1-n)
     return h

@@ -28,7 +28,7 @@ So I have a choice to make about *what* I let the gradient flow through. I freez
 
 There's a second, subtler gradient hazard, and it's about step-like *functions* even when nothing discontinuous is happening in the mesh. Take the most natural definition of melt-pool depth: scan downward and report the deepest node whose temperature exceeds the melting point. As a function of the laser power, that depth is *piecewise constant* — nudge the power a little and the deepest-melted node usually doesn't change at all, then suddenly jumps to the next node down. It's differentiable almost everywhere, sure, but its derivative is *zero* almost everywhere and undefined at the jumps. Backprop through it would deliver a gradient of zero and the optimizer would sit dead in the water. A valid-but-useless gradient is its own kind of wall.
 
-So if I want to optimize melt-pool depth, I can't use the discrete "deepest molten node" definition; I need a *continuous* surrogate for depth that moves smoothly when the temperature field moves. Let me build one. The melt pool is where the temperature crosses the melting isotherm, so depth is really "how far down does the melting-temperature crossing go, directly under the laser." Make that continuous: at several height levels below the build surface, find the temperature *right under the beam* by interpolating from a small local stencil fixed by the mesh and toolpath — the nine nearby nodes around the laser footprint give weights for the value at the beam location. Now I have a smooth temperature-versus-depth profile under the laser. Then find the depth at which that profile crosses the melting temperature by a *pairwise linear* interpolation between adjacent levels — a linear blend, which is continuous and has a well-defined nonzero derivative. That gives a melt-pool depth that responds smoothly to power and produces a usable gradient. Same physical quantity, a parameterization chosen specifically so the gradient survives.
+So if I want to optimize melt-pool depth, I can't use the discrete "deepest molten node" definition; I need a *continuous* surrogate for depth that moves smoothly when the temperature field moves. Let me build one. The melt pool is where the temperature crosses the liquidus isotherm, so depth is really "how far down does that crossing go, directly under the laser." Make that continuous: at four height levels below the build surface, find the temperature *right under the beam* by interpolating from the nine nearest nodes around the laser footprint. The neighbor sets are determined by the fixed mesh and fixed toolpath at each time, so I am not optimizing through a nearest-neighbor search; I am using those fixed stencils to solve the local interpolation problem at the beam location. Now I have a temperature-versus-depth profile under the laser. Then find the depth at which that profile crosses the liquidus by a *pairwise linear* interpolation between adjacent levels — a linear blend, which is continuous and has a well-defined nonzero derivative as long as the two level temperatures are not identical. That gives a melt-pool depth that responds smoothly to power and produces a usable gradient. Same physical quantity, a parameterization chosen specifically so the gradient survives.
 
 One more saturation worry while I'm here. I'm going to want to parameterize a *time-series* control, and the natural tool is a small neural network mapping time → laser power, with tanh nonlinearities. tanh has fine gradients in isolation, but stacked and driven hard, repeated tanh saturates — outputs pin near ±1 where the slope is ~0 — and the chain of local derivatives collapses to nearly zero, the vanishing-gradient problem. I'll keep the network shallow and lean on an optimizer with momentum and per-coordinate step scaling so that even small, uneven gradients still make progress. And there's a hard temperature clamp in the integrator (cap T at some max so a runaway element can't blow up the sim); above the cap the gradient is killed, which I'll accept as a deliberate stability measure rather than fight.
 
@@ -48,7 +48,7 @@ How does the laser enter? As the flux R_F on the active top surfaces. I model it
 
 where Q is the nominal power scale, P(t) the normalized commanded power from my control, on(t) the laser on/off state from the toolpath, x_L(t) the beam center, and r_b the beam radius. The factor 3 in the exponent concentrates about 95% of the energy within the spot radius, and 3/(πr_b²) makes the surface integral equal to QP(t)on(t). In the weak-form sign convention R_F is an outward prescribed-flux vector; the incoming laser has outward flux −q_s, so subtracting R_F in the update becomes a positive heat-input contribution in the assembled right-hand side. Every term here is smooth in Q, P, and r_b, so the gradient flows straight back through the heat input into my control parameters. That's the whole point: P(t) is differentiable, and it's where my design knob lives.
 
-Convection and radiation are evaluated on the exposed surfaces from the interpolated surface temperature: q_conv = −h(T_ip − T_amb), q_rad = −εσ(T_ip⁴ − T_amb⁴), scattered back to the surface nodes through the shape functions and surface Jacobian. The T⁴ in radiation is smooth — good, AD handles it. And I'll fold latent heat into the specific heat: in the mushy band between solidus and liquidus, add L/(T_liq − T_solid) to c_p, so melting absorbs energy over that interval. That's a temperature-dependent c_p; the dependence is mild and continuous across the band, so it differentiates fine — though I have to be careful that the *branch* selecting "am I in the mushy band" doesn't itself become a gradient-stopping step; it's a property-magnitude change, not a control I optimize through, so I treat it as a forward-only condition.
+Convection and radiation are evaluated on the exposed surfaces from the interpolated surface temperature: q_conv = −h(T_ip − T_amb), q_rad = −εσ(T_ip⁴ − T_amb⁴), scattered back to the surface nodes through the shape functions and surface Jacobian. The T⁴ in radiation is smooth — good, AD handles it. And I'll fold latent heat into the specific heat: in the mushy band between solidus and liquidus, add L/(T_liq − T_solid) to c_p, so melting absorbs energy over that interval. That is a piecewise temperature-dependent c_p, not a smooth law at the two thresholds. Away from the solidus and liquidus it differentiates like the ordinary heat equation; at the thresholds the branch is discontinuous. I can still use it as a fixed material law, because I am not optimizing the thresholds or asking the optimizer to move through a differentiable phase-front event. If that branch became the design variable, I would need to smooth it.
 
 Now, *which* AD framework do I build this in? This matters more than I'd like, because FE assembly is not what mainstream deep-learning AD libraries are built for. Their fast path is dense, regular, element-wise tensor algebra — convolutions, big matmuls. But FE assembly is the opposite: I gather a handful of nodal values per element by *arbitrary indexing* (the element's node list), do small dense element computations, and *scatter-accumulate* the results into global vectors with *atomic adds* — and I do this over a *dynamically changing* active-element set. Random indexing, large-scale atomics, dynamic domains. Those are exactly the operations the array-programming libraries express awkwardly and execute slowly, because each becomes a separate kernel launch and a separate buffer allocation rather than fusing.
 
@@ -56,11 +56,11 @@ So the choice should turn on the data-access pattern, not on which library is mo
 
 Let me now think about the parameterizations for the three things I actually want to do, because each tests a different part of this machine.
 
-First, parameter inference from partial data. I treat a handful of static scalars — heat capacity, conductivity, convection coefficient, a static laser power, beam radius — as differentiable leaves, run the sim, and put an MSE loss between the simulated and a *target* thermal response, but only on the nodes I can "see," say the top build layer (as if an IR camera observed only the surface). Backprop gives ∂loss/∂(each scalar) in one pass; Adam updates them. This is calibration: infer hidden material/process parameters from a partial observation. I expect it to work, but I should be honest that the inverse problem is ill-posed — a lower heat capacity and a higher laser power can produce nearly the same thermal response, so the parameters are coupled and individually non-identifiable. What I should care about is that they all move in the right *direction* to collectively drive the partial-observation loss toward zero, not that each scalar lands exactly on its true value. And this case is a stress test of the AD plumbing: those five scalars touch matrix assembly, mass lumping, the Gaussian distribution calculation, the temporal mapping — so if the gradients are clean here, the machinery is sound across all the critical FE operations.
+First, parameter inference from partial data. I treat a handful of static scalars — heat capacity, conductivity, convection coefficient, a static laser power, beam radius — as differentiable leaves, run the sim, and put a squared-error loss between the simulated and a *target* thermal response, but only on the nodes I can "see," say the top build layer (as if an IR camera observed only the surface). Backprop gives ∂loss/∂(each scalar) in one pass; Adam updates them. This is calibration: infer hidden material/process parameters from a partial observation. I should be honest that the inverse problem is ill-posed — a lower heat capacity and a higher laser power can produce nearly the same thermal response, so the parameters are coupled and individually non-identifiable. The objective should therefore be response matching under partial observation, not a promise that every scalar is uniquely recoverable. And this case is a stress test of the AD plumbing: those five scalars touch matrix assembly, mass lumping, the Gaussian distribution calculation, and the temporal recurrence, so the gradient path has to cross all the critical FE operations.
 
-Second, designing the *time-series* thermal history. Now I want the full power schedule P(t) over the build, ~20,000 values. I could make each step's power an independent free variable, but instead I'll parameterize P(t) by a small fully-connected network: input the (normalized) time, two hidden layers of ~50 tanh units, output a scalar squeezed to [0,1] and scaled to the power range (0–1000 W). Why a network instead of 20,000 free knobs? Because the network is a compact, smooth function approximator — it produces a *coherent* schedule with far fewer effective degrees of freedom, regularizes the control to be reasonably smooth in time, and folds the whole time-series into a few thousand weights that AD handles as one object. It's also the clean way to *integrate* a data-driven model with the physics simulator: the network's output feeds the differentiable sim, the sim's loss backpropagates into the network's weights, and the chain rule handles the whole composition directly. The loss is MSE between the achieved thermal history and a target one (I generate the target by running the sim once with some deliberately complex power pattern, then throw that pattern away and ask the optimizer to recover a matching history from scratch). Adam on the network weights.
+Second, designing the *time-series* thermal history. Now I want the full power schedule P(t) over the build, ~20,000 values. I could make each step's power an independent free variable, but instead I'll parameterize P(t) by a small fully-connected network: input simple polynomial features of normalized time, use two hidden layers of about 50 tanh units, and output a scalar squeezed to [0,1] that multiplies the nominal laser-power scale. Why a network instead of 20,000 free knobs? Because the network is a compact, smooth function approximator — it produces a coherent schedule with far fewer effective degrees of freedom, regularizes the control to be reasonably smooth in time, and folds the whole time-series into a few thousand weights that AD handles as one object. It's also the clean way to integrate a data-driven model with the physics simulator: the network's output feeds the differentiable sim, the sim's loss backpropagates into the network's weights, and the chain rule handles the whole composition directly. The loss is squared error, optionally averaged as MSE, between the achieved thermal history and a target one (I generate the target by running the sim once with some deliberately complex power pattern, then throw that pattern away and ask the optimizer to recover a matching history from scratch). Adam on the network weights.
 
-Third, melt-pool stabilization — the real prize. Same network-parameterized P(t), but now the loss penalizes the *continuous melt-pool depth* (the smooth surrogate I built above) deviating from a target depth at every step. Physically this is the useful control: as the laser builds up the hourglass and reaches the thin neck, heat accumulates and the pool would deepen uncontrollably; I want the schedule to back the power off through the neck and ramp it up again over the thick top where fresh cold material is being added. Because the depth surrogate is differentiable, the loss backpropagates through the depth extraction, through the thermal recurrence, into the network. This is the case that would have been hopeless with finite differences — thousands of time-series degrees of freedom — and is routine once the simulator is differentiable.
+Third, melt-pool stabilization. Same network-parameterized P(t), but now the loss penalizes the *continuous melt-pool depth* (the smooth surrogate I built above) deviating from a target depth at every step. Physically this is the useful control: as the laser builds up the hourglass and reaches the thin neck, the surrounding thermal mass changes, so a constant input can make the pool depth drift; I want the schedule to lower power when heat is accumulating and raise it again when fresh material and larger cross sections demand more input. Because the depth surrogate is differentiable, the loss backpropagates through the depth extraction, through the thermal recurrence, into the network. This is the high-dimensional temporal case that finite differences cannot afford, and it is exactly the case the differentiable simulator is meant to make optimizable.
 
 Let me put the loop together. Allocate every state and parameter as a differentiable global field. The forward simulation, per step, is: clear the global mass/rhs vectors; evaluate the control network to get this step's power; update the (latent-heat-dependent) c_p; assemble the lumped mass over active elements; assemble conduction and accumulate −K·T^n into the rhs; add the moving-Gaussian laser flux; add convection and radiation; explicit-integrate to get T^{n+1}. After the last step, compute the scalar loss. Wrap the whole forward simulation in the reverse-mode tape so that, on exit, the adjoints of every parameter are populated; then Adam-step the parameters. Repeat.
 
@@ -86,6 +86,7 @@ pi = 3.141592653589793
 n_input, n_hidden_1, n_hidden_2, n_hidden_3 = 3, 50, 50, 1
 learning_rate, beta_1, beta_2, epsilon = 1e-2, 0.9, 0.999, 1e-7
 loss_kind = "temperature_history"   # or "melt_pool" for the smooth-depth objective
+n_depth_levels = 4
 
 ti.init()
 # every state/parameter is a differentiable field; reverse-mode fills .grad
@@ -104,10 +105,21 @@ loss = ti.field(float, (), needs_grad=True)
 weight1 = ti.field(float, (n_hidden_1, n_input),  needs_grad=True); bias1 = ti.field(float, n_hidden_1, needs_grad=True)
 weight2 = ti.field(float, (n_hidden_2, n_hidden_1), needs_grad=True); bias2 = ti.field(float, n_hidden_2, needs_grad=True)
 weight3 = ti.field(float, (n_hidden_3, n_hidden_2), needs_grad=True); bias3 = ti.field(float, n_hidden_3, needs_grad=True)
+weight1_m = ti.field(float, (n_hidden_1, n_input));  weight1_v = ti.field(float, (n_hidden_1, n_input))
+weight2_m = ti.field(float, (n_hidden_2, n_hidden_1)); weight2_v = ti.field(float, (n_hidden_2, n_hidden_1))
+weight3_m = ti.field(float, (n_hidden_3, n_hidden_2)); weight3_v = ti.field(float, (n_hidden_3, n_hidden_2))
+bias1_m = ti.field(float, n_hidden_1); bias1_v = ti.field(float, n_hidden_1)
+bias2_m = ti.field(float, n_hidden_2); bias2_v = ti.field(float, n_hidden_2)
+bias3_m = ti.field(float, n_hidden_3); bias3_v = ti.field(float, n_hidden_3)
 output1 = ti.field(float, (steps, n_hidden_1), needs_grad=True)
 output2 = ti.field(float, (steps, n_hidden_2), needs_grad=True)
 output3 = ti.field(float, (steps, n_hidden_3), needs_grad=True)   # normalized power P(t)
 melt_depth = ti.field(float, steps, needs_grad=True)              # smooth depth proxy
+target = ti.field(float, (steps, nn))
+target_depth = ti.field(float, steps)
+beam_interp_node = ti.field(int, (steps, n_depth_levels, 9))
+beam_interp_weight = ti.field(float, (steps, n_depth_levels, 9))
+depth_level = ti.field(float, n_depth_levels)
 
 # ---- the control network: P(t) from a tiny MLP of (normalized) time ----
 @ti.kernel
@@ -200,9 +212,22 @@ def update_fluxes_m(t: ti.i32, dt: ti.f32):
                 if surface_birth[el_id][sur_id, 0] <= t*dt and surface_birth[el_id][sur_id, 1] > t*dt:
                     for ip in ti.static(range(4)):
                         N = Nip_surface[ip]
-                        # interpolate this surface IP's position, then distance to the beam
-                        ip_pos = ...   # N . surface-node positions
-                        r2 = (ip_pos - laser_loc[t]).norm_sqr()
+                        ip_pos_x = N.dot(ti.Vector([
+                            node_position[element_surface_ids[el_id][sur_id, 0]][0],
+                            node_position[element_surface_ids[el_id][sur_id, 1]][0],
+                            node_position[element_surface_ids[el_id][sur_id, 2]][0],
+                            node_position[element_surface_ids[el_id][sur_id, 3]][0]]))
+                        ip_pos_y = N.dot(ti.Vector([
+                            node_position[element_surface_ids[el_id][sur_id, 0]][1],
+                            node_position[element_surface_ids[el_id][sur_id, 1]][1],
+                            node_position[element_surface_ids[el_id][sur_id, 2]][1],
+                            node_position[element_surface_ids[el_id][sur_id, 3]][1]]))
+                        ip_pos_z = N.dot(ti.Vector([
+                            node_position[element_surface_ids[el_id][sur_id, 0]][2],
+                            node_position[element_surface_ids[el_id][sur_id, 1]][2],
+                            node_position[element_surface_ids[el_id][sur_id, 2]][2],
+                            node_position[element_surface_ids[el_id][sur_id, 3]][2]]))
+                        r2 = (ip_pos_x - laser_loc[t][0])**2 + (ip_pos_y - laser_loc[t][1])**2 + (ip_pos_z - laser_loc[t][2])**2
                         qmov = 3.0 * Qin[None] * output3[t, 0] * laser_on[t] \
                                / (pi * r_beam[None]**2) * ti.exp(-3.0 * r2 / (r_beam[None]**2))
                         for i in ti.static(range(4)):
@@ -215,9 +240,14 @@ def update_fluxes_cr(t: ti.i32, dt: ti.f32):
         if element_birth[el_id] <= t*dt:
             for sur_id in ti.static(range(6)):
                 if surface_birth[el_id][sur_id, 0] <= t*dt and surface_birth[el_id][sur_id, 1] > t*dt:
+                    temperature_nodes = ti.Vector([
+                        temperature[t-1, element_surface_ids[el_id][sur_id, 0]],
+                        temperature[t-1, element_surface_ids[el_id][sur_id, 1]],
+                        temperature[t-1, element_surface_ids[el_id][sur_id, 2]],
+                        temperature[t-1, element_surface_ids[el_id][sur_id, 3]]])
                     for ip in ti.static(range(4)):
                         N = Nip_surface[ip]
-                        temperature_ip = N.dot(surface_temperature_nodes)
+                        temperature_ip = N.dot(temperature_nodes)
                         qconv = -1 * h_conv[None] * (temperature_ip - ambient[None])
                         qrad  = -1 * 5.67e-14 * h_rad * (temperature_ip**4 - ambient[None]**4)
                         for i in ti.static(range(4)):
@@ -252,7 +282,7 @@ def update_melt_pool_depth(t: ti.i32):
 @ti.kernel
 def compute_temperature_loss():
     for t, i in ti.ndrange(steps, nn):
-        ti.atomic_add(loss[None], (temperature[t, i] - target[t, i])**2)   # MSE (partial-observation variant masks i)
+        ti.atomic_add(loss[None], (temperature[t, i] - target[t, i])**2)   # squared-error numerator; partial-observation variant masks i
 @ti.kernel
 def compute_melt_pool_loss():
     for t in range(1, steps):
@@ -263,6 +293,35 @@ def compute_loss():
         compute_melt_pool_loss()
     else:
         compute_temperature_loss()
+
+@ti.func
+def adam(g, m, v, t):
+    m = beta_1 * m + (1 - beta_1) * g
+    v = beta_2 * v + (1 - beta_2) * (g * g)
+    m_cap = m / (1 - beta_1**t)
+    v_cap = v / (1 - beta_2**t)
+    return m, v, m_cap / (ti.sqrt(v_cap) + epsilon)
+
+@ti.kernel
+def update_weights_adam(t: ti.i32):
+    for i in range(n_hidden_1):
+        for j in range(n_input):
+            weight1_m[i, j], weight1_v[i, j], step = adam(weight1.grad[i, j], weight1_m[i, j], weight1_v[i, j], t)
+            weight1[i, j] -= learning_rate * step
+        bias1_m[i], bias1_v[i], step = adam(bias1.grad[i], bias1_m[i], bias1_v[i], t)
+        bias1[i] -= learning_rate * step
+    for i in range(n_hidden_2):
+        for j in range(n_hidden_1):
+            weight2_m[i, j], weight2_v[i, j], step = adam(weight2.grad[i, j], weight2_m[i, j], weight2_v[i, j], t)
+            weight2[i, j] -= learning_rate * step
+        bias2_m[i], bias2_v[i], step = adam(bias2.grad[i], bias2_m[i], bias2_v[i], t)
+        bias2[i] -= learning_rate * step
+    for i in range(n_hidden_3):
+        for j in range(n_hidden_2):
+            weight3_m[i, j], weight3_v[i, j], step = adam(weight3.grad[i, j], weight3_m[i, j], weight3_v[i, j], t)
+            weight3[i, j] -= learning_rate * step
+        bias3_m[i], bias3_v[i], step = adam(bias3.grad[i], bias3_m[i], bias3_v[i], t)
+        bias3[i] -= learning_rate * step
 
 def simulate():
     nn1(0); nn2(0); nn3(0)
@@ -286,4 +345,4 @@ for it in range(iterations):
     update_weights_adam(it + 1)   # Adam on whichever parameters are the leaves (scalars or net weights)
 ```
 
-AM quality lives in the transient thermal field; that field is set by process parameters, and in the hard case the parameter is a time-series power schedule with thousands of degrees of freedom. Optimizing that against a simulation-based loss needs gradients, and the only affordable way to get a gradient whose cost doesn't scale with the parameter count is reverse-mode AD — because the loss is one scalar and the parameters are many, the backward pass delivers the whole gradient at roughly the cost of one forward run. So I make the time-stepping thermal solver itself differentiable; backprop through the explicit recurrence *is* the discrete adjoint of the solver, obtained automatically for whatever loss and parameterization I write, at the price of storing the state history (O(N) memory, reducible to O(√N) by checkpointing). To keep the gradients real I freeze the discrete machinery — element birth, surface birth, toolpath — behind fixed masks so the gradient only flows through the continuous power and properties, and I replace any step-like quantity (melt-pool depth) with a smooth surrogate that carries a nonzero gradient. I host it in an imperative differentiable-programming framework whose flexible indexing and atomic accumulation make FE assembly fast and whose lightweight tape makes the reverse pass cheap. Then a tiny network maps time to power, the differentiable sim turns that into a thermal history, the MSE loss backpropagates into the network, and Adam shapes the schedule — to calibrate hidden parameters from partial observations, to hit an arbitrary target thermal history, and to hold the melt-pool depth steady through the geometry. The simulator stopped being a black box to probe and became a function to differentiate.
+AM quality lives in the transient thermal field; that field is set by process parameters, and in the hard case the parameter is a time-series power schedule with thousands of degrees of freedom. Optimizing that against a simulation-based loss needs gradients, and the only affordable way to get a gradient whose cost doesn't scale with the parameter count is reverse-mode AD — because the loss is one scalar and the parameters are many, the backward pass delivers the whole gradient at roughly the cost of one forward run. So I make the time-stepping thermal solver itself differentiable; backprop through the explicit recurrence *is* the discrete adjoint of the solver, obtained automatically for whatever loss and parameterization I write, at the price of storing the state history (O(N) memory, reducible to O(√N) by checkpointing). To keep the gradients real I freeze the discrete machinery — element birth, surface birth, toolpath — behind fixed masks so the gradient only flows through the continuous power and properties, and I replace any step-like quantity (melt-pool depth) with a smooth surrogate that carries a nonzero gradient. I host it in an imperative differentiable-programming framework whose flexible indexing and atomic accumulation make FE assembly fast and whose lightweight tape makes the reverse pass cheap. Then a tiny network maps time to power, the differentiable sim turns that into a thermal history, the squared-error loss backpropagates into the network, and Adam shapes the schedule — to calibrate hidden parameters from partial observations, to hit an arbitrary target thermal history, and to hold the melt-pool depth steady through the geometry. The simulator stopped being a black box to probe and became a function to differentiate.

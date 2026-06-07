@@ -6,7 +6,7 @@ We are handed an objective function f: R^n → R and asked to minimize it with n
 
 A function is ill-conditioned when curvature varies wildly across directions: along one axis a small step changes f enormously, along another a large step barely moves it. It is non-separable when the variables are coupled, so that the favorable search directions are rotated off the coordinate axes and the problem cannot be split into n independent one-dimensional problems. On such landscapes the contour lines of f are long, thin, tilted ellipsoids.
 
-The goal a solution must achieve: progress efficiently on these tilted, ill-scaled ellipsoids, and — because the right scaling and orientation are unknown a priori and change during the search — *learn* the appropriate local geometry from the evaluations themselves. Ideally the search behaves identically on a problem and on any rotated/rescaled version of it (affine invariance) and depends only on the ranking of f-values, never their magnitudes. That invariance is what lets empirical success on one problem generalize to a whole class.
+The goal a solution must achieve: progress efficiently on these tilted, ill-scaled ellipsoids, and — because the right scaling and orientation are unknown a priori and change during the search — *learn* the appropriate local geometry from the evaluations themselves. Ideally the search behaves identically on a problem and on any rotated/rescaled version of it (affine invariance) and depends only on the ranking of f-values, never their magnitudes. That invariance is what lets behavior on one representative problem carry over to the whole transformed class.
 
 ## Background
 
@@ -34,11 +34,11 @@ The goal a solution must achieve: progress efficiently on these tilted, ill-scal
 
 ## Evaluation settings
 
-The natural yardstick is a suite of analytically known test functions in the continuous domain, exercising the properties the method targets. A separable, well-conditioned baseline: the sphere f_sphere(x)=Σx_i². Ill-conditioning at increasing severity: the ellipsoid f(x)=Σ (10^6)^{(i-1)/(n-1)} x_i² and the "cigar"/"tablet"/"discus" families that concentrate the condition number in one or a few directions. Non-separability is induced by composing any of these with a random rotation matrix R, optimizing f(Rx), so that a coordinate-wise method is forced off its axes. Multimodality and ruggedness: Rastrigin, Ackley, Rosenbrock (a curved, non-separable valley). The dimensionality n is swept (e.g. from a few up to hundreds), and runs are repeated over random seeds and random rotations. Performance is the number of function evaluations to reach a target f-value (or the best f after a fixed budget), reported as a function of n and of condition number. Because the method is meant to be rank-based, monotonic transformations of f-value are also a natural axis of the test.
+The natural yardstick is a suite of analytically known test functions in the continuous domain, exercising the properties a solution must handle. A separable, well-conditioned baseline: the sphere f_sphere(x)=Σx_i². Ill-conditioning at increasing severity: the ellipsoid f(x)=Σ (10^6)^{(i-1)/(n-1)} x_i² and the "cigar"/"tablet"/"discus" families that concentrate the condition number in one or a few directions. Non-separability is induced by composing any of these with a random rotation matrix R, optimizing f(Rx), so that a coordinate-wise method is forced off its axes. Multimodality and ruggedness: Rastrigin, Ackley, Rosenbrock (a curved, non-separable valley). The dimensionality n is swept (e.g. from a few up to hundreds), and runs are repeated over random seeds and random rotations. Performance is the number of function evaluations to reach a target f-value (or the best f after a fixed budget), reported as a function of n and of condition number. Because a rank-based design should ignore value magnitudes, monotonic transformations of f-value are also a natural axis of the test.
 
 ## Code framework
 
-The available primitives are a sampler of standard normal vectors, basic linear algebra (an eigendecomposition to factor a symmetric positive-definite matrix and to form its inverse square root), and the generic randomized-black-box loop: initialize distribution parameters, then repeatedly sample → evaluate → rank → update parameters until a termination test fires. What does not yet exist is the parameter-update rule for an adaptive multivariate Gaussian; that is the empty slot.
+The available primitives are a sampler of standard normal vectors, basic linear algebra (an eigendecomposition to factor a symmetric positive-definite matrix and to form its inverse square root), and the generic randomized-black-box loop: initialize distribution parameters, then repeatedly sample → evaluate → rank → update parameters until a termination test fires. The missing part is the update rule for a multivariate Gaussian search distribution.
 
 ```python
 import numpy as np
@@ -57,8 +57,10 @@ class SearchDistribution:
     their ranked evaluations. The update rule is what we must design.
     """
 
-    def __init__(self, x0, n):
-        self.n = n
+    def __init__(self, x0, sigma0, max_evals=None, target=None):
+        self.n = len(x0)
+        self.max_evals = max_evals
+        self.target = target
         # TODO: the parameters that describe the sampling distribution
         #       (a center, an overall scale, a shape, and whatever
         #        accumulated state the update will need)
@@ -76,12 +78,12 @@ class SearchDistribution:
         pass
 
     def stop(self):
-        # TODO: termination tests
-        return False
+        # TODO: return a non-empty dictionary of termination reasons
+        pass
 
 
-def optimize(f, x0, n):
-    dist = SearchDistribution(x0, n)
+def optimize(f, x0, sigma0, max_evals=None, target=None):
+    dist = SearchDistribution(x0, sigma0, max_evals=max_evals, target=target)
     while not dist.stop():
         X = dist.ask()
         fits = [f(x) for x in X]

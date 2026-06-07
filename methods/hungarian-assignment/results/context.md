@@ -13,13 +13,12 @@ set is exactly the doubly-stochastic matrices, the convex hull of the permutatio
 principle the simplex method solves it; but a `10 × 10` instance is a linear program with `100`
 nonnegative variables and `20` equality constraints, and it is highly **degenerate** (the
 assignment problem is the most degenerate special case of the transportation problem), which makes
-general-purpose simplex slow and awkward on it. What a good solution must achieve is therefore: a
-method that exploits the special combinatorial structure to run far faster than general simplex,
+general-purpose simplex slow and awkward on it. What a good solution must achieve is therefore: an
+algorithm that exploits the special combinatorial structure to run far faster than general simplex,
 that produces an **integral** assignment directly (a real permutation, not a fractional one), and —
 most valuable of all — that comes with a **certificate of optimality** so that when it stops, one
-can verify by hand that no better assignment exists. The yardstick of the time was concretely
-this: solving sizable instances by hand, in minutes, faster than the electronic computers of 1953
-could solve the equivalent linear program.
+can verify by hand that no better assignment exists. The practical yardstick is an exact solver
+whose certificate is small enough to check by hand and whose work does not grow like `n!`.
 
 ## Background
 
@@ -44,8 +43,8 @@ at a permutation matrix — the **integrality** we need is built into the geomet
 constraint-matrix terms: the bipartite row-sum/column-sum constraint matrix is **totally
 unimodular** (every square submatrix has determinant 0, ±1), so every vertex of the feasible
 polytope has integer coordinates, and a 0/1 vertex of this polytope is a permutation matrix. Hence
-the linear-programming relaxation of the integer assignment problem has no integrality gap — there
-is a method that respects the combinatorics rather than rounding a fractional LP optimum.
+the linear-programming relaxation of the integer assignment problem has no integrality gap — an
+algorithm can respect the combinatorics rather than rounding a fractional LP optimum.
 
 **König's theorem (the 0/1 / qualification case).** The combinatorial heart predates linear
 programming. Take the special case where ratings are only `0` and `1` — a **qualification matrix**,
@@ -77,18 +76,17 @@ problem reduces to a finite sequence of König (0/1) problems linked by dual upd
 by alternating/augmenting paths. An **alternating path** alternates between non-matching and
 matching edges; an **augmenting path** is an alternating path whose two endpoints are both exposed
 (unmatched). Taking the symmetric difference of the matching with an augmenting path flips every
-edge along it and yields a matching with one more edge. The characterization (Berge, 1957) is: a
+edge along it and yields a matching with one more edge. The characterization is: a
 matching is maximum **iff** there is no augmenting path with respect to it. So the matching
 subroutine is: repeatedly search for an augmenting path (a directed reachability search from an
 exposed vertex), augment, and stop when none exists — at which point König's cover is read off from
 the vertices reachable by alternating paths.
 
-**The motivating computational fact.** By hand, exploiting this structure, sizable assignment
-problems were observed to be solvable in minutes — `12 × 12` instances with 3-digit integer entries
-in under two hours each by hand, and a `20 × 20` instance in about thirty minutes, against well over
-an hour for simplex on the same instance. That gap — a special-purpose combinatorial method beating
-the general linear-programming machinery on this structured problem — is the practical pull behind
-the whole development.
+**The computational pressure.** Available linear-programming machinery treats the assignment
+instance as a dense collection of variables and degenerate constraints, while the combinatorial
+view exposes a small certificate: a matching and a covering family of lines, or a matching and dual
+potentials. The practical pull is to replace a generic tableau calculation by repeated matching and
+dual-adjustment steps whose intermediate states can be inspected directly.
 
 ## Baselines
 
@@ -108,8 +106,8 @@ transportation simplex struggles; the method is built for the general flow probl
 combinatorial all-ones case.
 
 **Brute-force permutation search.** Enumerate all `n!` permutations and keep the best. Correct and
-trivially certifiable, but `n!` is astronomically large past tiny `n`; useful only to *check* a
-proposed method on small instances, never to solve real ones.
+trivially certifiable, but `n!` is astronomically large past tiny `n`; useful only to *check* an
+assignment solver on small instances, never to solve real ones.
 
 **König's 0/1 algorithm alone.** Solves the qualification (0/1) special case — maximum independent
 marks / minimum line cover — constructively and in polynomial time, and it carries its own
@@ -124,16 +122,16 @@ hand or on the electronic computers of the early 1950s. The quantities of intere
 rating sum, the optimal assignment (permutation) achieving it, and a dual certificate `(u_i, v_j)`
 with `Σ u_i + Σ v_j` equal to the rating sum. The yardsticks are correctness (does it find a true
 optimum, checkable on small cases against full permutation enumeration), the presence of an
-optimality certificate, and running time/operation count as a function of `n` — the target being a
-method whose work grows polynomially in `n` rather than like `n!`, and concretely one that
-out-races general simplex on the same instances.
+optimality certificate, and running time/operation count as a function of `n`. The desired behavior
+is polynomial growth in `n`, with intermediate certificates that can be checked without enumerating
+permutations.
 
 ## Code framework
 
-The pieces that exist before the method: a cost/rating matrix, the dual potentials with their
-feasibility test, a tight-position (qualification) matrix derived from the potentials, a bipartite
-maximum-matching routine via augmenting paths, and a brute-force checker for small instances. The
-contribution is the loop that ties matching to a dual update; that loop is the empty slot below.
+Available pieces: a cost/rating matrix, the dual potentials with their feasibility test, a
+tight-position (qualification) matrix derived from the potentials, a bipartite maximum-matching
+routine via augmenting paths, and a brute-force checker for small instances. The remaining slot is
+the assignment loop that combines matching with a dual update.
 
 ```python
 INF = float("inf")
@@ -147,8 +145,8 @@ def tight_positions(cost, u, v):
     return [[cost[i][j] - u[i] - v[j] == 0 for j in range(n)] for i in range(n)]
 
 def bipartite_max_matching(adj):
-    """Maximum matching on a 0/1 adjacency (Kuhn's augmenting-path search).
-    Returns row->col and col->row arrays. This is the Koenig-step engine."""
+    """Maximum matching on a 0/1 adjacency.
+    Returns row->col and col->row arrays."""
     # TODO: alternating/augmenting-path search; standard and pre-existing.
     pass
 
@@ -158,14 +156,8 @@ def min_vertex_cover_from_matching(adj, match_col, match_row):
     pass
 
 def solve_assignment(cost):
-    """THE METHOD GOES HERE.
-
-    Maintain dual-feasible potentials (u, v) with reduced costs >= 0; find a
-    maximum matching on the tight (zero-reduced-cost) positions; if it is
-    perfect, complementary slackness certifies optimality; if not, use the
-    minimum vertex cover to update (u, v) so new tight positions appear, and
-    repeat. Return (assignment, total_cost)."""
-    # TODO: the primal-dual loop -- this is the contribution.
+    """Fill in the primal-dual assignment loop."""
+    # TODO: combine tight-edge matching, cover extraction, and potential update.
     pass
 
 def brute_force(cost):

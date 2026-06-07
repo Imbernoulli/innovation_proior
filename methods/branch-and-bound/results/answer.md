@@ -25,7 +25,9 @@ Two outcomes at a subproblem (node):
   upper bound, hence **optimal for that subtree**; record it.
 - Some `x*_j` is fractional → **branch**. No integer lies in the open strip `(floor(x*_j),
   ceil(x*_j))`, so split into two children, `x_j <= floor(x*_j)` and `x_j >= ceil(x*_j)`, losing no
-  integer point while cutting `x*` out of both (so each child's bound is no looser, and tightens).
+  integer point while cutting `x*` out of both. Each child's relaxation is over a smaller feasible
+  region, so its bound cannot be higher than the parent's, though it can tie if another optimum
+  remains.
 
 Carry the best integer point found as the **incumbent** (value `z_inc`, a *lower* bound on the
 optimum). **Fathom** (prune) a node without exploring its subtree when it is **infeasible**, when
@@ -62,16 +64,16 @@ return x_inc, z_inc                       # provably optimal when open set empti
 large open frontier in memory. *Depth-first* dives to a leaf — tiny memory and an early incumbent
 that makes bound-pruning fire sooner. Practical solvers mix the two.
 
-**Branch-and-cut.** When a node's relaxation bound is loose, add a valid inequality (cut) — e.g. a
-Gomory cut from the simplex tableau — that is violated by `x*` but satisfied by every integer point,
-re-solve to tighten the bound, and branch only if still fractional. Bound → cut → branch. This is
-the basis of modern MILP solvers.
+**Cut strengthening.** When a node's relaxation bound is loose, an existing cutting-plane routine
+can add a valid inequality — e.g. a Gomory cut from the simplex tableau — that is violated by `x*`
+but satisfied by every integer point. Re-solving the tightened relaxation can lower the node's
+ceiling before the split.
 
 ## Code
 
-A self-contained LP-relaxation branch-and-bound using `scipy.optimize.linprog` (HiGHS) as the node
-solver; branching simply tightens a variable's bound. Verified against brute force on a 0/1 knapsack
-and a general-integer LP.
+A self-contained LP-relaxation solver using `scipy.optimize.linprog` (HiGHS) as the node solver;
+branching simply tightens a variable's bound. The small checks compare against exhaustive
+enumeration only because those toy instances are small enough to enumerate.
 
 ```python
 import numpy as np
@@ -79,38 +81,47 @@ from scipy.optimize import linprog
 import math, itertools
 
 
-def branch_and_bound(c, A_ub, b_ub, n, int_vars=None, bounds=None, tol=1e-6):
-    """Maximize c'x s.t. A_ub x <= b_ub, bounds l_j<=x_j<=u_j, x_j integer for j in int_vars.
-    Bound by the LP relaxation, branch on the most-fractional variable, fathom by
-    infeasibility / bound / integrality; returns a provably optimal integer point."""
+def solve_lp(c, A_ub, b_ub, bounds):
+    """Continuous relaxation at one node; returns (x, upper_bound) for a maximization."""
+    res = linprog(-np.asarray(c, float), A_ub=A_ub, b_ub=b_ub,
+                  bounds=bounds, method="highs")
+    if res.status == 2:
+        return None, None
+    if res.status == 3:
+        raise ValueError("LP relaxation is unbounded; no finite upper bound")
+    if not res.success:
+        raise RuntimeError(res.message)
+    return res.x, -res.fun
+
+
+def select_fractional_integer_var(x, int_vars):
+    """Most-fractional marked variable: nearest to a half-integer."""
+    return max((abs(x[k] - round(x[k])), k) for k in int_vars)
+
+
+def solve_integer_lp(c, A_ub, b_ub, n, int_vars=None, bounds=None, tol=1e-6):
+    """Maximize c'x s.t. A_ub x <= b_ub, bounds l_j<=x_j<=u_j, x_j integer for j in int_vars."""
     if int_vars is None:
         int_vars = list(range(n))
+    else:
+        int_vars = list(int_vars)
     if bounds is None:
         bounds = [(0, None)] * n
 
     best_val = -np.inf            # incumbent value = LOWER bound on the optimum
     best_x = None
 
-    def relax(bnds):
-        # node relaxation: drop integrality. linprog MINimizes, so pass -c and
-        # negate the value -> a maximization UPPER bound for this node.
-        res = linprog(-np.asarray(c, float), A_ub=A_ub, b_ub=b_ub,
-                      bounds=bnds, method="highs")
-        if not res.success:
-            return None, None     # infeasible node
-        return res.x, -res.fun    # (vertex, node upper bound)
-
     stack = [list(bounds)]        # open nodes = bound vectors; pop = depth-first
     nodes = 0
     while stack:
         bnds = stack.pop()
         nodes += 1
-        x, ub = relax(bnds)
+        x, ub = solve_lp(c, A_ub, b_ub, bnds)
         if x is None:                 # FATHOM: infeasible
             continue
         if ub <= best_val + tol:      # FATHOM by bound: ceiling <= incumbent floor
             continue
-        frac, j = max((abs(x[k] - round(x[k])), k) for k in int_vars)  # most-fractional
+        frac, j = select_fractional_integer_var(x, int_vars)
         if frac <= tol:               # relaxation integral -> leaf candidate
             if ub > best_val + tol:
                 best_val, best_x = ub, x.copy()    # update incumbent
@@ -118,8 +129,10 @@ def branch_and_bound(c, A_ub, b_ub, n, int_vars=None, bounds=None, tol=1e-6):
         lo, hi = bnds[j]
         down = list(bnds); down[j] = (lo, math.floor(x[j]))  # x_j <= floor(x*_j)
         up   = list(bnds); up[j]   = (math.ceil(x[j]), hi)   # x_j >= ceil(x*_j)
-        stack.append(down)
-        stack.append(up)
+        if hi is None or math.ceil(x[j]) <= hi:
+            stack.append(up)
+        if lo is None or lo <= math.floor(x[j]):
+            stack.append(down)
     return best_x, best_val, nodes
 
 
@@ -129,7 +142,7 @@ if __name__ == "__main__":
     wts  = np.array([5,  7, 4, 3, 5, 2])
     cap  = 14
     n = len(vals)
-    x, val, nodes = branch_and_bound(vals, wts.reshape(1, -1), [cap],
+    x, val, nodes = solve_integer_lp(vals, wts.reshape(1, -1), [cap],
                                      n=n, int_vars=list(range(n)), bounds=[(0, 1)] * n)
     print("B&B  :", x.round().astype(int), "value", val, "nodes", nodes)
 
@@ -144,12 +157,21 @@ if __name__ == "__main__":
 
     # general-integer LP (fractional relaxation -> branching fires)
     c2, A2, b2 = [4, -1], [[7, -2], [0, 1], [2, -2]], [14, 3, 3]
-    x2, v2, nodes2 = branch_and_bound(c2, A2, b2, n=2,
+    x2, v2, nodes2 = solve_integer_lp(c2, A2, b2, n=2,
                                       int_vars=[0, 1], bounds=[(0, None), (0, None)])
-    print("B&B  :", x2, "value", v2, "nodes", nodes2)   # -> [2, 1] value 7.0
+    print("B&B  :", x2, "value", v2, "nodes", nodes2)
+    best2 = (-1e9, None)
+    for a in range(0, 11):
+        for bb in range(0, 4):
+            p = np.array([a, bb])
+            if all(np.array(A2) @ p <= b2):
+                if c2[0]*a + c2[1]*bb > best2[0]:
+                    best2 = (c2[0]*a + c2[1]*bb, p)
+    print("brute:", best2[1], "value", best2[0])
+    assert abs(v2 - best2[0]) < 1e-6
+    print("integer-LP matches brute force")
 ```
 
-Running it: the knapsack returns the optimal subset (value 22) and the general-integer LP returns
-`x = (2, 1)`, value 7, both matching brute-force enumeration; the `nodes` counter shows how few
-subproblems the bound leaves to explore. Divide the discrete space, conquer each piece with a convex
-LP bound, and let the bound prune everything that cannot hold the optimum.
+The solver returns a candidate only after every live node has been fathomed by infeasibility, by the
+incumbent bound, or by an integral relaxation. Divide the discrete space, conquer each piece with a
+convex LP bound, and let the bound prune everything that cannot hold the optimum.

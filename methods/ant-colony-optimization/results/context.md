@@ -1,5 +1,3 @@
-# Context: cooperative constructive search for the traveling salesman
-
 ## Research question
 
 The traveling salesman problem (TSP) asks for a minimal-length closed tour visiting each of n cities exactly once. It is NP-hard: the number of tours grows factorially, so exhaustive search is hopeless beyond a few dozen cities, and exact branch-and-bound, while it solves moderate symmetric instances, explodes on hard and asymmetric ones. The practical answer is a heuristic that returns a very good tour in reasonable time.
@@ -36,7 +34,7 @@ The natural yardstick is a small symmetric Euclidean TSP with a known good tour 
 
 ## Code framework
 
-The available primitives are a fully-connected distance graph, a per-agent forbidden set (the tabu-list device) to keep tours legal, the static visibility η_ij = 1/d_ij, and a generational loop in which a batch of agents each build a complete tour. The empty slots are: the shared edge memory and its initialization, the probabilistic choice rule each agent uses to pick its next city, what each agent contributes back to the shared memory after building a tour, and how that memory decays and is updated between generations.
+The available primitives are a fully-connected distance graph, a per-agent forbidden set (the tabu-list device) to keep tours legal, the static visibility η_ij = 1/d_ij, and a generational loop in which a batch of agents each build a complete tour. The empty slots are: the shared edge trail and its initialization, the probabilistic choice rule each agent uses to pick its next city, what each agent contributes back to the shared trail after building a tour, and how that trail decays and is updated between generations.
 
 ```python
 import random
@@ -46,23 +44,22 @@ class Graph(object):
     def __init__(self, cost_matrix, rank):
         self.matrix = cost_matrix
         self.rank = rank
-        # TODO: a shared per-edge memory the agents read and write,
+        # TODO: a shared per-edge trail the agents read and write,
         #       plus its initial value.
-        self.memory = None
+        self.pheromone = None
 
 
 class Colony(object):
-    def __init__(self, ant_count, generations, alpha, beta, rho, q, strategy):
+    def __init__(self, ant_count, generations, alpha, beta, rho, q):
         self.ant_count = ant_count
         self.generations = generations
-        self.alpha = alpha          # weight on the shared memory term
+        self.alpha = alpha          # weight on the shared trail term
         self.beta = beta            # weight on the visibility term
-        self.rho = rho              # how much memory persists between generations
+        self.rho = rho              # how much trail persists between generations
         self.Q = q                  # scale of an agent's contribution
-        self.update_strategy = strategy
 
-    def _update_memory(self, graph, ants):
-        # TODO: decay the shared memory, then fold in every agent's contribution.
+    def _update_pheromone(self, graph, ants):
+        # TODO: decay the shared trail, then fold in every agent's contribution.
         pass
 
     def solve(self, graph):
@@ -77,8 +74,8 @@ class Colony(object):
                 if ant.total_cost < best_cost:
                     best_cost = ant.total_cost
                     best_solution = list(ant.tabu)
-                ant._compute_contribution()
-            self._update_memory(graph, ants)
+                ant._update_pheromone_delta()
+            self._update_pheromone(graph, ants)
         return best_solution, best_cost
 
 
@@ -88,7 +85,7 @@ class _Ant(object):
         self.graph = graph
         self.total_cost = 0.0
         self.tabu = []                                  # cities already visited (legal-tour constraint)
-        self.contribution = []                          # what this agent writes back to shared memory
+        self.pheromone_delta = []                       # what this agent writes back to the shared trail
         self.allowed = [i for i in range(graph.rank)]   # not-yet-visited cities
         self.eta = [[0 if i == j else 1 / graph.matrix[i][j]
                      for j in range(graph.rank)] for i in range(graph.rank)]  # visibility 1/d
@@ -98,13 +95,13 @@ class _Ant(object):
         self.allowed.remove(start)
 
     def _select_next(self):
-        # TODO: choose the next city probabilistically from the shared memory
+        # TODO: choose the next city probabilistically from the shared trail
         #       and the visibility; remove it from `allowed`, append to `tabu`,
         #       accumulate its edge cost, advance `current`.
         pass
 
-    def _compute_contribution(self):
-        # TODO: build this agent's write-back to the shared memory from the
-        #       tour it just constructed (reflecting how good the tour is).
+    def _update_pheromone_delta(self):
+        # TODO: build this agent's write-back to the shared trail from the
+        #       closed tour it just constructed (reflecting how good the tour is).
         pass
 ```

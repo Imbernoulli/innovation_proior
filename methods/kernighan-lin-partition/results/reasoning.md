@@ -13,13 +13,15 @@ separating them. But that minimum cut comes out at *whatever sizes it likes*. Ty
 off a tiny weakly-attached lump on one side and leaves everything else on the other. There's no hook
 in the flow algorithm to say "and make the two sides equal," and no obvious way to add one — if I
 post-process the unbalanced cut into a balanced one I've thrown away the very optimality the flow
-gave me. So the elegant polynomial method solves the wrong problem. (It's not useless: the
-unconstrained min-cut is a valid lower bound on any balanced cut's cost, since constraining can only
+gave me. So the elegant polynomial method solves the wrong problem. (It's not useless: minimizing the
+flow over every choice of the two separated nodes gives the *global* unconstrained min-cut, which is a
+valid lower bound on any balanced cut's cost, since constraining can only
 raise the optimum. But it doesn't give me the partition I need.)
 
 And exhaustive search is hopeless. The number of balanced splits of `2n` nodes is `½·C(2n,n)`, which
-blows up fast — for `n = 20`, splitting `40` nodes four ways into tens already runs past `10^20`
-configurations. I could write it as an integer program with a pile of constraints to force the
+blows up fast — for `n = 20` it is `½·C(40,20) ≈ 7·10^10`, and the moment I ask for more than two
+blocks it explodes far faster still: splitting those same `40` nodes four ways into tens is
+`40! / (10!^4 · 4!) ≈ 2·10^20` configurations. I could write it as an integer program with a pile of constraints to force the
 uniformity, but any direct attack is going to demand an inordinate amount of computation at the
 sizes I care about. So I'm not going to certify optimality. I'm going to build a heuristic that
 reliably lands on good cuts, fast — running time near `n²`, not exponential — and I'll judge it
@@ -106,7 +108,7 @@ candidate pair.
 
 But this still only gives me single exchanges, and I've already argued single exchanges stall. I
 want to chain several, and I want the depth to come out of the data rather than be fixed in advance.
-Here's the additivity I'll lean on. Suppose I do a *sequence* of exchanges. If I could compute each
+Suppose I do a *sequence* of exchanges. If I could compute each
 one's gain as if it were the only one, and the total reduction were just the sum of those gains,
 then I could reason about a *partial* chain of swaps — ask "would the first `k` of them, taken
 together, lower the cost?" — instead of only being able to evaluate fully-formed exchanges. The
@@ -129,7 +131,9 @@ edge was external (in `E_x`); now `b_i` is in `A`, so it's internal (in `I_x`). 
     D'_x = D_x + 2·c(x, a_i) − 2·c(x, b_i),    for x ∈ A − {a_i},
 
 and by the mirror-image argument, for a node `y` still on the `B` side, the edge `(y, b_i)` goes
-external→internal and `(y, a_i)` goes internal→external, giving
+internal→external (its own-side partner `b_i` left for `A`, raising `D_y` by `2·c(y,b_i)`) and
+`(y, a_i)` goes external→internal (the other-side `a_i` arrived in `B`, lowering `D_y` by
+`2·c(y,a_i)`), giving
 
     D'_y = D_y + 2·c(y, b_i) − 2·c(y, a_i),    for y ∈ B − {b_i}.
 
@@ -181,9 +185,9 @@ out of the prefix-maximization rather than being a parameter.
 So the structure of one pass is: compute all `D`-values; then `n` times, select the maximum-gain
 unlocked pair, lock it, record its gain, update the `D`-values of the survivors; then pick the
 best-prefix `k`; if `G_k > 0` apply that prefix and start another pass, else declare the partition
-locally optimal. The number of passes needed turns out to be small in practice — a handful — because
-each pass either makes a real dent or certifies a local optimum, and the gains found shrink as the
-partition improves.
+locally optimal. I'd expect the number of passes needed to be small, because each pass either makes a
+real dent or certifies a local optimum, and as the partition improves there is less left to gain, so
+the per-pass improvement should shrink toward zero quickly — something to confirm once it runs.
 
 Now, is this affordable? Let me count. Computing the initial `D`-values is an `n²` job: each of the
 `2n` nodes is compared against all the others. The updates across a pass cost
@@ -205,9 +209,11 @@ If I want to shave that further, I can skip the full sort and just keep the larg
 `D_b`, with the corresponding `a, b`, as the next exchange — essentially linear-time selection,
 folded into the `D`-recomputation. That can miss the true max when the top pair happens to have a
 large `c(a,b)` linking them (so its actual gain is small); a cheap fix is to also save the top two or
-three `D`'s on each side and try those alternatives when the very top pair's `c(a,b)` is big. Three
-saved values suffice in virtually all cases, even on fairly dense matrices, and this cuts running
-time by roughly 30% with very little loss of power. Either way the per-pass cost is essentially
+three `D`'s on each side and try those alternatives when the very top pair's `c(a,b)` is big. Keeping
+a top-few from each side should recover the true best pair except in the rare case where all of them
+are mutually linked by large costs, so I'd expect even two or three saved values to lose almost no
+power while trading the sort for a linear scan — a speedup worth measuring against the sorted version.
+Either way the per-pass cost is essentially
 quadratic, and with a small bounded number of passes the whole procedure runs near `n²` — gentle
 enough to take many random restarts and keep the best.
 

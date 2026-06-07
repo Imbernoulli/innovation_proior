@@ -49,8 +49,9 @@ primal and its dual is zero. Complementary slackness then forces
 `V ↦ e^{iφ}V` makes that null space inherently even-dimensional, so the
 certificate is:
 
-> **zero duality gap (relaxation exact, `V*` recoverable) iff the zero eigenvalue
-> of `A(x*,r*)` has multiplicity exactly two.**
+> **zero duality gap (relaxation exact, `V*` recoverable) if the zero eigenvalue
+> of `A(x*,r*)` has multiplicity exactly two** — a sufficient certificate
+> (the exact-iff statement is rank-one `W*`; multiplicity two implies it).
 
 **Why it holds for real grids.** For the over-satisfaction-relaxed OPF the load
 multipliers are sign-constrained (`λ_k, γ_k ≥ 0`). Because resistance is
@@ -158,8 +159,9 @@ def solve_socp_radial(n, edges, G, B, P, Q, gens, v_slack):
     for g, vg in gens.items():
         cons += [u[g] == vg ** 2 / s2]
     for (i, j) in edges:                          # rotated cone == 2x2 minor of W>=0
+        # ||[sqrt2 R, sqrt2 I, u_i-u_j]|| <= u_i+u_j  <=>  2 u_i u_j >= R^2 + I^2
         cons += [cp.SOC(u[i] + u[j],
-                        cp.vstack([R[i, j], I[i, j], u[i] - u[j]]))]
+                        cp.vstack([s2 * R[i, j], s2 * I[i, j], u[i] - u[j]]))]
     def nbrs(i): return [j for (a, j) in edges if a == i] + \
                         [a for (a, j) in edges if j == i]
     def edge(i, j): return (i, j) if (i, j) in R else (j, i)

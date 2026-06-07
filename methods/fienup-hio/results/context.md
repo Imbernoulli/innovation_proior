@@ -12,8 +12,7 @@ microscopy or wavefront sensing, where a focused image supplies a *second* measu
 `|f(x)|`: here the object plane has no measured amplitude at all, only inequality/support
 constraints standing in for it. A 128×128 field carries N² unknown phases, so brute search is
 hopeless; the problem needs an iteration that uses only `|F|`, an FFT, and the object constraints,
-that does not make things worse as it runs, and — the binding requirement in this single-intensity
-setting — that does not stall short of a solution.
+and it must have a way to escape the long stalls produced by plain alternating projection.
 
 ## Background
 
@@ -46,7 +45,7 @@ seek a field lying in both; for two convex sets this alternating-projection idea
 (von Neumann; Bregman 1965; Gubin–Polyak–Raik 1967), but here one of the two sets is non-convex,
 which is the source of the trouble below.
 
-**Diagnostic facts that frame the problem.** Three observed phenomena set the stage. (i) An
+**Diagnostic facts that frame the problem.** Two observed phenomena set the stage. (i) An
 iteration that only transforms back and forth, resetting the Fourier modulus and then projecting
 onto the object constraints, drives the modulus-mismatch error *down sharply for the first ~30
 iterations and then onto long plateaus*: in a representative single-intensity run the normalized
@@ -54,11 +53,9 @@ RMS error falls fast, sticks near 0.16, much later eases to 0.02, then to 0.003,
 iterations needed — unsatisfactory for this application. (ii) The same iteration frequently
 **stagnates at a local minimum marked by a low-contrast pattern of stripes** across the
 reconstruction (Fienup, "Fourier Modulus Image Construction," RADC-TR-81-63, 1981); this is a
-convergence problem — a local, not global, minimum — not a uniqueness problem. (iii) An iteration
-that feeds its own output back unchanged can **freeze**: the output repeats over successive
-iterations despite being far from a solution. These three — plateaus, stripes, and frozen output —
-are precisely what a better single-intensity algorithm must overcome, and none of them is a defect
-of the *data*; they are pathologies of the *iteration* on a non-convex constraint set.
+convergence problem — a local, not global, minimum — not a uniqueness problem. Plateaus and
+stripes are precisely what a better single-intensity algorithm must overcome, and neither is a
+defect of the *data*; they are pathologies of the *iteration* on a non-convex constraint set.
 
 ## Baselines
 
@@ -67,7 +64,7 @@ iterative scheme for the *two-modulus* problem (a focused image gives `|f(x)|`, 
 pattern gives `|F(u)|`). Four steps: Fourier transform the current object estimate; replace the
 computed Fourier modulus by the measured `|F|`, keeping the computed phase; inverse transform;
 replace the computed object modulus by the measured `|f|`, keeping that phase. Core idea:
-alternately enforce each domain's measured modulus. The authors prove a defined error decreases
+alternately enforce each domain's measured modulus. Gerchberg and Saxton prove a defined error decreases
 monotonically each iteration. **Gap:** it presumes a *measured* object modulus `|f|`. In the
 single-intensity (astronomy/crystallography) problem there is no `|f|` — only the inequality
 constraints — so the fourth step has nothing to reset the modulus *to*.
@@ -84,8 +81,9 @@ violates the constraints (negative, or outside the support),
 Core idea: each step is either a Fourier hop or a nearest-point projection, so by Parseval the
 modulus error chain `E_{F,k+1} ≤ E_{O,k} ≤ E_{F,k}` is monotone non-increasing — the algorithm
 provably never makes the Fourier-modulus mismatch worse. It is moreover equivalent to a
-double-length-step steepest descent on the Fourier squared error `B = Σ_u (|G(u)| − |F(u)|)²`,
-whose gradient `∂B/∂g(x) = 2[g(x) − g'(x)]` is computed for free by the same two transforms.
+double-length-step steepest descent on the Fourier squared error
+`B = N^{-2}Σ_u (|G(u)| − |F(u)|)²`, whose gradient
+`∂B/∂g(x) = 2[g(x) − g'(x)]` is computed for free by the same two transforms.
 **Gap:** monotone decrease on a *non-convex* landscape is not convergence to the global solution;
 the iteration plateaus at local minima (the stripe pattern), and for the single-intensity problem
 it is *painfully slow* — thousands of iterations. As a fixed step on a near-flat gradient it
@@ -111,47 +109,42 @@ point-spread functions, each blurred image is corrupted with Poisson photon nois
 photons/pixel over the object, ~3×10⁵ photons/image, realistic for a 1.2-m telescope), and a
 speckle-interferometry power-spectrum estimate (Labeyrie's method as modified by Goodman &
 Belsher) produces the noisy `|F|`. Array sizes are 128×128, FFT-based, running on an array
-processor of the era. The yardsticks: the normalized RMS Fourier-modulus error (square root of
-`Σ_u (|G_k| − |F|)²` divided by the modulus energy) plotted versus iteration on log–log axes, and
+processor of the era. The yardsticks: the normalized RMS Fourier-modulus error
+`sqrt(N^{-2}Σ_u (|G_k| − |F|)²) / sqrt(N^{-2}Σ_u |F|²)` plotted versus iteration on log–log axes, and
 the normalized object-domain error `E_O` = square root of `Σ_{x∈γ} [g'_k(x)]²` divided by the
-total image energy — the latter being the meaningful metric once the input is no longer a literal
-object estimate. Visual image quality is tracked alongside, since the two can diverge. The
-protocol of record runs blocks of one algorithm (with a fixed parameter) interleaved with a few
-plain error-reduction iterations, scans the algorithm parameter, and notes that one restarts from
-a different random seed on stagnation and reconstructs two or three times to confirm uniqueness.
+square root of the total output-image energy `Σ_x [g'_k(x)]²`. Visual image quality is tracked alongside, since an error scalar alone
+does not reveal stripe artifacts or truncation. Candidate iterations should be compared from the
+same starting input and mask, with fixed iteration budgets, and one restarts from a different
+random seed on stagnation and reconstructs two or three times to confirm uniqueness.
 
 ## Code framework
 
 The primitives that already exist: a 2-D FFT and its inverse (`numpy.fft.fft2/ifft2`), complex-
 array construction from amplitude and phase, support-mask handling, the autocorrelation
-`IFT(|F|²)` from which a support estimate is thresholded, and the error metrics. The slots to be
-filled are the object-domain update rule — the one operation that differs between the schemes —
-and the driving logic that decides what the next input should be.
+`IFT(|F|²)` from which a support estimate is thresholded, and the error metrics. The slot to be
+filled is the object-domain update after the inverse FFT; everything else is the generic
+Fourier-magnitude loop.
 
 ```python
 import numpy as np
-
-def project_fourier(x, mag):
-    """Nearest field with the measured Fourier modulus: keep computed phase, reset |FT|."""
-    X = np.fft.fft2(x)
-    X = mag * np.exp(1j * np.angle(X))
-    return np.real(np.fft.ifft2(X))
 
 def support_from_autocorrelation(mag, frac=0.04):
     """Threshold the autocorrelation IFT(|F|^2) to bound the object's support."""
     autoc = np.abs(np.fft.fftshift(np.fft.ifft2(mag ** 2)))
     return autoc > frac * autoc.max()
 
-def object_update(g_out, g_in, support):
-    """Form the next object-domain estimate from the system output g_out (= P_M output)
-    and the current input g_in, given the support mask.
-    TODO: define gamma (where g_out violates the object constraints) and the per-region
-          rule that produces the next iterate."""
+def object_domain_step(candidate, previous, mask, beta=0.8, mode=None):
+    """Update the object-domain image after the inverse Fourier step.
+    TODO: define the violation set and the per-region rule that produces the next image."""
     pass
 
-def reconstruct(mag, support=None, n_iter=200):
-    """Iterate project_fourier + object_update to recover the object from |F|.
-    TODO: choose the starting input, the per-iteration driving logic, and which error to
-          monitor."""
+def phase_retrieval(mag, mask=None, beta=0.8, steps=200, mode=None, init=None):
+    """Run the FFT loop from a measured Fourier magnitude and an object-domain rule.
+    TODO: initialize the Fourier phase, iterate inverse FFT -> object_domain_step -> FFT,
+          and return the recovered image."""
+    pass
+
+def object_error(output, mask):
+    """Measure violation of non-negativity and the support mask in an output image."""
     pass
 ```

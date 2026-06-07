@@ -6,7 +6,7 @@ A firm buys one item from a single supplier and faces constant continuous demand
 
 ## Key idea
 
-Because the firm may hit zero inventory while the supplier is down and then wait, the time between successful replenishments is a random variable. Treat each interval between consecutive shipments as a renewal cycle and apply the **renewal-reward theorem**: long-run average cost per unit time equals expected cost per cycle over expected cycle length. The expected cycle length is the classical depletion time $Q/D$ plus an expected wait for a disrupted supplier; this couples the cost to the two-state Markov supply process. The resulting exact cost rate is quasiconvex but transcendental (it contains $e^{-(\lambda+\psi)Q/D}$), so the optimum is found numerically. A tight closed-form approximation drops that exponential — negligible whenever the recovery rate $\psi$ is moderately large — which turns the expected cycle length into a constant buffer $Q/D + A_0$ and reduces the first-order condition to a quadratic in $Q$. The optimal order quantity exceeds the classical EOQ; the gap is safety stock held against supply unavailability, and the whole model collapses to the classical EOQ when $\lambda=0$.
+Because the firm may hit zero inventory while the supplier is down and then wait, the time between successful replenishments is a random variable. Treat each interval between consecutive shipments as a renewal cycle and apply the **renewal-reward theorem**: long-run average cost per unit time equals expected cost per cycle over expected cycle length. The expected cycle length is the classical depletion time $Q/D$ plus an expected wait for a disrupted supplier; this couples the cost to the two-state Markov supply process. The resulting exact cost rate is quasiconvex but transcendental (it contains $e^{-(\lambda+\psi)Q/D}$), so the optimum is found numerically. A tight closed-form approximation drops that exponential — negligible whenever the recovery rate $\psi$ is moderately large — which turns the expected cycle length into a constant buffer $Q/D + A_0$ and reduces the first-order condition to a quadratic in $Q$. The whole model collapses to the classical EOQ when $\lambda=0$; in the usual costly-stockout regime, the closed form expands the order quantity above EOQ and the difference is safety stock against supply unavailability.
 
 ## Algorithm
 
@@ -23,12 +23,14 @@ $$ I(Q) = \pi D + \frac{F + aQ + \dfrac{hQ^2}{2D} - \pi Q}{E[T]}. $$
 
 $I(Q)$ is quasiconvex; minimize by golden-section or bisection to get the exact $Q^*$.
 
-**Tight approximation.** For realistic $\psi$, $e^{-(\lambda+\psi)Q/D}\approx 0$, so $E[T]\approx Q/D + A_0$ and $I(Q)$ becomes a convex quadratic-over-affine ratio. Its first-order condition is
+**Tight approximation.** For realistic $\psi$, $e^{-(\lambda+\psi)Q/D}\approx 0$, so $E[T]\approx Q/D + A_0$ and, in the costly-shortage regime, $I(Q)$ becomes a convex quadratic-over-affine ratio. Its first-order condition is
 $$ \frac{h}{2D}\,Q^2 + hA_0\,Q + \big((a-\pi)A_0 D - F\big) = 0, $$
 with positive root
 $$ \hat Q = \frac{-hA_0 + \sqrt{h^2A_0^2 + \dfrac{2h}{D}\big(F+(\pi-a)A_0 D\big)}}{h/D}. $$
 
-When $\lambda=0$ (so $A_0=0$), $\hat Q = \sqrt{2FD/h} = Q_E$, the classical EOQ. When the supplier can fail, $A_0>0$ inflates $\hat Q$ above $Q_E$; the difference $\hat Q - Q_E$ is the safety stock against disruptions.
+When $\lambda=0$ (so $A_0=0$), $\hat Q = \sqrt{2FD/h} = Q_E$, the classical EOQ. With $A_0>0$, the expansion above EOQ occurs when
+$$ \pi-a > \frac{hQ_E}{D}; $$
+then $\hat Q-Q_E$ is the safety stock against disruptions. If shortage is barely costly, the same formula can keep the order quantity near or below $Q_E$.
 
 ## Code
 
@@ -71,7 +73,7 @@ def optimize_exact(D, F, a, h, pi, lam, psi, lo=1e-9, hi=None, tol=1e-9):
     return Q, cost_rate(Q, D, F, a, h, pi, lam, psi)
 
 def approximate_order_quantity(D, F, a, h, pi, lam, psi):
-    """Snyder's tight closed form. Drop e^{-(lambda+psi)Q/D}: E[T] ~ Q/D + A0,
+    """Tight closed form. Drop e^{-(lambda+psi)Q/D}: E[T] ~ Q/D + A0,
     so the first-order condition is the quadratic
         (h/2D) Q^2 + (h A0) Q + ((a - pi) A0 D - F) = 0.
     Positive root; reduces to sqrt(2FD/h) when lambda=0."""
@@ -85,30 +87,4 @@ def approximate_order_quantity(D, F, a, h, pi, lam, psi):
 def classical_eoq(D, F, h):
     """Harris EOQ: sqrt(2 F D / h)."""
     return math.sqrt(2.0 * F * D / h)
-
-if __name__ == "__main__":
-    D, F, a, h, pi = 1000.0, 6.0, 2.0, 0.2, 10.0
-    lam, psi = 1.0, 12.0  # up ~1 yr, down ~1 month on average
-
-    Qstar, Istar = optimize_exact(D, F, a, h, pi, lam, psi)
-    Qhat = approximate_order_quantity(D, F, a, h, pi, lam, psi)
-    QE = classical_eoq(D, F, h)
-    Ihat = cost_rate(Qhat, D, F, a, h, pi, lam, psi)
-    IE = cost_rate(QE, D, F, a, h, pi, lam, psi)
-
-    print(f"exact     Q* = {Qstar:8.3f}   I = {Istar:.4f}")
-    print(f"Snyder    Q^ = {Qhat:8.3f}   I = {Ihat:.4f}   "
-          f"(errQ {100*(Qhat-Qstar)/Qstar:+.3f}%, errI {100*(Ihat-Istar)/Istar:+.4f}%)")
-    print(f"classic   QE = {QE:8.3f}   I = {IE:.4f}   "
-          f"(EOQ ignores disruptions: {100*(IE-Istar)/Istar:+.2f}% costlier)")
 ```
-
-On the instance above (`D=1000, F=6, a=2, h=0.2, pi=10, lambda=1, psi=12`):
-
-```
-exact     Q* =  750.257   I = 2150.0893
-Snyder    Q^ =  750.466   I = 2150.0893   (errQ +0.028%, errI +0.0000%)
-classic   QE =  244.949   I = 2243.5691   (EOQ ignores disruptions: +4.35% costlier)
-```
-
-The disruption inflates the order quantity from the classical $245$ to about $750$ — roughly threefold — and the closed-form approximation matches the exact optimum to within $0.03\%$ in $Q$ and essentially $0\%$ in cost. Using the classical EOQ in a world that has disruptions costs about $4\%$ more here. The approximation stays this tight across disruption regimes from frequent-short to rare-long down periods.

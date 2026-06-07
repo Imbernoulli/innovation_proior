@@ -8,7 +8,7 @@ Let me name $Y_j:=e_je_j^H Y$ — that's the matrix whose $j$-th row is the $j$-
 
 So the whole problem is: minimize a convex quadratic in $P_G$, subject to a pile of constraints each of the form $V^HMV \lessgtr$ const, for various Hermitian $M$. That's a quadratically constrained quadratic program. If the $M$'s were positive semidefinite I'd be happy — convex, done. But $\Phi_j$ and $\Psi_j$ come from $Y$, which is built from complex admittances; they're *indefinite*. An indefinite quadratic equality constraint carves out a curved nonconvex surface. So the feasible set in $V$-space is nonconvex.
 
-How bad is "nonconvex" here — is it just cosmetically nonconvex, or genuinely hard? Let me try to break it on purpose. Suppose I clamp every voltage magnitude to one, $|V_j|=1$ for all $j$. Then I'm minimizing $V^HYV$ over the torus of unit-modulus complex vectors. That region wraps around the origin but excludes it — definitely nonconvex. Now push harder: make the network purely resistive, $\mathrm{Im}\{Y\}=0$, kill reactive power, and force each $V_j\in\{-1,1\}$. Now I'm minimizing $V^TYV$ over $\{-1,1\}^n$ — a $\pm1$ quadratic. That's a partitioning / max-cut–flavored combinatorial problem, NP-hard. And these are *special cases* of OPF. So OPF is NP-hard in the worst case. There's no hope of a general polynomial-time exact algorithm; the indefinite quadratic constraints are doing real combinatorial damage.
+How bad is "nonconvex" here — is it just cosmetically nonconvex, or genuinely hard? Let me try to break it on purpose. Suppose I clamp every voltage magnitude to one, $|V_j|=1$ for all $j$. Then I'm minimizing $\mathrm{Re}\{V^HYV\}$ over the torus of unit-modulus complex vectors. That region wraps around the origin but excludes it — definitely nonconvex. Now push harder: make the network purely resistive, $\mathrm{Im}\{Y\}=0$, kill reactive power, and force each $V_j\in\{-1,1\}$. Now I'm minimizing $V^TYV$ over $\{-1,1\}^n$ — a $\pm1$ quadratic. That's a partitioning / max-cut–flavored combinatorial problem, NP-hard. And these are *special cases* of OPF. So OPF is NP-hard in the worst case. There's no hope of a general polynomial-time exact algorithm; the indefinite quadratic constraints are doing real combinatorial damage.
 
 That's sobering, because the standard tools all live with the nonconvexity rather than removing it. Newton–Raphson and interior-point solvers on the KKT conditions: but KKT is only *necessary* when the problem is nonconvex, so I get a local stationary point with no idea whether a better operating point exists elsewhere — and with a disconnected feasible region I might be stuck on the wrong island entirely. The metaheuristics (genetic algorithms, particle swarm) just search harder; still no certificate, still stochastic. And the one genuinely convex, genuinely global tool — DC-OPF — gets its convexity by *throwing away the physics I care about*: it flattens $|V|\approx1$, linearizes $\sin\theta\approx\theta$, drops resistance and losses and reactive power, leaving a tidy LP that solves economic dispatch but whose optimum isn't an AC-feasible point. So the tension is sharp: convexity has been bought only by abandoning the AC model. I want both — the true AC physics *and* a convex problem with a global certificate.
 
@@ -156,9 +156,9 @@ def solve_socp_radial(n, edges, G, B, P, Q, gens, v_slack):
         cons += [u[g] == vg ** 2 / s2]
     # rotated second-order cone per edge == the 2x2 principal minor of W >= 0
     for (i, j) in edges:
+        # ||[sqrt2 R, sqrt2 I, u_i-u_j]|| <= u_i+u_j  <=>  2 u_i u_j >= R^2 + I^2
         cons += [cp.SOC(u[i] + u[j],
-                        cp.vstack([R[i, j], I[i, j], u[i] - u[j]]))]
-        # equivalently 2 u_i u_j >= R_ij^2 + I_ij^2  (rotated cone)
+                        cp.vstack([s2 * R[i, j], s2 * I[i, j], u[i] - u[j]]))]
     def nbrs(i): return [j for (a, j) in edges if a == i] + \
                         [a for (a, j) in edges if j == i]
     sgn = lambda i, j: 1 if i < j else -1

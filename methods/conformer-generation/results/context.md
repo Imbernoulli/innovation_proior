@@ -59,7 +59,7 @@ minima — this is classical multidimensional scaling (Young–Householder), and
 EMBED algorithm* (Havel §3.2). The steps: from squared distances D_ij = d_ij², compute the squared
 distance of each atom to the centroid,
 
-  D0_i = (1/N) Σ_j D_ij − (1/N²) Σ_{j,k} D_jk,
+  D0_i = (1/N) Σ_j D_ij − (1/(2N²)) Σ_{j,k} D_jk,
 
 an averaging that is notably tolerant of errors in the input distances; form the centered
 inner-product (Gram / "metric") matrix
@@ -88,16 +88,15 @@ tangled or wrong-handed structures relax continuously before the fourth dimensio
 After this, a classical molecular-mechanics minimization (MMFF94 or UFF) can be run to give a clean
 local-minimum geometry.
 
-**Known limitations of generic-bounds distance geometry — the pre-method facts that matter.** Distance
-geometry with only generic, triangle-smoothed bounds is geometrically valid but physically smeared.
-Two well-documented symptoms: (1) torsion angles come out roughly uniformly distributed, whereas the
-torsions of real molecules are sharply *non-uniform* — small-molecule crystal structures in the
-Cambridge Structural Database (CSD) show, for each local torsion motif, a characteristic multimodal
-preferred-angle distribution, and generic bounds reproduce none of that; (2) planar fragments buckle —
-nothing in a pairwise van der Waals lower bound forces an aromatic ring or an sp2 center to stay flat,
-or a triple bond to stay linear, so the raw embedding lets them pucker. The usual fix, a full
-classical-force-field minimization, is expensive and drags every structure toward the force-field
-minimum, eroding the very diversity the ensemble was meant to provide.
+**Generic-bounds distance geometry is geometrically valid but physically smeared.** Two
+well-documented symptoms matter here: (1) torsion angles come out roughly uniformly distributed,
+whereas the torsions of real molecules are sharply *non-uniform* — small-molecule crystal structures
+in the Cambridge Structural Database (CSD) show, for each local torsion motif, a characteristic
+multimodal preferred-angle distribution, and generic bounds reproduce none of that; (2) planar
+fragments buckle — nothing in a pairwise van der Waals lower bound forces an aromatic ring or an sp2
+center to stay flat, or a triple bond to stay linear, so the raw embedding lets them pucker. The usual
+fix, a full classical-force-field minimization, is expensive and drags every structure toward the
+force-field minimum, eroding the very diversity the ensemble was meant to provide.
 
 ## Baselines
 
@@ -136,50 +135,35 @@ pre-existing resource that any knowledge-based method would draw on.
 
 ## Code framework
 
-The primitives that already exist: an RDKit molecule from a graph, explicit-hydrogen handling, a
-bounds-matrix class, a triangle-smoothing routine, the metric-matrix embedder, an error-function
-minimizer over distance/chirality terms, and the MMFF/UFF force fields. The slot to be filled is *how
-the per-pair bounds and the post-embedding refinement are informed* — i.e. what knowledge, beyond
-generic geometry, shapes the conformers. Sketch:
+The primitives that already exist: an RDKit molecule from a graph, explicit-hydrogen handling,
+embedding-parameter objects, bounds-matrix construction, triangle smoothing, metric-matrix embedding,
+an error-function minimizer over distance/chirality terms, conformer pruning, and the MMFF/UFF force
+fields. The open slot is the source of non-generic geometric knowledge used during embedding and
+refinement.
 
 ```python
 from rdkit import Chem
 from rdkit.Chem import AllChem
-from rdkit import DistanceGeometry
 
-def embed_conformer(mol, seed):
-    mol = Chem.AddHs(mol)                       # Hs needed for realistic geometry
-    N = mol.GetNumAtoms()
+def make_embedding_parameters(seed):
+    params = AllChem.EmbedParameters()
+    params.randomSeed = seed
+    params.enforceChirality = True
+    params.randNegEig = True
+    params.numZeroFail = 1
+    params.optimizerForceTol = 1e-3
+    add_geometric_knowledge(params)
+    return params
 
-    bounds = make_initial_bounds_matrix(mol)    # 1-2, 1-3 tight; 1-4 from torsion range; VdW else
-    # TODO: what additional knowledge shapes the bounds / refinement?
-    DistanceGeometry.DoTriangleSmoothing(bounds)
-
-    dmat = sample_distance_matrix(bounds, seed) # each d_ij uniform in [L_ij, U_ij]
-    coords = metric_matrix_embed(dmat, dim=4)   # classical MDS: top eigenvectors of Gram matrix
-
-    refine_against_error_function(coords, bounds)   # distance + chiral + 4th-dim penalties
-    # TODO: a post-embedding refinement that injects the knowledge above
-    return coords
-
-def make_initial_bounds_matrix(mol):
-    # bonds -> 1-2 bounds; angles -> 1-3 bounds; rotatable bonds -> 1-4 bounds; VdW lower bounds
-    # TODO
+def add_geometric_knowledge(params):
+    # TODO: choose what non-generic geometric knowledge informs embedding/refinement.
     pass
 
-def metric_matrix_embed(dmat, dim):
-    D = dmat ** 2                               # squared distances
-    # D0_i = (1/N) sum_j D_ij - (1/N^2) sum_{j,k} D_jk      (squared dist to centroid)
-    # G_ij = 0.5 * (D0_i + D0_j - D_ij)          (Gram / metric matrix)
-    # eigendecompose G; coords along axis a = sqrt(lambda_a) * v_a ; keep top `dim`
-    pass
-
-def refine_against_error_function(coords, bounds):
-    # penalty for d_ij outside [L_ij, U_ij]; chiral-volume penalties; squeeze 4th dimension
-    pass
-
-# multiple seeds -> ensemble; optional final MMFF/UFF minimization for clean local minima
+def embed_ensemble_from_graph(mol, n_confs, seed, do_forcefield_cleanup=False):
+    mol = Chem.AddHs(mol)
+    params = make_embedding_parameters(seed)
+    cids = list(AllChem.EmbedMultipleConfs(mol, numConfs=n_confs, params=params))
+    if do_forcefield_cleanup:
+        AllChem.MMFFOptimizeMoleculeConfs(mol)
+    return mol, cids
 ```
-
-The two `# TODO`s are the same slot seen twice: the knowledge that turns a geometrically valid
-embedding into a *realistic* one. The final code fills exactly these in.
