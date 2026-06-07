@@ -1,0 +1,10 @@
+\begin{figure}[t]
+\setlength{\abovecaptionskip}{6.5pt}
+\setlength{\belowcaptionskip}{-5pt}
+\setlength{\tabcolsep}{1pt}
+    \centering
+    \includegraphics[width=0.95\linewidth]{resources/images/embedding_fig.pdf}
+    \caption{Outline of the text-embedding and inversion process. A string containing our placeholder word is first converted into tokens (\ie word or sub-word indices in a dictionary). These tokens are converted to continous vector representations (the ``embeddings", $v$). Finally, the embedding vectors are transformed into a single conditioning code $c_\theta(y)$ which guides the generative model. We optimize the embedding vector $v_*$ associated with our pseudo-word \pholder, using a reconstruction objective.}
+    \label{fig:embedding}
+    \vspace{-5pt}
+\end{figure}

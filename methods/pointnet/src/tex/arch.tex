@@ -1,0 +1,200 @@
+The architecture of our network (Sec~\ref{sec:pointnet_arch}) is inspired by the properties of point sets in $\mathbb{R}^n$ (Sec~\ref{sec:point_set_property}). % We first describe the three properties in Sec~\ref{sec:point_set_property}; accordingly, we discuss our architecture designs in Sec~\ref{sec:pointnet_arch}, where we also summarize our whole network for classification and segmentation tasks. Furthermore, Sec~\ref{sec:theory} provides some theoretical analysis on how and why our network works well on point sets, though the architecture is not complicated.
+
+\subsection{Properties of Point Sets in $\mathbb{R}^n$}
+\label{sec:point_set_property}
+Our input is a subset of points from an Euclidean space. It has three main properties:
+
+% \begin{itemize}
+\bitem
+\item Unordered.
+Unlike pixel arrays in images or voxel arrays in volumetric grids, point cloud is a set of points without specific order. In other words, a network that consumes $N$ 3D point sets needs to be invariant to $N!$ permutations of the input set in data feeding order. 
+\item Interaction among points. The points are from a space with a distance metric. It means that points are not isolated, and neighboring points form a meaningful subset. Therefore, the model needs to be able to capture local structures from nearby points, and the combinatorial interactions among local structures. 
+\item Invariance under transformations.
+As a geometric object, the learned representation of the point set should be invariant to certain transformations. For example, rotating and translating points all together should not modify the global point cloud category nor the segmentation of the points.
+\eitem
+% \end{itemize}
+
+% The above three properties of our input lead to the three key ideas of our network design, which are discussed respectively in the following section.
+
+
+\subsection{PointNet Architecture}
+\label{sec:pointnet_arch}
+
+Our full network architecture is visualized in Fig~\ref{fig:pointnet_arch}, where the classification network and the segmentation network share a great portion of structures. Please read the caption of Fig~\ref{fig:pointnet_arch} for the pipeline.
+
+Our network has three key modules: the max pooling layer as a symmetric function to aggregate information from all the points, a local and global information combination structure, and two joint alignment networks that align both input points and point features.
+
+We will discuss our reason behind these design choices in separate paragraphs below. %, after a brief overview of the network.
+
+% \paragraph{Overview} In basic PointNet: Given a point cloud input, for example, $n$ points of $(x,y,z)$ coordinates, the network firstly applies a function (multi-layer perceptron network) on each point independently. Function outputs across points are then aggregated with a max pooling layer. The aggregated vector is a global feature for the point cloud.
+% 
+% For classification task, the global feature is further passed through a few fully connected layers (with ReLU) to predict class scores for the entire point cloud.
+% 
+% For segmentation, we need to combine both local and global context for point class prediction. To this end, the global feature is appended to each point's local feature vector to provide a global context for individual point. We then apply a multi-layer perceptron net on the concatenated feature of each point to predict its class scores.
+% 
+% Additional input and feature space alignment network can be inserted, as shown in Fig~\ref{fig:pointnet_arch}. The alignment network is a regressor to transformation matrix and resembles the basic classification net in architecture.
+% 
+
+\paragraph{Symmetry Function for Unordered Input}
+In order to make a model invariant to input permutation, three strategies exist: 1) sort input into a canonical order; 2) treat the input as a sequence to train an RNN, but augment the training data by all kinds of permutations; 3) use a simple symmetric function to aggregate the information from each point. Here, a symmetric function takes $n$ vectors as input and outputs a new vector that is invariant to the input order. For example, $+$ and $*$ operators are symmetric binary functions. 
+
+While sorting sounds like a simple solution, in high dimensional space there in fact does not exist an ordering that is stable w.r.t. point perturbations in the general sense. This can be easily shown by contradiction. If such an ordering strategy exists, it defines a bijection map between a high-dimensional space and a $1d$ real line. It is not hard to see, to require an ordering to be stable w.r.t point perturbations is equivalent to requiring that this map preserves spatial proximity as the dimension reduces, a task that cannot be achieved in the general case. Therefore, sorting does not fully resolve the ordering issue, and it's hard for a network to learn a consistent mapping from input to output as the ordering issue persists. As shown in experiments (Fig~\ref{fig:order_invariant}), we find that applying a MLP directly on the sorted point set performs poorly, though slightly better than directly processing an unsorted input.
+
+The idea to use RNN considers the point set as a sequential signal and hopes that by training the RNN with randomly permuted sequences, the RNN will become invariant to input order. However in ``OrderMatters''~\cite{vinyals2015order} the authors have shown that order does matter and cannot be totally omitted. While RNN has relatively good robustness to input ordering for sequences with small length (dozens), it's hard to scale to thousands of input elements, which is the common size for point sets. Empirically, we have also shown that model based on RNN does not perform as well as our proposed method (Fig~\ref{fig:order_invariant}).
+
+Our idea is to approximate a general function defined on a point set by applying a symmetric function on transformed elements in the set: 
+\begin{align}
+    f(\{x_1, \dots, x_n\})\approx g(h(x_1), \dots, h(x_n)),
+    \label{eq:approx}
+\end{align}
+where $f:2^{\mathbb{R}^N} \rightarrow \mathbb{R}$, $h: \mathbb{R}^N\rightarrow \mathbb{R}^K$ and $g:\underbrace{\mathbb{R}^K\times \dots \times \mathbb{R}^K}_n \rightarrow \mathbb{R}$ is a symmetric function.
+
+Empirically, our basic module is very simple: we approximate $h$ by a multi-layer perceptron network and $g$ by a composition of a single variable function and a max pooling function. This is found to work well by experiments. Through a collection of $h$, we can learn a number of $f$'s to capture different properties of the set. % This idea shares similar flavor with [cite leo's paper: probablistic shape fingerprint], where they define random functions on the input data and train a model based on the outputs of those optimization functions.  %Signature points are supposed to result in more extreme values for those random functions, thus the latter model can use weights to select them to make prediciton decisions for specific tasks. 
+% In our architecture, instead of using random functions, we let the network itself learn a set of optimal functions to select signature points. 
+
+While our key module seems simple, it has interesting properties (see Sec~\ref{sec:visualizing_pointnet}) and can achieve strong performace (see Sec~\ref{sec:application}) in a few different applications. Due to the simplicity of our module, we are also able to provide theoretical analysis as in Sec~\ref{sec:theory}.
+
+
+\paragraph{Local and Global Information Aggregation}
+The output from the above section forms a vector $[f_1, \dots, f_K]$, which is a global signature of the input set. We can easily train a SVM or multi-layer perceptron classifier on the shape global features for classification. However, point segmentation requires a combination of local and global knowledge. We can achieve this by a simple yet highly effective manner. % Even for global point classification, it could be beneficial to exploit more local geometries.
+
+Our solution can be seen in Fig~\ref{fig:pointnet_arch} (\textit{Segmentation Network}). After computing the global point cloud feature vector, we feed it back to per point features by concatenating the global feature with each of the point features. Then we extract new per point features based on the combined point features - this time the per point feature is aware of both the local and global information. % This structure can be repeated multiple times.
+
+With this modification our network is able to predict per point quantities that rely on both local geometry and global semantics. For example we can accurately predict per-point normals (fig in supplementary), validating that the network is able to summarize information from the point's local neighborhood. In experiment session, we also show that our model can achieve state-of-the-art performance on shape part segmentation and scene segmentation.
+    
+\paragraph{Joint Alignment Network}
+The semantic labeling of a point cloud has to be invariant if the point cloud undergoes certain geometric transformations, such as rigid transformation. We therefore expect that the learnt representation by our point set is invariant to these transformations. 
+
+A natural solution is to align all input set to a canonical space before feature extraction. Jaderberg et al.~\cite{jaderberg2015spatial} introduces the idea of spatial transformer to align 2D images through sampling and interpolation, achieved by a specifically tailored layer implemented on GPU.
+
+Our input form of point clouds allows us to achieve this goal in a much simpler way compared with~\cite{jaderberg2015spatial}. We do not need to invent any new layers and no alias is introduced as in the image case. We predict an affine transformation matrix by a mini-network (T-net in Fig~\ref{fig:pointnet_arch}) and directly apply this transformation to the coordinates of input points. The mini-network itself resembles the big network and is composed by basic modules of point independent feature extraction, max pooling and fully connected layers. More details about the T-net are in the supplementary.
+
+This idea can be further extended to the alignment of feature space, as well. We can insert another alignment network on point features and predict a feature transformation matrix to align features from different input point clouds. However, transformation matrix in the feature space has much higher dimension than the spatial transform matrix, which greatly increases the difficulty of optimization. We therefore add a regularization term to our softmax training loss. We constrain the feature transformation matrix to be close to orthogonal matrix:
+\begin{equation}
+    L_{reg} = \|I - AA^T\|_F^2,
+\end{equation}
+where $A$ is the feature alignment matrix predicted by a mini-network. An orthogonal transformation will not lose information in the input, thus is desired. We find that by adding the regularization term, the optimization becomes more stable and our model achieves better performance.
+
+
+\subsection{Theoretical Analysis}
+\label{sec:theory}
+ 
+% \todo{
+%   goal: show that this network is theoretically robust to perturbation and corruption (additional points and incompleteness) of input data.
+%   \begin{itemize}
+%     \item analyze the max pooling layer: it selects a finite set of key points. the cardinality of the key point set is constrained by the dimension of max pooling. 
+%     \item add some understanding of the symmetry function, if we can
+%   \end{itemize}
+% }
+\paragraph{Universal approximation} We first show the universal approximation ability of our neural network to continuous set functions. By the continuity of set functions, intuitively, a small perturbation to the input point set should not greatly change the function values, such as classification or segmentation scores.
+
+Formally, let $\mathcal{X}=\{S: S\subseteq [0,1]^m \text{ and } |S|=n\}$,   $f:\mathcal{X}\rightarrow \mathbb{R}$ is a continuous set function on $\mathcal{X}$ w.r.t to Hausdorff distance $d_H(\cdot, \cdot)$, i.e., $\forall \epsilon > 0, \exists \delta >0$, for any $S, S'\in\mathcal{X}$, if $d_H(S, S') < \delta$, then $|f(S)-f(S')|< \epsilon$. Our theorem says that $f$ can be arbitrarily approximated by our network given enough neurons at the max pooling layer, i.e., $K$ in \eqref{eq:approx} is sufficiently large. 
+
+\begin{theorem}
+Suppose $f:\mathcal{X}\rightarrow \mathbb{R}$ is a continuous set function w.r.t Hausdorff distance $d_H(\cdot, \cdot)$. $\forall \epsilon > 0$, $\exists$ a continuous function $h$ and a symmetric function $g(x_1, \dots, x_n)=\gamma \circ \mbox{MAX}$, such that for any $S\in\mathcal{X}$,
+% Formally, $\forall \epsilon > 0$, $\exists g_{\epsilon}:\underbrace{\R^{K_\epsilon}\times \dots \times \R^{K_\epsilon}}_n\rightarrow \R$ which is a symmetric function and $h_{\epsilon}: \R^3 \rightarrow \R^{K_\epsilon}$ such that 
+\begin{align*}
+	\left|f(S) - \gamma\left(\underset{x_i\in S}{\mbox{MAX}}\left\{h(x_i)\right\}\right)\right| < \epsilon
+\end{align*}
+where $x_1, \ldots, x_n$ is the full list of elements in $S$ ordered arbitrarily, $\gamma$ is a continuous function, and $\mbox{MAX}$ is a vector max operator that takes $n$ vectors as input and returns a new vector of the element-wise maximum. 
+\end{theorem}
+The proof to this theorem can be found in our supplementary material. The key idea is that in the worst case the network can learn to convert a point cloud into a volumetric representation, by partitioning the space into equal-sized voxels. In practice, however, the network learns a much smarter strategy to probe the space, as we shall see in point function visualizations.
+\begin{figure}[t!]
+    \centering
+    \includegraphics[width=0.8\linewidth]{fig/segres.pdf}
+    \caption{\textbf{Qualitative results for part segmentation.} We visualize the CAD part segmentation results across all 16 object categories. We show both results for partial simulated Kinect scans (left block) and complete ShapeNet CAD models (right block).}
+    \label{fig:qualitative_part_segmentation}
+\end{figure}
+
+\paragraph{Bottleneck dimension and stability} Theoretically and experimentally we find that the expressiveness of our network is strongly affected by the dimension of the max pooling layer, i.e., $K$ in \eqref{eq:approx}. Here we provide an analysis, which also reveals properties related to the stability of our model. 
+
+We define $\myvec u=\underset{x_i\in S}{\mbox{MAX}}\{h(x_i)\}$ to be the sub-network of $f$ which maps a point set in $[0,1]^m$ to a $K$-dimensional vector. The following theorem tells us that small corruptions or extra noise points in the input set are not likely to change the output of our network:
+\begin{theorem}
+Suppose $\myvec u:\mathcal{X}\rightarrow \mathbb{R}^K$ such that $\myvec u=\underset{x_i\in S}{\mbox{MAX}}\{h(x_i)\}$ and $f=\gamma \circ \myvec u$. Then, 
+\begin{enumerate}[label=(\alph*)]   
+    \item $\forall S, \exists~\mathcal{C}_S, \mathcal{N}_S\subseteq \mathcal{X}$,  $f(T)=f(S)$ if  $\mathcal{C}_S\subseteq T\subseteq \mathcal{N}_S$;
+    %\item Define the equivalence relation $\sim$ as $S\sim S'$ if $\myvec u(S)=\myvec u(S')$, then $\mathcal{C}_S=\underset{S'\sim S}{\cap} S'$ and $\mathcal{N}_S=\underset{S'\sim S}{\cup} S'$.
+    % \item Let $S\sim S'$ if $\myvec u(S)=\myvec u(S')$. $\mathcal{C}_S=\underset{S'\sim S}{\cap} S'$, $\mathcal{N}_S=\underset{S'\sim S}{\cup} S'$.
+    \item $|\mathcal{C}_S| \le K$
+\end{enumerate}
+\label{thm:thm2}
+%     \begin{itemize}            
+%     \item Critical points.
+%     \\$\mathbb{C}=\{x_i: \myvec u_j(S)=h_j(x_i) \mbox{ for some } 1\le j\le K\}\cap S$
+%     \item Free-space points.
+%     \\$\mathbb{F}=\{x_i: \myvec u_j(S)<h_j(x_i) \mbox{ for some } 1\le j\le K\}\cap S$
+%     \item Non-critical points. 
+%     \\$\mathbb{N}=\{x_i: \myvec u_j(S)>h_j(x_i) \mbox{ for some } 1\le j\le K\}\cap S$
+% For any $S'$ such that  $\mathbb{C} \subseteq S' \subseteq \mathbb{C}\cup\mathbb{N}$, $\myvec u(S')\equiv \myvec u(S)$; for any $S'$ such that $S'\cap \mathbb{F}\neq \emptyset$, $\myvec u(S')\neq \myvec u(S)$.
+%\end{itemize}
+\end{theorem}
+We explain the implications of the theorem. (a) says that $f(S)$ is unchanged up to the input corruption if all points in $\mathcal{C}_S$ are preserved; it is also unchanged with extra noise points up to $\mathcal{N}_S$. (b) says that $\mathcal{C}_S$ only contains a bounded number of points, determined by $K$ in \eqref{eq:approx}. In other words, $f(S)$ is in fact totally determined by a finite subset $\mathcal{C}_S\subseteq S$ of less or equal to $K$ elements. We therefore call $\mathcal{C}_S$ the \emph{critical point set} of $S$ and $K$ the \emph{bottleneck dimension} of $f$. 
+
+Combined with the continuity of $h$, this explains the robustness of our model w.r.t point perturbation, corruption and extra noise points. The robustness is gained in analogy to the sparsity principle in machine learning models. {\bf  Intuitively, our network learns to summarize a shape by a sparse set of key points.} In experiment section we see that the key points form the skeleton of an object.
+
+
+
+
+\begin{comment}
+\subsection{The properties of point sets in $\R^n$}
+\todo{
+  our input is a subset of points from a Euclidean space. It has three main properties:
+  \begin{itemize}
+    \item as a set, points in it has no order; 
+    \item the points are from a metric space. therefore, local structures from near points have to be characterized;
+    \item as a geometric object, the learned representation of the point set should be invariant to certain transformations.
+  \end{itemize}
+  the above three properties of our input leads to the three key ideas of our network design. we explain one by one.
+}
+\subsection{Unordered point set as input}
+\todo{
+  \begin{itemize}
+    \item three strategies exist: 1) sorting input into a canonical order; 2)  use RNN but train order-invariantly; 3) use a symmetric function to aggregate the information from each point. 
+    \item theoretically and empirically argue that the first two choices are not good. 
+    \item our idea is to approximate a general function defined on a point set by applying a symmetric function on transformed elements in the set: $$f(\{x_1, \dots, x_n\})\approx g(h(x_1), \dots, h(x_n)),$$ where $f:2^{\R^N} \rightarrow \R$, $h: \R^N\rightarrow \R$ and $g:\R\times \dots \times \R\rightarrow \R$ is a symmetric function.
+    \item we think this is provable for some good $f$.
+    \item empirically, we approximate $h$ by a multi-layer perceptron network and $g$ by a composition of a single variable function and a max pooling function. this is found to work well by experiments.
+    \item we can learn a number of $f$'s to capture different properties of the set.
+  \end{itemize}
+}
+
+\subsection{Local and global information aggregation}
+\todo{
+  \begin{itemize}
+    \item the output from the above section forms a vector $[f_1, \dots, f_M]$, which is a global signature of the input set.
+    \item however, for tasks such as segmentation, we also need combine local information and global information. 
+    \item xxx
+  \end{itemize}
+}
+
+\subsection{Input and feature space alignment}
+\todo{
+  \begin{itemize}
+    \item as we explained earlier, the learned representation of the point set should be invariant to certain transformations.
+    \item we propose to apply an input dependent transformation for each instance to align all input set to a canonical space
+    \item the input of our data are very friendly to geometric transformations, such as affine. we can therefore predict the transformation matrix by a neural network, named Joint Alignment Network.
+    \item this idea can be extended to the alignment of feature space, as well
+  \end{itemize} 
+}
+
+\subsection{PointNet architecture}
+\todo{
+  \begin{itemize}
+    \item we implement the above ideas into a network for point set learning, named PointNet
+    \item show the network for classification and explain 
+    \item show the network for segmentation and explain
+  \end{itemize}
+}
+
+\subsection{Theoretical Analysis}
+\todo{
+  goal: show that this network is theoretically robust to perturbation and corruption (additional points and incompleteness) of input data.
+  \begin{itemize}
+    \item analyze the max pooling layer: it selects a finite set of key points. the cardinality of the key point set is constrained by the dimension of max pooling. 
+    \item add some understanding of the symmetry function, if we can
+  \end{itemize}
+}
+
+
+
+\end{comment}

@@ -1,0 +1,96 @@
+\section{Noisy quadratic analysis}
+\label{app:noisy}
+Here we present the details of the noisy quadratic analysis, and the proof of Proposition~\ref{prop:noisy_quad}.
+
+\paragraph{Stochastic dynamics of SGD} From \citet{wu2018understanding}, we can compute the dynamics of SGD with learning rate $\gamma$ as follows:
+
+\begin{align}
+    \E[\bx^{(t+1)}] &= (\bI - \gamma \bA) \E[\bx^{(t)}] \\
+    \V[\bx^{(t+1)}] &= (\bI - \gamma \bA)^2\V[\bx^{(t)}] + \gamma^2 \bA^2 \Sigma
+\end{align}
+
+\paragraph{Stochastic dynamics of Lookahead SGD} We now compute the dynamics of the slow weights of Lookahead.
+
+\begin{lemma}The Lookahead slow weights have the following trajectories:
+
+\begin{align}
+    \E[\bphi_{t+1}] &= [1 - \alpha + \alpha (\bI - \gamma \bA)^k] \E[\bphi_{t}] \\
+    \V[\bphi_{t+1}] &= [1-\alpha + \alpha (\bI - \gamma \bA)^k]^2\V[\bphi_t] + \alpha^2 \sum_{i=0}^{k-1} (\bI - \gamma \bA)^{2i}\gamma^2\bA^2\Sigma 
+\end{align}
+\end{lemma}
+
+\begin{proof}
+The expectation trajectory follows from SGD,
+\begin{align*}
+    \E[\bphi_{t+1}] &= (1-\alpha) \E[\bphi_{t}] + \alpha \E[\btheta_{t,k}] \\
+    &= (1-\alpha) \E[\bphi_{t}] + \alpha (\bI - \gamma \bA)^k \E[\bphi_{t}] \\
+    &= [1 - \alpha + \alpha (\bI - \gamma \bA)^k] \E[\bphi_{t}]
+\end{align*}
+
+For the variance, we can write $\V[\bphi_{t+1}] = (1-\alpha)^2 \V[\bphi_{t}] + \alpha^2 \V[\btheta_{t,k}] + 2\alpha(1-\alpha)\text{cov}(\bphi_t, \btheta_{t,k})$. We proceed by computing the covariance term recursively. For simplicity, we work with a single element, $\theta$, of the vector $\btheta$ (as $\bA$ is diagonal, each element evolves independently).
+\begin{align*}
+    \text{cov}(\theta_{t,k-1}, \theta_{t,k}) &= \E[(\theta_{t,k-1} - \E[\theta_{t,k-1}])(\theta_{t,k} - \E[\theta_{t,k}])] \\
+    &= \E[(\theta_{t,k-1} - \E[\theta_{t,k-1}])(\theta_{t,k} - (1-\gamma a)\E[\theta_{t,k-1}])] \\
+    &= \E[\theta_{t,k-1}\theta_{t,k}] - (1 - \gamma a)\E[\theta_{t,k-1}]^2 \\
+    &= \E[(1-\gamma a)\theta^2_{t,k-1}] - (1 - \gamma a)\E[\theta_{t,k-1}]^2 \\
+    &= (1-\gamma a)\V[\theta_{t,k-1}]
+\end{align*}
+A similar derivation yields $\text{cov}(\bphi_t, \btheta_{t,k}) = (\bI - \gamma \bA)^k \V[\phi_t]$. After substituting the SGD variance formula and some rearranging we have,
+\begin{equation*}
+    \V[\bphi_{t+1}] = [1-\alpha + \alpha (\bI - \gamma \bA)^k]^2\V[\bphi_t] + \alpha^2 \sum_{i=0}^{k-1} (\bI - \gamma \bA)^{2i}\gamma^2\bA^2\Sigma
+\end{equation*}
+\end{proof}
+We now proceed with the proof of Proposition~\ref{prop:noisy_quad}.
+
+\begin{proof}
+First note that if the learning rate is chosen as specified, then each of the trajectories is a contraction map. By Banach's fixed point theorem, they each have a unique fixed point. Clearly the expectation trajectories contract to zero in each case.
+
+For the variance we can solve for the fixed points directly. For SGD,
+\begin{align*}
+    V^*_{SGD} &= (1-\gamma \bA)^2 V^*_{SGD} + \gamma \bA^2 \Sigma, \\
+    \Rightarrow V^*_{SGD} &= \frac{\gamma^2 \bA^2 \Sigma}{\bI - (\bI - \gamma \bA)^2}.
+\end{align*}
+
+For Lookahead, we have,
+\begin{align*}
+    V^*_{LA} &= [1-\alpha + \alpha (\bI - \gamma \bA)^k]^2 V^*_{LA} +\alpha^2 \sum_{i=0}^{k-1} (\bI - \gamma \bA)^{2i}\gamma^2\bA^2\Sigma \\
+    \Rightarrow V^*_{LA} &= \frac{\alpha^2\sum_{i=0}^{k-1} (\bI - \gamma \bA)^{2i}}{\bI - [(1-\alpha)\bI + \alpha (\bI - \gamma \bA)^k]^2} \gamma^2 \bA^2\Sigma \\
+\Rightarrow V^*_{LA} &= \frac{\alpha^2 (\bI - (\bI - \gamma\bA)^{2k})}{\bI - [(1 - \alpha) \bI + \alpha(\bI - \gamma\bA)^k]^2} \frac{\gamma^2 \bA^2 \Sigma}{\bI - (\bI - \gamma \bA)^2}
+\end{align*}
+
+where for the final equality, we used the identity $\sum_0^k a^i = (1-a^k)/(1-a)$. Some standard manipulations of the denominator on the first term lead to the final solution,
+\begin{align*}
+    V_{LA}^* = \frac{\alpha^2 (\bI - (\bI - \gamma\bA)^{2k})}{\alpha^2 (\bI - (\bI - \gamma\bA)^{2k}) + 2\alpha(1 - \alpha)(\bI - (\bI - \gamma\bA)^k)} \frac{\gamma^2 \bA^2 \Sigma^2}{\bI - (\bI - \gamma \bA)^2}
+\end{align*}
+\end{proof}
+
+For the same learning rate, Lookahead will achieve a smaller loss as the variance is reduced more. However, the convergence speed of the expectation term will be slower as we must compare $1-\alpha + \alpha(\bI-\gamma\bA)^k$ to $(\bI-\gamma\bA)^k$ and the latter is always smaller for $\alpha < 1$. In our experiments, we observe that Lookahead typically converges much faster than its inner optimizer. We speculate that the learning rate for the inner optimizer is set sufficiently high such that the variance reduction term is more important--this is the more common regime for neural networks that attain high validation accuracy, as higher initial learning rates are used to overcome the short-horizon bias \citep{wu2018understanding}.
+
+\subsection{Comparing convergence rates} In Figure~\ref{fig:noisy_quad_convergence} we compared the convergence rates of SGD and Lookahead. We specified the eigenvalues of $A$ according to the worst-case model from \citet{li2005sharpness} (also used by \citet{wu2018understanding}) and set $\Sigma = A^{-1}$. We computed the expected loss (Equation~\ref{eqn:noisy_exp_loss}) for learning rates in the range $(0,1)$ for SGD and Lookahead with $\alpha \in (0,1]$, with $k=5$, at time $T=1000$ (by unrolling the above dynamics). We computed the variance fixed point for each learning rate under each optimizer and use this value to compute the optimal loss. Finally, we plot the difference between the expected loss at $T$ and the final loss, as a function of the final loss. This allows us to compare the convergence performance between SGD and Lookahead optimization settings which converge to the same solution.
+
+\paragraph{Further convergence plots} In Figure~\ref{fig:noisy_quad_more_convergence} we present additional plots comparing the convergence performance between SGD and Lookahead. In (a) we show the convergence of Lookahead for a single choice of $\alpha$, where our method is able to outperform SGD even for this fixed value. In (b) we show the convergence after only a few updates. Here SGD outperforms Lookahead for some smaller choices of $\alpha$.  This is because SGD is able to make progress on the expectation more rapidly and reduces this part of the loss quickly --- this is related to the short-horizon bias phenomenon \citep{wu2018understanding}. However, even with only a few updates there are choices of $\alpha$ which are able to outperform SGD.
+
+\begin{figure}
+    \begin{minipage}{.5\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{images/noisy_quad_convergence_fixed_alpha_0_4.png}\\(a)
+    \end{minipage}%
+    \begin{minipage}{.5\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{images/noisy_quad_convergence_fewer_updates_10.png}\\(b)
+    \end{minipage}
+    \caption{Convergence of SGD and Lookahead on the noisy quadratic model. (a): We show the convergence of Lookahead with a single fixed choice of $\alpha=0.4$. (b): We compare the early stage performance of Lookahead to SGD over a range of $\alpha$ values. }
+    \label{fig:noisy_quad_more_convergence}
+\end{figure}
+
+We also measured the optimal expected loss after some finite time horizon for both Lookahead and SGD in Figure \ref{fig:finite_horizon_nqm}. We performed a fine-grained grid search over the learning rate for SGD and both the learning rate and $\alpha$ for Lookahead (keeping $k=5$ fixed). We evaluated 100 learning rates equally spaced on a log-scale in the range $[10^{-4},10^{-1}]$. For Lookahead, we additionally evaluated 50 $\alpha$ values equally spaced on a log-scale in the range $[10^{-4}, 1]$. For every time horizon, there exists settings of Lookahead that outperform SGD.
+% While each optimizer achieves a similar rate when optimized for the non-asymptotic regime, Lookahead still has settings which outperform SGD for all time-horizons.
+
+
+
+\begin{figure}
+    \centering
+    \includegraphics[width=\linewidth, scale=0.6]{images/finite_horizon_nqm.pdf}
+    \caption{Expected loss of SGD and Lookahead with (constant-through-time) hyperparameters tuned to be optimal at a finite time horizon. At each finite horizon ($x$-axis) we perform a grid search to find the best expected loss of each optimizer. Lookahead dominates SGD over all time horizons.}
+    \label{fig:finite_horizon_nqm}
+\end{figure}

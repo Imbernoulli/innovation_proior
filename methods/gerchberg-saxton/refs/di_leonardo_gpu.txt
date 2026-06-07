@@ -1,0 +1,631 @@
+Real-time optical micro-manipulation using
+optimized holograms generated on the GPU
+
+arXiv:0907.4027v2 [cond-mat.soft] 16 Mar 2010
+
+S. Bianchi1 and R. Di Leonardo 2
+1 Dipartimento di Fisica, Sapienza Università di Roma, I-00185, Roma, Italy
+2 CNR-IPCF, Dipartimento di Fisica, Sapienza Università di Roma, I-00185, Roma, Italy
+
+Abstract
+Holographic optical tweezers allow the three dimensional, dynamic, multipoint manipulation of micron sized objects using laser light. Exploiting the
+massive parallel architecture of modern GPUs we can generate highly optimized holograms at video frame rate allowing the precise interactive micromanipulation of 3D structures.
+Keywords: optical trapping, digital holography, GPU computing, CUDA
+PACS: 87.80.Cc, 42.40.Jv, 01.50.Lc
+
+1. Introduction
+Holographic optical tweezers (HOT) use light to manipulate matter at the
+micron scale [1]. Dielectric objects, whose refractive index is higher than the
+surrounding medium can be trapped in regions of high light intensity by electromagnetic forces arising from the scattering of light [2]. To achieve stable
+trapping in three dimensions, light has to be strongly focused using a microscope objective with high numerical aperture. Many objects can be trapped
+simultaneously if more than a single focal spot is generated around the objective’s focal plane. Digital holography provides a way to achieve this by applying
+a computer generated phase mask to a laser beam before it is sent through the
+microscope objective. The commercial availability of Spatial Light Modulators
+(SLM) has made this task easier by providing a reconfigurable support for computer generated holograms which is connected to a PC through the video output
+(usually DVI) on a standard video card [3, 4, 5, 6]. The task of finding a phase
+mask that efficiently redistributes the available laser power among an array of
+target focal spots is not a straightforward one. Phase only modulation can easily
+give rise to unwanted focal spots (“ghost traps”) or large intensity variations.
+We recently proposed an iterative procedure that achieves optimal efficiency
+and uniformity in a few tens of steps [7]. However the resulting computational
+load is so high that the use of optimized algorithms for dynamic manipulation is
+limited to those circumstances when the sequence of moves is known in advance
+and holograms can be then pre-calculated. Such a slowness is often considered
+Preprint submitted to Elsevier
+
+October 24, 2018
+
+as one of the major factors for preferring scanning beam techniques [8] over
+digital holography for real-time applications.
+In this paper we demonstrate that CUDA [9] enabled GPUs can generate
+highly optimized holograms at a frame-rate that is fast enough to allow interactive micro-manipulation using strong and uniform trap arrays.
+2. GPU device architecture
+Graphic Processing Units (GPU) have brought the power of parallel calculus
+to personal computers. The possibility of using a personal computer to easily
+and cheaply achieve the performances of an expensive CPU cluster is revolutionizing computational physics in a wide range of fields including molecular
+dynamics [10], Monte Carlo simulations [11], finite element analysis [12], lattice
+QCD [13]. The Compute Unified Device Architecture (CUDA) is a general purpose parallel computing architecture introduced by NVIDIA. CUDA provides a
+parallel programming model and software environment allowing to exploit the
+massive parallel architecture of modern Graphic Processing Units (GPU) for
+non-graphics applications. General purpose parallel algorithms can be implemented on a CUDA enabled GPU using a small set of C extensions provided
+by the CUDA SDK. The CUDA programming model closely reflects the GPU
+hardware architecture. A CUDA enabled GPU is composed of a global memory
+and a variable number of multiprocessors. Each multiprocessor includes eight
+scalar processor cores, two special function units, 8192 registers, a multithreaded
+instruction unit and one on-chip shared memory. As a result hundreds of cores
+can collectively run thousands of computing threads that can share data without
+sending it over the system memory bus. Threads are arranged in a grid of blocks
+and each block is assigned to a multiprocessor. In this way threads that belong
+to the same block can be synchronized and can cooperate using shared memory.
+Within a block, threads are arranged in groups of 32 called warps, threads in a
+warp are physically executed in parallel and are synchronized. Multiprocessors
+can only execute one warp at time, however if threads in a warp are waiting
+to access global memory the multiprocessor can stop executing that warp and
+switch to another one eliminating memory latency time.
+Such an execution model requires specific optimization strategies that, for
+the purpose of the present work, can be summarized in three general rules:
+Rule A) Keep multiprocessors busy and hide memory latency.
+To this aim one should:
+1. Group threads in a number of blocks that is multiple of the number
+of multiprocessors.
+2. Choose the number of threads per block as a multiple of 32 to avoid
+wasting time with unfilled warps.
+3. Maximize the number of active warps by using many threads per
+block.
+
+2
+
+4. When possible, avoid using conditional instructions that serialize the
+execution of a warp.
+Rule B) Minimize read/write operations on global memory.
+Writing and reading global memory is very slow and sometimes it can be
+even better to recalculate than to cache data. Shared memory must be
+used whenever it can reduce the access to global memory. Shared memory
+is hundreds of times faster than global memory but only 16k are currently
+available to any multiprocessor.
+Rule C) Access global memory with coalesced calls.
+When all threads in a half warp execute a read/write instruction, the hardware detects whether threads access consecutive global memory locations
+and coalesces all these accesses.
+3. Optimized algorithms for holographic trapping
+In back focal plane phase modulation we use an SLM to apply an array
+of phase shifts to a plane wave at the back focal plane of a focusing optical
+system (Fig. 1). Our task here is to calculate the best phase mask so that the
+modulated wavefront propagating through the optical system is focused onto an
+array of chosen target spots. Given the phase shift on each pixel φj the complex
+
+y
+
+f
+
+SLM
+
+Fourier plane
+
+f
+
+jth pixel:
+(xj , yj , 0)
+
+z
+
+mth trap:
+(xm , ym , zm )
+
+Figure 1: Schematic representation of Fourier optics propagation from SLM plane (back focal
+plane) to the front focal plane of the optical system.
+
+field on a target point m, with coordinates xm , ym , zm , is given by [7]:
+Vm =
+
+1 X i(φj −∆m
+j )
+e
+N
+
+(1)
+
+j=1,N
+
+Where N is the number of pixels, i is the imaginary unit and ∆m
+j is the phase
+acquired upon propagation:
+
+3
+
+k=0
+wm = 1
+θm = random
+phase
+backward propagation
+
+φj = arg
+
+!
+
+m
+
+wm ei(∆j +θm )
+
+m=1,M
+
+k < K?
+
+update weights
+
+k =k+1
+
+forward propagation
+
+wm = wm !|Vm |"/|Vm |
+θm = arg Vm
+
+Vm =
+
+No
+
+Yes
+
+output
+
+{φj }
+
+1 ! i(φj −∆m
+j )
+e
+N
+j=1,N
+
+Figure 2: Flowchart representing K iterations of GSW algorithm.
+
+∆m
+j =
+
+2π
+zm π 2
+(x + yj2 ) +
+(xj xm + yj ym )
+λf 2 j
+λf
+
+(2)
+
+where f is the effective focal length of the focusing optics (L3, L4, MO in
+Fig. 6), λ is the laser wavelength and xj , yj are the coordinates of the j th pixel.
+If we want to send all the light through a single point m = 1 then we should
+set φj = ∆1j , so that V1 = 1. When considering multiple traps, a phase only
+modulation might not be able to split all the available power uniformly among
+the target points. For each pixel we now have the multiple choices ∆m
+j (the
+single trap holograms) and finding a compromise could seem a hopeless task. A
+first, reasonably fast recipe is that of taking the complex superposition of single
+trap holograms [14]:
+X
+m
+φj = arg
+ei(∆j +θm )
+(3)
+m=1,M
+
+Where φj is again the phase of the j th SLM’s pixel, mth is the trap index, M
+is the number of traps, θm is a random phase relative to the mth trap. Such
+a procedure, usually referred as the random superposition algorithm (SR), is
+computationally rather fast but usually results in ghost traps and poor uniformities, especially when dealing with ordered structures. A quantitative measure
+of the hologram performance can be obtained by defining an efficiency (e) and
+a uniformity (u) parameters as a function of the fractions of total power flowing
+through the mth trap Im = |Vm |2 :
+e=
+
+X
+m
+
+Im ,
+
+u=1−
+
+max[Im ] − min[Im ]
+,
+max[Im ] + min[Im ]
+
+4
+
+(4)
+
+A poor performance may result in particles getting trapped in unwanted ghost
+trap sites or bead escape from temporary low intensity traps. When such events
+are acceptable SR provides a good choice for real time manipulation, but if a
+higher degree of control is required a more performing algorithm is needed. A
+good candidate is the GSW algorithm (weighted Gerchberg-Saxton [7]) which
+gives excellent results in terms of efficiency and uniformity. The basic idea
+behind GSW is that, if aiming at uniform trap intensities with SR leads to
+nonuniformities, we may hope that there’s a choice of non uniform target traps’
+intensities resulting in an evenly spread trapping light. GSW allows to calculate such non uniform weights wm by the iterative procedure illustrated in the
+flowchart reported in Fig. 2. Angle brackets in the update weights box of Fig.
+2 represent averaging over the trap index m. After a few tens of iterations
+the procedure converges to almost perfectly uniform trap intensities so that
+|Vm | ≃ h|Vm |i and the weights wm don’t get updated anymore.
+4. Implementing HOT algorithms on a CUDA device
+
+BackPropKer
+global memory
+
+shared memory
+
+xm ym zm wm θm · · ·
+
+s1 s2 s3 s4 s5
+
+···
+
+blocksize threads calculate
+mth trap contribution to Eq. 5
+
+block 1
+loop over trap index m
+
+φ1 φ2 φ3 · · · · · · · · · φN-1 φN
+
+⎧
+⎜
+⎜
+⎨
+⎜
+⎜
+⎩
+
+global memory
+
+blocksize
+
+Figure 3: Schematic diagram of the kernel BackPropKer calculating the phase shifts on the
+SLM by a backward propagation of light emerging from the target spots.
+
+The parallel architecture of GPUs is particularly suited for digital holography, whose basic task is that of performing complex algebra over a large array of
+independent pixels. In the field of digital holography GPUs have been used for
+real-time holographic microscopy [15, 16] or holographic displays [17, 18]. In the
+field of optical trapping, the possibility of generating holograms with real-time
+frame rate is very attractive for interactive applications. Early attempts always
+suffered the slowness of CPU resulting in either slow or low efficiency holograms
+5
+
+[19, 20]. More recently, custom shading programs running on the GPU have
+been used to achieve a considerable speedup in hologram generation, although
+always being limited to quick and poorly performing algorithms [21, 22]. The
+CUDA architecture makes it a lot easier to implement more complex algorithms
+in a general purpose environment which is not limited to graphic applications.
+When using a CUDA enabled video card, results can be also computed directly
+on the frame buffer avoiding useless memory transfers.
+Rule A1
+Yes
+Yes
+No
+Yes
+
+Rule B
+No
+Yes
+Yes
+Yes
+
+Rule C2
+No
+No
+Yes
+Yes
+
+t/trap (ms)
+1.22
+0.42
+0.47
+0.35
+
+Speedup
+100
+290
+260
+350
+
+1 Yes: blocksize=32 × 12 = 384, No: blocksize=16
+2 Yes: threads in a block access SLM pixels as a linear array
+
+No: threads in a block operate on square submatrices of SLM
+Table 1: Comparison table summarizing time costs of SR algorithm and the relative importance of optimization rules. The GPU is a GeForce GTX 260 and speedup data are evaluated
+with respect to a Pentium D 3.2 GHz.
+
+Both of the previously discussed algorithms require the common step of
+backward light propagation from the M target traps back to the N SLM pixels.
+In our case the SLM is placed in the back Fourier plane of the optical system so
+backward propagation is obtained by Eq. 3. As shown in Fig 3, the procedure
+can be translated into a kernel having as input arguments the full trap structure
+described by the M coordinates, weights and phases: (xm , ym , zm ), wm , θm . SR
+holograms are obtained by putting wm = 1 and choosing θm as random phases.
+We implemented such a procedure in the single kernel BackPropKer having a
+number of threads equal to the number of SLM pixels. Each thread evaluates a
+single phase modulation φj and stores it in a linear array residing in the global
+memory. According to rule C in section 2, it is important that contiguous
+threads write on contiguous pixels phase data so that coalesced memory access
+is guaranteed. As discussed in rule A in section 2 we use blocks containing
+a number of threads that is large and multiple of 32. Each thread needs to
+access the full trap structure so that a significant speedup can be achieved by
+preloading the trap data in the shared memory as prescribed by rule B. In
+each block only M threads cooperate to read the traps’ data. At this point
+we are ready to evaluate the time performance of BackPropKer in generating
+holograms using the SR algorithm. To this aim we first generate M random
+phases θm on the CPU and than store the trap structure on the global memory.
+Using a GeForce GTX 260 we can generate 768×768 SR holograms 350 times
+faster than using a Pentium D 3.2 GHz. The time spent by SR to compute a
+hologram grows linearly with the number of traps with a time per trap coefficient
+of 0.35 ms/trap. As an illustration of the relative importance of the considered
+optimization rules, we compare in Table 1 the most efficient kernel, where all
+6
+
+SumRedKer
+···
+
+global memory
+
+g1 g2 g3 g4 g5 g6 g7 g8
+
+shared memory
+
+s1 s2 s3 s4
+
+s1 = g1 + g5
+
+s1 s2 s3 s4
+
+s1 = g1 + g5 + g3 + g7
+
+s1 s2 s3 s4
+
+s1 = g1 + · · · + g8
+
+block 1
+
+global memory
+
+g1 g2 g3 g4 g5 g6 g7 g8
+
+···
+
+loop until sum is reduced
+
+Figure 4: Schematic diagram of the kernel SumRedKer. For the sake of simplicity we only
+show a single block of four threads. In the first step each thread sums up two elements of the
+global memory and stores the result on shared memory. In the following steps the number of
+active threads and the terms to sum are halved until a block is left with one single term. The
+ith block will write its partial sum on the ith address the global memory array.
+
+this rules are obeyed, to partially optimized kernels.
+Turning now to the better performing GSW algorithm, in addition to a back
+propagation kernel we need a procedure to forward propagate the fields from
+SLM pixels to target traps (Eq. 1). Such a procedure can be decomposed into
+two main tasks: i) calculate the contribution of each pixel to the complex field
+Vm on the mth trap’s location, ii) sum up all contribution to obtain Vm . The
+second task is a very common one and it’s widely discussed in the CUDA SDK
+examples. This procedure is based on the sum reduction kernel SumRedKer
+that performs partial sums, reducing the number of terms. A loop iterates
+SumRedKer until one single term is left containing the sum of all elements. A
+schematic representation of SumRedKer is reported in Fig. 4 where a single block
+is shown. Each block contains blocksize threads that perform the partial sum
+of 2×blocksize elements and writes the result back to the global memory. At
+the end of SumRedKer a number of terms equal to the number of used blocks
+still remains to be summed. Therefore a sequence of log(N )/ log(blocksize)
+kernels is needed to perform the whole sum.
+The evaluation of Eq. 1 also requires the task of calculating the contribution of the field radiating from each pixel to the total trap field Vm . Such a
+contribution is obtained calculating the phase shifts ∆m
+j in Eq. 2 and building
+i(φj −∆m
+)
+j
+the complex exponentials e
+. In order to reduce read/write operations
+on global memory we use a slightly different version of the sum reduction kernel
+
+7
+
+time/trap/iteration (ms)
+
+total
+
+forward propagation
+
+backward propagation
+
+number of traps
+
+Figure 5: GSW computational time. The computational time per trap per iteration is
+reported as a function of the number of target points. Total time (black line) is the sum of
+the time required for propagation (green line) plus the pixel phase evaluation (red line).
+
+as the first partial sum step. The first SumRedKer will begin having the phase
+modulations φj on the global memory locations gj in Fig. 4 so that we need
+to calculate complex exponential before the first write on shared memory (i.e.
+m
+m
+s1 = ei(φ1 −∆1 ) + ei(φ5 −∆5 ) ). The phases ∆m
+j (M*N in total) are needed both
+for forward and backward propagation routines. Observing that such phases
+are fixed for a chosen trap geometry, one could think that precaching them in
+global memory could save computational time. However we checked that direct
+calculation is always faster (see rule B). Once Vm s are known, the calculation of
+the weights wm is quick and straightforward. The time required by GSW grows
+almost linearly with the number of traps or iterations. In Fig. 5 we report the
+computational time per trap per iteration as a function of traps number. Deviations from linearity are observed for small traps number evidencing the presence
+of a time cost which is essentially independent from the number of traps and
+is probably due to memory read/write operations. As we can see from the figure, we can neglect the small deviations from linearity and define a time per
+trap per iteration. Using a GeForce GTX 260 we obtain 0.44 ms/trap/iteration
+obtaining a 45x speedup respect to a Pentium D 3.2 GHz.
+5. Real-time manipulation
+Our optical tweezers are based upon a Nikon TE2000U inverted microscope
+with a 100x objective lens, NA 1.4. To form the trap we use a Nd:YAG laser,
+frequency-doubled to give a maximum power of 3 W at 532 nm (LaserQuantum
+Opus). After expansion and collimation, the beam from this laser is reflected
+off a computer-controlled SLM (HoloEye LCR 2500). Our SLM is based on a
+liquid crystal reflective micro-display. A laser beam reflecting off the SLM will
+8
+
+L2
+
+L1
+
+WP
+
+SLM
+
+MO
+
+L3
+
+L4
+
+DM
+BS
+CCD
+
+Figure 6:
+Schematic view of the experimental setup for holographic optical trapping.
+L1,L2,L3,L4: planoconvex achromats, DM: dichroic mirror, BS: beam splitter, MO: microscope objective, WP: half waveplate.
+
+emerge with a phase retardation that can be modulated on a pixel by pixel
+basis. Phase modulation is achieved by electrically addressing the pixels and
+therefore locally reorienting the nematic axis of liquid crystal molecules. When
+a grayscale, 8bit depth image is displayed on the SLM, a proper pattern of
+voltages is relayed to the pixels so that each grayscale value is linearly mapped
+to a phase shift ranging from 0 to 2π. Light reflected off the SLM is then coupled
+to the microscope by projecting a demagnified image of the SLM plane on the
+back focal plane of the microscope objective. An array of optical traps is then
+produced around the front focal plane of the objective located in a colloidal
+water suspension above the coverslip. The SLM was controlled by a host PC
+equipped with a NVidia GeForce GTX 260 video card. User input is managed
+by a GUI mainloop thread (Tkinter) running in a Python shell while a Python
+module wraps the CUDA library functions providing a high level interface to
+the GPU hologram generation.
+As a demonstration of real-time manipulation using optimized GPU generated holograms, we show the simultaneous trapping and manipulation of eight
+silica beads (2µm diameter) in water. Optimized holograms are obtained with
+5 GSW iterations at a rate of 48 Hz following user input. Fig. 8 shows three
+frames from the corresponding SLM and CCD timelines. While a hologram
+movie is displayed on the SLM (lower timeline) based on user input, a dynamic
+3D micro-hologram, consisting of an array of moving bright light spots, is projected in the sample volume providing dynamical, and real-time reconfigurable
+optical traps. Trapped beads are imaged with bright light illumination on a
+CCD camera (upper timeline). The actual frame-rate is slightly lowered due
+
+9
+
+1.0
+efficiency,uniformity
+
+0.9
+0.8
+0.7
+0.6
+0.5
+0.4
+0.3
+0
+
+e
+u
+10
+
+20
+
+30 40 50
+number of traps
+
+60
+
+70
+
+80
+
+Figure 7: GSW performance. We report the efficiency (e) and uniformity (u) for GSW
+generated holograms as a function of the number of traps. The number of GSW iterations is
+always such to work at a fixed framerate of 20 Hz. Holograms with a performance above 90%
+can be generated at 20Hz for trap arrays as large as 16.
+
+to time lost in copying from device memory to host memory and then back to
+the video card output where the SLM is attached. This further delay could
+be avoided exploiting CUDA-OpenGL interoperability. In this way holograms
+could be calculated directly on the frame buffer and displayed on the SLM
+without passing through the host. Ultimately the frame-rate is limited by SLM
+response time, which, for liquid crystal based devices, is typically about 20 Hz.
+Such a frame-rate allows to perform a large enough number of GSW iterations
+to generate large arrays of traps with a high efficiency and uniformity. In Fig.7
+we report the efficiency (e) and uniformity (u) for GSW generated holograms
+as a function of the number of traps arranged in a 2D square grid. The number of GSW iterations is always such that holograms are generated at a fixed
+framerate of 20 Hz. Though efficiency is never lower than 85% uniformity falls
+down to 0.36 for a 9x9 grid where only one GSW iterations is allowed in order to
+keep the frame-rate at 20 Hz. We note here that even one single GSW iteration
+results in a significant improvement in performance over SR which would give
+an efficiency of 70% and a uniformity of only a few percents.
+In conclusion, we have used a CUDA enabled video card to generate optimized holograms for optical trapping with a speedup of 350x (SR) and 45x
+(GSW) over the host CPU. The obtained speedup allowed us to trap and
+manipulate multiparticle 3D structures with efficient and uniform trap arrays
+in real time. Our results demonstrate that the high computational load of
+hologram generation cannot be considered any longer as a limiting factor of
+holographic trapping for real time applications. We acknowledge support from
+INFM through the Seed-project.
+
+10
+
+Figure 8: Frames from a movie showing the interactive micro-manipulation of 8 silica beads
+with 2 µm diameter (watch the full movie in supplementary online material). The beads are
+arranged on the vertices of a 5 µm side cube which is then rigidly rotated. Bottom row shows
+the corresponding frames (holograms) displayed on the SLM.
+
+References
+[1] D.G. Grier, A revolution in optical manipulation, Nature 424 (2003) 810816.
+[2] A. Ashkin, J. M. Dziedzic, J. E. Bjorkholm, Observation of a single-beam
+gradient force optical trap for dielectric particles, Opt. Lett. 11 (1986) 288290.
+[3] M. Reicherter, T. Haist, E.U. Wagemann, H.J. Tiziani, Optical particle
+trapping with computer-generated holograms written on a liquid-crystal
+display, Opt. Lett. 24 (1999) 608-610.
+[4] J. Liesener, M. Reicherter, T. Haist, H.J. Tiziani, Multi-functional optical
+tweezers using computer-generated holograms, Opt. Commun. 185 (2000)
+77-82.
+[5] E.R. Dufresne, G.C. Spalding, M.T. Dearing, S.A. Sheets, D.G. Grier,
+Computer-generated holographic optical tweezers arrays, Rev. Sci. Instrum.
+72 (2001) 1810-1816.
+[6] J. Curtis, B.A. Koss, D.G. Grier, Dynamic holographic optical tweezers,
+Opt. Commun. 207 (2002) 169-175.
+11
+
+[7] R. Di Leonardo, F. Ianni, G. Ruocco, Computer generation of optimal
+holograms for optical trap arrays, Opt. Express 15 (2007) 1913-1922.
+[8] K. Visscher, G. J. Brakenhoff, and J. J. Kroll, Micromanipulation by multiple optical traps created by a single fast scanning trap integrated with the
+bilateral confocal scanning laser microscope, Cytometry 14 (1993) 105-114.
+[9] http://www.nvidia.com/object/cuda home.html
+[10] W. Liu, B. Schmidt, G. Voss, and W. Mller-Wittig, Accelerating molecular
+dynamics simulations using Graphics Processing Units with CUDA, Comp.
+Phys. Comm. 179 (2008) 634-641.
+[11] T. Preis, P. Virnau, W. Paul, J.J. Schneider, GPU accelerated Monte Carlo
+simulation of the 2D and 3D Ising model, J. Comp. Phys. 228 (2009) 44684477.
+[12] E. Elsen, P. LeGresley, E. Darve, Large calculation of the flow over a hypersonic vehicle using a GPU, J. Comp. Phys. 227 (2008) 10148-10161.
+[13] G. I. Egri, Z. Fodor, C. Hoelbling, S.D. Katz, D. Ngrdi, K.K. Szab, Lattice
+QCD as a video game, Comp. Phys. Comm. 177 (2007) 631-639.
+[14] L.B. Lesem, P.M. Hirsch, J.A. Jordan, The kinoform: a new wavefront
+reconstruction device, IBM J. Res. Dev. 13 (1969) 150-155.
+[15] T. Shimobaba, Y. Sato, J. Miura, M. Takenouchi and T. Ito, Real-time digital holographic microscopy using the graphic processing unit, Opt. Express
+16 (2008) 11776-11780.
+[16] F.C. Cheong, B. Sun, R. Dreyfus, J. Amato-Grill, K. Xiao, L. Dixon, D.G.
+Grier, Flow visualization and ow cytometry with holographic video microscopy, Opt. Express 17 (2009) 13071-13079.
+[17] N. Masuda, T. Ito, T. Tanaka, A. Shiraki, and T. Sugie, Computer generated holography using a graphics processing unit, Opt. Express 14 (2006)
+603-608.
+[18] L. Ahrenberg, P. Benzie, M. Magnor, and J. Watson, Computer generated
+holography using parallel commodity graphics hardware, Opt. Express 14
+(2006) 7636-7641.
+[19] J. Leach et al., Interactive approach to optical tweezers control, Appl. Optics 45 (2006) 897-903.
+[20] E. Pleguezuelos, A. Carnicer, J. Andilla, E. Martin-Badosa and M. MontesUsategui, Fast generation of holographic optical tweezers by random mask
+encoding of Fourier components Comp. Phys. Comm. 176 (2007) 701-709.
+
+12
+
+[21] M. Reicherter, S. Zwick, T. Haist, C. Kohler, H. Tiziani, and W. Osten,
+Fast digital hologram generation and adaptive force measurement in liquidcrystal-display-based holographic tweezers, Appl. Opt. 45 (2006) 888896.
+[22] D. Preece, R. Bowman, A. Linnenberger, G. Gibson, S. Serati and M.
+Padgett, Increasing trap stiffness with position clamping in holographic
+optical tweezers, Opt. Express 17 (2009) 22718-22725.
+
+13
+
+

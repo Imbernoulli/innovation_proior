@@ -1,0 +1,123 @@
+\newcommand{\name}{{Sophia}}
+\begin{abstract}
+  Given the massive cost of language model pre-training,
+  a non-trivial improvement of the optimization algorithm would lead to a material reduction on the time and cost of training.
+  Adam and its variants have been state-of-the-art for years, and more sophisticated second-order (Hessian-based) optimizers often incur too much per-step overhead. In this paper, we propose \ours, \textbf{S}econd-\textbf{o}rder Cli\textbf{p}ped Stoc\textbf{h}astic Opt\textbf{i}miz\textbf{a}tion, a simple scalable second-order optimizer that uses a light-weight estimate of the diagonal Hessian as the pre-conditioner. The update is the moving average of the gradients divided by the moving average of the estimated Hessian, followed by element-wise clipping. The clipping controls the worst-case update size and tames the negative impact of non-convexity and rapid change of Hessian along the trajectory.
+  Sophia only estimates the diagonal Hessian every handful of iterations, which has negligible average per-step time and memory overhead. On language modeling with GPT models of sizes ranging from 125M to 1.5B, Sophia achieves a 2x speed-up compared to Adam in the number of steps, total compute, and wall-clock time, achieving the same perplexity with 50$\%$ fewer steps, less total compute, and reduced wall-clock time. 
+  Theoretically, we show that Sophia, in a much simplified setting, adapts to the heterogeneous curvatures in different parameter dimensions, and thus has a run-time bound that does not depend on the condition number of the loss. 
+\end{abstract}
+
+
+\section{Introduction}
+Language models (LLMs) have gained phenomenal capabilities as their scale grows~\citep{radford2019language,kaplan2020scaling,brown2020language,  zhang2022opt,   
+ touvron2023llama,openai2023gpt}. However, pre-training LLMs is incredibly time-consuming due to the massive datasets and model sizes---hundreds of thousands of updates to the model parameters are required. For example, PaLM was trained for two months on 6144 TPUs, which costed 10 million dollars~\citep{chowdhery2022palm}. 
+
+Pre-training efficiency is thus a major bottleneck in scaling up LLMs. 
+This work aims to improve pre-training efficiency with a faster optimizer, which either reduces the time and cost to achieve the same pre-training loss, or alternatively achieves better pre-training loss with the same budget.
+
+Adam~\citep{kingma2014Adam} (or its variants~\citep{loshchilov2017decoupled,shazeer2018adafactor,you2019large}) is the dominantly used optimizer for training LLMs, such as GPT~\citep{radford2019language,brown2020language}, OPT~\citep{zhang2022opt}, Gopher~\citep{rae2021scaling} and LLAMA~\citep{touvron2023llama}. 
+Designing faster optimizers for LLMs is challenging. First, the benefit of the first-order (gradient-based) pre-conditioner in Adam is not yet well understood~\citep{ liu2020understanding,zhang2020adaptive,kunstner2023noise}. Second, the choice of pre-conditioners is constrained because we can only afford light-weight options whose overhead can be offset by the speed-up in the number of iterations. For example, the block-diagonal Hessian pre-conditioner in K-FAC is  expensive for LLMs~\citep{martens2015optimizing,grosse2016kronecker, ba2017distributed,martens2018kronecker}. On the other hand, ~\citet{chen2023symbolic} automatically search among the light-weight gradient-based pre-conditioners and identify Lion, which is substantially faster than Adam on vision Transformers and diffusion models but only achieves limited speed-up on LLMs~\citep{chen2023symbolic}. 
+ 
+
+This paper introduces \ours, \textbf{S}econd-\textbf{o}rder Cli\textbf{p}ped Stoc\textbf{h}ast\textbf{i}c Optimiz\textbf{a}tion, a light-weight second-order optimizer that uses an inexpensive stochastic estimate of the diagonal of the Hessian as a pre-conditioner and a clipping mechanism to control the worst-case update size. On pre-training language models such as GPT-2, {\ours} achieves the same validation pre-training loss with 50$\%$ fewer number of steps than Adam. Because {\ours} maintains almost the memory and average time per step, the speedup also translates to 50$\%$ less total compute and 50$\%$ less wall-clock time (See Figure~\ref{fig:head} (a)\&(b)). We also note that comparing the run-time to achieve the same loss is a correct way to compare the speed of optimizers for LLMs; see Section~\ref{sec:evaluation} for more details. 
+
+
+
+
+Moreover, the scaling law based on model size from 125M to 770M is in favor of Sophia over Adam---the gap between Sophia and Adam with 100K steps increases as the model size increases (Figure~\ref{fig:head} (c)). 
+In particular, Sophia on a 540M-parameter model with 100K steps gives the same validation loss as  Adam on a 770M-parameter model with 100K steps. Note that the latter model needs 40\% more training time and 40\% more inference cost.  
+
+\begin{figure}[t]
+\begin{center}
+\includegraphics[width=0.4\textwidth]{figures/medium_2x_flops_plus_2309_arxiv.pdf}
+\hspace{15pt}
+\includegraphics[width=0.4\textwidth]{figures/large_2x_plusp_2309_all_arxiv.pdf}
+\includegraphics[width=0.4\textwidth]{figures/1.5B_2x_200k_full_arxiv.pdf}
+\hspace{15pt}
+\includegraphics[width=0.4\textwidth]{figures/scale_plus_0923_arxiv.pdf}
+\caption{{{\ours} achieves a 2x speedup over AdamW in GPT-2 pre-trained on OpenWebText and GPT NeoX pre-trained on the Pile. (a) (b) (c) Comparison of the number of steps needed to achieve the same level of validation loss on (a) GPT-2-medium (355M), (b) GPT-2-large (770M) and (c) GPT NeoX 1.5B. Across all model sizes, {\ours} needs 50$\%$ less time to reach the same validation loss as AdamW. (d) Validation losses of models with different sizes pre-trained for 100K steps. The gap between {\ours} and AdamW gets larger as models size grows. Notably, using {\ours} on a 540M-parameter model for 100K steps results in the same loss as using AdamW on a 770M-parameter model for 100K steps. See Section~\ref{sec:experiments} for details and more results. \label{fig:head}
+}
+}
+\end{center}
+\end{figure}
+
+\begin{figure}
+\begin{minipage}[b]{.46\textwidth}
+\begin{minipage}[b]{\textwidth}
+\begin{algorithm}[H]
+	\caption{$\textup{Hutchinson}(\theta)$}
+	\label{alg:sub}
+	\begin{algorithmic}[1]
+		\STATE {\bfseries Input:} parameter $\theta$.
+            \STATE Compute mini-batch loss $L(\theta)$.
+		\STATE Draw $u$ from $\mathcal{N}(0,\mathrm{I}_d)$.
+        \RETURN $u \odot \nabla (\langle\nabla L(\theta), u\rangle)$.
+	\end{algorithmic}
+\end{algorithm}
+\end{minipage}
+\centering
+\includegraphics[width=1.0\textwidth]{figures/toy_new.png}
+\vspace{-20pt}
+\caption{The motivating toy example. $\theta_{[1]}$ is the sharp dimension and $\theta_{[2]}$ is the flat dimension. GD's learning rate is limited by the sharpness in $\theta_1$, and makes slow progress along $\theta_{[2]}$. Adam and SignGD bounce along $\theta_{[1]}$ while making slow progress along $\theta_{[2]}$. Vanilla Newton's method converges to a saddle point. {\ours} makes fast progress in both dimensions and converges to the minimum with a few steps.\label{fig:toy}}
+
+\vspace{-10pt}
+
+\end{minipage}\hfill
+\begin{minipage}[b]{.49\textwidth}
+\begin{minipage}[b]{\textwidth}
+\begin{algorithm}[H]
+	\caption{ $\textup{Gauss-Newton-Bartlett}(\theta)$}
+	\label{alg:sub_gn}
+	\begin{algorithmic}[1]
+		\STATE {\bfseries Input:} parameter $\theta$.
+		\STATE Draw a mini-batch of input $\{x_b\}_{b=1}^{B}$.
+            \STATE Compute logits on the mini-batch: $\{f(\theta, x_b)\}_{b=1}^{B}$.
+            \STATE Sample $\hat{y}_b\sim \textup{softmax}(f(\theta, x_b)), \forall b\in [B]$.
+            \STATE Calculate $\hat{g} = \nabla(1/B\sum\ell(f(\theta, x_b),\hat{y}_b))$.
+        \RETURN $B\cdot \hat{g} \odot \hat{g}$.
+	\end{algorithmic}
+\end{algorithm}
+\end{minipage}
+\begin{minipage}[b]{\textwidth}
+\begin{algorithm}[H]
+	\caption{\ours~}
+	\label{alg:hess_opt}
+	\begin{algorithmic}[1]
+		\STATE {\bf Input:} $\theta_1$, learning rate $\{\eta_t\}_{t=1}^T$,  hyperparameters $\lambda,\gamma, \beta_{1},\beta_{2}$, $\epsilon$, and estimator choice Estimator $\in\{$Hutchinson, Gauss-Newton-Bartlett$\}$\STATE Set $m_{0} = 0$, $v_{0} = 0$, $h_{1-k} = 0$
+		\FOR{$t=1$ {\bf to} $T$}
+		\STATE Compute minibach loss $L_t(\theta_t)$.
+        \STATE Compute $g_t = \nabla L_t(\theta_t)$.
+		\STATE  $m_{t} = \beta_{1} m_{t-1} + (1 - \beta_{1}) g_{t}$ 
+        \IF{ $t\ \mathrm{mod}\  k = 1$}
+        \STATE Compute $\hat{h}_{t} = \textup{Estimator}(\theta_t)$.
+		\STATE  $h_t = \beta_2 h_{t-k} + (1 - \beta_2) \hat{h}_{t}$
+        \ELSE \STATE  $h_t = h_{t-1}$
+        \ENDIF
+        \STATE $\theta_t = \theta_t - \eta_t\lambda \theta_t$ (weight decay)
+		\STATE $\theta_{t+1} = \theta_{t} - \eta_t \cdot \clip(m_t / \max\{\gamma \cdot h_t,\epsilon\},1)$
+		\ENDFOR
+	\end{algorithmic}
+\end{algorithm}
+\end{minipage}
+\end{minipage}
+\end{figure}
+
+
+Concretely, {\ours} estimates the diagonal entries of the Hessian of the loss using a mini-batch of examples every $k$ step (with $k = 10$ in our implementation). 
+We consider two options for diagonal Hessian estimators: (a) an unbiased estimator that uses a Hessian-vector product with the same run-time as a mini-batch gradient up to a constant factor, and (b) a biased estimator that uses one mini-batch gradient calculated with resampled labels. Both the two estimators only introduce 5\% overheads per step (in average).
+At every step, {\ours} updates the parameter with an exponential moving average (EMA) of the gradient divided by the EMA of the diagonal Hessian estimate, subsequently clipped by a scalar. (All operations are element-wise.) See Algorithm~\ref{alg:hess_opt} for the pseudo-code.
+
+Additionally, {\ours} can be seamlessly integrated into existing training pipelines, without any special requirements on the model architecture or computing infrastructure. With the either of the Hessian estimators, {\ours} only require either standard mini-batch gradients, or Hessian-vector products which are supported in auto-differentiation frameworks such as PyTorch~\citep{pytorch2019} and JAX~\citep{jax2018github}. 
+
+
+Thanks to the Hessian-based pre-conditioner, {\ours} adapts more efficiently, than Adam does, to the heterogeneous curvatures in different parameter dimensions, which can often occur in the landscape of LLMs losses and cause instability or slowdown. 
+Sophia has a more aggressive pre-conditioner than Adam---{\ours} applies a stronger penalization to updates in sharp dimensions (where the Hessian is large) than the flat dimensions (where the Hessian is small), ensuring a uniform \textit{loss} decrease across all parameter dimensions. In contrast, Adam's updates are mostly uniform across all parameter dimensions, leading to a slower loss decrease in flat dimensions. (See Section~\ref{sec:motivation} for more discussions.) 
+These make Sophia converge in fewer iterations. Thanks to the light-weight diagonal Hessian estimate, the speed-up in the number of steps translates to a speed-up in total compute and wall-clock time. 
+
+
+
+\ours's clipping mechanism controls the worst-case size of the updates in all directions, safeguarding against the negative impact of inaccurate Hessian estimates, rapid Hessian changes over time, and non-convex landscape (with which the vanilla Newton’s method may converge to local maxima or saddle points instead of local minima). The safeguard allows us to estimate Hessian infrequently (every $k=10$ step) and stochastically. In contrast, prior second-order methods often update Hessian estimates every step~\citep{martens2015optimizing,grosse2016kronecker,  anil2020scalable,yao2021adahessian}. 
+
+
+We provide theoretical analyses of much simplified versions of Sophia on convex functions. 
+The runtime bound does not depend on the local condition number (the ratio between maximum and minimum curvature at the local minimum) and the worst-case curvature (that is, the smoothness parameter), demonstrating the advantage of Sophia in adapting to heterogeneous curvatures across parameter dimensions. 

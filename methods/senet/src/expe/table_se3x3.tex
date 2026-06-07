@@ -1,0 +1,17 @@
+
+\begin{table}[t]
+\renewcommand\arraystretch{1.1}
+\caption{Effect of integrating SE blocks at the 3x3 convolutional layer of each residual branch in ResNet-50 on ImageNet (error rates \%).}
+\label{tab:effect_se3x3}
+\vspace{-1.7em}
+\begin{center}
+\begin{tabular}{l|p{1.2cm}<{\centering}|p{1.2cm}<{\centering}|p{1.2cm} <{\centering}|p{1.2cm} <{\centering}}
+\hline
+Design & top-1 err. & top-5 err. & GFLOPs & Params\\
+\hline
+SE & $22.28$  &  $6.03$ & $3.87$ & $28.1$M\\
+SE\_3$\times$3 & $22.48$ & $6.02$ & $3.86$ & $25.8$M\\
+\hline
+\end{tabular}
+\end{center}
+\end{table}

@@ -1,0 +1,16 @@
+\section{Broader impact}
+\label{sec:broader_impact}
+We believe that the presented algorithm can be impactful in various ways:
+
+\textbf{Biology and Medicine:} Our method has the potential to directly impact research on biological sequence analysis by enabling the Transformer to be applied to much longer sequences without constraints on the structure of the attention matrix. The initial application that we consider is the prediction of interactions between proteins on the proteome scale. Recently published approaches require large evolutionary sequence alignments, a bottleneck for applications to mammalian genomes \citep{cong2019protein}. The potentially broad translational impact of applying these approaches to biological sequences was one of the main motivations of this work. We believe that modern bioinformatics can immensely benefit from new machine learning techniques with Transformers being among the most promising. Scaling up these methods to train faster more accurate language models opens the door to the ability to design sets of molecules with pre-specified interaction properties. These approaches could be used to augment existing physics-based design strategies that are of critical importance for example in the development of new nanoparticle vaccines \citep{marcandalli2019induction}.  
+
+\textbf{Environment:} As we have shown, Performers with FAVOR+ are characterized by much lower compute costs and substantially lower space complexity which can be directly translated to $\mathrm{CO}_{2}$ emission reduction \citep{co2} and lower energy consumption \citep{energy}, as regular Transformers require very large computational resources.
+
+\textbf{Research on Transformers:} We believe that our results can shape research on efficient Transformers architectures, guiding the field towards methods with strong mathematical foundations. Our research may also hopefully extend Transformers also beyond their standard scope (e.g. by considering the Generalized Attention mechanism and connections with kernels). Exploring scalable Transformer architectures that can handle $L$ of the order of magnitude few thousands and more, preserving accuracy of the baseline at the same time, is a gateway to new breakthroughs in bio-informatics, e.g. language modeling for proteins, as we explained in the paper. Our presented method can be potentially a first step.
+
+\textbf{Backward Compatibility:} Our Performer can be used on the top of a regular pre-trained Transformer as opposed to other Transformer variants. Even if up-training is not required, FAVOR+ can still be used for fast inference with no loss of accuracy. We think about this backward compatibility as a very important additional feature of the presented techniques that might be particularly attractive for practitioners.
+
+\textbf{Attention Beyond Transformers:} Finally, FAVOR+ can be applied to approximate exact attention also outside the scope of Transformers. This opens a large volume of new potential applications including: hierarchical attention networks (HANS) \citep{hans}, graph attention networks \citep{gran}, image processing \citep{attention_cvpr}, and reinforcement learning/robotics \citep{tang}. 
+
+
+

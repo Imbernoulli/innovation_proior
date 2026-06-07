@@ -1,0 +1,40 @@
+\begin{figure}
+    \centering
+    \begin{minipage}{0.49 \linewidth}
+    \includegraphics[width=\linewidth]{images/adaptivecifarlr1.pdf}
+    \end{minipage} \hfill
+    \begin{minipage}{0.49 \linewidth}
+    \includegraphics[width=\linewidth]{images/adaptivecifarlr3.pdf}
+    \end{minipage}
+    \caption{CIFAR-10 training loss with fixed and adaptive $\alpha$. The adaptive $\alpha$ is clipped between $[\alpha_{low}, 1]$. (Left) Adam learning rate = 0.001.  (Right) Adam learning rate = 0.003.} 
+    \label{fig:adaptivealpha}
+\end{figure}
+
+\subsection{Selecting the Slow Weights Step Size}
+
+The step size in the direction ($\theta_{t,k} - \theta_{t,0}$) is controlled by $\alpha$. By taking a quadratic approximation of the loss, we present a principled way of selecting $\alpha$. 
+
+\begin{proposition}[Optimal slow weights step size]
+\label{prop:optimal-step-size}
+For a quadratic loss function $L(x) = \frac{1}{2} x^T A x - b^T x$, 
+the step size $\alpha^*$ that minimizes the loss for two points $\theta_{t,0}$ and $\theta_{t,k}$ is given by:
+\[ \alpha^* = \arg \min_{\alpha} L(\theta_{t,0} + \alpha (\theta_{t,k} - \theta_{t,0})) = \frac{(\theta_{t,0} - \theta^*)^T A(\theta_{t,0} - \theta_{t, k})}{(\theta_{t,0}  - \theta_{t,k})^T A (\theta_{t,0} - \theta_{t,k})}  \]
+% \[ \alpha^* = \arg \min_{\alpha} L(x_n + \alpha (x_{n+1} - x_n)) = \frac{(x_n - x^*)^T A(x_n - x_{n+1})}{(x_n - x_{n+1})^T A(x_n - x_{n+1})}  \]
+where $\theta^* = A^{-1}b$ minimizes the loss.
+\end{proposition}
+% \begin{proof}
+% Straightforward, set the derivative with respect to $\alpha$ to 0. Details in appendix.
+% \end{proof}
+%By Taylor's Theorem, if $A$ represents the true Hessian of the loss, this choice of $\alpha^*$ is optimal up to third order terms. \MZ{Not sure Taylor Theorem is accurate, but we should justify using a quadratic approx.} 
+Proof is in the appendix. Using quadratic approximations for the curvature, which is typical in second order optimization \citep{duchi2011adaptive, kingma2014adam, martens2015optimizing}, we can derive an estimate for the optimal $\alpha$ more generally. The full Hessian is typically intractable so we instead use aforementioned approximations, such as the diagonal approximation to the empirical Fisher used by the Adam optimizer \citep{kingma2014adam}. This approximation works well in our numerical experiments if we clip the magnitude of the step size. At each slow weight update, we compute:
+
+% \[ \hat{\alpha}^* = \text{clip}( \frac{(x_n - (x_{n+1} - \hat{A}^{-1} \nabla x_{n+1} )^T \hat{A} (x_n - x_{n+1})}{(x_n - x_{n+1})^T \hat{A} (x_n - x_{n+1})},  \alpha_{\text{low}}, 1)\]
+
+\[ \hat{\alpha}^* = \text{clip}( \frac{(\theta_{t,0} - (\theta_{t,k}  - \hat{A}^{-1} \hat{\nabla} L(\theta_{t,k}) )^T \hat{A} (\theta_{t,0}  - \theta_{t,k})}{(\theta_{t,0}  - \theta_{t,k})^T \hat{A} (\theta_{t,0} - \theta_{t,k})},  \alpha_{\text{low}}, 1)\]
+
+
+% \MZ{perhaps we should have an algorithm box for this in the appendix?}
+
+ where $\hat{A}$ is the empirical Fisher approximation and $\theta_{t,k}  - \hat{A}^{-1} \hat{\nabla} L(\theta_{t,k})$ approximates the optimum $\theta^*$. We prove Proposition \ref{prop:optimal-step-size} and elaborate on assumptions in the appendix \ref{app:optimal-slow}. Setting $\alpha_{\text{low}} > 0$ improves the stability of our algorithm. We evaluate the performance of this adaptive scheme versus a fixed scheme and standard Adam on a ResNet-18 trained on CIFAR-10 with two different learning rates and show the results in Figure \ref{fig:adaptivealpha}. Additional hyperparameter details are given in appendix \ref{app:experiments}. Both the fixed and adaptive Lookahead offer improved convergence.
+
+In practice, a fixed choice of $\alpha$ offers similar convergence benefits and tends to generalize better. Fixing $\alpha$ avoids the need to maintain an estimate of the empirical Fisher, which incurs a memory and computational cost when the inner optimizer does not maintain such an estimate e.g. SGD. We thus use a fixed $\alpha$ for the rest of our deep learning experiments. % to be elaborated on

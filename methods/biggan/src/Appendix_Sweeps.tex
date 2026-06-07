@@ -1,0 +1,16 @@
+We performed various hyperparameter sweeps in this work:
+\begin{itemize}
+\item We swept the Cartesian product of the learning rates for each network through [$10^{-5}$, $5\cdot10^{-5}$, $10^{-4}$, $2\cdot10^{-4}$, $4\cdot10^{-4}$, $8\cdot10^{-4}$, $10^{-3}$], and initially found that the SA-GAN settings (\gen{}'s learning rate $10^{-4}$, \discr{}'s learning rate $4\cdot10^{-4}$) were optimal at lower batch sizes; we did not repeat this sweep at higher batch sizes but did try halving and doubling the learning rate, arriving at the halved settings used for our experiments.
+
+\item We swept the R1 gradient penalty strength through [$10^{-3}$, $10^{-2}$, $10^{-1}$, $0.5$, $1$, $2$, $3$, $5$, $10$]. We find that the strength of the penalty correlates negatively with performance, but that settings above $0.5$ impart training stability.
+
+\item We swept the keep probabilities for DropOut in the final layer of \discr{} through [$0.5$, $0.6$, $0.7$, $0.8$, $0.9$, $0.95$]. We find that DropOut has a similar stabilizing effect to R1 but also degrades performance.
+
+\item We swept \discr{}'s Adam $\beta_1$ parameter through [$0.1$, $0.2$, $0.3$, $0.4$, $0.5$] and found it to have a light regularization effect similar to DropOut, but not to significantly improve results. Higher $\beta_1$ terms in either network crippled training.
+
+\item We swept the strength of the modified Orthogonal Regularization penalty in \gen{} through [$10^{-5}$, $5\cdot10^{-5}$, $10^{-4}$, $5\cdot10^{-4}$, $10^{-3}$, $10^{-2}$], and selected $10^{-4}$.
+
+\end{itemize}
+
+
+

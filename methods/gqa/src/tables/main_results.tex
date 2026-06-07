@@ -1,0 +1,19 @@
+\begin{table*}[ht!]
+\centering
+\footnotesize
+\begin{tabular}{l|cc|ccccccccc}
+\toprule
+\textbf{Model} &  \textbf{T\textsubscript{infer}}& \textbf{Average} & \textbf{CNN}  &  \textbf{arXiv} & \textbf{PubMed}  &\textbf{MediaSum} & \textbf{MultiNews} &  \textbf{WMT} &  \textbf{TriviaQA}  \\
+\midrule
+  & \textbf{s} &  & \textbf{R\textsubscript{1}}  & \textbf{R\textsubscript{1}} &  \textbf{R\textsubscript{1}} & \textbf{R\textsubscript{1}}  &\textbf{R\textsubscript{1}} & \textbf{BLEU} & \textbf{F1}   \\
+ \midrule
+  \mh-Large &  0.37 & 46.0 & 42.9 & 44.6 & 46.2 & 35.5 & 46.6 & 27.7 & 78.2 \\
+ \mh-XXL & 1.51 & 47.2 &  43.8 & 45.6 & 47.5 & 36.4 & 46.9 & 28.4 & 81.9 \\
+ \mq-XXL  & 0.24 & 46.6 & 43.0 & 45.0 & 46.9 & 36.1 & 46.5 & 28.5 & 81.3 \\
+ \gmq-8-XXL & 0.28  & 47.1 & 43.5 & 45.4 & 47.7 & 36.3 & 47.2 & 28.4 & 81.6 \\
+\midrule
+\bottomrule
+\end{tabular}
+\caption{Inference time and average dev set performance comparison of T5 Large and XXL models with multi-head attention, and 5\% uptrained T5-XXL models with multi-query and grouped-query attention on summarization datasets CNN/Daily Mail, arXiv, PubMed, MediaSum, and MultiNews, translation dataset WMT, and question-answering dataset TriviaQA.}
+\label{table:headline_results}
+\end{table*}

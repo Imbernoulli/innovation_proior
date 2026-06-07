@@ -1,0 +1,59 @@
+%!TEX root = main.tex
+
+% \renewcommand{\mpwthree}{6cm}
+% \renewcommand{\myhspace}{\hspace{-3mm}}
+
+\begin{figure*}[h!]
+	\begin{center}
+	\begin{minipage}{\textwidth}
+	\begin{tabular}{ccc}%
+		%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		\hspace{-4mm}
+			\begin{minipage}{\mpwthree}%
+			\centering%
+			\includegraphics[width=\columnwidth]{G-Reg_R_err.pdf} \\
+			\end{minipage}
+		& \myhspace
+			\begin{minipage}{\mpwthree}%
+			\centering%
+			\includegraphics[width=\columnwidth]{G-Reg_t_err.pdf} \\
+			\end{minipage}
+		& \hspace{-5mm}
+			\begin{minipage}{\mpwthree}%
+			\centering%
+			\includegraphics[width=\columnwidth]{G-Reg_n_iter.pdf} \\
+			\end{minipage} \\ 
+		%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		\hspace{-4mm}
+			\begin{minipage}{\mpwthree}%
+			\centering%
+			\includegraphics[width=\columnwidth]{meshReg-car-correspondences.pdf} \\
+			\end{minipage}
+		& \myhspace
+			\begin{minipage}{\mpwthree}%
+			\centering%
+			\includegraphics[width=\columnwidth]{meshReg-car-tls.pdf} \\
+			\end{minipage}
+		& \myhspace
+			\begin{minipage}{\mpwthree}%
+			\centering%
+			\includegraphics[width=\columnwidth]{meshReg-car-ransac.pdf} \\
+			\end{minipage} \\
+	\end{tabular}
+	\end{minipage}
+	\vspace{-3mm} 
+	\caption{{\bf Mesh Registration.} Performance of \GNCGM and \GNCTLS compared with state-of-the-art techniques on mesh registration on the \PASCALplus ``car-2'' dataset~\cite{Xiang2014WACV-PASCAL+} for increasing outliers.
+     {
+     Quantitative results: (a) rotation error; (b) translation error; (c) number of iterations until convergence.
+     Qualitative results: (d)  point cloud and mesh with putative correspondences (70\% outliers; green: inliers, red: outliers); (e) successful registration using \GNCTLS; 
+     (f) incorrect registration using \ransac.
+     }
+	Statistics are computed over 20 Monte Carlo runs.
+	\label{fig:meshRegistration}}
+	\vspace{-7.5mm} 
+	\end{center}
+\end{figure*}
+
+
+% {\bf Point Cloud Registration.} Performance of \GNCGM and \GNCTLS compared with state-of-the-art techniques on the \bunny dataset~\cite{Curless96siggraph} for increasing outliers. 
+% 	(a) rotation error; (b) translation  error, (c) number of iterations until convergence. Statistics are computed over 20 Monte Carlo runs.

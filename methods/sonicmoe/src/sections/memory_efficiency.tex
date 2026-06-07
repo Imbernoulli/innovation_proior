@@ -1,0 +1,86 @@
+\begin{figure}[!ht]
+    \centering
+    \includegraphics[width=\linewidth]{figures/workflow.pdf}
+    \caption{\small Computational workflow of \Algname's 8 launched kernels, grouped by yellow boxes. 3 and 5 kernels are launched during forward and backward computation respectively. The incoming arrows to a yellow circle indicate a variable loaded from HBM to SRAM, and an outgoing arrow represents a variable stored to HBM. We color the boxes of all variables on HBM, with purple boxes indicating the output of forward and backward while blue boxes indicate intermediate variables or weights ($\W{1}$, $\W{2}$). We color all cached activations $X$, $H$, $\pi$, $S$ in red. Algorithm~\ref{alg:our-forward-moe} formally describes \Algname's forward pass, and Algorithm~\ref{alg:our-down-bwd-moe} and~\ref{alg:up-bwd-moe} describe the backward pass.}
+    \label{fig:workflow}
+\end{figure}
+
+
+
+We first describe \algname's high-level kernel design in Section~\ref{sec:high-level} that illustrates \Algname's MoE computation\textsuperscript{\ref{footnote:moe_main_computation}} as shown in Algorithm~\ref{alg:our-forward-moe}, \ref{alg:our-down-bwd-moe}, and \ref{alg:up-bwd-moe}. We then focus on the activation memory usage of \algname~in Section~\ref{sec:mem-efficiency}.
+
+\input{algorithm/kernel_design_high_level}
+
+% In this section, we start to elaborate the key ingredients of the efficient MoE kernel design in \Algname. Besides being optimized for all shapes of MoE, \Algname~is particularly fast and activation memory-efficient for fine-grained MoE. We will first focus on the \Algname's high-level kernel design and describe the activation memory usage. 
+
+% Although our kernel is more targeting on NVidia H100 GPU, the high-level design principle is transferable to other hardware like NVidia GB200 and even Google TPU with some adaption on low-level techniques (e.g. how to deal with asynchrony with GEMM).
+
+% \section{Memory-efficient MoE} \label{sec:moe:grouped_gemm}
+
+% For ScatterMoE the cached activation memory (for constant FLOPs $F = 6TKnd$) is given by
+% \begin{align}
+%     2Td+6TKn+2TKd=2Td+\frac{F}{3d}(3+G)
+% \end{align}
+% which shows that the activation memory increases linearly with $G$ even when FLOPs are constant.
+% More importantly, this usage is independent of granularity as long as the number of layers $L > K$.  
+\subsection{Overview of \Algname's MoE kernels}\label{sec:high-level}
+
+
+
+
+The MoE computation\textsuperscript{\ref{footnote:moe_main_computation}} in \Algname~launches 8 kernels: during forward, we have up-proj ($A$), down-proj ($Y$), and expert aggregation ($O$) kernels; during backward, we have activation gradient kernels for $dH$ (down-proj), $d\tilde{X}$ (up-proj), $dX$ (aggregating $d\tilde{X}$ across experts), and weight gradient kernels $d\W{1}$ and $d\W{2}$. Figure~\ref{fig:workflow} illustrates the computational workflow of these 8 kernels. We provide an efficient TC top-$K$ router, and an interface that accepts arbitrary routing input. However, it should be noted that \Algname's MoE computation is independent of the MoE router choice and is thus compatible with arbitrary router logic.
+
+The implementation of \Algname's MoE computation is highly modularized: it only consists of (1) an optimized grouped GEMM kernel with modularized fusion and (2) an optimized expert aggregation kernel. The host dispatches to the best GEMM config and load/store strategies to launch the 8 kernels listed above. Besides such high modularity, \Algname~still exhibits state-of-the-art training throughput and minimum activation memory usage which we describe below.
+
+
+\subsection{Activation memory efficiency}\label{sec:mem-efficiency}
+The FLOPs of MoE forward and backward computation is $(6+12)T n K d$. For a given $T,d$\footnote{Embedding dimension $d$ is often picked independently of MoE layer so we always assume $d$ is fixed.}, we need to keep $nK$ constant for constant FLOPs. Therefore, increasing granularity requires decreasing $n$ and proportionally increasing $K$. Hence, any activations with memory $O(TKd)$ should not be cached for backward computation to avoid activation memory scaling with granularity. For current MoE kernels like ScatterMoE, activations scale linearly with expert granularity.
+% Avoiding caching activations
+Activations $Y$ (down-proj output) and $X_e$ (gathered $X$) have size $T K d$ and avoiding caching them eliminates activation memory dependency on granularity. We avoid writing $dY$ (gradient for $Y$) and $dO_e$ (gathered $dO$) to HBM as they increase the peak activation memory during the backward computation:
+
+
+% For $X$ and $dO$, fusing the gather operation with the HBM load  eliminates the need for materialization and activation caching in HBM. We show in Figure~\ref{fig:gather-speed} and~\ref{fig:moe_breakdown} that this gather fusion significantly improves the throughput for fine-grained MoEs. A naive implementation to compute $dS$ and $dH$ would need $Y$ and $dY$. Instead, we identify an alternative computation path to compute $dS$ and $dH$ without increasing FLOPs. This is achieved via expanding $dS$ and $dH$ in an equation that does not involve using $Y$ and $dY$, as illustrated in Appendix~\ref{sec:appendix:proof}. The final design of \Algname's $dH$ kernel is shown in Algorithm~\ref{alg:our-down-bwd-moe}.
+
+
+\begin{itemize}[nosep]
+    \item For $X$ and $dO$, fusing the gather operation with the HBM load eliminates the need for materialization and activation caching in HBM. We show in Figures~\ref{fig:moe_breakdown} and~\ref{fig:gather-speed} that this gather fusion significantly improves the throughput for fine-grained MoEs.
+
+    \item A naive implementation to compute $dS$ and $dH$ would need $Y$ and $dY$. Instead, we identify an alternative computation path to compute $dS$ and $dH$ without increasing FLOPs. This is achieved via expanding $dS$ and $dH$ into an equation that does not involve using $Y$ and $dY$, as illustrated in Appendix~\ref{sec:appendix:proof}. \Algname's $dH$ kernel is shown in Algorithm~\ref{alg:our-down-bwd-moe}.
+\end{itemize}
+
+% \wentao{todo: redraw the algo 3 in a clearer way to show our crucial difference between conventioanl backward.}
+
+
+% \tri{Sec 3: if the derivation is short enough we can put it in the main paper. If not, we need to say what' the inuition / insight is to compute dS in a different way (3-4 sentences on this).}
+
+
+
+
+
+
+% So, we need to avoid avoid caching $Y, X_e, dO_e$ in the forward (and ideally do not incur extra matmul FLOPS in the backward pass). We propose to:
+% % \begin{itemize}[itemsep=0pt,topsep=0pt,leftmargin=*]
+% \reallysquishlist
+%     \item
+
+%     \item identify an alternative computation path that circumvents the need of $Y$ without incurring any additional FLOPs 
+% \squishend
+% \end{itemize}
+
+% \footnote{Routing metadata is negligible in size compared to activations.}
+As a result, we only cache $X$ and $H$ along with routing metadata for a total size $2 T d + 4 T K n$ bytes per layer. \textbf{This activation memory usage is the same as a dense model with the same number of activated parameters, which is the minimum activation memory required for backward computation without doing activation recomputation with GEMM.}\footnote{Although \Algname~still materializes a temporary $Y$ variable, we can recycle $Y$ after each layer. As long as the number of MoE layers (typically 32+ for 7B+ MoE) is larger than $K$,  the transient memory usage of $Y$ will be overshadowed. Removing such materialization requires an atomic add (Figure~\ref{fig:expert-agg} right) to global memory which creates new issues with determinism \citep{determinism}, numerical accuracy (for BF16 atomic add), and incompatibility with all2all or all-gather communication.} In Figure~\ref{fig:mem}, we profile \Algname's activation memory for a 7B MoE training configuration and demonstrate that the activation memory of \Algname~is independent of expert granularity.
+
+% More results from 1.4B to 120B are included in Figure~\ref{fig:mem}.
+
+
+
+% Assuming fixed microbatch size ($T$ is constant) and constant FLOPs ($nK$ is constant)%and iso-parameters ($nE$ is constant)
+ 
+
+
+% For a 7B MoE model with $K = 16$, this means 1.21 GB per variable per layer.
+
+
+% We present the \algname\ algorithm in Algorithm~\ref{alg:our-forward-moe},\ref{alg:our-down-bwd-moe},\ref{alg:up-bwd-moe}. 
+
+

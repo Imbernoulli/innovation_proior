@@ -1,0 +1,13 @@
+\begin{figure}
+    \centering
+    \includegraphics[width=\textwidth]{figures/nll_curve.pdf}
+    \vspace{-1.5em}
+    \caption{\small 
+    Language modeling perplexity on texts with 20K tokens across various LLM. Observations reveal consistent trends:
+(1) Dense attention fails once the input length surpasses the pre-training attention window size.
+(2) Window attention collapses once the input length exceeds the cache size, i.e., the initial tokens are evicted.
+(3) \method demonstrates stable performance, with its perplexity nearly matching that of the sliding window with re-computation baseline.
+}
+    \label{fig:nll_curve}
+    \vspace{-1.5em}
+\end{figure}

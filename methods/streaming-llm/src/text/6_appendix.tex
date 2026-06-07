@@ -1,0 +1,103 @@
+\appendix
+\section{Discussions}
+\textbf{Applications.}
+\method is particularly suited for streaming applications, such as multi-round dialogues, where continuous operation without heavy reliance on extensive memory or historical data is crucial. For instance, in a daily assistant application based on LLMs, StreamingLLM enables the model to function seamlessly over extended periods. It bases its responses on recent interactions, thus avoiding the need for frequent cache refreshes. Traditional methods might require resetting the cache when the conversation length surpasses the training length, leading to a loss of recent context, or they might need to recompute key-value (KV) states from recent text history, which can be inefficient.
+
+\textbf{Limitations.}
+While \method improves the efficiency of LLMs in streaming contexts, it does not extend the models' context window or enhance their long-term memory capabilities. As detailed in Section~\ref{sec:kv_lines}, the model is limited to operating within the confines of its current cache. Consequently, \method is not suitable for tasks that demand long-term memory and extensive data dependency, such as long document question-answering (QA) and summarization. However, it excels in scenarios only requiring short-term memory, like daily conversations and short document QA, where its strength lies in generating coherent text from recent context without the need for cache refreshment.
+
+\textbf{Broader Societal Impacts.}
+\method significantly enhances the efficiency and accessibility of LLMs, democratizing their use across various sectors. By enabling nonstop and rapid interactions in applications like conversational agents, \method improves user experiences, especially in scenarios requiring fixed-length models. This advancement allows for more seamless and contextually aware dialogues, potentially benefiting sectors like education, healthcare, and customer service.
+Additionally, \method's efficiency in processing reduces the computational load, aligning with the need for environmentally sustainable AI technologies. This aspect is crucial in making advanced AI tools more accessible in regions with limited technological resources.
+However, the potential negative impacts of \method mirror those associated with general language models, such as misinformation and biased content generation risks. It's essential to address these risks with robust ethical guidelines and safeguards.
+In summary, while \method shares some risks common to language models, its positive contributions towards enhancing user experience, democratizing AI access, and promoting sustainability are noteworthy. These benefits underscore the importance of responsible deployment and ethical use of this technology.
+
+\section{Additional Related Works}
+\textbf{Sparse Transformers.} The literature on efficient Transformer models primarily focuses on reducing the computational and memory complexity of the self-attention mechanism. A relevant line of work involves sparsifying the attention matrix by restricting the field of view to fixed, predefined patterns, such as local windows or block patterns with fixed strides~\citep{tay2022efficient}.
+Sparse Transformer~\citep{child2019generating} introduces sparse factorizations of the attention matrix, reducing the computational complexity of attention to $O(n\sqrt{n})$. LongFormer~\citep{beltagy2020longformer} combines dilated local windowed attention with task-motivated global attention. Extended Transformer Construction (ETC)~\cite{ainslie2020etc} presents a novel global-local attention mechanism, incorporating four types of attention patterns: global-to-global, local-to-local, local-to-global, and global-to-local. Building on ETC, BigBird~\citep{zaheer2020big} proposes another linear complexity attention alternative, utilizing global tokens, local sliding window attentions, and random attention.
+However, these methods have several limitations. First, Sparse Transformer and ETC require custom GPU kernels for a specific block-sparse variant of matrix-matrix multiplication. Second, LongFormer, ETC, and BigBird all rely on a global attention pattern, which is unsuitable for autoregressive language models. Third, these methods are incompatible with pre-trained models, necessitating retraining from scratch.
+In contrast, our method offers ease of implementation using standard GPU kernels and is compatible with pre-trained autoregressive language models using dense attention, which are prevalent in the NLP community. This compatibility provides a significant advantage, allowing for the leveraging of existing pre-trained models without any fine-tuning.
+
+\textbf{Concurrent Works.} Our research coincides with the work of \citeauthor{han2023lminfinite}, who conducted a theoretical study on the length generalization failure of language models, identifying three out-of-distribution factors. Their approach, inspired by this analysis, involves employing a ``$\Lambda$"-shaped attention pattern and reconfiguring position encoding distances to enhance length generalization in LLMs. This approach bears a resemblance to our methodology. However, our work uncovers the ``attention sink" phenomenon, wherein Transformer models tend to assign high attention scores to initial tokens with small semantics. This phenomenon extends beyond the scope of length generalization failure, indicating a more pervasive issue in Transformer models. We observe this ``attention sink" behavior not only in auto-regressive language models but also in encoder Transformers such as BERT (see Section~\ref{sec:bert_attn}), and Vision Transformers (ViTs)~\citep{Darcet2023Registers}, suggesting its broader prevalence in Transformer architectures. To mitigate the ``attention sink" phenomenon, we propose the introduction of a learnable sink token during pre-training, and we support our findings with extensive ablation studies. 
+
+In parallel, \citeauthor{Darcet2023Registers} observed similar attention concentration on random background patch tokens in Vision Transformers, termed as "registers." These registers act as repositories for global image information. Their solution, adding dedicated "register" tokens, aims to balance attention distribution. Our finding of "attention sinks" parallels this concept. In our paper, the ``attention sinks" are initial tokens that disproportionately attract attention from subsequent tokens. Introducing a dedicated sink token during pre-training prevents the model from inappropriately using content tokens as attention sinks, leading to more effective attention distribution. However, a key difference exists: "registers" in Vision Transformers function as global information holders within intermediate layers, whereas our "attention sinks" are positioned as initial tokens in autoregressive models. This positional variance suggests that the softmax function in attention computation might play a more fundamental role in the emergence of attention sinks.
+
+
+\section{Accuracy on StreamEval with Increasing Query-Answer Line Distance}
+\label{sec:kv_lines}
+\input{figtab/kv_lines.tex}
+To assess \method's handling of extended inputs, we evaluated the Llama-2-7B-32K-Instruct model on StreamEval, focusing on different query-answer line distances under various cache configurations. In StreamEval, each line consists of 23 tokens, making the line distances equivalent to token distances of $23 \times \text{line distances}$. Accuracy was calculated by averaging results over 100 samples, with each sample comprising 100 queries. Table~\ref{tab:kv_lines} illustrates that \method retains accuracy when the token distance between the query and answer is within the cache size. However, accuracy diminishes as this distance increases and eventually drops to zero when it surpasses the cache capacity.
+
+These results demonstrate that while \method is effective in generating coherent text based on recent context, it cannot extend the context length of language models. These results also emphasize a broader challenge in current language models: their inability to fully utilize context information within the cache, a finding that aligns with the observations made by \citeauthor{liu2023lost}.
+
+\section{Long-Range Benchmark Evaluation}
+\input{figtab/longbench.tex}
+We evaluated \method using the Llama-2-7B-chat model (max context length 4k) on LongBench~\citep{bai2023longbench}, which encompasses three key NLP tasks: single-document QA (NarrativeQA~\citep{narrativeqa} and Qasper~\citep{dasigi2021qasper}), multi-document QA (HotpotQA~\citep{yang2018hotpotqa} and 2WikiMQA~\cite{ho-etal-2020-constructing}), and summarization (GovReport~\citep{huang2021govreport}, MultiNews~\citep{fabbri2019multinews}). LongBench sets a default max sequence length of 3,500 tokens for the Llama-2-7B-chat model, truncating from the middle to preserve beginning and end information (1,750 tokens each). Table~\ref{tab:longbench} shows that \method with a 4+3496 cache configuration underperforms compared to the truncation baseline, likely due to the loss of crucial initial input prompt information. However, aligning the attention sink number to 1750 restores performance to the level of the text truncation baseline. These results corroborate the findings in Section~\ref{sec:kv_lines}, demonstrating that \method's effectiveness is contingent on the information within its cache, with in-cache performance comparable to the text truncation baseline.
+
+\section{Llama-2-7B Attention Visualization on Longer Sequences}
+\input{figtab/llama-2-7b-128-attn.tex}
+Figure~\ref{fig:attention_visualization} visualizes the attention map of Llama-2-7B using short sequences (length of 16) for clarity. We further visualize the attention of Llama-2-7B on longer sequences (length of 128) in Figure~\ref{fig:llama-2-7b-128-attn}. We find the observations on short sequences also hold on longer sequences, where the attention scores of the initial tokens are much higher than the rest of the tokens in most layers, regardless of the distance between the initial tokens and the tokens in the rest of the sequence. Because the longer the sequence, the thinner the attention sinks' scores are visualized on the heatmap. We further analyze the attention distribution on longer sequences (length of 4096) using a different method in Section~\ref{sec:quantitative_analysis}.
+
+\section{Quatitative Analysis of Attention Sinks in Long Inputs}
+\label{sec:quantitative_analysis}
+\input{figtab/first_token_attn.tex}
+Figures~\ref{fig:attention_visualization} and \ref{fig:llama-2-70b-attn} illustrate the attention sink phenomenon using short sequences for clarity. Extending this analysis, Figure~\ref{fig:first_token_attn} demonstrates the distribution of attention scores (after SoftMax) towards the first token in lengthy inputs (sequence length of 4096). We average attention scores across 256 sequences, with each sequence comprising 4096 tokens. The plotted data represent the attention allocated by the 4096th token to the initial token in every layer. Notably, the attention scores for the first token are significantly high, often exceeding half of the total attention, except for the two bottom layers. This observation empirically substantiates the preferential focus on the first token by the majority of layers and heads, irrespective of other tokens' distances within the sequence. Such a trend underscores the critical role of the initial tokens in a sequence, as their removal has a huge impact on language model performance due to a large portion of the denominator in the SoftMax function being removed.
+
+\section{Llama-2-70B Attention Visualization}
+\input{figtab/llama-2-70b-avg-attn.tex}
+Figure~\ref{fig:attention_visualization} shows the attention visualization of Llama-2-7B, we further visualize the attention of Llama-2-70B in Figure~\ref{fig:llama-2-70b-attn}. We find the observation on Llama-2-7B also holds on Llama-2-70B, where the attention scores of the initial tokens are much higher than the rest of the tokens in most layers.
+
+\section{Attention Sinks in Encoder Transformers}
+\label{sec:bert_attn}
+\input{figtab/bert_attn.tex}
+In this paper, we mainly explore the attention sink phenomenon observed in autoregressive, decoder-only language models like GPT and Llama. Building upon the insights from Section~\ref{sec:attention_sink}, we propose that this phenomenon likely extends to other Transformer architectures, including encoder models such as BERT~\citep{Devlin2019BERTPO} and ViT~\citep{dosovitskiy2021image}. This assumption stems from the fact that these models share a similar Transformer structure and utilize SoftMax attention mechanisms. To substantiate our hypothesis, we analyze the attention patterns of BERT-base-uncased, as depicted in Figure~\ref{fig:bert-attn}. Our findings reveal that BERT-base-uncased exhibits the attention sink phenomenon, characterized by disproportionately high attention scores assigned to the \texttt{[SEP]} token in most layers. This indicates that the model consistently relies on the omnipresent \texttt{[SEP]} token as a focal point for attention. Furthermore, concurrent research by~\citeauthor{Darcet2023Registers} identifies similar attention spikes in Vision Transformers, attributed to random background patch tokens acting as "registers" for global image information. We contend that these "registers" are analogous to the attention sink phenomenon we observed, suggesting that this is a universal characteristic across all Transformer models.
+
+\section{Using More Sink Tokens in the Pre-Training Stage}
+Section~\ref{sec:pretrain-fix} illustrated that incorporating a single dedicated sink token in the pre-training stage doesn't affect model performance but enhances streaming performance by centralizing attention sinks to one token. This section delves into whether adding additional sink tokens during pre-training could further optimize the performance of pre-trained language models.
+
+As depicted in Figure~\ref{fig:curve2}, our experiments show that incorporating either one or two sink tokens during pre-training results in pre-training loss curves that closely resemble those of the baseline (vanilla) model. However, as detailed in Table~\ref{tab:pretrain_eval2}, the introduction of a second sink token does not yield substantial improvements in performance across most benchmark tasks.
+
+Further analysis, as shown in Table~\ref{tab:pretrain_fix2}, reveals that the inclusion of additional sink tokens does not enhance streaming performance. Interestingly, the model appears to rely on both sink tokens to maintain stable streaming performance. These findings suggest that while a single sink token is adequate for improving streaming performance, adding more sink tokens does not lead to further enhancements in overall language model performance. This contrasts with findings in Vision Transformers (ViT)~\citep{Darcet2023Registers}, where multiple "registers" have been found to be beneficial.
+
+\begin{minipage}[t]{\textwidth}
+    \begin{minipage}[t]{0.3\textwidth}\vspace{0pt}
+        \centering
+        \includegraphics[width=\linewidth]{figures/two_learnable_sink_curve.png}
+        \captionof{figure}{\small Pre-training loss curves of models with 0, 1, and 2 sink tokens.}
+        \label{fig:curve2}
+    \end{minipage}
+    \hfill
+    \begin{minipage}[t]{0.66\textwidth}\vspace{0pt}
+        \centering
+        \small
+        \setlength{\tabcolsep}{3.0pt}
+        \captionof{table}{Zero-shot accuracy (in \%) across 7 NLP benchmarks, including ARC-[Challenge, Easy], HellaSwag, LAMBADA, OpenbookQA, PIQA, and Winogrande.}
+        \label{tab:pretrain_eval2}
+        \begin{tabular}{lccccccc}
+            \toprule
+            Methods         & {ARC-c}       & {ARC-e}       & {HS}          & {LBD}         & {OBQA}        & {PIQA}        & {WG}          \\
+            \midrule
+            Vanilla         & 18.6          & 45.2          & 29.4          & 39.6          & 16.0          & 62.2          & 50.1          \\
+            + 1 Sink Token  & \textbf{19.6} & \textbf{45.6} & \textbf{29.8} & \textbf{39.9} & \textbf{16.6} & 62.6          & \textbf{50.8} \\
+            + 2 Sink Tokens & 18.7          & 45.6          & 29.6          & 37.5          & 15.8          & \textbf{64.3} & 50.4          \\
+            \bottomrule
+        \end{tabular}
+    \end{minipage}
+\end{minipage}
+
+\begin{table}
+    \centering
+    \setlength{\tabcolsep}{3pt}
+    \small
+    \caption{Comparison of vanilla attention with prepending a zero token and a learnable sink token during pre-training. Cache config $x$+$y$ denotes adding $x$ initial tokens with $y$ recent tokens. Perplexity is evaluated on the first sample in the PG19 test set.}
+    \label{tab:pretrain_fix2}
+    \begin{tabular}{lcccc}
+        \toprule
+        Cache Config    & 0+1024 & 1+1023         & 2+1022 & 4+1020 \\
+        \midrule
+        Vanilla         & 27.87  & 18.49          & 18.05  & 18.05  \\
+        + 1 Sink Token  & 1235   & \textbf{18.01} & 18.01  & 18.02  \\
+        + 2 Sink Tokens & 1262   & 25.73          & 18.05  & 18.05  \\
+        \bottomrule
+    \end{tabular}
+\end{table}

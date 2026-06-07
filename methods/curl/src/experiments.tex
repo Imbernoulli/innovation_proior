@@ -1,0 +1,108 @@
+\section{Experiments}
+
+\subsection{Evaluation}
+
+We measure the data-efficiency and performance of our method and baselines at 100k and 500k \textit{environment steps} on DMControl and 100k \textit{interaction steps} (400k environment steps with action repeat of 4) on Atari, which we will henceforth refer to as \textbf{DMControl100k}, \textbf{DMControl500k} and \textbf{Atari100k} for clarity. While Atari100k benchmark has been common practice when  investigating data-efficiency on Atari  \cite{kaiser2019model, van2019use, kielak2020rainbow}, the DMControl benchmark was set at 500k environment steps because state-based RL approaches asymptotic performance on many environments at this point, and 100k steps to measure the speed of initial learning. A broader motivation is that while RL algorithms can achieve super-human performance on Atari games, they are still far less efficient than a human learner. Training for 100-500k environment steps corresponds to a few hours of human time. 
+
+We evaluate (i) \textit{sample-efficiency} by measuring how many steps it takes the best performing baselines to match CURL performance at a fixed $T$ (100k or 500k) steps and (ii) \textit{performance} by measuring the ratio of the episode returns achieved by CURL versus the best performing baseline at $T$ steps. To be explicit, when we say data or sample-efficiency we're referring to (i) and when we say performance we're referring to (ii).
+
+\begin{table*}[ht]
+\caption{Scores achieved by CURL (mean \& standard deviation for 10 seeds) and baselines on DMControl500k and 1DMControl100k. CURL achieves state-of-the-art performance on the majority (\textbf{5} out of \textbf{6}) environments benchmarked on DMControl500k. These environments were selected based on availability of data from baseline methods (we run CURL experiments on 16 environments in total and show results in Figure \ref{fig:curl_all_dmc}). The baselines are PlaNet \cite{hafner2018learning}, Dreamer \cite{hafner2019dream}, SAC+AE \cite{yarats2019improving}, SLAC \cite{lee2019stochastic}, pixel-based SAC and state-based SAC \cite{haarnoja2018soft}. SLAC results were reported with one and three gradient updates per agent step, which we refer to as SLACv1 and SLACv2 respectively. We compare to SLACv1 since all other baselines and CURL only make one gradient update per agent step. We also ran CURL with three gradient updates per step and compare results to SLACv2 in Table \ref{table:three_grad}.}
+\label{table:500kscores}
+\vskip 0.15in
+\begin{center}
+\begin{small}
+\begin{sc}
+\begin{tabular}{lcccccccc}
+\toprule
+500K step scores & CURL & PlaNet & Dreamer & SAC+AE & SLACv1 & Pixel SAC &  State SAC \\
+\midrule
+Finger, spin    & \textbf{ 926 $\pm$ 45} & 561 $\pm$ 284 & 796 $\pm$ 183  & 884 $\pm$ 128 &   673 $\pm$ 92 & 179 $\pm$ 166  & 923 $\pm$ 21 \\
+Cartpole, swingup & \textbf{841 $\pm$ 45}& 475 $\pm$ 71& 762 $\pm$ 27 & 735 $\pm$ 63 & - & 419 $\pm$ 40 &  848 $\pm$ 15 \\
+Reacher, easy    & \textbf{929 $\pm$ 44}& 210 $\pm$ 390& 793 $\pm$ 164 & 627 $\pm$ 58 & - & 145 $\pm$ 30 &  923 $\pm$ 24 \\
+Cheetah, run   & 518 $\pm$ 28 & 305 $\pm$ 131& 570 $\pm$ 253 & 550 $\pm$ 34 &  \textbf{640 $\pm$ 19} & 197 $\pm$ 15 & 795 $\pm$ 30 \\
+Walker, walk      & \textbf{902 $\pm$ 43}& 351 $\pm$ 58 & 897 $\pm$ 49 & 847 $\pm$ 48  & 842 $\pm$ 51 & 42 $\pm$ 12 & 948 $\pm$ 54 \\
+Ball in cup, catch  & \textbf{959 $\pm$ 27} & 460 $\pm$  380 & 879 $\pm$  87 & 794$\pm$  58  &  852 $\pm$  71 & 312$ \pm$  63 & 974 $\pm$ 33\\
+\midrule
+100K step scores  &  &  &  &  &  &  &  \\
+\midrule
+Finger, spin    &  \textbf{767 $\pm$ 56 } & 136 $\pm$ 216 & 341 $\pm$ 70& 740 $\pm$ 64 &  693 $\pm$ 141 & 179 $\pm$ 66 &  811$\pm$46 \\
+Cartpole, swingup & \textbf{582$\pm$146}& 297$\pm$39& 326$\pm$27 & 311$\pm$11 & - & 419$\pm$40 & 835$\pm$22\\
+Reacher, easy    & \textbf{538$\pm$233} & 20$\pm$50 & 314$\pm$155 & 274$\pm$14 & - & 145$\pm$30 & 746$\pm$25 \\
+Cheetah, run   & 299 $\pm$48 & 138$\pm$88& 235$\pm$ 137 & 267$\pm$24 &  \textbf{319$\pm$56} & 197$\pm$15& 616$\pm$18 \\
+Walker, walk      & \textbf{403$\pm$24}&  224$\pm$48& 277$\pm$12 & 394$\pm$22 & 361$\pm$73 &42$\pm$12& 891$\pm$82 \\
+Ball in cup, catch  & \textbf{769 $\pm$ 43} & 0 $\pm$  0 & 246 $\pm$ 174 & 391$\pm$ 82 & 512 $\pm$ 110 & 312$\pm$ 63 & 746$\pm$91 \\ 
+\bottomrule
+\end{tabular}
+\end{sc}
+\end{small}
+\end{center}
+\vskip -0.1in
+\end{table*}
+
+
+\begin{table*}[h!]
+\caption{Scores achieved by CURL (coupled with Eff. Rainbow) and baselines on Atari benchmarked at 100k time-steps (Atari100k). CURL achieves state-of-the-art performance on {\textbf{7}} out of {\textbf{26}} environments. Our baselines are SimPLe \cite{kaiser2019model}, OverTrained Rainbow (OTRainbow) \cite{kielak2020rainbow}, Data-Efficient Rainbow (Eff. Rainbow) \cite{van2019use}, Rainbow \cite{hessel2017rainbow}, Random Agent and Human Performance (Human). We see that CURL implemented on top of Eff. Rainbow improves over Eff. Rainbow on {\bf 19} out of {\bf 26} games. We also run CURL with 20 random seeds given that this benchmark is susceptible to high variance across multiple runs. We also see that CURL achieves superhuman performance on JamesBond and Krull.}
+
+\label{table:100katariscores}
+\vskip 0.15in
+\begin{center}
+\begin{small}
+\begin{sc}
+\begin{tabular}{lccccccc}
+\toprule
+Game & Human & Random  & Rainbow & SimPLe & OTRainbow & Eff. Rainbow  & CURL \\
+\midrule
+
+Alien & 7127.7 & 227.8 & 318.7  & 616.9 & {\bf 824.7} & 739.9 & 558.2 \\
+Amidar & 1719.5 & 5.8 & 32.5 & 88.0 & 82.8 & {\bf 188.6}  & 142.1  \\
+Assault & 742.0 & 222.4 & 231 &  527.2 & 351.9 & 431.2 & {\bf 600.6} \\
+Asterix & 8503.3 & 210.0 & 243.6 & {\textbf{1128.3}} & 628.5 & 470.8 & 734.5 \\
+Bank Heist & 753.1 & 14.2 & 15.55 & 34.2 & {\bf 182.1} & 51.0 & 131.6 \\
+Battle Zone & 37187.5 & 2360.0 & 2360.0 & 5184.4 & 4060.6 & 10124.6 & {\bf 14870.0} \\
+Boxing & 12.1 & 0.1 & -24.8 & {\textbf{9.1}} & 2.5 & 0.2 & 1.2 \\
+Breakout & 30.5 & 1.7 & 1.2 & {\bf 16.4} & 9.84 & 1.9 & 4.9 \\
+Chopper Command & 7387.8 & 811.0 & 120.0 & {\textbf{1246.9}} & 1033.33 & 861.8 & 1058.5 \\
+crazy\_climber & 35829.4 & 10780.5 & 2254.5 & {\textbf{62583.6}} & 21327.8 & 16185.3 & 12146.5 \\
+demon\_attack & 1971.0 & 152.1 & 163.6 & 208.1 & 711.8 & 508.0 & {\bf 817.6} \\
+freeway & 29.6 & 0.0 & 0.0 & 20.3 & 25.0 & {\textbf{27.9}} & 26.7 \\
+frostbite & 4334.7 & 65.2 & 60.2 & 254.7 & 231.6 & 866.8 & {\bf 1181.3} \\
+gopher & 2412.5 & 257.6 & 431.2 & 771.0 & {\bf 778.0} & 349.5  & 669.3 \\
+hero & 30826.4 & 1027.0 & 487 & 2656.6 & 6458.8 & {\textbf{6857.0}} & 6279.3 \\
+jamesbond & 302.8 & 29.0 & 47.4 & 125.3 & 112.3 & 301.6 & {\bf 471.0} \\
+kangaroo & 3035.0 & 52.0 & 0.0 & 323.1 & 605.4 & 779.3 & {\bf 872.5} \\
+krull & 2665.5 & 1598.0 & 1468 & {\textbf{4539.9}} & 3277.9 & 2851.5 & 4229.6 \\
+kung\_fu\_master & 22736.3 & 258.5  & 0. & {\textbf{17257.2}} & 5722.2 & 14346.1 & 14307.8 \\
+ms\_pacman & 6951.6  & 307.3 & 67 & {\bf 1480.0} & 941.9 & 1204.1 & 1465.5 \\
+Pong & 14.6   & -20.7 & -20.6 & {\textbf{12.8}} & 1.3 & -19.3 & -16.5 \\
+Private eye & 69571.3 & 24.9 & 0 & 58.3 & 100.0 & 97.8 & {\bf 218.4} \\
+Qbert & 13455.0 & 163.9 & 123.46 & {\textbf{1288.8}} & 509.3 & 1152.9 & 1042.4 \\
+Road\_Runner & 7845.0 & 11.5 & 1588.46 & 5640.6 & 2696.7 & {\textbf{9600.0}} & 5661.0 \\
+seaquest & 42054.7 & 68.4 & 131.69 & {\textbf{683.3}}  & 286.92 & 354.1 & 384.5 \\
+Up\_n\_Down & 11693.2 & 533.4 & 504.6 & {\textbf{3350.3}} & 2847.6 & 2877.4  &  2955.2 \\
+
+\bottomrule
+\end{tabular}
+\end{sc}
+\end{small}
+\end{center}
+\vskip -0.1in
+\end{table*}
+
+
+\subsection{Environments}
+
+Our primary goal for CURL is sample-efficient control from pixels that is broadly applicable across a range of environments. We benchmark the performance of CURL for both discrete and continuous control environments. Specifically, we focus on DMControl suite for continuous control tasks and the Atari Games benchmark for discrete control tasks with inputs being raw pixels rendered by the environments.
+
+\textbf{DeepMind Control:} Recently, there have been a number of papers that have benchmarked for sample efficiency on challenging visual continuous control tasks belonging to the DMControl suite \cite{tassa2018deepmind} where the agent operates purely from pixels. The reason for operating in these environments is multi fold: (i) they present a reasonably challenging and diverse set of tasks; (ii) sample-efficiency of pure model-free RL algorithms operating from pixels on these benchmarks is poor; (iii) multiple recent efforts to improve the sample efficiency of both model-free and model-based methods on these benchmarks thereby giving us sufficient baselines to compare against; (iv) performance on the DM control suite is relevant to robot learning in real world benchmarks.
+
+We run experiments on sixteen environments from DMControl to examine the performance of CURL on pixels relative to SAC with access to the ground truth state, shown in Figure \ref{fig:curl_all_dmc}. For more extensive benchmarking, we compare CURL to five leading pixel-based methods across the the six environments presented in \citet{yarats2019improving}: ball-in-cup, finger-spin, reacher-easy, cheetah-run, walker-walk, cartpole-swingup for benchmarking. 
+
+{\textbf{Atari:}} Similar to DMControl sample-efficiency benchmarks, there have been a number of recent papers that have benchmarked for sample-efficiency on the Atari 2600 Games. \citet{kaiser2019model} proposed comparing various algorithms in terms of performance achieved within $100$K timesteps ($400$K frames, frame skip of $4$) of interaction with the environments (games). The method proposed by \citet{kaiser2019model} called SimPLe is a model-based RL algorithm. SimPLe is compared to a random agent, model-free Rainbow DQN \cite{hessel2017rainbow} and human performance for the same amount of interaction time. Recently, \citet{van2019use} and \citet{kielak2020rainbow} proposed data-efficient versions of Rainbow DQN which are competitive with SimPLe on the same benchmark. Given that the same benchmark has been established in multiple recent papers and that there is a human baseline to compare to, we benchmark CURL on all the 26 Atari Games (Table \ref{table:100katariscores}).
+
+\subsection{Baselines for benchmarking sample efficiency}
+\textbf{DMControl baselines:} We present a number of baselines for continuous control within the DMControl suite: (i) SAC-AE \cite{yarats2019improving} where the authors attempt to use a $\beta$-VAE \cite{higgins2017darla}, VAE \cite{kingma2013auto} and a regualrized autoencoder \citet{vincent2008extracting,ghosh2019} jointly with SAC; (ii) SLAC \cite{lee2019stochastic} which learns a latent space world model on top of VAE features \citet{ha2018world} and builds value functions on top; (iii) PlaNet and (iv) Dreamer \cite{hafner2018learning, hafner2019dream} both of which learn a latent space world model and explicitly plan through it; (v) Pixel SAC: Vanilla SAC operating purely from pixels \cite{haarnoja2018soft}. These baselines are competitive methods for benchmarking control from pixels. In addition to these, we also present the baseline State-SAC where the assumption is that the agent has access to low level state based features and does not operate from pixels. This baseline acts as an {\it oracle} in that it approximates the upper bound of how sample-efficient a pixel-based agent can get in these environments. 
+%\textbf{Note:} SLAC \cite{lee2019stochastic} reports two variants with 1:1 (SLACv1) and 3:1 (SLACv2) gradient steps per agent step. CURL and other baselines use a 1:1 ratio for gradient steps per agent step. We show results for CURL and all available baselines using a ratio of 1:1 in Table \ref{table:500kscores} and 3:1 in Table \ref{table:three_grad}.
+
+\textbf{Atari baselines}: For benchmarking performance on Atari, we compare CURL to (i) SimPLe \cite{kaiser2019model}, the top performing model-based method in terms of data-efficiency on Atari and (ii) Rainbow DQN \cite{hessel2017rainbow}, a top-performing model-free baseline for Atari, (iii) OTRainbow \cite{kielak2020rainbow} which is an OverTrained version of Rainbow for data-efficiency, (iv) Efficient Rainbow \cite{van2019use} which is a modification of Rainbow hyperparameters for data-efficiency, (v) Random Agent \cite{kaiser2019model}, (vi) Human Performance \cite{kaiser2019model, van2019use}. All the baselines and our method are evaluated for performance after 100K {\it interaction steps} (400K frames with a frame skip of 4) which corresponds to roughly two hours of gameplay. These benchmarks help us understand how the state-of-the-art pixel based RL algorithms compare in terms of sample efficiency and also to human efficiency. {\textbf{Note:}} Scores for SimPLe and Human baselines have been reported differently in prior work \cite{kielak2020rainbow, van2019use}. To be rigorous, we take the {\it best} reported score for each individual game reported in prior work. 
+

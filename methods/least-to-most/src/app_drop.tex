@@ -1,0 +1,211 @@
+\section{DROP}
+\label{app:drop}
+
+\subsection{Results with \texttt{text-davinci-002} and \texttt{LM-540B}}
+
+We reported the results using \texttt{code-davinci-002}. Here, we report results using the \texttt{text-davinci-002} model and a language model with 540 billion parameters (\texttt{LM-540B}).
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{ |c|c|c|}
+  \hline
+  \multicolumn{3}{|c|}{\texttt{text-davinci-002}} \\
+  \hline
+  Prompting method & Non-football (500 cases) & Football (500 cases)  \\
+  \hline
+  Zero-Shot & 27.00 & 31.60 \\ 
+  \hline
+  Standard prompting  & 49.40 & 54.40 \\ 
+  \hline
+  Chain-of-Thought & 60.80 & 57.40 \\ 
+  \hline
+  Least-to-Most & \textbf{74.20} & \textbf{63.40} \\ 
+  \hline
+\end{tabular}
+\vspace{5pt}
+\caption{Accuracies (\%) of zero-shot and prompting methods with the GPT-3 \texttt{text-davinci-002} model on the numerical reasoning subset of DROP. We evaluate on 500 randomly sampled non-football/football examples. Compared to Table \ref{table: drop-results}, we observe that \texttt{text-davinci-002} is consistently worse than \texttt{code-davinci-002}.}
+\label{table: drop-results-text-davinci}
+\end{table}
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{ |c|c|c|}
+  \hline
+  \multicolumn{3}{|c|}{\texttt{lm-540b}} \\
+  \hline
+  Prompting method & Non-football (3988 cases) & Football (1862 cases)  \\
+  \hline
+  Zero-Shot & 48.42 & 44.95 \\ 
+  \hline
+  Standard prompting  & 56.54 & 60.47 \\ 
+  \hline
+  Chain-of-Thought & 63.84 & 67.35 \\ 
+  \hline
+  Least-to-Most & \textbf{79.24} & \textbf{69.98} \\ 
+  \hline
+\end{tabular}
+\vspace{5pt}
+\caption{Accuracies (\%) of zero-shot and prompting methods with a pretrained language model with 540 billion parameters (lm-540).}
+\label{table: drop-results-lm540b}
+\end{table}
+
+\subsection{Non-football Subset}
+\label{sec:drop-non-football}
+
+\subsubsection{Zero-shot prompting}
+For zero-shot, the prompt format is as follows:
+
+Q: \{question\}\\
+A: The answer is
+
+Notice that we add ``The answer is'' at the beginning of the answer section.
+
+\subsubsection{Standard prompting with 3 examples}
+
+Q: Since the 1970s, U.S. governments have negotiated managed-trade agreements, such as the North American Free Trade Agreement in the 1990s, the Dominican Republic-Central America Free Trade Agreement in 2006, and a number of bilateral agreements. In Europe, six countries formed the European Coal and Steel Community in 1951 which became the European Economic Community in 1958. Two core objectives of the EEC were the development of a common market, subsequently renamed the single market, and establishing a customs union between its member states. How many years did the European Coal and Steel Community exist?\\
+A: The answer is 7.
+
+Q: In the county, the population was spread out with 23.50\% under the age of 18, 8.70\% from 18 to 24, 29.70\% from 25 to 44, 24.70\% from 45 to 64, and 13.30\% who were 65 years of age or older. How many more percent are under the age of 18 compared to the 18 to 24 group?\\
+A: The answer is 14.8.
+
+Q: Playing in their second straight Thanksgiving game, the Eagles struggled especially on defense, where they were unable to stop the much-hyped Lions offense. The worst of it all was how unproven rookie Eric Rowe was tasked with covering wide receiver Calvin Johnson, leading to Johnson catching 3 touchdowns. Stafford's five passing touchdowns, including three of them to Johnson was too much for the Eagles to overcome and for the second consecutive time this season, the Eagles gave up 45 points in a game. With the loss, the Eagles drop to 4-7 on the season and 6-1 when playing on Thanksgiving. How many TD passes did Stafford throw other than to Johnson?\\
+A: The answer is 2.
+
+\subsubsection{Chain-of-thought prompting with 3 examples}
+
+Q: Since the 1970s, U.S. governments have negotiated managed-trade agreements, such as the North American Free Trade Agreement in the 1990s, the Dominican Republic-Central America Free Trade Agreement in 2006, and a number of bilateral agreements. In Europe, six countries formed the European Coal and Steel Community in 1951 which became the European Economic Community in 1958. Two core objectives of the EEC were the development of a common market, subsequently renamed the single market, and establishing a customs union between its member states. How many years did the European Coal and Steel Community exist?\\
+A: According to the passage, the European Coal and Steel Community was established in 1951 and became the EEC in 1958. 1958 - 1951 = 7. So the answer is 7.
+
+Q: In the county, the population was spread out with 23.50\% under the age of 18, 8.70\% from 18 to 24, 29.70\% from 25 to 44, 24.70\% from 45 to 64, and 13.30\% who were 65 years of age or older. How many more percent are under the age of 18 compared to the 18 to 24 group?\\
+A: According to the passage, 23.5\% are under the age of 18, and 8.7\% are from ages 18 to 24. 23.5\% - 8.7\% = 14.8\%. So the answer is 14.8.
+
+Q: Playing in their second straight Thanksgiving game, the Eagles struggled especially on defense, where they were unable to stop the much-hyped Lions offense. The worst of it all was how unproven rookie Eric Rowe was tasked with covering wide receiver Calvin Johnson, leading to Johnson catching 3 touchdowns. Stafford's five passing touchdowns, including three of them to Johnson was too much for the Eagles to overcome and for the second consecutive time this season, the Eagles gave up 45 points in a game. With the loss, the Eagles drop to 4-7 on the season and 6-1 when playing on Thanksgiving. How many TD passes did Stafford throw other than to Jhonson?\\
+A: According to the passage, Stafford threw 5 TD passes, 3 of which were to Johnson. 5 - 3 = 2. So the answer is 2.
+
+\subsubsection{Least-to-most prompting I: problem decomposition (5 examples)}
+
+Q: The median age in the city was 22.1 years. 10.1\% of residents were under the age of 18; 56.2\% were between the ages of 18 and 24; 16.1\% were from 25 to 44; 10.5\% were from 45 to 64; and 7\% were 65 years of age or older. Which age group is larger: under the age of 18 or 18 and 24?\\
+A: To answer the question ``Which age group is larger: under the age of 18 or 18 and 24?'', we need to know: ``How many percent were under the age of 18?'', ``How many percent were between the ages of 18 and 24?''.
+
+Q: Old age pensions were raised by 300 francs per month to 1,700 francs for a single person and to 3,700 francs for a couple, while health insurance benefits were made more widely available to unemployed persons and part-time employees. How many francs were the old age pensions for a single person before they were raised?\\
+A: To answer the question ``How many francs were the old age pensions for a single person before they were raised?'', we need to know: ``How many francs were the old age pensions for a single person?'', ``How many francs were old age pensions raised for a single person?''.
+
+Q: In April 2011, the ECB raised interest rates for the first time since 2008 from 1\% to 1.25\%, with a further increase to 1.50\% in July 2011. However, in 2012-2013 the ECB lowered interest rates to encourage economic growth, reaching the historically low 0.25\% in November 2013. Soon after the rates were cut to 0.15\%, then on 4 September 2014 the central bank reduced the rates from 0.15\% to 0.05\%, the lowest rates on record. How many percentage points did interest rates drop between April 2011 and September 2014?\\
+A: To answer the question ``How many percentage points did interest rates drop between April 2011 and September 2014?'', we need to know: ``What was the interest rate in April 2011?'', ``What was the interest rate in September 2014?''.
+
+Q: Non-nationals make up more than half of the population of Bahrain. According to government statistics dated between 2005-2009 roughly 290,000 Indians, 125,000 Bangladeshis, 45,000 Pakistanis, 45,000 Filipinos, and 8,000 Indonesians. How many Pakistanis and Indonesians are in Bahrain?\\
+A: To answer the question ``How many Pakistanis and Indonesians are in Bahrain?'', we need to know: ``How many Pakistanis are in Bahrain?'', ``How many Indonesians are in Bahrain?''.
+
+Q: The Census Bureaus 2006-2010 American Community Survey showed that (in 2010 inflation adjustment dollars) median household income was \$52,056 and the median family income was \$58,942. How many years did the Census Bureaus American Community Survey last?\\
+A: To answer the question ``How many years did the Census Bureaus American Community Survey last?'', we need to know: ``When did the Census Bureaus American Community Survey start?'', ``When did the Census Bureaus American Community Survey end?''.
+
+\subsubsection{Least-to-most prompting II: problem solving (3 examples)}
+
+The city of Bangkok has a population of 8,280,925. The census showed that it is home to 81,570 Japanese and 55,893 Chinese nationals, as well as 117,071 expatriates from other Asian countries, 48,341 from Europe, 23,418 from the Americas.\\
+Q: How many Chinese nationals are there?\\
+A: ``The census showed that it is home to 81,570 Japanese and 55,893 Chinese nationals''. So the answer is 55,893 Chinese nationals.
+
+Q: How many European nationals are there?\\
+A: ``48,341 from Europe''. So the answer is 48,341.
+
+Q: How many more Chinese nationals are there than European nationals?\\
+A: We know that there are 55,893 Chinese nationals. We also know that there are 48,341 European nationals. So there are 55,893 -  48,341 = 7552 more Chinese nationals than European nationals. So the answer is 7552.
+
+The gender distribution of the population was 50.2\% male and 49.8\% female. Of the adult population, 29 people or 14.6\% of the population are between 20 and 29 years old.  28 people or 14.1\% are 30 to 39, 36 people or 18.2\% are 40 to 49, and 31 people or 15.7\% are 50 to 59.\\
+Q: What is the percentage of people between 40 to 49?.\\
+A: ``36 people or 18.2\% are 40 to 49''. So the answer is 18.2%
+
+Q: How many percent of people were not 40 to 49?\\
+A: We know that 18.2\% are 40 to 49. So 100\% - 18.2\% = 81.8\% are not 40 to 49. So the answer is 81.8\%.
+
+During the 1970s the oil shocks (1973 oil crisis and 1979 energy crisis) hit Iceland hard. Inflation rose to 43\% in 1974 and 59\% in 1980, falling to 15\% in 1987 but rising to 30\% in 1988. Iceland experienced moderately strong GDP growth (3\% on average) from 1995 to 2004. Growth slowed between 2000 and 2002, but the economy expanded by 4.3\% in 2003 and grew by 6.2\% in 2004. Growth in 2005 exceeded 6\%. \\
+Q: When did the oil crisis occur?\\
+A: ``1973 oil crisis and 1979 energy crisis''. So the answer is 1973.
+
+Q: When did the energy crisis occur?\\
+A: ``1979 energy crisis''. So the answer is 1979.
+
+Q: How many years passed between the oil and energy crises?\\
+A: We know that the oil crisis occurred in 1973. We also know that the energy crisis occurred in 1979. So 1979 - 1973 = 6 years passed between the oil and energy crises. So the answer is 6.
+
+\subsection{Football subset}
+\label{sec:drop-football}
+
+\subsubsection{Zero-shot prompting}
+For zero-shot, the prompt format is as follows:
+
+Q: \{question\}\\
+A: The answer is
+
+Notice that we add ``The answer is'' at the beginning of the answer section.
+
+\subsubsection{Standard prompting with 3 examples}
+
+Q: The Seahawks played the San Francisco 49ers. In the first quarter, the Hawks RB Julius Jones got a 27-yard TD run, along with DT Craig Terrill returning a fumble 9 yards for a touchdown. In the third quarter, the 49ers almost rallied as RB H. J. Torres made a 12-yard TD pass to Lucas Nelly, along with Mare kicking a 32-yard field goal. In the final quarter, Julius Jones got another 11-yard TD. How many yards do the shortest touchdown run and the longest touchdown pass combine for?\\
+A: The answer is 21.
+
+Q: The Steelers went home for a duel with the Baltimore Ravens. Pittsburgh would deliver the opening punch in the first quarter with a 1-yard touchdown from running back Rashard Mendenhall. The Ravens would make it even as running back Willis McGahee got a 9-yard TD. The Ravens kicker Billy Cundiff got a 45-yard field goal in the second quarter, concluding the first half with a 10-7 lead. The Steelers brought the game into overtime with a 38-yard field goal by Andrew Foster. The Ravens Billy Cundiff pulled off a winning 33-yard field goal in overtime. How many points did the Ravens have at halftime?\\
+A: The answer is 10.
+
+Q: The Vikings flew to Bank of America Stadium to face the Carolina Panthers. After a scoreless first quarter, Carolina got on the board with quarterback Matt Moore finding fullback Brad Hoover on a 1-yard TD pass. After yet another scoreless quarter, Carolina sealed the game as Matt Moore completed a 42-yard touchdown pass to wide receiver Steve Smith. How many scoreless quarters were there?\\
+A: The answer is 2.
+
+\subsubsection{Chain-of-thought prompting with 3 examples}
+
+Q: The Seahawks played the San Francisco 49ers. In the first quarter, the Hawks RB Julius Jones got a 27-yard TD run, along with DT Craig Terrill returning a fumble 9 yards for a touchdown. In the third quarter, the 49ers almost rallied as RB H. J. Torres made a 12-yard TD pass to Lucas Nelly, along with Mare kicking a 32-yard field goal. In the final quarter, Julius Jones got another 11-yard TD. How many yards do the shortest touchdown run and the longest touchdown pass combine for?\\
+A: All the touchdown runs are: a 27-yard touchdown run, a 9-yard touchdown run, a 11-yard touchdown run. The smallest number among 27, 9, 11 is 9. So the shortest touchdown run was 9 yards. All the touchdown passes are: a 12-yard touchdown pass. So the longest touchdown pass was 12 yards. So the shortest touchdown run and the longest touchdown pass combine for 9 + 12 = 21 yards. So the answer is 21 yards.
+
+Q: The Steelers went home for a duel with the Baltimore Ravens. Pittsburgh would deliver the opening punch in the first quarter with a 1-yard touchdown from running back Rashard Mendenhall. The Ravens would make it even as running back Willis McGahee got a 9-yard TD. The Ravens kicker Billy Cundiff got a 45-yard field goal in the second quarter, concluding the first half with a 10-7 lead. The Steelers brought the game into overtime with a 38-yard field goal by Andrew Foster. The Ravens Billy Cundiff pulled off a winning 33-yard field goal in overtime. How many points did the Ravens have at halftime?\\
+A: The Ravens kicker Billy Cundiff got a 45-yard field goal in the second quarter, concluding the first half with a 10-7 lead.  So the Ravens had 10 points at halftime. So the answer is 10 points.
+
+Q: The Vikings flew to Bank of America Stadium to face the Carolina Panthers. After a scoreless first quarter, Carolina got on the board with quarterback Matt Moore finding fullback Brad Hoover on a 1-yard TD pass. After yet another scoreless quarter, Carolina sealed the game as Matt Moore completed a 42-yard touchdown pass to wide receiver Steve Smith. How many scoreless quarters were there?\\
+A: The first and third quarters were the scoreless quarters. So there are 2 scoreless quarters. So the answer is 2.
+
+\subsubsection{Least-to-most prompting I: problem decomposition (6 examples)}
+
+Q: The Seahawks played the San Francisco 49ers. In the first quarter, the 'Hawks RB Julius Jones got a 27-yard TD run, along with DT Craig Terrill returning a fumble 9 yards for a touchdown. In the third quarter, the 49ers almost rallied as RB T. J. Duckett made a 12-yard TD pass to Lucas Nelly, along with Mare kicking a 32-yard field goal. How many yards do the shortest touchdown run and the longest touchdown pass combine for? \\
+A: To answer the question ``How many yards do the shortest touchdown run and the longest touchdown pass combine for?'', we need to know: ``How many yards was the shortest touchdown run?'', ``How many yards was the longest touchdown pass?''.
+
+Q: The Steelers went home for an AFC North duel with the Baltimore Ravens. Pittsburgh would deliver the opening punch in the first quarter with a 1-yard touchdown run from running back Rashard Mendenhall. The Ravens would make it even in the second quarter as running back Willis McGahee got a 9-yard touchdown run. The Ravens kicker Billy Cundiff got a 45-yard field goal in the second quarter and a 33-yard field goal in the third quarter. Game ended with a scoreless fourth quarter. How many points did the Ravens have at halftime? \\
+A: To answer the question ``How many points did the Ravens have at halftime?'', we need to know: ``What were all the scores the Ravens had at halftime?''.
+
+Q: In 1995, the Kings overcame a 3-4 start to win eight of their final nine games and finished with a record, the second-best in the AFC. Quarterback Neil ODonnell, who completed 246 out of 416 passes for 2,970 yards and 17 touchdowns, with only seven interceptions led their offense. The Kings finished their 1995 season having lost how many games difference to the number of games they had won? \\
+A: To answer the question ``The Kings finished their 1995 season having lost how many games difference to the number of games they had won?'', we need to know: ``How many games the Kings had lost in their 1995 season?'', ``How many games the Kings had won in their 1995 season?''.
+
+Q: The Broncos traveled to Sun Life Stadium to face the Miami Dolphins. The Dolphins grabbed the lead in the second quarter, with field goals of 35 and 45 yards by kicker Dan Carpenter. In the final quarter, the Dolphins quarterback Matt Moore threw a 16-yard touchdown pass to tight end Anthony Fasano (with a failed two-point conversion attempt), followed by a 35-yard field goal by Carpenter, giving Miami a 15-0 lead. Finally, the Broncos answered with Alex Jake kicking a 48-yard field goal, ending the game with 15-3. How many yards was Dan Carpenter's longest field goal? \\
+A: To answer the question ``How many yards was Dan Carpenter's longest field goal?'', we need to know: ``What were all Dan Carpenter's field goals?''.
+
+Q: The Cardinals flew to Gillette Stadium for a duel with the New England Patriots. In the fourth quarter, New England ended the boring game with Gostkowski's 30-yard field goal. Original starting quarterback Kurt Warner (6/18 for 30 yards) was pulled in the third quarter via coach's decision. How many incomplete passes did Kurt Warner have? \\
+A: To answer the question ``How many incomplete passes did Kurt Warner have?'', we need to know: ``How many passes did Kurt Warner attempt?'', ``How many passes did Kurt Warner complete?''.
+
+Q: The Vikings flew to Bank of America Stadium to face the Carolina Panthers. After a scoreless first quarter, Carolina got on the board with quarterback Matt Moore finding fullback Brad Hoover on a 1-yard touchdown pass. After yet another scoreless quarter, Carolina sealed the game as Matt Moore completed a 42-yard TD pass to wide receiver Steve Smith. How many scoreless quarters were there? \\
+A: To answer the question ``How many scoreless quarters were there?'', we need to know: ``What were all the scoreless quarters?''.
+
+\subsubsection{Least-to-most prompting II: problem solving (3 examples)}
+
+The Seahawks played the San Francisco 49ers. In the first quarter, the 'Hawks RB Julius Jones got a 27-yard TD run, along with DT Craig Terrill returning a fumble 9 yards for a touchdown. In the third quarter, the 49ers almost rallied as RB H. J. Torres made a 12-yard TD pass to Lucas Nelly, along with Mare kicking a 32-yard field goal. In the final quarter, Julius Jones got another 11-yard TD. \\
+Q: How many yards was the shortest touchdown run? \\
+A: All the touchdown runs are: a 27-yard touchdown run, a 9-yard touchdown run, a 11-yard touchdown run. The smallest number between 27, 9, 11 is 9. The shortest touchdown run was 9 yards. The answer is 9.
+
+Q: How many yards was the longest touchdown pass? \\
+A: All the touchdown passes are: a 12-yard touchdown pass. The longest touchdown pass was 12 yards. The answer is 12.
+
+Q: How many yards do the shortest touchdown run and the longest touchdown pass combine for? \\
+A: We know that the shortest touchdown run was 9-yard. We also know that the longest touchdown pass was 12-yard. 9 + 12 = 21. The answer is 21.
+
+The Steelers went home for a duel with the Baltimore Ravens. Pittsburgh would deliver the opening punch in the first quarter with a 1-yard touchdown from running back Rashard Mendenhall. The Ravens would make it even as running back Willis McGahee got a 9-yard TD. The Ravens kicker Billy Cundiff got a 45-yard field goal in the second quarter, concluding the first half. The Steelers brought the game into overtime with a 38-yard field goal by Andrew Foster. The Ravens Billy Cundiff pulled off a winning 33-yard field goal in overtime. \\
+Q: What were all the scores the Ravens had at halftime? \\
+A: The answer is: a 9-yard touchdown run, a 45-yard field goal.
+
+Q: How many points did the Ravens have at halftime? \\
+A: We know that the Ravens had a touchdown and a field goal at halftime. We also know that a touchdown is worth 7 points and a field goal is worth 3 points. 7 + 3 = 10. The answer is 10.
+
+The Vikings flew to Bank of America Stadium to face the Carolina Panthers. After a scoreless first quarter, Carolina got on the board with quarterback Matt Moore finding fullback Brad Hoover on a 1-yard TD pass. After yet another scoreless quarter, Carolina sealed the game as Matt Moore completed a 42-yard touchdown pass to wide receiver Steve Smith. \\
+Q: What were all the scoreless quarters? \\
+A: The answer is: the first quarter and the third quarter.
+
+Q: How many scoreless quarters were there? \\
+A: We know that the first and third quarters were all the scoreless quarters. The answer is 2.
+
+\input{app_drop_5_examples}
+\input{app_drop_error_analysis}

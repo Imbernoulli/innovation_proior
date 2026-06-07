@@ -1,0 +1,49 @@
+\section{Introduction}
+\label{sec:introduction}
+
+Convolutional neural networks have been the main design paradigm for image understanding tasks, as initially demonstrated on image classification tasks. One of the ingredient to their success was the availability of a large training set, namely Imagenet~\cite{deng2009imagenet, Russakovsky2015ImageNet12}. 
+Motivated by the success of attention-based models in Natural Language Processing~\cite{devlin2018bert,Vaswani2017AttentionIA}, there has been increasing interest in architectures leveraging attention mechanisms within convnets~\cite{Hu2017SENet,Li2019SelectiveKN,zhang2020resnest}. 
+More recently several researchers have proposed hybrid architecture transplanting transformer ingredients to convnets to solve vision tasks~\cite{carion2020end,shen2020global}. 
+
+The vision transformer (ViT) introduced by Dosovitskiy et al.~\cite{dosovitskiy2020image} is an architecture directly inherited from Natural Language Processing~\cite{Vaswani2017AttentionIA}, but applied to image classification with raw image patches as input. Their paper presented excellent  results with transformers trained with a large private labelled image dataset (JFT-300M~\cite{sun2017revisiting}, 300 millions images). 
+The paper concluded that transformers \emph{``do not generalize well when trained on insufficient amounts of data''}, and the training of these models involved extensive computing resources. 
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.72\linewidth]{figs/transformers_Efficiency_log_with_grid3_ImageNet.pdf}
+    \caption{Throughput and accuracy on Imagenet of our methods compared to EfficientNets, trained on Imagenet1k only. The throughput is measured as the number of images processed per second on a V100 GPU. \oursbase is identical to VIT-B, but the training is more adapted to a data-starving regime. It is learned in a few days on one machine. The symbol $\alambic$ refers to models trained with our transformer-specific distillation.
+    See Table~\ref{tab:throughput} for details and more models. 
+    \label{fig:efficiency}}
+\end{figure}
+
+In this paper, we train a vision transformer on a single 8-GPU node in two to three days (53 hours of pre-training, and optionally 20 hours of fine-tuning) that is competitive with convnets having a similar number of parameters and efficiency. It uses Imagenet as the sole training set. 
+We build upon the visual transformer architecture from Dosovitskiy et al.~\cite{dosovitskiy2020image} and improvements included in the timm library~\cite{pytorchmodels}. 
+With our Data-efficient image Transformers (DeiT), we report large improvements over previous results, see Figure~\ref{fig:efficiency}. 
+%
+Our ablation study details the hyper-parameters and key ingredients for a successful training, such as repeated augmentation.  %
+
+
+We address another question: how to distill these models? 
+We introduce a token-based strategy, specific to transformers and denoted by \oursdis, and show that it advantageously replaces the usual distillation. 
+
+In summary, our work makes the following contributions: 
+\begin{itemize}
+    \item We show that our neural networks that contains no convolutional layer can achieve competitive results against the state of the art on ImageNet with no external data. 
+    They are learned on a single node with 4 GPUs in three days\footnote{We can accelerate the learning of the larger model \oursbase by training it on 8 GPUs in two days.}. %   
+    Our two new models \ourssmall and \ourstiny have fewer parameters and can be seen as the counterpart of ResNet-50 and ResNet-18. 
+    \item We introduce a new distillation procedure based on a distillation token, which plays the same role as the class token, except that it aims at reproducing the label estimated by the teacher. Both tokens interact in the transformer through attention. %
+    This transformer-specific strategy outperforms  vanilla distillation by a significant margin. 
+    \item 
+    Interestingly, with our distillation, image  transformers learn more from a convnet than from another transformer with comparable performance. 
+    %
+    \item Our models pre-learned on Imagenet are competitive when transferred to different downstream tasks such as fine-grained classification, on several popular public benchmarks: CIFAR-10, CIFAR-100, Oxford-102 flowers, Stanford Cars and iNaturalist-18/19. 
+%
+\end{itemize}
+
+This paper is organized as follows: we  review related works in Section~\ref{sec:related}, and focus on transformers for image classification in Section~\ref{sec:vit}. %
+We introduce our distillation strategy for transformers in Section~\ref{sec:distillation}. 
+The experimental section~\ref{sec:experiments} provides analysis and  comparisons against both convnets and recent transformers, as well as a comparative evaluation of our transformer-specific distillation. 
+Section~\ref{sec:training} details our training scheme.  
+%
+It includes an extensive ablation of our data-efficient training choices, which gives some insight on the key ingredients involved in DeiT. 
+We conclude in Section~\ref{sec:conclusion}. 

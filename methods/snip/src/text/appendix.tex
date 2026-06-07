@@ -1,0 +1,1285 @@
+\newpage
+\section{Visualizing pruned parameters on (inverted) (fashion-)mnist}
+\label{sec:fashion-mnist-invert}
+
+\begin{figure}[h]
+    \centering
+    %\begin{subfigure}{.49\textwidth}
+    %    \centering
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.1_class-0_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.1_class-1_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.1_class-2_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.1_class-3_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.1_class-4_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.1_class-5_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.1_class-6_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.1_class-7_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.1_class-8_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.1_class-9_seed-9}.eps} \\
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.2_class-0_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.2_class-1_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.2_class-2_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.2_class-3_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.2_class-4_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.2_class-5_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.2_class-6_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.2_class-7_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.2_class-8_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.2_class-9_seed-9}.eps} \\
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.3_class-0_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.3_class-1_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.3_class-2_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.3_class-3_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.3_class-4_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.3_class-5_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.3_class-6_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.3_class-7_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.3_class-8_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.3_class-9_seed-9}.eps} \\
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.4_class-0_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.4_class-1_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.4_class-2_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.4_class-3_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.4_class-4_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.4_class-5_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.4_class-6_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.4_class-7_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.4_class-8_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.4_class-9_seed-9}.eps} \\
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.5_class-0_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.5_class-1_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.5_class-2_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.5_class-3_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.5_class-4_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.5_class-5_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.5_class-6_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.5_class-7_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.5_class-8_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.5_class-9_seed-9}.eps} \\
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.6_class-0_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.6_class-1_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.6_class-2_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.6_class-3_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.6_class-4_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.6_class-5_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.6_class-6_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.6_class-7_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.6_class-8_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.6_class-9_seed-9}.eps} \\
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.7_class-0_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.7_class-1_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.7_class-2_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.7_class-3_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.7_class-4_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.7_class-5_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.7_class-6_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.7_class-7_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.7_class-8_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.7_class-9_seed-9}.eps} \\
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.8_class-0_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.8_class-1_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.8_class-2_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.8_class-3_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.8_class-4_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.8_class-5_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.8_class-6_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.8_class-7_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.8_class-8_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.8_class-9_seed-9}.eps} \\
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.9_class-0_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.9_class-1_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.9_class-2_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.9_class-3_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.9_class-4_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.9_class-5_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.9_class-6_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.9_class-7_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.9_class-8_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist/lenet300_w1_bs-100_ts-0.9_class-9_seed-9}.eps} \\
+    %    \caption{\mnist{}}
+    %\end{subfigure}
+    \begin{subfigure}{.49\textwidth}
+        \centering
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.1_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.1_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.1_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.1_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.1_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.1_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.1_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.1_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.1_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.1_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.2_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.2_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.2_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.2_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.2_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.2_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.2_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.2_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.2_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.2_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.3_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.3_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.3_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.3_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.3_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.3_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.3_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.3_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.3_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.3_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.4_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.4_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.4_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.4_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.4_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.4_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.4_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.4_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.4_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.4_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.5_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.5_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.5_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.5_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.5_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.5_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.5_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.5_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.5_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.5_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.6_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.6_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.6_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.6_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.6_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.6_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.6_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.6_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.6_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.6_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.7_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.7_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.7_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.7_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.7_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.7_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.7_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.7_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.7_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.7_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.8_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.8_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.8_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.8_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.8_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.8_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.8_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.8_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.8_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.8_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.9_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.9_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.9_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.9_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.9_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.9_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.9_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.9_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.9_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/mnist-invert/lenet300_w1_bs-100_ts-0.9_class-9_seed-9}.eps} \\
+        \caption{\mnist{-Invert}}
+    \end{subfigure}
+    %\begin{subfigure}{.49\textwidth}
+    %    \centering
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.1_class-0_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.1_class-1_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.1_class-2_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.1_class-3_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.1_class-4_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.1_class-5_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.1_class-6_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.1_class-7_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.1_class-8_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.1_class-9_seed-9}.eps} \\
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.2_class-0_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.2_class-1_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.2_class-2_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.2_class-3_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.2_class-4_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.2_class-5_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.2_class-6_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.2_class-7_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.2_class-8_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.2_class-9_seed-9}.eps} \\
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.3_class-0_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.3_class-1_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.3_class-2_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.3_class-3_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.3_class-4_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.3_class-5_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.3_class-6_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.3_class-7_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.3_class-8_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.3_class-9_seed-9}.eps} \\
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.4_class-0_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.4_class-1_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.4_class-2_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.4_class-3_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.4_class-4_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.4_class-5_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.4_class-6_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.4_class-7_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.4_class-8_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.4_class-9_seed-9}.eps} \\
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.5_class-0_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.5_class-1_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.5_class-2_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.5_class-3_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.5_class-4_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.5_class-5_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.5_class-6_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.5_class-7_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.5_class-8_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.5_class-9_seed-9}.eps} \\
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.6_class-0_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.6_class-1_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.6_class-2_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.6_class-3_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.6_class-4_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.6_class-5_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.6_class-6_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.6_class-7_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.6_class-8_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.6_class-9_seed-9}.eps} \\
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.7_class-0_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.7_class-1_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.7_class-2_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.7_class-3_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.7_class-4_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.7_class-5_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.7_class-6_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.7_class-7_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.7_class-8_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.7_class-9_seed-9}.eps} \\
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.8_class-0_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.8_class-1_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.8_class-2_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.8_class-3_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.8_class-4_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.8_class-5_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.8_class-6_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.8_class-7_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.8_class-8_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.8_class-9_seed-9}.eps} \\
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.9_class-0_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.9_class-1_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.9_class-2_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.9_class-3_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.9_class-4_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.9_class-5_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.9_class-6_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.9_class-7_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.9_class-8_seed-9}.eps}
+    %    \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist/lenet300_w1_bs-100_ts-0.9_class-9_seed-9}.eps} \\
+    %    \caption{\fmnist{}}
+    %\end{subfigure}
+    \begin{subfigure}{.49\textwidth}
+        \centering
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.1_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.1_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.1_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.1_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.1_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.1_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.1_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.1_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.1_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.1_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.2_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.2_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.2_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.2_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.2_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.2_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.2_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.2_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.2_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.2_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.3_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.3_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.3_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.3_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.3_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.3_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.3_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.3_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.3_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.3_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.4_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.4_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.4_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.4_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.4_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.4_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.4_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.4_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.4_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.4_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.5_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.5_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.5_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.5_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.5_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.5_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.5_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.5_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.5_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.5_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.6_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.6_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.6_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.6_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.6_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.6_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.6_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.6_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.6_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.6_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.7_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.7_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.7_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.7_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.7_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.7_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.7_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.7_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.7_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.7_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.8_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.8_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.8_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.8_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.8_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.8_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.8_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.8_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.8_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.8_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.9_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.9_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.9_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.9_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.9_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.9_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.9_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.9_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.9_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.9_class-9_seed-9}.eps} \\
+        \caption{\fmnist{-Invert}}
+    \end{subfigure}
+    \caption{
+        Results of pruning with \snip{} on inverted \formnist{} (\ie, dark and bright regions are swapped). 
+        Notably, even if the data is inverted, the results are the same as the ones on the original \formnist{} in Figure~\ref{fig:pruned-weights}.
+    }
+    \label{fig:pruned-weights-invert}
+\end{figure}
+
+\begin{figure}[h]
+    \centering
+    \begin{subfigure}{.49\textwidth}
+        \centering
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.1_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.1_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.1_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.1_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.1_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.1_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.1_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.1_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.1_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.1_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.2_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.2_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.2_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.2_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.2_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.2_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.2_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.2_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.2_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.2_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.3_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.3_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.3_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.3_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.3_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.3_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.3_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.3_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.3_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.3_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.4_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.4_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.4_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.4_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.4_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.4_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.4_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.4_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.4_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.4_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.5_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.5_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.5_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.5_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.5_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.5_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.5_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.5_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.5_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.5_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.6_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.6_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.6_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.6_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.6_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.6_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.6_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.6_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.6_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.6_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.7_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.7_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.7_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.7_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.7_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.7_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.7_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.7_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.7_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.7_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.8_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.8_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.8_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.8_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.8_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.8_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.8_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.8_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.8_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.8_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.9_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.9_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.9_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.9_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.9_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.9_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.9_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.9_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.9_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist/lenet300_w1_bs-100_ts-0.9_class-9_seed-9}.eps} \\
+        \caption{\mnist{}}
+    \end{subfigure}
+    \begin{subfigure}{.49\textwidth}
+        \centering
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.1_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.1_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.1_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.1_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.1_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.1_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.1_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.1_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.1_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.1_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.2_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.2_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.2_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.2_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.2_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.2_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.2_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.2_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.2_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.2_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.3_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.3_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.3_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.3_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.3_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.3_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.3_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.3_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.3_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.3_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.4_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.4_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.4_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.4_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.4_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.4_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.4_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.4_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.4_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.4_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.5_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.5_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.5_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.5_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.5_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.5_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.5_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.5_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.5_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.5_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.6_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.6_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.6_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.6_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.6_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.6_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.6_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.6_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.6_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.6_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.7_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.7_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.7_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.7_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.7_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.7_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.7_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.7_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.7_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.7_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.8_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.8_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.8_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.8_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.8_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.8_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.8_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.8_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.8_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.8_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.9_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.9_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.9_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.9_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.9_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.9_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.9_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.9_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.9_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/mnist-invert/lenet300_w1_bs-100_ts-0.9_class-9_seed-9}.eps} \\
+        \caption{\mnist{-Invert}}
+    \end{subfigure}
+    \begin{subfigure}{.49\textwidth}
+        \centering
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.1_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.1_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.1_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.1_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.1_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.1_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.1_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.1_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.1_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.1_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.2_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.2_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.2_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.2_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.2_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.2_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.2_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.2_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.2_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.2_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.3_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.3_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.3_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.3_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.3_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.3_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.3_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.3_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.3_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.3_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.4_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.4_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.4_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.4_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.4_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.4_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.4_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.4_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.4_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.4_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.5_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.5_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.5_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.5_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.5_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.5_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.5_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.5_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.5_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.5_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.6_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.6_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.6_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.6_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.6_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.6_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.6_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.6_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.6_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.6_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.7_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.7_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.7_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.7_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.7_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.7_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.7_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.7_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.7_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.7_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.8_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.8_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.8_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.8_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.8_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.8_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.8_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.8_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.8_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.8_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.9_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.9_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.9_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.9_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.9_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.9_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.9_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.9_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.9_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist/lenet300_w1_bs-100_ts-0.9_class-9_seed-9}.eps} \\
+        \caption{\fmnist{}}
+    \end{subfigure}
+    \begin{subfigure}{.49\textwidth}
+        \centering
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.1_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.1_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.1_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.1_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.1_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.1_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.1_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.1_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.1_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.1_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.2_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.2_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.2_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.2_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.2_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.2_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.2_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.2_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.2_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.2_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.3_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.3_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.3_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.3_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.3_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.3_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.3_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.3_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.3_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.3_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.4_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.4_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.4_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.4_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.4_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.4_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.4_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.4_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.4_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.4_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.5_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.5_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.5_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.5_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.5_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.5_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.5_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.5_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.5_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.5_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.6_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.6_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.6_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.6_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.6_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.6_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.6_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.6_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.6_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.6_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.7_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.7_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.7_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.7_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.7_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.7_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.7_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.7_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.7_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.7_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.8_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.8_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.8_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.8_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.8_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.8_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.8_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.8_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.8_class-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.8_class-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.9_class-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.9_class-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.9_class-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.9_class-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.9_class-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.9_class-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.9_class-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.9_class-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.9_class-8_seed-9}.eps}
+        %\frame{\includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.9_class-8_seed-9}.eps}}
+        %\setlength{\fboxsep}{0pt}\fbox{\includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.9_class-8_seed-9}.eps}}
+        \includegraphics[width=5mm]{figure/{exp-vis-mask-wgrad/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.9_class-9_seed-9}.eps} \\
+        \caption{\fmnist{-Invert}}
+    \end{subfigure}
+    \caption{
+        Results of pruning with ${\partial L}/{\partial \rvw}$ on the original and inverted \formnist{}. 
+        Notably, compared to the case of using \snip{} (Figures~\ref{fig:pruned-weights} and~\ref{fig:pruned-weights-invert}), the results are different: 
+        Firstly, the results on the original \formnist{} (\ie, (a) and (c) above) are not the same as the ones using \snip{} (\ie, (a) and (b) in Figure~\ref{fig:pruned-weights}).
+        Moreover, the pruning patterns are inconsistent with different sparsity levels, either intra-class or inter-class.
+        Furthermore, using ${\partial L}/{\partial \rvw}$ results in different pruning patterns between the original and inverted data in some cases (\eg, the $2^{\text{nd}}$ columns between (c) and (d)).
+    }
+    \label{fig:pruned-weights-wgrad-original-invert}
+\end{figure}
+
+%\begin{figure}[h]
+%    \centering
+%    \begin{subfigure}{.49\textwidth}
+%        \centering
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.1_class-0_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.1_class-1_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.1_class-2_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.1_class-3_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.1_class-4_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.1_class-5_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.1_class-6_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.1_class-7_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.1_class-8_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.1_class-9_seed-9}.eps} \\
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.2_class-0_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.2_class-1_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.2_class-2_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.2_class-3_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.2_class-4_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.2_class-5_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.2_class-6_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.2_class-7_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.2_class-8_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.2_class-9_seed-9}.eps} \\
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.3_class-0_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.3_class-1_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.3_class-2_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.3_class-3_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.3_class-4_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.3_class-5_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.3_class-6_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.3_class-7_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.3_class-8_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.3_class-9_seed-9}.eps} \\
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.4_class-0_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.4_class-1_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.4_class-2_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.4_class-3_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.4_class-4_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.4_class-5_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.4_class-6_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.4_class-7_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.4_class-8_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.4_class-9_seed-9}.eps} \\
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.5_class-0_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.5_class-1_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.5_class-2_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.5_class-3_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.5_class-4_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.5_class-5_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.5_class-6_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.5_class-7_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.5_class-8_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.5_class-9_seed-9}.eps} \\
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.6_class-0_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.6_class-1_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.6_class-2_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.6_class-3_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.6_class-4_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.6_class-5_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.6_class-6_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.6_class-7_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.6_class-8_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.6_class-9_seed-9}.eps} \\
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.7_class-0_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.7_class-1_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.7_class-2_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.7_class-3_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.7_class-4_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.7_class-5_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.7_class-6_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.7_class-7_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.7_class-8_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.7_class-9_seed-9}.eps} \\
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.8_class-0_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.8_class-1_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.8_class-2_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.8_class-3_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.8_class-4_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.8_class-5_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.8_class-6_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.8_class-7_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.8_class-8_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.8_class-9_seed-9}.eps} \\
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.9_class-0_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.9_class-1_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.9_class-2_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.9_class-3_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.9_class-4_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.9_class-5_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.9_class-6_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.9_class-7_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.9_class-8_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist/lenet300_w1_bs-100_ts-0.9_class-9_seed-9}.eps} \\
+%        \caption{\mnist{}}
+%    \end{subfigure}
+%    %\begin{subfigure}{.49\textwidth}
+%    %    \centering
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.1_class-0_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.1_class-1_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.1_class-2_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.1_class-3_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.1_class-4_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.1_class-5_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.1_class-6_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.1_class-7_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.1_class-8_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.1_class-9_seed-9}.eps} \\
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.2_class-0_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.2_class-1_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.2_class-2_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.2_class-3_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.2_class-4_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.2_class-5_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.2_class-6_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.2_class-7_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.2_class-8_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.2_class-9_seed-9}.eps} \\
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.3_class-0_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.3_class-1_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.3_class-2_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.3_class-3_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.3_class-4_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.3_class-5_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.3_class-6_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.3_class-7_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.3_class-8_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.3_class-9_seed-9}.eps} \\
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.4_class-0_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.4_class-1_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.4_class-2_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.4_class-3_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.4_class-4_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.4_class-5_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.4_class-6_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.4_class-7_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.4_class-8_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.4_class-9_seed-9}.eps} \\
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.5_class-0_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.5_class-1_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.5_class-2_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.5_class-3_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.5_class-4_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.5_class-5_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.5_class-6_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.5_class-7_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.5_class-8_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.5_class-9_seed-9}.eps} \\
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.6_class-0_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.6_class-1_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.6_class-2_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.6_class-3_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.6_class-4_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.6_class-5_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.6_class-6_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.6_class-7_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.6_class-8_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.6_class-9_seed-9}.eps} \\
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.7_class-0_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.7_class-1_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.7_class-2_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.7_class-3_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.7_class-4_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.7_class-5_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.7_class-6_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.7_class-7_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.7_class-8_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.7_class-9_seed-9}.eps} \\
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.8_class-0_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.8_class-1_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.8_class-2_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.8_class-3_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.8_class-4_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.8_class-5_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.8_class-6_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.8_class-7_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.8_class-8_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.8_class-9_seed-9}.eps} \\
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.9_class-0_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.9_class-1_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.9_class-2_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.9_class-3_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.9_class-4_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.9_class-5_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.9_class-6_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.9_class-7_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.9_class-8_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/mnist-invert/lenet300_w1_bs-100_ts-0.9_class-9_seed-9}.eps} \\
+%    %    \caption{\mnist{-Invert}}
+%    %\end{subfigure}
+%    \begin{subfigure}{.49\textwidth}
+%        \centering
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.1_class-0_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.1_class-1_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.1_class-2_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.1_class-3_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.1_class-4_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.1_class-5_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.1_class-6_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.1_class-7_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.1_class-8_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.1_class-9_seed-9}.eps} \\
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.2_class-0_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.2_class-1_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.2_class-2_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.2_class-3_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.2_class-4_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.2_class-5_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.2_class-6_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.2_class-7_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.2_class-8_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.2_class-9_seed-9}.eps} \\
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.3_class-0_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.3_class-1_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.3_class-2_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.3_class-3_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.3_class-4_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.3_class-5_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.3_class-6_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.3_class-7_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.3_class-8_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.3_class-9_seed-9}.eps} \\
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.4_class-0_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.4_class-1_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.4_class-2_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.4_class-3_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.4_class-4_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.4_class-5_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.4_class-6_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.4_class-7_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.4_class-8_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.4_class-9_seed-9}.eps} \\
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.5_class-0_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.5_class-1_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.5_class-2_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.5_class-3_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.5_class-4_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.5_class-5_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.5_class-6_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.5_class-7_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.5_class-8_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.5_class-9_seed-9}.eps} \\
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.6_class-0_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.6_class-1_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.6_class-2_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.6_class-3_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.6_class-4_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.6_class-5_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.6_class-6_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.6_class-7_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.6_class-8_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.6_class-9_seed-9}.eps} \\
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.7_class-0_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.7_class-1_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.7_class-2_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.7_class-3_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.7_class-4_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.7_class-5_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.7_class-6_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.7_class-7_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.7_class-8_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.7_class-9_seed-9}.eps} \\
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.8_class-0_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.8_class-1_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.8_class-2_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.8_class-3_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.8_class-4_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.8_class-5_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.8_class-6_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.8_class-7_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.8_class-8_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.8_class-9_seed-9}.eps} \\
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.9_class-0_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.9_class-1_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.9_class-2_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.9_class-3_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.9_class-4_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.9_class-5_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.9_class-6_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.9_class-7_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.9_class-8_seed-9}.eps}
+%        \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist/lenet300_w1_bs-100_ts-0.9_class-9_seed-9}.eps} \\
+%        \caption{\fmnist{}}
+%    \end{subfigure}
+%    %\begin{subfigure}{.49\textwidth}
+%    %    \centering
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.1_class-0_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.1_class-1_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.1_class-2_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.1_class-3_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.1_class-4_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.1_class-5_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.1_class-6_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.1_class-7_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.1_class-8_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.1_class-9_seed-9}.eps} \\
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.2_class-0_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.2_class-1_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.2_class-2_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.2_class-3_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.2_class-4_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.2_class-5_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.2_class-6_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.2_class-7_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.2_class-8_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.2_class-9_seed-9}.eps} \\
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.3_class-0_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.3_class-1_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.3_class-2_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.3_class-3_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.3_class-4_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.3_class-5_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.3_class-6_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.3_class-7_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.3_class-8_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.3_class-9_seed-9}.eps} \\
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.4_class-0_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.4_class-1_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.4_class-2_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.4_class-3_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.4_class-4_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.4_class-5_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.4_class-6_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.4_class-7_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.4_class-8_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.4_class-9_seed-9}.eps} \\
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.5_class-0_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.5_class-1_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.5_class-2_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.5_class-3_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.5_class-4_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.5_class-5_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.5_class-6_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.5_class-7_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.5_class-8_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.5_class-9_seed-9}.eps} \\
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.6_class-0_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.6_class-1_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.6_class-2_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.6_class-3_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.6_class-4_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.6_class-5_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.6_class-6_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.6_class-7_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.6_class-8_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.6_class-9_seed-9}.eps} \\
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.7_class-0_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.7_class-1_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.7_class-2_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.7_class-3_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.7_class-4_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.7_class-5_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.7_class-6_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.7_class-7_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.7_class-8_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.7_class-9_seed-9}.eps} \\
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.8_class-0_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.8_class-1_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.8_class-2_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.8_class-3_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.8_class-4_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.8_class-5_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.8_class-6_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.8_class-7_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.8_class-8_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.8_class-9_seed-9}.eps} \\
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.9_class-0_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.9_class-1_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.9_class-2_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.9_class-3_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.9_class-4_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.9_class-5_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.9_class-6_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.9_class-7_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.9_class-8_seed-9}.eps}
+%    %    \includegraphics[width=5mm]{figure/{exp-vis-mask-magnitude/fashion-mnist-invert/lenet300_w1_bs-100_ts-0.9_class-9_seed-9}.eps} \\
+%    %    \caption{\fmnist{-Invert}}
+%    %\end{subfigure}
+%    \caption{
+%       The original and inverted (Fashion-)MNIST results using the magnitude of (initial) weights.
+%    }
+%    \label{fig:pruned-weights-magnitude-original-invert}
+%\end{figure}
+
+
+
+\newpage
+\section{Fitting random labels: varying sparsity levels}
+\label{sec:fit-rand-label-kappa}
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.6\textwidth]{figure/lenet5_fit-random-labels-kappa.eps}
+    \caption{
+        The effect of varying sparsity levels ($\bkappa$).
+        The lower $\bkappa$ becomes, the lower training loss is recorded, meaning that a network with more parameters is more vulnerable to fitting random labels.
+        Recall, however, that all pruned models are able to learn to perform the classification task without losing much accuracy (see Figure~\ref{fig:varying-ts}).
+        This potentially indicates that the pruned network does not have sufficient capacity to fit the random labels, but it is capable of performing the classification.
+    }
+    \label{fig:fit-rand-labels-kappa}
+\end{figure}
+
+
+
+\section{Tiny-imagenet}
+\begin{table}[h]
+    \centering
+    \footnotesize
+    \begin{tabular}{c@{\hspace{.7\tabcolsep}}c l c r@{\hspace{.7\tabcolsep}}c@{\hspace{.7\tabcolsep}}r r@{\hspace{.7\tabcolsep}}c@{\hspace{.7\tabcolsep}}rc}
+        \toprule
+        Architecture && \multicolumn{1}{c}{Model} & Sparsity (\%) & \multicolumn{3}{c}{\# Parameters} & \multicolumn{3}{c}{Error (\%)} & $\Delta$ \\
+        \midrule
+        \multirow{5}{*}{Convolutional}
+         && \valexnet{-s} & $90.0$ & $5.1$m  & $\rightarrow$ & $507$k & $62.52$ & $\rightarrow$ & $65.27$ & $+2.75$ \\
+         && \valexnet{-b} & $90.0$ & $8.5$m  & $\rightarrow$ & $849$k & $62.76$ & $\rightarrow$ & $65.54$ & $+2.78$ \\
+         && \vvgg{-C}     & $95.0$ & $10.5$m & $\rightarrow$ & $526$k & $56.49$ & $\rightarrow$ & $57.48$ & $+0.99$ \\
+         && \vvgg{-D}     & $95.0$ & $15.2$m & $\rightarrow$ & $762$k & $56.85$ & $\rightarrow$ & $57.00$ & $+0.15$ \\
+         && \vvgg{-like}  & $95.0$ & $15.0$m & $\rightarrow$ & $749$k & $54.86$ & $\rightarrow$ & $55.73$ & $+0.87$ \\
+        %\midrule
+        %\multirow{3}{*}{Residual}
+        %&& \vwrn{-16-8}  & $90.0$ & $10.0$m & $\rightarrow$ & $0$k & $40.42$ & $\rightarrow$ & $44.20$ & $+3.78$ \\
+        %&& \vwrn{-16-10} & $90.0$ & $17.1$m & $\rightarrow$ & $0$k & $39.76$ & $\rightarrow$ & $42.59$ & $+2.83$ \\
+        %&& \vwrn{-22-8}  & $90.0$ & $17.2$m & $\rightarrow$ & $0$k & $39.90$ & $\rightarrow$ & $42.81$ & $+2.91$ \\
+        \bottomrule
+    \end{tabular}
+    \caption[]{
+        Pruning results of \snip{} on \timagenet{} (before $\rightarrow$ after).
+        \timagenet{}\footnotemark~is a subset of the full \imagenet{}: there are $200$ classes in total, each class has $500$ and $50$ images for training and validation respectively, and each image has the spatial resolution of $64 \times 64$.
+        Compared to \cifar{-10}, the resolution is doubled, and to deal with this, the stride of the first convolution in all architectures is doubled, following the standard practice for this dataset.
+        In general, the \timagenet{} classification task is considered much more complex than \mnist{} or \cifar{-10}.
+        Even on \timagenet{}, however, \snip{} is still able to prune a large amount of parameters with minimal loss in performance.
+        \salexnet{} models lose more accuracies than \svgg{}s, which may be attributed to the fact that the first convolution stride for \salexnet{} is set to be $4$ (by its design of no pooling) which is too large and could lead to high loss of information when pruned.
+    }
+    \label{tab:compare-various-arch-tiny-imagenet}
+\end{table}
+\footnotetext{https://tiny-imagenet.herokuapp.com/}
+
+
+
+\newpage
+\section{Architecture details}
+
+\begin{table}[h]
+    \centering
+    \footnotesize
+
+    \begin{tabular}{c c c c c c}
+        \toprule
+        Module & Weight & Stride & Bias & BatchNorm & ReLU \\
+        \midrule
+        Conv   & $[11, 11, 3, 96]$                & $[2, 2]$ & $[96]$            & \checkmark & \checkmark \\
+        Conv   & $[5, 5, 96, 256]$                & $[2, 2]$ & $[256]$           & \checkmark & \checkmark \\
+        Conv   & $[3, 3, 256, 384]$               & $[2, 2]$ & $[384]$           & \checkmark & \checkmark \\
+        Conv   & $[3, 3, 384, 384]$               & $[2, 2]$ & $[384]$           & \checkmark & \checkmark \\
+        Conv   & $[3, 3, 384, 256]$               & $[2, 2]$ & $[256]$           & \checkmark & \checkmark \\
+        Linear & $[256, 1024 \times k]$           & --       & $[1024 \times k]$ & \checkmark & \checkmark \\
+        Linear & $[1024 \times k, 1024 \times k]$ & --       & $[1024 \times k]$ & \checkmark & \checkmark \\
+        Linear & $[1024 \times k, c]$             & --       & $[c]$             & \xmark     & \xmark \\
+        \bottomrule
+    \end{tabular}
+    \caption[]{
+        \salexnet{-s} ($k=1$) and \salexnet{-b} ($k=2$).
+        In the last layer, $c$ denotes the number of possible classes: $c=10$ for \cifar{-10} and $c=200$ for \timagenet{}.
+        The strides in the first convolution layer for \timagenet{} are set $[4, 4]$ instead of $[2, 2]$ to deal with the increase in the image resolution.
+    }
+    \label{tab:alexnet-detail}
+\end{table}
+
+\begin{table}[h]
+    \centering
+    \footnotesize
+
+    \begin{tabular}{c c c c c c}
+        \toprule
+        Module & Weight & Stride & Bias & BatchNorm & ReLU \\
+        \midrule
+        Conv   & $[3, 3, 3, 64]$            & $[1, 1]$ & $[64]$  & \checkmark & \checkmark \\
+        Conv   & $[3, 3, 64, 64]$           & $[1, 1]$ & $[64]$  & \checkmark & \checkmark \\
+        Pool   & --                         & $[2, 2]$ & --      & \xmark     & \xmark \\
+        Conv   & $[3, 3, 64, 128]$          & $[1, 1]$ & $[128]$ & \checkmark & \checkmark \\
+        Conv   & $[3, 3, 128, 128]$         & $[1, 1]$ & $[128]$ & \checkmark & \checkmark \\
+        Pool   & --                         & $[2, 2]$ & --      & \xmark     & \xmark \\
+        Conv   & $[3, 3, 128, 256]$         & $[1, 1]$ & $[256]$ & \checkmark & \checkmark \\
+        Conv   & $[3, 3, 256, 256]$         & $[1, 1]$ & $[256]$ & \checkmark & \checkmark \\
+        Conv   & $[1/3/3, 1/3/3, 256, 256]$ & $[1, 1]$ & $[256]$ & \checkmark & \checkmark \\
+        Pool   & --                         & $[2, 2]$ & --      & \xmark     & \xmark \\
+        Conv   & $[3, 3, 256, 512]$         & $[1, 1]$ & $[512]$ & \checkmark & \checkmark \\
+        Conv   & $[3, 3, 512, 512]$         & $[1, 1]$ & $[512]$ & \checkmark & \checkmark \\
+        Conv   & $[1/3/3, 1/3/3, 512, 512]$ & $[1, 1]$ & $[512]$ & \checkmark & \checkmark \\
+        Pool   & --                         & $[2, 2]$ & --      & \xmark     & \xmark \\
+        Conv   & $[3, 3, 512, 512]$         & $[1, 1]$ & $[512]$ & \checkmark & \checkmark \\
+        Conv   & $[3, 3, 512, 512]$         & $[1, 1]$ & $[512]$ & \checkmark & \checkmark \\
+        Conv   & $[1/3/3, 1/3/3, 512, 512]$ & $[1, 1]$ & $[512]$ & \checkmark & \checkmark \\
+        Pool   & --                         & $[2, 2]$ & --      & \xmark     & \xmark \\
+        Linear & $[512, 512]$               & --       & $[512]$ & \checkmark & \checkmark \\
+        Linear & $[512, 512]$               & --       & $[512]$ & \checkmark & \checkmark \\
+        Linear & $[512, c]$                 & --       & $[c]$   & \xmark     & \xmark \\
+        \bottomrule
+    \end{tabular}
+    \caption[]{
+        \svgg{-C/D/like}.
+        In the last layer, $c$ denotes the number of possible classes: $c=10$ for \cifar{-10} and $c=200$ for \timagenet{}.
+        The strides in the first convolution layer for \timagenet{} are set $[2, 2]$ instead of $[1, 1]$ to deal with the increase in the image resolution.
+        The second Linear layer is only used in \svgg{-C/D}.
+    }
+    \label{tab:vgg-detail}
+\end{table}

@@ -1,0 +1,28 @@
+\section{Conclusions}
+\label{sec:conclusion}
+
+This paper presents a new model architecture DeBERTa (Decoding-enhanced BERT with disentangled attention) that improves the BERT and RoBERTa models using two novel techniques. 
+The first is the disentangled attention mechanism, where
+each word is represented using two vectors that encode its content and position, respectively, and the attention weights among words are computed using disentangled matrices on their contents and relative positions, respectively. 
+The second is an enhanced mask decoder which incorporates absolute positions in the decoding layer to predict the masked tokens in model pre-training. 
+In addition, a new virtual adversarial training method is used for fine-tuning to improve model's generalization on downstream tasks.
+
+We show through a comprehensive empirical study that these techniques significantly improve the efficiency of model pre-training and the performance of downstream tasks. 
+The DeBERTa model with 1.5 billion parameters surpasses the human
+performance on the SuperGLUE benchmark for the first time
+in terms of macro-average score.
+
+DeBERTa surpassing human performance on SuperGLUE marks an important milestone toward general AI. Despite its promising results on SuperGLUE, the model is by no means reaching the human-level intelligence of NLU. Humans are extremely good at leveraging the knowledge learned from different tasks to solve a new task with no or little task-specific demonstration. This is referred to as \emph{compositional generalization}, the ability to generalize to novel compositions (new tasks) of familiar constituents (subtasks or basic problem-solving skills). Moving forward, it is worth exploring how to make DeBERTa incorporate compositional structures in a more explicit manner, which could allow combining neural and symbolic computation of natural language similar to what humans do.
+
+
+%This paper presents a new PLM, DeBERTa, for natural language understanding. DeBERTa improves existing PLMs using two noval techniques.
+
+%First is a disentangled attention mechanism that represents each word using two vectors that encode its content and position, respectively, 
+%computes attention weights among words using disentangled matrices on their 
+%to thoroughly capture both contents and relative positions. As an extension to the disentangled attention, DeBERTa incorporates the absolute positions in the decoding layer as a complement to the relative positions. Compare to the strong RoBERTa and XLNet models, the DeBERTa model shows both better pre-training efficiency and downstream NLU and NLG task accuracy consistently.  
+%Furthermore, we scale up DeBERTa with 1.5B parameters and compare it with both the largest T5 model and human baseline in SuperGLUE. 
+%For future work, we will explore alternative approaches to combine both relative and absolute position information in pre-training. 
+%The second is an enhanced mask decoder that replaces the output softmax layer to predict the masked tokens for MLM pre-training.
+%Using both of these techniques, the new pre-trained language model DeBERTa outperforms RoBERTa and BERT on a wide range of downstream NLP tasks.
+
+%This work demonstrates the potential of exploring disentangled word representations for self-attention and the use of task-specific decoders for improving language model pre-training.

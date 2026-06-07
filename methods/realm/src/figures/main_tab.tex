@@ -1,0 +1,34 @@
+\begin{table*}[t!]
+\caption{Test results on \openqa benchmarks. The number of train/test examples are shown in paretheses below each benchmark. Predictions are evaluated with exact match against any reference answer. Sparse retrieval denotes methods that use sparse features such as TF-IDF and BM25. Our model, \thename, outperforms all existing systems. }
+\vspace{.1in}
+\centering
+\footnotesize
+\begin{tabular}{@{}lllcccr@{}}
+\toprule
+\textbf{Name} & \textbf{Architectures}
+& \makecell[l]{\textbf{Pre-training}}
+& \makecell{\textbf{NQ}\\(79k/4k)} & \makecell{\textbf{WQ}\\(3k/2k)} & \makecell{\textbf{CT}\\(1k /1k)} & \textbf{\# params}\\
+\midrule
+ BERT-Baseline~\cite{orqa} & Sparse Retr.$+$Transformer & BERT& 26.5 & 17.7 & 21.3 & 110m\\
+\cmidrule{1-7}
+T5 (base)~\cite{t5_openqa} & Transformer Seq2Seq & T5 (Multitask) & 27.0 & 29.1  & -  & 223m\\
+T5 (large)~\cite{t5_openqa} & Transformer Seq2Seq & T5 (Multitask)& 29.8 & 32.2  & -  & 738m\\
+T5 (11b)~\cite{t5_openqa} & Transformer Seq2Seq & T5 (Multitask) & 34.5 & 37.4 & -  & 11318m\\
+\cmidrule{1-7}
+DrQA~\cite{drqa} & Sparse Retr.$+$DocReader & N/A& - & 20.7 & 25.7   & 34m\\
+HardEM~\cite{openqa_hardem} &Sparse Retr.$+$Transformer & BERT& 28.1 & - & - & 110m
+\\
+GraphRetriever~\cite{GraphRetriever} & GraphRetriever$+$Transformer& BERT & 31.8 & 31.6 & - & 110m
+\\
+PathRetriever~\cite{rrp_salesforce} & PathRetriever$+$Transformer&MLM&  32.6 & - & -  & 110m\\
+ORQA~\cite{orqa} & Dense Retr.$+$Transformer & ICT$+$BERT & 33.3 & 36.4 & 30.1  & 330m\\
+\cmidrule{1-7}
+Ours (\target= Wikipedia, \unlabeled= Wikipedia) & Dense Retr.$+$Transformer & \thename & 39.2 & 40.2 & \textbf{46.8} & 330m\\
+Ours (\target= CC-News, \unlabeled= Wikipedia) & Dense Retr.$+$Transformer & \thename & \textbf{40.4} & \textbf{40.7} & 42.9 & 330m\\
+\bottomrule
+\vspace{.02in}
+\end{tabular}
+\label{tab:main_results}
+\end{table*}
+
+

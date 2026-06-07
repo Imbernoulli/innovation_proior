@@ -1,0 +1,19 @@
+\begin{table*}[t!]
+\caption{An example where REALM utilizes retrieved documents to better predict masked tokens. It assigns much higher probability (0.129) to the correct term, \nl{Fermat}, compared to BERT. (Note that the blank corresponds to 3 BERT wordpieces.)}
+\vspace{.1in}
+\footnotesize \centering
+\begin{tabular}{@{}rl@{\;\;}l@{\;\;}ll@{}} \toprule
+$x$:
+& \multicolumn{4}{l}{{An equilateral triangle is easily constructed using a straightedge and compass, because 3 is a \blank~prime.}}
+\\
+\midrule
+(a)~~~~~BERT & $p(y=\text{\nl{Fermat}}\mid x)$ &$=$& $1.1\times10^{-14}$ & (No retrieval.) \\
+\midrule
+(b)~\thename& $p(y=\text{\nl{Fermat}}\mid x, z)$ &$=$& $1.0$
+& (Conditional probability with document $z=$``257 is~\dots~a Fermat prime. \\
+& & & & Thus a regular polygon with 257 sides is constructible with compass \dots'') \\
+(c)~\thename& $p(y=\text{\nl{Fermat}}\mid x)$ &$=$& $0.129$ & (Marginal probability, marginalizing over top 8 retrieved documents.) \\ 
+\bottomrule
+\end{tabular}
+\label{tab:retrieval_examples}
+\end{table*}

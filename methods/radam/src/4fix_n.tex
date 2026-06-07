@@ -1,0 +1,319 @@
+% !TEX encoding = UTF-8
+% !TEX Root = 0_main.tex
+\vspace{-0.1cm}
+\section{Rectified Adaptive Learning Rate}
+\vspace{-0.1cm}
+\label{sec:fix}
+
+In the previous section, Equation~\ref{eqn:analytic-sqrt-var} gives the analytic form of $\Var[\psi(.)]$, where $\rho$ is the degree of freedoms. 
+Here, we first give an estimation of $\rho$ based on $t$ to conduct a quantified analysis for $\Var[\psi(g_1, \cdots, g_t)]$, then we describe the design of the learning rate rectification, and  compare it to the heuristic warmup strategies.  
+
+% \subsection{Estimation of $\rho$ and Variance}
+\vspace{-0.1cm}
+\subsection{Estimation of $\rho$}
+\vspace{-0.1cm}
+
+The exponential moving average (EMA) can be interpreted as an approximation to the simple moving average (SMA) in real application~\citep{nau2014forecasting}, \ie, 
+\begin{align}
+\vspace{-0.2in}
+p\left(\frac{(1 - \beta_2)\sum_{i = 1}^t \beta_2^{t-i}g_i^2}{1-\beta_2^t} \right) \approx p\left(\frac{\sum_{i = 1}^{f(t, \beta_2)} g_{t+1-i}^2}{f(t, \beta_2)}\right).
+\label{eqn:sma_ema}
+\vspace{-0.2in}
+\end{align}
+where $f(t, \beta_2)$ is the length of the SMA which allows the SMA to have the same ``center of mass'' with the EMA.
+In other words, $f(t, \beta_2)$ satisfies:
+\begin{align}
+\vspace{-0.7in}
+% {(1 - \beta_2)}/{(1-\beta_2^t)} \sum_{i = 1}^t i \cdot \beta_2^{t-i} = 1 /{f(t, \beta_2)}\cdot\sum_{i = 1}^{f(t, \beta_2)} (t+1-i).
+\frac{(1 - \beta_2)\sum_{i = 1}^t \beta_2^{t-i} \cdot i }{1-\beta_2^t} = \frac{\sum_{i = 1}^{f(t, \beta_2)} (t+1-i)}{f(t, \beta_2)}.
+\label{eqn:sma_eql_ema}
+\vspace{-0.7in}
+\end{align}
+% By solving the above equation, we have: 
+By solving Equation~\ref{eqn:sma_eql_ema}, we have:
+$f(t, \beta_2) = \frac{2}{1 - \beta_2} - 1 - \frac{2 t \beta_2^t}{1 - \beta_2^t}$.
+In the previous section, we assume: $\frac{1-\beta_2^t}{(1 - \beta_2)\sum_{i = 1}^t \beta_2^{t-i}g_i^2} \sim \sics(\rho, \frac{1}{\sigma^2})$. 
+Here, since $g_i \sim \gN(0, \sigma^2)$, we have $\frac{\sum_{i = 1}^{f(t, \beta_2)} g_{t+1-i}^2}{f(t, \beta_2)} \sim  \sics(f(t, \beta_2), \frac{1}{\sigma^2})$. 
+Thus, Equation~\ref{eqn:sma_ema} views $\sics(f(t, \beta_2), \frac{1}{\sigma^2})$ as an approximation to $\sics(\rho, \frac{1}{\sigma^2})$.
+Therefore, we treat $f(t, \beta_2)$ as an estimation of $\rho$. 
+For ease of notation, we mark $f(t, \beta_2)$ as $\rho_t$. Also, we refer $\frac{2}{1 - \beta_2} - 1$ as $\rho_\infty$ (maximum length of the approximated SMA), due to the inequality $f(t, \beta_2) \leq \lim_{t \to \infty} f(t, \beta_2) = \frac{2}{1 - \beta_2} - 1$.
+
+
+\vspace{-0.2cm}
+\begin{algorithm}[t]
+\DontPrintSemicolon
+\KwIn{$\{\alpha_t\}_{t = 1}^T$: step size, 
+$\{\beta_1, \beta_2\}$: decay rate to calculate moving average and moving 2nd moment,
+$\theta_0$: initial parameter, $f_t(\theta)$: stochastic objective function.}
+\KwOut{$\theta_t$: resulting parameters}
+$m_0, v_0 \gets 0, 0$ (Initialize moving 1st and 2nd moment)\;
+$\rho_\infty \gets 2/(1 - \beta_2) - 1$ (Compute the maximum length of the approximated SMA)\;
+\While{$t = \{1, \cdots, T\}$}{
+    $g_t \gets \nabla_{\theta} f_t(\theta_{t - 1})$ (Calculate gradients w.r.t. stochastic objective at timestep t)\;
+    $v_t \gets \beta_2 v_{t - 1} + (1 - \beta_2) g_t^2$ (Update exponential moving 2nd moment)\;
+    $m_t \gets \beta_1 m_{t - 1} + (1 - \beta_1) g_t$ (Update exponential moving 1st moment)\;
+    $\widehat{m_t} \gets m_t / (1 - \beta_1^t)$ (Compute bias-corrected moving average)\;
+    $\rho_t \gets \rho_\infty - 2t\beta_2^t/(1 - \beta_2^t)$(Compute the length of the approximated SMA)\;
+    \uIf{the variance is tractable, \ie, $\rho_t > 4$}{
+        $l_t \gets \sqrt{(1 - \beta_2^{t}) / v_t}$ (Compute adaptive learning rate)\;
+        $r_t \gets \sqrt{\frac{(\rho_t - 4)(\rho_t - 2)\rho_\infty}{(\rho_\infty - 4)(\rho_\infty - 2)\rho_t}}$ (Compute the variance rectification term)\;
+        $\theta_t \gets \theta_{t-1} - \alpha_t r_t \widehat{m_t} l_t$ (Update parameters with adaptive momentum)\;
+    }
+    \Else{
+        $\theta_t \gets \theta_{t-1} - \alpha_t \widehat{m_t}$ (Update parameters with un-adapted momentum)\;
+    }
+}
+\Return{$\theta_T$}
+\caption{Rectified Adam. All operations are element-wise. }
+% \vspace{-0.3cm}
+\label{algo:cadam}
+\end{algorithm}
+
+\subsection{Variance Estimation and Rectification}
+\vspace{-0.1cm}
+Based on previous estimations, we have $\Var[\psi(.)] = \tau^2 (\frac{\rho_t}{\rho_t-2} - \frac{\rho_t \,2^{2\rho_t - 5}}{\pi}\gB(\frac{\rho_t-1}{2}, \frac{\rho_t-1}{2})^2)$.
+The value of this function in the early stage is significantly larger than the late stage (as analyzed later, it decays roughly at the speed of $O(\frac{1}{\rho_t
+})$). 
+For example, 
+% as in Figure~\ref{fig:var_approx}, 
+the variance at $\rho_t = 5$ is over $100$ times larger than the variance at $\rho_t = 500$.
+% \XD{Introducing Figure 7 requires explanation. How about just say we will analyze it in section 5.3.}
+Additionally, based on Theorem~\ref{theorem: variance_mono}, we know $\min_{\rho_t} \Var[\psi(.)] = \Var[\psi(.)]|_{\rho_t = \rho_\infty}$ and mark this minimal value as $C_{\mbox{var}}$.
+In order to ensure that the adaptive learning rate ($\psi(.)$) has consistent variance, we rectify the variance at the $t$-th timestamp as below,
+% (with $\rho_t$), \ie,
+\begin{align*}
+% \vspace{-0.1in}
+\Var[r_t \,\psi(g_1, \cdots, g_t)] = C_{\mbox{var}}
+\quad
+\mbox{where}
+\quad
+r_t = \sqrt{{C_{\mbox{var}}}/{\Var[\psi(g_1, \cdots, g_t)]}}.
+% \label{eqn:analytic-rectification}
+% \vspace{-0.1in}
+\end{align*}
+% \= \sqrt{\frac{(\rho_t - 4)(\rho_t - 2)\rho_\infty}{(\rho_\infty - 4)(\rho_\infty - 2)\rho_t}}.
+Although we have the analytic form of $\Var[\psi(.)]$ (\ie, Equation~\ref{eqn:analytic-sqrt-var}), it is not numerically stable. 
+Therefore, we use the first-order approximation to calculate the rectification term.
+Specifically, by approximating $\sqrt{\psi^2(.)}$ to the first order~\citep{wolter2007taylor}, 
+% Following~\citet{wolter2007taylor}, we have:
+\begin{align*}
+% \vspace{-0.2in}
+\sqrt{\psi^2(.)} \approx \sqrt{\E[\psi^2(.)]} + \frac{1}{2\sqrt{\E[\psi^2(.)]}}(\psi^2(.) - \E[\psi^2(.)])
+\quad\mbox{and}\quad
+\Var[\psi(.)] \approx \frac{\Var[\psi^2(.)]}{4\E[\psi^2(.)]}.
+% \label{eqn:sqrt-var}
+% \vspace{-0.05in}
+\end{align*}
+Since $\psi^2(.) \sim \sics(\rho_t, \frac{1}{\sigma^2})$, we have:
+% \vspace{-0.05in}
+\begin{align}
+% \vspace{-0.3in}
+\Var[\psi(.)] \approx {\rho_t}/[{2(\rho_t - 2) (\rho_t - 4) \sigma^2}].
+\label{eqn:variance_appro}
+% \vspace{-0.1in}
+\end{align}
+% $
+% \Var[\psi(.)] \approx {\rho_t}/[{2(\rho_t - 2) (\rho_t - 4) \sigma^2}].
+% $
+In Section~\ref{subsec:approx}, we conduct simulation experiments to examine Equation~\ref{eqn:variance_appro} and find that it is a reliable approximation. 
+Based on Equation~\ref{eqn:variance_appro}, we know that $\Var[\sqrt{\psi(.)}]$ decreases approximately at the speed of $O(\frac{1}{\rho_t})$.
+With this approximation, we can calculate the rectification term as:
+% \vspace{-0.05in}
+\begin{align*}
+% \vspace{-0.3in}
+r_t = \sqrt{\frac{(\rho_t - 4)(\rho_t - 2)\rho_\infty}{(\rho_\infty - 4)(\rho_\infty - 2)\rho_t}}.
+% \vspace{-0.3in}
+\end{align*}
+% \vspace{-0.2in}
+Applying our rectification term to Adam, we come up with a new variant of Adam, Rectified Adam (RAdam), as summarized in Algorithm~\ref{algo:cadam}. 
+Specifically, when the length of the approximated SMA is less or equal than 4, the variance of the adaptive learning rate is intractable and the adaptive learning rate is inactivated. 
+Otherwise, we calculate the variance rectification term and update parameters with the adaptive learning rate.
+It is worth mentioning that, if $\beta_2 \leq 0.6$, we have $\rho_\infty \leq 4$ and RAdam is degenerated to SGD with momentum. 
+
+\begin{figure}[t]
+\begin{minipage}{0.69\textwidth}
+% \vspace{-0.5cm}
+\includegraphics[width=\textwidth]{fig/one_billion.pdf}
+\vspace{-0.7cm}
+ \captionof{figure}{Language modeling (LSTMs) on the One Billion Word.}
+    \label{fig:1bw}
+% \vspace{-0.4cm}
+\end{minipage}
+\begin{minipage}{0.3\textwidth}
+    \centering
+    % \begin{tabular}{c|c|c}
+    %      Method &  Cifar10 & ImageNet\\
+    %      \hline
+    %      SGD   & 91.51 & 69.86 \\
+    %      Adam   & 90.54 & 66.54 \\
+    %      RAdam   & 91.38 & 67.62 \\
+    % \end{tabular}
+    \captionof{table}{Image Classification}
+    \vspace{-0.2cm}
+    \begin{tabular}{c|c|c}
+        %  Method &  Cifar10 & ImageNet\\
+        %  \hline
+        & Method & Acc.\\
+        \hline
+        & & \\[-7pt]
+      \parbox[t]{2mm}{\multirow{3}{*}{\rotatebox[origin=c]{90}{\small \;CIFAR10}}}
+      & SGD & 91.51 \\[2pt]
+        & Adam   & 90.54 \\[2pt]
+        & RAdam   & 91.38 \\[2pt]
+        \hline
+        & & \\[-7pt]
+        \parbox[t]{2mm}{\multirow{3}{*}{\rotatebox[origin=c]{90}{\small \;ImageNet}}}
+        & SGD & 69.86 \\[2pt]
+        & Adam & 66.54 \\[2pt]
+        & RAdam & 67.62 
+    \end{tabular}
+% \end{table}
+\end{minipage}
+\end{figure}
+\vspace{-0.4cm}
+\begin{figure}[t]
+\centering
+\vspace{-0.2cm}
+\includegraphics[width=\textwidth]{fig/cifa_imagenet.pdf}
+\vspace{-0.6cm}
+\caption{Training of ResNet-18 on the ImageNet and ResNet-20 on the CIFAR10 dataset.}
+\vspace{-0.2cm}
+    \label{fig:cifa10}
+\end{figure}
+
+\subsection{In Comparison with Warmup and Other Stabilization Techniques}
+Different from the analysis in this paper,  warmup is originally proposed to handle training with very large batches for SGD~\citep{goyal2017accurate,gotmare2018a,bernstein2018signsgd,Xiao2017DSCOVRRP}.
+We notice that $r_t$ has a similar form to the heuristic linear warmup, which can be viewed as setting the rectification term as $\frac{min(t, T_w)}{T_w}$. 
+It verifies our intuition that warmup works as a variance reduction technique. 
+% Comparing these two strategies, 
+RAdam deactivates the adaptive learning rate when its variance is divergent, thus avoiding undesired instability in the first few updates. 
+Besides, our method does not require an additional hyperparameter (\ie, $T_w$) 
+% to control the variance reduction 
+and can automatically adapt to different moving average rules. 
+
+% In this paper, we identify and fix an underlying issue of adaptive optimization methods instead of neural architectures.
+% In this paper
+Here, we identify and address an underlying issue of adaptive optimization methods independent of (neural) model architectures.
+Thus, the proposed rectification term is orthogonal to other training stabilization techniques such as  gradient clipping~\citep{bengio2013advances}, smoothing the adaptive learning rate (\ie, increasing $\epsilon$, applying geometric mean filter~\citep{chen2018closing}, or adding range constraints~\citep{luo2019adaptive}), initialization~\citep{balduzzi2017shattered,zhang2019fixup} and normalization~\citep{ba2016layer,ioffe2015batch}. 
+% Indeed, these techniques can be integrated with our proposed variance rectification. 
+Indeed, these techniques can be combined with the proposed variance rectification method.
+%Specifically, since warmup is originally proposed to handle \emph{gradient variance} for SGD~\citep{goyal2017accurate,gotmare2018a,bernstein2018signsgd,xiao2019dscovr}, RAdam can also be integrated with the warmup heuristic to handle some extreme cases such as training with very large batches.
+
+
+% To better understand the descent speed of the variance, we further derive a concise and reliable approximation. 
+% Specifically, approximating $\sqrt{\psi^2(.)}$ to the first order~\citep{wolter2007taylor}, we have: 
+% \begin{equation*}
+% \sqrt{\psi^2(.)} \approx \sqrt{\E[\psi^2(.)]} + \frac{1}{2\sqrt{\E[\psi^2(.)]}}(\psi^2(.) - \E[\psi^2(.)])
+% \quad\mbox{and}\quad
+% \Var[\psi(.)] \approx \frac{\Var[\psi^2(.)]}{4\E[\psi^2(.)]}
+% % \label{eqn:sqrt-var}
+% \end{equation*}
+% Since $\psi^2(.) \sim \sics(\rho_t, \frac{1}{\sigma^2})$, we have:
+% \begin{equation}
+% \Var[\psi(.)] \approx \frac{\rho_t}{2(\rho_t - 2) (\rho_t - 4) \sigma^2}.
+% \label{eqn:variance_appro}
+% \end{equation}
+% In Section~\ref{subsec:approx}, we conduct simulation experiments to examine Equation~\ref{eqn:variance_appro} and find it is a reliable approximation. 
+
+% \section{Rectified Adaptive Learning Rate}
+
+
+% In the previous section, Equation~\ref{eqn:analytic-sqrt-var} gives the analytic form of $\Var[\psi]$, where $\rho$ is the degree of freedoms. 
+% Here, we first give an estimation of $\rho$ and a quantified analysis of $\Var[\psi(.)]$; then we proceed to the design of the learning rate rectification and discussions on warmup strategies.  
+
+
+% \subsection{Variance Estimation}
+
+% As the exponential moving average (EMA) is widely used in eccomincs, it is usually interpretted as an approximation to the simple moving average (SMA)~\citep{nau2014forecasting}, \ie, 
+% \begin{equation}
+% \frac{(1 - \beta_2)\sum_{i = 1}^t \beta_2^{t-i}g_i^2}{1-\beta_2^t} \approx \frac{\sum_{i = 1}^{f(t, \beta_2)} g_{t+1-i}^2}{f(t, \beta_2)}.
+% \label{eqn:sma_ema}
+% \end{equation}
+% where $f(t, \beta_2)$ is the length of the SMA which allows the SMA has the same ``center of mass'' with the EMA.
+% In other words, $f(t, \beta_2)$ satisfies:
+% $$
+% \frac{(1 - \beta_2)\sum_{i = 1}^t \beta_2^{t-i} (t+1-i)}{1-\beta_2^t} = \frac{\sum_{i = 1}^{f(t, \beta_2)} (t+1-i)}{f(t, \beta_2)}.
+% $$
+% % Simplifies the above equation, we have:
+% % $$
+% % \frac{1}{1-\beta_2} - \frac{t  \beta_2^t}{1 - \beta_2^t}= \frac{f(t, \beta_2)+1}{2}
+% % \quad\mbox{and}\quad 
+% % f(t, \beta_2) = \frac{2}{1 - \beta_2} - 1 - \frac{2 t \beta_2^t}{1 - \beta_2^t}.
+% % $$
+% From this equation, we have: $f(t, \beta_2) = \frac{2}{1 - \beta_2} - 1 - \frac{2 t \beta_2^t}{1 - \beta_2^t}$.
+% Since $g_i \sim \gN(0, \sigma^2)$, $\frac{\sum_{i = 1}^{f(t, \beta_2)} g_{t+1-i}^2}{f(t, \beta_2)} \sim  \sics(f(t, \beta_2), \frac{1}{\sigma^2})$. 
+% % Since $\frac{\sum_{i = 1}^{f(t, \beta_2)} g_{t+1-i}^2}{f(t, \beta_2)}$ accords to the scaled inverse chi-square distribution with $f(t, \beta_2)$ degrees of freedoms, 
+% % $
+% %     \frac{1-\beta_2^t}{(1 - \beta_2)\sum_{i = 1}^t \beta_2^{t-i}g_i^2} \sim \sics(\rho, \frac{1}{\sigma^2})
+% %     $
+% %     is an approximation of
+% %     $
+% %     \frac{f(t, \beta_2)}{\sum_{i = 1}^{f(t, \beta_2)} g_{t+1-i}^2} \sim \sics(f(t, \beta_2), \frac{1}{\sigma^2}).
+% %     $
+% Additionally, in the previous section, we assume $\frac{1-\beta_2^t}{(1 - \beta_2)\sum_{i = 1}^t \beta_2^{t-i}g_i^2} \sim \sics(\rho, \frac{1}{\sigma^2})$. 
+% Thus, Equation~\ref{eqn:sma_ema} views a sample from $\sics(f(t, \beta_2), \frac{1}{\sigma^2})$ as the approximation to a sample from $\sics(\rho, \frac{1}{\sigma^2})$.
+% Therefore, we treat $f(t, \beta_2)$ as an estimation of $\rho$. 
+% For ease of notation, we mark $f(t, \beta_2)$ as $\rho_t$. Also, we record $\frac{2}{1 - \beta_2} - 1$ as $\rho_\infty$ (maximum length of the approximated SMA), due to the inequality $f(t, \beta_2) \leq \lim_{t \to \infty} f(t, \beta_2) = \frac{2}{1 - \beta_2} - 1$.
+% Then, we have $\Var[\psi(.)] = \frac{\rho_t}{\rho_t-2} - \frac{\rho_t \,2^{2\rho_t - 5}}{\pi}\gB(\frac{\rho_t-1}{2}, \frac{\rho_t-1}{2})^2$.
+% To better understand the speed of the descent speed of variance, we further derive a concise and reliable approximation. 
+% Specifically, approximating $\sqrt{\psi^2(.)}$ to the first order~\citep{wolter2007taylor}, we have: 
+% \begin{equation*}
+% \sqrt{\psi^2(.)} \approx \sqrt{\E[\psi^2(.)]} + \frac{1}{2\sqrt{\E[\psi^2(.)]}}(\psi^2(.) - \E[\psi^2(.)])
+% \quad\mbox{and}\quad
+% \Var[\psi(.)] \approx \frac{\Var[\psi^2(.)]}{4\E[\psi^2(.)]}
+% % \label{eqn:sqrt-var}
+% \end{equation*}
+% Since $\psi^2(.) \sim \sics(\rho_t, \frac{1}{\sigma^2})$, we have:
+% \begin{equation}
+% \Var[\sqrt{\psi(.)}] \approx \frac{\rho_t}{2(\rho_t - 2) (\rho_t - 4) \sigma^2}.
+% \label{eqn:variance_appro}
+% \end{equation}
+% In the next section, we conduct simulation experiments to examine Equation~\ref{eqn:variance_appro} and find it is a reliable approximation. 
+% Consequently, we know that $\Var[\sqrt{\psi(.)}]$ decreases at a speed of $O(\frac{1}{\rho_t})$, and the variance in the early stage can be significantly larger than the late stage. 
+% For example, as in Figure~\ref{fig:var_approx}, the variance at $\rho = 5$ is over $100$ times larger than the variance at $\rho = 500$.
+
+% \subsection{Variance Rectification}
+% In order to assure the adaptive learning rate has consistent variance, we use the following term to rectify the variance of $\rho_t$ as the minimal variance (of $\rho_\infty$): 
+% \begin{equation}
+% r_t = \sqrt{\frac{\Var[\psi(.)]|_{\rho = \rho_t}}{\Var[\psi(.)]|_{\rho = \rho_\infty}}} = \sqrt{\frac{(\rho_t - 4)(\rho_t - 2)\rho_\infty}{(\rho_\infty - 4)(\rho_\infty - 2)\rho_t}}.
+% % \label{eqn:analytic-rectification}
+% \end{equation}
+% Notice that, since the analytic form is not numerically stable, here we use the first order approximation to derive the rectification term. 
+% Applying our rectification term to Adam, our final algorithm is summarized in Algorithm~\ref{algo:cadam}. 
+% Specifically, when the length of the approximated SMA is less or equal than 4, the variance of the adaptive learning rate is intractable and the adaptive learning rate is disabled. 
+% Otherwise, we will calculate the variance rectification term and update parameters with the adaptive learning rate.
+
+% \begin{algorithm}[t]
+% \DontPrintSemicolon
+% \KwIn{$\{\alpha_t\}_{t = 1}^T$: step size, 
+% $\{\beta_1, \beta_2\}$: decay rate to calculate moving average and moving 2nd moment,
+% $\theta_0$: initial parameter, $f_t(\theta)$: stochastic objective function.}
+% \KwOut{$\theta_t$: resulting parameters}
+% $m_0, v_0 \gets 0, 0$ (Initialize moving 1st and 2nd moment)\;
+% $l_\infty \gets 2/(1 - \beta_2) - 1$ (Compute the maximum length of the approximated SMA)\;
+% \While{$t = \{1, \cdots, T\}$}{
+%     $g_t \gets \Delta_{\theta} f_t(\theta_{t - 1})$ (Calculate gradients w.r.t. stochastic objective at timestep t)\;
+%     $v_t \gets \beta_2 v_{t - 1} + (1 - \beta_2) g_t^2$ (Update exponential moving 2nd moment)\;
+%     $m_t \gets \beta_1 m_{t - 1} + (1 - \beta_1) g_t$ (Update exponential moving 1st moment)\;
+%     $\widehat{m_t} \gets m_t / (1 - \beta_1^t)$ (Compute bias-corrected moving average)\;
+%     $l_t \gets l_\infty - 2t\beta_2^t/(1 - \beta_2^t)$(Compute the length of the approximated SMA)\;
+%     \uIf{the variance is tractable, \ie, $l_t > 4$}{
+%         $\widehat{v_t} \gets \sqrt{v_t / (1 - \beta_2^{t})}$ (Compute bias-corrected moving 2nd moment)\;
+%         $r_t \gets \sqrt{\frac{(l_t - 4)(l_t - 2)l_\infty}{(l_\infty - 4)(l_\infty - 2)l_t}}$ (Compute the variance rectification term)\;
+%         $\theta_t \gets \theta_{t-1} - \alpha_t r_t \widehat{m_t} / \widehat{v_t}$ (Update parameters with adaptive momentum)\;
+%     }
+%     \Else{
+%         $\theta_t \gets \theta_{t-1} - \alpha_t \widehat{m_t}$ (Update parameters with un-adapted momentum)\;
+%     }
+% }
+% \Return{$\theta_T$}
+% \caption{Rectified Adam. All operations are element-wise. }
+% \label{algo:cadam}
+% \end{algorithm}
+
+% \subsection{Comparison with Warmup}
+
+% We notice that $r_t$ has a similar form with the heuristic linear warmup, which can be viewed as setting the rectification term as $\frac{min(t, T_w)}{T_w}$. 
+% It verifies our intuition that warmup works as a variance reduction technique. 
+% Comparing these two strategies, our proposed algorithm skips using the adaptive learning rate when its variance is divergent, thus avoiding undesired instability in the first few updates. 
+% Besides, our method does not require an additional hyperparameter (\ie, $T_w$) to control the variance reduction and can automatically adapt to different moving average rule. 

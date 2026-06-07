@@ -1,0 +1,26 @@
+\newpage
+\section*{Rebuttal (Temporary Section)}
+
+\subsection*{R.1 Comparison with Linear Transformer}
+We use the attention implementation of the Linear Transformer from \citep{trans-rnns}, which mainly involves setting our feature map $\phi(x) = \text{elu}(x) + 1$, where $\text{elu}(x)$ is the shifted-eLU function from \citep{elu}. For the sake of fairness and to prevent confounding results, while \citep{trans-rnns} also uses the GeLU nonlinearity for the MLPs in the Linear Transformer, we instead use the original ReLU nonlinearity. We also used the exact same training hyperparameters as Performer-ReLU. Ultimately, we empirically found that the Linear Transformer possessed numerical instability during training via unstable training curves, \textbf{ultimately stopping training by producing exploding gradients (NaNs)} (Fig. R1).
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.99\textwidth]{img/linear_transformer_kernel_on.png}
+  \caption*{\small{Fig. R1: \textbf{Left:} In the unidirectional 36-ProGen setting, we ran 3 seeds of the Linear Transformer, and found that all 3 seeds produced exploding gradients very early on, stopping the training run. \textbf{Right:} The Linear Transformer in the bidirectional setting also produced an exploding gradient in the middle of training, near 125K steps. Exploding gradients can be evidenced by the sharp drop in train accuracy right before a NaN error.}}
+  \label{fig:rebuttal_linear_trans}
+\end{figure}
+
+\subsection*{R.2 Long Range Arena Paper Results (\textcolor{blue}{\url{https://arxiv.org/abs/2011.04006}})}
+\vspace{-2mm}
+We present here the comparison of Performers with several other architectures conducted in the paper: \textit{Long Range Arena: A Benchmark for Efficient Transformers} (`LRA'). %-paper)
+Performers are compared against many additional (scalable and not scalable) methods not included in our submission: \textit{Local Attention}, \textit{Sparse Attention}, \textit{Longformer}, \textit{Sinkhorn Transformer}, \textit{Synthesizer}, \textit{Big Bird} and the aforementioned \textit{Linear Transformer} on challenging long range context tasks. Performers obtain the largest LRA (Long Range Arena) score among all tested \textbf{scalable} Transformers methods (which we define by having speed of > 100 examples/sec). Tasks used for comparison include: \textbf{(1)} a longer variation of the standard ListOps task proposed in \citep{listops}, \textbf{(2)} byte-level text classification using real-world data, \textbf{(3)} byte-level document retrieval, \textbf{(4)} image classification on sequences of pixels, and \textbf{(5)} Pathfinder task (long-range spatial dependency problem).
+\vspace{0.1cm}
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.99\textwidth]{img/lra-all-3.pdf}
+  \vspace{0.15cm}
+  \caption*{\small{Fig. R2 (From LRA-paper): \textbf{Upper Table:} Results on Long-Range Arena benchmark. Best model is in boldface and second best is underlined. All models do not learn anything on Path-X task, contrary to the Pathfinder task and this is denoted by FAIL. This shows that increasing the sequence length can cause seriously difficulties for model training. The authors leave Path-X on this benchmark for future challengers but do not include it on the average (Avg.) score as it has no impact on relative performance. \textbf{Lower Table:} Benchmark results of all X-former models with a consistent batch size of 32 across all models. The authors report relative speed increase/decrease in comparison with the vanilla Transformer in brackets besides the steps per second. Memory usage refers to per device memory usage across each TPU device. Benchmarks are run on 4x4 TPU-v3 chips. \textbf{Right Fig:} Performance (y axis), speed (x axis), and memory footprint (size of the circles) of different
+models.} }
+  \label{fig:rebuttal_lra}
+\end{figure}

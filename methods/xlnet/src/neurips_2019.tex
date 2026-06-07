@@ -1,0 +1,117 @@
+\documentclass{article}
+
+% if you need to pass options to natbib, use, e.g.:
+%     \PassOptionsToPackage{numbers, compress}{natbib}
+% before loading neurips_2019
+
+% ready for submission
+% \usepackage{neurips_2019}
+
+% to compile a preprint version, e.g., for submission to arXiv, add add the
+% [preprint] option:
+    \usepackage[final,nonatbib]{neurips_2019}
+
+% to compile a camera-ready version, add the [final] option, e.g.:
+     % \usepackage[final]{neurips_2019}
+
+% to avoid loading the natbib package, add option nonatbib:
+%     \usepackage[nonatbib]{neurips_2019}
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{hyperref}       % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+% \usepackage{enumitem}
+% \usepackage{amssymb}% http://ctan.org/pkg/amssymb
+% \usepackage{pifont}% http://ctan.org/pkg/pifont
+% \newcommand{\cmark}{\ding{51}}%
+% \newcommand{\xmark}{\ding{55}}%
+
+\newcommand{\rulesep}{\unskip\ \vrule\ }
+
+\usepackage{xcolor}
+\newcommand\todo[1]{\textcolor{red}{TODO: #1}}
+
+\input{custom}
+\input{symbol}
+
+\title{XLNet: Generalized Autoregressive Pretraining \\ for Language Understanding}
+
+% The \author macro works with any number of authors. There are two commands
+% used to separate the names and addresses of multiple authors: \And and \AND.
+%
+% Using \And between authors leaves it to LaTeX to determine where to break the
+% lines. Using \AND forces a line break at that point. So, if LaTeX puts 3 of 4
+% authors names on the first line, and the last on the second line, try using
+% \AND instead of \And before the third author name.
+
+\author{Zhilin Yang$^{*1}$, Zihang Dai$^{*12}$, Yiming Yang$^1$, Jaime Carbonell$^1$, \\
+  {\bf Ruslan Salakhutdinov$^1$, Quoc V. Le$^2$}\\
+  $^1$Carnegie Mellon University, $^2$Google AI Brain Team \\
+  {\small \texttt{\{zhiliny,dzihang,yiming,jgc,rsalakhu\}@cs.cmu.edu, qvl@google.com} } 
+}
+
+% \author{%
+%   David S.~Hippocampus\thanks{Use footnote for providing further information
+%     about author (webpage, alternative address)---\emph{not} for acknowledging
+%     funding agencies.} \\
+%   Department of Computer Science\\
+%   Cranberry-Lemon University\\
+%   Pittsburgh, PA 15213 \\
+%   \texttt{hippo@cs.cranberry-lemon.edu} \\
+%   % examples of more authors
+%   % \And
+%   % Coauthor \\
+%   % Affiliation \\
+%   % Address \\
+%   % \texttt{email} \\
+%   % \AND
+%   % Coauthor \\
+%   % Affiliation \\
+%   % Address \\
+%   % \texttt{email} \\
+%   % \And
+%   % Coauthor \\
+%   % Affiliation \\
+%   % Address \\
+%   % \texttt{email} \\
+%   % \And
+%   % Coauthor \\
+%   % Affiliation \\
+%   % Address \\
+%   % \texttt{email} \\
+% }
+
+\begin{document}
+
+\maketitle
+
+\renewcommand{\thefootnote}{\fnsymbol{footnote}}
+\footnotetext[1]{Equal contribution. Order determined by swapping the one in \cite{dai2019transformer}.}
+\renewcommand{\thefootnote}{\arabic{footnote}}
+
+\input{abstract}
+\input{intro}
+\input{related}
+\input{model}
+\input{exp}
+\input{conc}
+
+
+\subsubsection*{Acknowledgments}
+The authors would like to thank Qizhe Xie and Adams Wei Yu for providing useful feedback on the project, Jamie Callan for providing the ClueWeb dataset, Youlong Cheng, Yanping Huang and Shibo Wang for providing ideas to improve our TPU implementation, Chenyan Xiong and Zhuyun Dai for clarifying the setting of the document ranking task.
+ZY and RS were supported by the Office of Naval Research grant N000141812861, the National Science Foundation (NSF) grant IIS1763562, the Nvidia fellowship, and the Siebel scholarship.
+ZD and YY were supported in part by NSF under the grant IIS-1546329 and by the DOE-Office of Science under the grant ASCR \#KJ040201.
+
+
+\bibliographystyle{plain}
+\bibliography{neurips_2019}
+
+\newpage
+\input{appendix}
+
+\end{document}

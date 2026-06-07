@@ -1,0 +1,125 @@
+\section{Algorithms of DPM-Solvers}
+\label{appendix:algorithm}
+We firstly list the detailed DPM-Solver-1, 2, 3 in Algorithms~\ref{alg:dpm-solver-1-appendix}, \ref{alg:dpm-solver-2-appendix}, \ref{alg:dpm-solver-3-appendix}. Note that DPM-Solver-2 is the general case with $r_1\in(0,1)$, and we usually set $r_1=0.5$ for DPM-Solver-2, as in Sec.~\ref{sec:solver}.
+
+\begin{algorithm}[htbp]
+    \centering
+    \caption{DPM-Solver-1.}\label{alg:dpm-solver-1-appendix}
+    \begin{algorithmic}[1]
+    \Require initial value $\x_T$, time steps $\{t_i\}_{i=0}^M$, model $\epsilonv_\theta$
+        \State \textbf{def} dpm-solver-1$(\tilde\x_{t_{i-1}}, t_{i-1}, t_i)$:
+            \State\quad $h_i \gets \lambda_{t_{i}} - \lambda_{t_{i-1}}$
+            \State\quad $\tilde\x_{t_i} \gets \frac{\alpha_{t_i}}{\alpha_{t_{i-1}}} \tilde\x_{t_{i-1}} - \sigma_{t_i}\left(e^{h_i} - 1\right)\epsilonv_\theta(\tilde \x_{t_{i-1}},t_{i-1})$
+            \State\quad \Return $\tilde\x_{t_i}$
+        \State $\tilde\x_{t_0}\gets\x_T$
+        \For{$i\gets 1$ to $M$}
+        \State $\tilde\x_{t_i} \gets \text{dpm-solver-1}(\tilde\x_{t_{i-1}}, t_{i-1}, t_i)$
+        \EndFor
+    \State \Return $\tilde\x_{t_M}$
+    \end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}[htbp]
+    \centering
+    \caption{DPM-Solver-2 (general version).}\label{alg:dpm-solver-2-appendix}
+    \begin{algorithmic}[1]
+    \Require initial value $\x_T$, time steps $\{t_i\}_{i=0}^M$, model $\epsilonv_\theta$, $r_1=0.5$
+        \State \textbf{def} dpm-solver-2$(\tilde\x_{t_{i-1}}, t_{i-1}, t_i, r_1)$:
+            \State\quad $h_i \gets \lambda_{t_{i}} - \lambda_{t_{i-1}}$
+            \State\quad $s_{i} \gets t_{\lambda}\left(\lambda_{t_{i-1}} + r_1 h_i\right)$
+            \State\quad $\uv_{i} \gets \frac{\alpha_{s_i}}{\alpha_{t_{i-1}}} \tilde\x_{t_{i-1}} - \sigma_{s_i}\left(e^{r_1 h_i} - 1\right)\epsilonv_\theta(\tilde \x_{t_{i-1}},t_{i-1})$
+            \State\quad $\tilde\x_{t_{i}} \gets \frac{\alpha_{t_{i}}}{\alpha_{t_{i-1}}} \tilde\x_{t_{i-1}} - \sigma_{t_{i}}(e^{h_i} - 1)\epsilonv_\theta(\tilde\x_{t_{i-1}},t_{i-1}) - \frac{\sigma_{t_{i}}}{2r_1}(e^{h_i} - 1)(\epsilonv_\theta(\uv_{i},s_i) - \epsilonv_\theta(\tilde\x_{t_{i-1}}, t_{i-1}))$
+            \State\quad \Return $\tilde\x_{t_i}$
+        \State $\tilde\x_{t_0}\gets\x_T$
+        \For{$i\gets 1$ to $M$}
+        \State $\tilde\x_{t_i} \gets \text{dpm-solver-2}(\tilde\x_{t_{i-1}}, t_{i-1}, t_i, r_1)$
+        \EndFor
+    \State \Return $\tilde\x_{t_M}$
+    \end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}[htbp]
+    \centering
+    \caption{DPM-Solver-3.}\label{alg:dpm-solver-3-appendix}
+    \begin{algorithmic}[1]
+    \Require initial value $\x_T$, time steps $\{t_i\}_{i=0}^M$, model $\epsilonv_\theta$, $r_1=\frac{1}{3}$, $r_2=\frac{2}{3}$
+    \State \textbf{def} dpm-solver-3$(\tilde\x_{t_{i-1}}, t_{i-1}, t_i, r_1, r_2)$:
+        \State\quad $h_i \gets \lambda_{t_{i}} - \lambda_{t_{i-1}}$
+    \State
+        \quad $s_{2i-1} \gets t_\lambda\left(\lambda_{t_{i-1}} + r_1 h_i\right),\quad s_{2i} \gets t_\lambda\left(\lambda_{t_{i-1}} + r_2 h_i\right)$ 
+    \State 
+        \quad $\uv_{2i-1} \gets \frac{\alpha_{s_{2i-1}}}{\alpha_{t_{i-1}}} \tilde\x_{t_{i-1}} - \sigma_{s_{2i-1}}\left(e^{r_1 h_i} - 1\right)\epsilonv_\theta(\tilde \x_{t_{i-1}},t_{i-1})$
+    \State 
+        \quad$\Dv_{2i-1} \gets \epsilonv_\theta(\uv_{2i-1},s_{2i-1}) - \epsilonv_\theta(\tilde\x_{t_{i-1}},t_{i-1})$
+    \State
+        \quad$\uv_{2i} \gets \frac{\alpha_{s_{2i}}}{\alpha_{t_{i-1}}} \tilde\x_{t_{i-1}} 
+        - \sigma_{s_{2i}}\left(e^{r_2 h_i} - 1\right)\epsilonv_\theta(\tilde\x_{t_{i-1}},t_{i-1}) - \frac{\sigma_{s_{2i}}r_2}{r_1}\left( \frac{e^{r_2 h_i} - 1}{r_2 h_i} - 1\right)\Dv_{2i-1}$
+    \State 
+        \quad$\Dv_{2i} \gets \epsilonv_\theta(\uv_{2i},s_{2i}) - \epsilonv_\theta(\tilde\x_{t_{i-1}},t_{i-1})$
+    \State
+        \quad$\tilde\x_{t_{i}} \gets \frac{\alpha_{t_{i}}}{\alpha_{t_{i-1}}} \tilde\x_{t_{i-1}}
+            - \sigma_{t_{i}}\left(e^{h_i} - 1\right)\epsilonv_\theta(\tilde\x_{t_{i-1}},t_{i-1}) - \frac{\sigma_{t_{i}}}{r_2}\left( \frac{e^{h_i} - 1}{h} - 1\right)\Dv_{2i}$
+    \State\quad \Return $\tilde\x_{t_{i}}$
+    
+    \State $\tilde\x_{t_0}\gets\x_T$
+    \For{$i\gets 1$ to $M$}
+        \State $\tilde\x_{t_i} \gets \text{dpm-solver-3}(\tilde\x_{t_{i-1}}, t_{i-1}, t_i, r_1, r_2)$
+        \EndFor
+        \State  \Return $\tilde\x_{t_M}$
+    \end{algorithmic}
+\end{algorithm}
+
+Then we list the adaptive step size algorithms, named as \textit{DPM-Solver-12} (combining 1 and 2; Algorithm~\ref{algorithm:dpm_solver_12}) and \textit{DPM-Solver-23} (combining 2 and 3; Algorithm~\ref{algorithm:dpm_solver_23}). We follow~\citep{jolicoeur2021gotta} to let the absolute tolerance $\epsilon_{\text{atol}}=\frac{\x_{\text{max}} - \x_{\text{min}}}{256}$ for image data, which is $0.0078$ for VP type DPMs. We can tune the relative tolerance $\epsilon_{\text{rtol}}$ to balance the accuracy and NFE, and we find that $\epsilon_{\text{rtol}}=0.05$ is good enough and can converge quickly.
+
+In practice, the inputs of the adaptive step size solvers are batch data. We simply choose $E_2$ and $E_3$ as the maximum value of all the batch data. Besides, we implement the comparison $s > \epsilon$ by $|s-\epsilon|>10^{-5}$ to avoid numerical issues.
+
+\begin{algorithm}[htbp]
+\centering
+\caption{(\textbf{DPM-Solver-12}) Adaptive step size algorithm by combining DPM-Solver-1 and 2.}\label{algorithm:dpm_solver_12}
+\begin{algorithmic}[1]
+\Require start time $T$, end time $\epsilon$, initial value $\x_T$, model $\epsilonv_\theta$, data dimension $D$, hyperparameters $\epsilon_{\text{rtol}}=0.05$, $\epsilon_{\text{atol}}=0.0078$, $h_{\text{init}}=0.05$, $\theta=0.9$
+\Ensure the approximated solution $\x_{\epsilon}$ at time $\epsilon$
+\State $s\gets T$, $h\gets h_{\text{init}}$, $\x\gets \x_T$, $\x_{\text{prev}}\gets \x_T$, $r_1\gets \frac{1}{2}$, $\text{NFE}\gets 0$
+\While{$s > \epsilon$}
+    \State $t\gets t_{\lambda}(\lambda_s + h)$
+    \State $\x_1\gets \text{dpm-solver-1}(\x, s, t)$
+    \State $\x_2\gets \text{dpm-solver-2}(\x, s, t, r_1)$ (Share the same function value $\epsilonv_\theta(\x, s)$ with dpm-solver-1.)
+    \State $\deltav \gets \max(\epsilon_{\text{atol}}, \epsilon_{\text{rtol}}\max(|\x_1|, |\x_{\text{prev}}|))$
+    \State $E_2\gets \frac{1}{\sqrt{D}}\|\frac{\x_1-\x_2}{\deltav}\|_2$
+    \If{$E_2\leq 1$}
+        \State $\x_{\text{prev}}\gets \x_1$, $\x\gets \x_2$, $s\gets t$
+    \EndIf
+    \State $h\gets \min(\theta h E_2^{-\frac{1}{2}}, \lambda_{\epsilon} - \lambda_s)$
+    \State $\text{NFE}\gets \text{NFE} + 2$
+\EndWhile
+\State \Return $\x$, $\text{NFE}$
+
+\end{algorithmic}
+\end{algorithm}
+
+
+\begin{algorithm}[htbp]
+\centering
+\caption{(\textbf{DPM-Solver-23}) Adaptive step size algorithm by combining DPM-Solver-2 and 3.}\label{algorithm:dpm_solver_23}
+\begin{algorithmic}[1]
+\Require start time $T$, end time $\epsilon$, initial value $\x_T$, model $\epsilonv_\theta$, data dimension $D$, hyperparameters $\epsilon_{\text{rtol}}=0.05$, $\epsilon_{\text{atol}}=0.0078$, $h_{\text{init}}=0.05$, $\theta=0.9$
+\Ensure the approximated solution $\x_{\epsilon}$ at time $\epsilon$
+\State $s\gets T$, $h\gets h_{\text{init}}$, $\x\gets \x_T$, $\x_{\text{prev}}\gets \x_T$, $r_1\gets \frac{1}{3}$, $r_2\gets \frac{2}{3}$, $\text{NFE}\gets 0$
+\While{$s > \epsilon$}
+    \State $t\gets t_{\lambda}(\lambda_s + h)$
+    \State $\x_2\gets \text{dpm-solver-2}(\x, s, t, r_1)$
+    \State $\x_3\gets \text{dpm-solver-3}(\x, s, t, r_1, r_2)$ (Share the same function values with dpm-solver-2.)
+    \State $\deltav \gets \max(\epsilon_{\text{atol}}, \epsilon_{\text{rtol}}\max(|\x_2|, |\x_{\text{prev}}|))$
+    \State $E_3\gets \frac{1}{\sqrt{D}}\|\frac{\x_2-\x_3}{\deltav}\|_2$
+    \If{$E_3\leq 1$}
+        \State $\x_{\text{prev}}\gets \x_2$, $\x\gets \x_3$, $s\gets t$
+    \EndIf
+    \State $h\gets \min(\theta h E_3^{-\frac{1}{3}}, \lambda_{\epsilon} - \lambda_s)$
+    \State $\text{NFE}\gets \text{NFE} + 3$
+\EndWhile
+\State \Return $\x$, $\text{NFE}$
+
+\end{algorithmic}
+\end{algorithm}
+
+

@@ -1,0 +1,79 @@
+\subsection{Language modeling}
+\label{sec:lm}
+
+We trained LSTMs \citep{hochreiter1997long} for language modeling on the Penn Treebank dataset. We followed the model setup of \citet{merity2017regularizing} and made use of their publicly available code in our experiments. We did not include the fine-tuning stages. We searched over hyperparameters for both Adam and SGD (without momentum) to find the model which gave the best validation performance. We then performed an additional small grid search on each of these methods with Lookahead. Each model was trained for 750 epochs. We show training curves for each model in Figure~\ref{fig:lstm-train}.
+
+\begin{figure}[t]
+\begin{subfigure}{0.45 \textwidth}
+\centering
+    \vskip -0.1in
+    \includegraphics[width=1. \textwidth]{images/lstm_train_convergence.png}
+    \caption{Training perplexity of LSTM models trained on the Penn Treebank dataset}
+    \label{fig:lstm-train}
+\end{subfigure}
+\hfill
+\hspace{0.05in}
+\begin{subfigure}{0.45 \textwidth}
+    \centering
+    \includegraphics[width=1. \textwidth]{images/t2t_plot.pdf}
+    \caption{Training Loss on Transformer. Adam and AdaFactor both use a linear warmup scheme described in \citet{vaswani2017attention}.}
+    \label{fig:nmt}
+\end{subfigure}
+\caption{Optimization performance on Penn Treebank and WMT-14 machine translation task.}
+\end{figure}
+
+
+\begin{figure}[t]
+\begin{minipage}[t]{0.48 \linewidth}
+\begin{table}[H]
+\caption{LSTM training, validation, and test perplexity on the Penn Treebank dataset.}
+\label{tab:lstm}
+\vskip 0.1in
+\begin{center}
+\begin{small}
+\begin{sc}
+\begin{tabular}{l c c c }
+\toprule
+Optimizer & Train & Val. & Test  \\
+\midrule
+SGD & 43.62 & 66.0 & 63.90 \\
+LA(SGD) & 35.02 & 65.10 & 63.04 \\ 
+Adam & 33.54 & 61.64 & 59.33 \\
+LA(Adam) & \textbf{31.92} & \textbf{60.28} & \textbf{57.72} \\
+Polyak & - & 61.18 & 58.79 \\ 
+\bottomrule
+\end{tabular}
+\end{sc}
+\end{small}
+\end{center}
+\vskip -0.1in
+\end{table}
+\end{minipage}
+\hfill
+\begin{minipage}[t]{0.48 \linewidth}
+\begin{table}[H]
+\caption{Transformer Base Model trained for 50k steps on WMT English-to-German. ``Adam-'' denote Adam without learning rate warm-up.}
+\label{tab:ntm}
+\vskip 0.1in
+\begin{center}
+\begin{small}
+\begin{sc}
+\begin{tabular}{l c c }
+\toprule
+Optimizer & Newstest13 & Newstest14   \\
+\midrule
+Adam & 24.6 & 24.6 \\
+LA(Adam) & 24.68 & 24.70 \\ 
+LA(Adam-) & 24.3 & 24.4 \\
+AdaFactor & 24.17 & 24.51 \\
+\bottomrule
+\end{tabular}
+\end{sc}
+\end{small}
+\end{center}
+\vskip -0.1in
+\end{table}
+\end{minipage}
+\end{figure}
+
+Using Lookahead with Adam we were able to achieve the fastest convergence and best training, validation, and test perplexity. The models trained with SGD took much longer to converge (around 700 epochs) and were unable to match the final performance of Adam. Using Polyak weight averaging \citep{polyak1992acceleration} with SGD, as suggested by \citet{merity2017regularizing} and referred to as ASGD, we were able to improve on the performance of Adam but were unable to match the performance of Lookahead.  Full results are given in Table~\ref{tab:lstm} and additional details are in appendix \ref{app:experiments}.

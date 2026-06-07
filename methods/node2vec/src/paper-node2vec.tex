@@ -1,0 +1,137 @@
+\documentclass{sig-alternate}
+\usepackage{xcolor}
+\usepackage{url}
+\usepackage{verbatim} % allows multiline comments
+% \usepackage{subfigure} % for the subfloat in the figs
+\usepackage{multirow}
+\usepackage{algorithm}
+\usepackage[noend]{algorithmic}
+\usepackage{xspace}
+\usepackage{graphicx}
+\usepackage{epsfig}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{times}
+\usepackage{enumitem}
+\usepackage[normalem]{ulem}
+\usepackage{caption, subcaption}
+
+\newcommand{\note}[1]{{{\textcolor{blue}{[JL: #1]}}}}
+\newcommand{\jure}[1]{{{\textcolor{red}{[#1]}}}}
+\newcommand{\aditya}[1]{{{\textcolor{blue}{[#1]}}}}
+\newcommand{\critique}[1]{{{\textcolor{teal}{[#1]}}}}
+
+\newcommand{\nedge}{k}
+\newcommand{\bt}{\mathbf{t}}
+\newcommand{\hide}[1]{}
+\newcommand{\xhdr}[1]{\vspace{1.7mm}\noindent{{\bf #1.}}}
+\newcommand{\casc}{{\mathbf{t}}}
+\newcommand{\alphs}{{\mathbf{A}}}
+\newtheorem{proposition}{Proposition}
+\newtheorem{theorem}{Theorem}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{lemma}{Lemma}
+\newcommand{\xsketch}{\noindent {\it Proof Sketch.}}
+\newcommand{\netinf}{{\textsc{Net\-Inf}}\xspace}
+\newcommand{\multitree}{{\textsc{Multi\-Tree}}\xspace}
+\newcommand{\netrate}{{\textsc{Net\-Rate}}\xspace}
+\newcommand{\connie}{{\textsc{Co\-nNIe}}\xspace}
+\newcommand{\maxinf}{{\textsc{Max\-Inf}}\xspace}
+\newcommand{\expo}{{\textsc{Exp}}\xspace}
+\newcommand{\pow}{{\textsc{Pow}}\xspace}
+\newcommand{\ray}{{\textsc{Ray}}\xspace}
+\newcommand{\eg}{\emph{e.g.}}
+\newcommand{\ie}{\emph{i.e.}}
+\newcommand{\unobs}{{\infty}}
+\newcommand\T{\rule{0pt}{2.6ex}}
+\newcommand\B{\rule[-1.2ex]{0pt}{0pt}}
+\newcommand{\nodevec}{{\textsl{node2vec}}\xspace}
+\DeclareMathOperator*{\argmax}{argmax}
+
+\graphicspath{{./FIG/}}
+
+% \makeatletter
+% \def\@copyrightspace{\relax}
+% \makeatother
+\begin{document}
+
+
+\title{node2vec: Scalable Feature Learning for Networks}
+
+\numberofauthors{2}
+\author{
+\alignauthor
+Aditya Grover\\
+      \affaddr{Stanford University}\\
+      \email{adityag@cs.stanford.edu}
+\alignauthor Jure Leskovec\\
+      \affaddr{Stanford University}\\
+      \email{jure@cs.stanford.edu}
+}
+
+\CopyrightYear{2016} 
+\setcopyright{acmlicensed}
+\conferenceinfo{KDD '16,}{August 13 - 17, 2016, San Francisco, CA, USA}
+\isbn{978-1-4503-4232-2/16/08}\acmPrice{\$15.00}
+\doi{http://dx.doi.org/10.1145/2939672.2939754}
+
+\maketitle
+
+\begin{abstract}
+\input{000abstract}
+\end{abstract}
+
+\vspace{1mm}
+\noindent {\bf Categories and Subject Descriptors:} H.2.8 {\bf [Database Management]}: Database applications---{\it Data mining}; I.2.6 {\bf [Artificial Intelligence]}: Learning
+
+\noindent {\bf General Terms:} Algorithms; Experimentation.
+
+\noindent {\bf Keywords:} Information networks, Feature learning, Node embeddings, Graph representations.
+
+\section{Introduction}
+\label{sec:intro}
+\input{010intro}
+
+\section{Related work}
+\label{sec:related}
+\input{020related}
+
+\section{Feature learning framework}
+\label{sec:proposed}
+\input{030proposed}
+
+\section{Experiments}
+\label{sec:experiments}
+\input{040experiments}
+
+\section{Discussion and Conclusion}
+\label{sec:discussion}
+\input{050discussion}
+
+% \section{Conclusion and Future work}
+% \label{sec:conclusion}
+% \input{060conclusion}
+
+\xhdr{Acknowledgements}
+We are thankful to Austin Benson, Will Hamilton, Rok Sosi\v{c}, Marinka \v{Z}itnik as well as the anonymous reviewers for their helpful comments. This research has been supported in part by NSF
+CNS-1010921,     
+IIS-1149837,     
+NIH BD2K,
+ARO MURI, DARPA XDATA,
+DARPA SIMPLEX,
+Stanford Data Science Initiative,
+Boeing,          
+Lightspeed,			
+SAP,            
+and Volkswagen.
+
+
+\bibliography{refs}
+\bibliographystyle{abbrv}
+
+% \appendix
+% \section{Appendix -- leftovers}
+% \label{sec:appendix}
+% \input{070appendix}
+
+\end{document}

@@ -1,0 +1,33 @@
+\section{Related Work}
+
+
+
+\textbf{Efficient Attention Mechanism.~}
+Transformers~\citep{vaswani2017attention} involve both self-attention and cross-attention mechanisms. One of the most well-known concern of Transformers is the high time and memory complexity at vast key element numbers, which hinders model scalability in many cases. Recently, many efforts have been made to address this problem~\citep{tay2020efficient}, which can be roughly divided into three categories in practice.
+
+
+The first category is to use pre-defined sparse attention patterns on keys.
+The most straightforward paradigm is restricting the attention pattern to be fixed local windows.
+Most works~\citep{liu2018generating,parmar2018image,child2019generating,huang2019ccnet, ho2019axial,wang2020axial,hu2019local,ramachandran2019stand,qiu2019blockwise,beltagy2020longformer,ainslie2020etc,zaheer2020big} follow this paradigm.
+Although restricting the attention pattern to a local neighborhood can decrease the complexity, it loses global information.
+To compensate, \citet{child2019generating, huang2019ccnet, ho2019axial,wang2020axial} attend key elements at fixed intervals to significantly increase the receptive field on keys.
+\citet{beltagy2020longformer,ainslie2020etc,zaheer2020big} allow a small number of special tokens having access to all key elements. \citet{zaheer2020big,qiu2019blockwise} also add some pre-fixed sparse attention patterns to attend distant key elements directly.
+
+The second category is to learn data-dependent sparse attention. \citet{kitaev2020reformer} proposes a locality sensitive hashing (LSH) based attention, which hashes both the query and key elements to different bins. A similar idea is proposed by \citet{roy2020efficient}, where k-means finds out the most related keys. \citet{tay2020sparse} learns block permutation for block-wise sparse attention. 
+
+The third category is to explore the low-rank property in self-attention. \citet{wang2020linformer} reduces the number of key elements through a linear projection on the size dimension instead of the channel dimension. \citet{katharopoulos2020transformers,choromanski2020masked} rewrite the calculation of self-attention through kernelization approximation.
+
+In the image domain, the designs of efficient attention mechanism (e.g., \citet{parmar2018image,child2019generating,huang2019ccnet,ho2019axial,wang2020axial,hu2019local,ramachandran2019stand}) are still limited to the first category. Despite the theoretically reduced complexity, \citet{ramachandran2019stand,hu2019local} admit such approaches are much slower in implementation than traditional convolution with the same FLOPs (at least 3$\times$ slower), due to the intrinsic limitation in memory access patterns.
+
+On the other hand, as discussed in \citet{zhu2019empirical}, there are variants of
+convolution, such as deformable convolution~\citep{dai2017deformable,zhu2019deformable} and dynamic convolution~\citep{wu2019pay}, that also can be viewed as self-attention mechanisms. Especially, deformable convolution operates much more effectively
+and efficiently on image recognition than Transformer self-attention. Meanwhile, it lacks the element relation modeling mechanism.
+
+Our proposed deformable attention module is inspired by deformable convolution, and belongs to the second category. It only focuses on a small fixed set of sampling points predicted from the feature of query elements.
+Different from \citet{ramachandran2019stand,hu2019local}, deformable attention is just slightly slower than the traditional convolution under the same FLOPs.
+
+\textbf{Multi-scale Feature Representation for Object Detection.~}
+One of the main difficulties in object detection is to effectively represent objects at vastly different scales. Modern object detectors usually exploit multi-scale features to accommodate this.
+As one of the pioneering works, FPN~\citep{lin2017feature} proposes a top-down path to combine multi-scale features. PANet~\citep{liu2018path} further adds an bottom-up path on the top of FPN. \citet{kong2018deep} combines features from all scales by a global attention operation. \citet{zhao2019m2det} proposes a U-shape module to fuse multi-scale features. Recently, NAS-FPN~\citep{ghiasi2019fpn} and Auto-FPN~\citep{xu2019auto} are proposed to automatically design cross-scale connections via neural architecture search. \citet{tan2020efficientdet} proposes the BiFPN, which is a repeated simplified version of PANet.
+Our proposed multi-scale deformable attention module can naturally aggregate multi-scale feature maps via attention mechanism, without the help of these feature pyramid networks.
+

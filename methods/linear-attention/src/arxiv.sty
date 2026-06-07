@@ -1,0 +1,17 @@
+%
+% Extend the icml2020.sty to provide some usefull commands for creating a
+% combined file to upload to arxiv.
+%
+
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{arxiv}[2017/09/13 ICML 2020 arxiv style file]
+
+\RequirePackage[accepted]{icml2020}
+
+% Create a standalonetitle command
+\providecommand{\standalonetitle}{}
+\renewcommand{\standalonetitle}[1]{
+    \begin{center}
+        \baselineskip 18pt \toptitlebar{\Large\bf #1}\bottomtitlebar
+    \end{center}
+}

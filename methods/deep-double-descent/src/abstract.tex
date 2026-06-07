@@ -1,0 +1,92 @@
+\begin{abstract}
+
+We show that a variety of modern deep learning tasks exhibit
+a ``double-descent'' phenomenon where, as we increase model size, performance first gets \textit{worse} and then gets better.
+Moreover, we show that double descent occurs not just as a function of model size, but also as a function of the number of training epochs.
+We unify the above phenomena by defining
+a new complexity measure we call the
+\emph{effective model complexity}
+and conjecture a generalized double descent with respect to this measure.
+%which appears to determine
+%the location of this phase transition, 
+Furthermore,
+our notion of model complexity
+allows us to identify
+certain regimes where increasing (even quadrupling) the number of
+train samples actually \emph{hurts} test performance. 
+
+\iffalse
+We show that a variety of natural learning tasks exhibit a "double-descent" phenomena, where, as we increase model size, performance first gets \textit{worse} and then gets better.
+
+%We also observe the double descent phenomenon as we increase the size of the training set.  
+
+%We present experimental findings in modern deep learning
+%that both challenge and unify conventional wisdoms on
+%the relation of test error to model complexity.
+%We show that a variety of natural learning tasks exhibit a
+%\emph{phase transition phenomenon} between ``classical'' and ``modern'' regimes.
+%dependence of performance on complexity.
+
+In one parameter regime, test error follows the  classical ``bias-variance curve'', where bigger models can hurt generalization,
+while in another regime bigger models only help.
+We define a new complexity measure we call the \emph{effective model complexity} which appears to determine the location of this phase transition, 
+by incorporating the optimization algorithm into traditional notions of model complexity.
+%and unifies traditional notions of model complexity with the length of training. 
+
+As a consequence we establish the existence of the ``double descent'' phenomenon, introduced by \cite{belkin2018reconciling}, in a variety of modern datasets and architectures, 
+including CIFAR 10/100 with ResNet18s/CNNs, and IWSLT'14/WMT'14 with Transformers.
+We show that double descent occurs not just as a function of model size, but also as a function of the number of training epochs.
+Furthermore, the relation between effective model complexity and  the number of samples allows us to identify regimes where increasing (even quadrupling!) the number of 
+samples only \emph{hurts} test performance. 
+
+\fi
+
+% Before Ilya comments
+\iffalse
+We present experimental findings in modern deep learning
+that both challenge and unify conventional wisdoms on
+the relation of test error to model complexity.
+We show that a variety of natural learning tasks and training procedures exhibit a
+\emph{phase transition phenomenon} between ``classical'' and ``modern'' regimes.
+%dependence of performance on complexity.
+In one parameter regime, test error follows the  classical ``bias-variance curve'', where bigger models can hurt generalization,
+while in another regime bigger models only help.
+We define a new complexity measure we call the \emph{effective model complexity} which appears to determine the location of this phase transition, 
+by incorporating the optimization algorithm into traditional notions of model complexity.
+%and unifies traditional notions of model complexity with the length of training. 
+
+As a consequence we establish the existence of the ``double descent'' phenomenon, introduced by \cite{belkin2018reconciling}, in a variety of modern datasets and architectures, 
+including CIFAR 10/100 with ResNet18s/CNNs, and IWSLT'14/WMT'14 with Transformers.
+We show that double descent occurs not just as a function of model size, but also as a function of the number of training epochs.
+Furthermore, the relation between effective model complexity and  the number of samples allows us to identify regimes where increasing (even quadrupling!) the number of 
+samples only \emph{hurts} test performance. 
+\fi
+
+
+
+\iffalse
+OLD abstract:
+
+We empirically demonstrate a ``double descent'' phenomenon for state of the art neural networks for an array of standard tasks.
+Specifically, we show for a variety of models, training procedures and datasets, the following occurs---with increase of either model size or train time, the classifier undergoes the following transition:
+\begin{enumerate}
+    \item Initially, as model size or train time increases, the test error \emph{decreases}.
+    \item At some point, as model size or train time continue to grow, the test error \emph{increases} reaching a peak around the ``interpolation threshold'' where the model and training procedure are just barely able to achieve $\approx 0$ train error.
+    \item As we continue to increase model size or train time beyond this point, the test error undergoes a \emph{second descent}, decreasing with train time or model size.
+\end{enumerate}
+ 
+Such a ``double descent'' for varying model size was recently
+%demonstrated by 
+proposed by
+\cite{belkin2018reconciling}.
+%for random Fourier Features and two-layer neural networks on MNIST.
+We show that this extends to many modern settings,
+and applies to both varying model-size to varying train-time.
+%extends to many modern settings, and generalized from model-size
+%to 
+Moreover, we introduce a new notion of ``Effective Model Complexity''
+that unifies both these double descent phenomenon. % in both model size and train time.
+%and we conjecture a generalized double-descent with respect to this complexity.
+We also show that double descent can give rise to \emph{non-monotonicity in sample size}: there are regimes where increasing the number of training samples can lead to \emph{worse} test performance.
+\fi
+\end{abstract}

@@ -1,0 +1,484 @@
+\title{Appendix}
+\author{}
+\institute{}
+\maketitle
+\section{Additional results}
+
+\subsection{Classification on ImageNet}
+\label{sec:mlpImageNet}
+Noroozi and Favaro~\cite{noroozi2016unsupervised} suggest to evaluate networks trained in an unsupervised way by freezing the convolutional layers and retrain on ImageNet the fully connected layers using labels and reporting accuracy on the validation set.
+This experiment follows the observation of Yosinki \etal~\cite{yosinski2014transferable} that general-purpose features appear in the convolutional layers of an AlexNet.
+We report a comparison of \OURS to other AlexNet networks trained with no supervision, as well as random and supervised baselines in Table~\ref{tab:mlpImageNet}.
+
+\begin{table}[t]
+  \centering
+  \begin{tabular}{@{}lcr@{}}
+    \toprule
+    Method & Pre-trained dataset & Acc@1 \\
+    \midrule
+    Supervised & ImageNet  & 59.7 \\
+    Supervised Sobel & ImageNet  & 57.8 \\
+    Random & - & 12.0 \\
+    \midrule
+    Wang \etal~\cite{wang2015unsupervised} & YouTube100K~\cite{LiangLWLLY14} & 29.8 \\
+    \midrule
+    Doersch \etal~\cite{doersch2015unsupervised} & ImageNet & 30.4 \\
+    Donahue \etal~\cite{donahue2016adversarial}  & ImageNet & 32.2 \\
+    Noroozi and Favaro~\cite{noroozi2016unsupervised} & ImageNet & 34.6 \\
+    Zhang \etal~\cite{zhang2016colorful} & ImageNet & 35.2 \\
+    Bojanowski and Joulin~\cite{bojanowski2017unsupervised} & ImageNet & 36.0 \\
+    \midrule
+    % \OURS, RGB    & ImageNet & 37.1 \\
+    % \OURS, Sobel  & ImageNet & \textbf{44.0} \\
+    \OURS & ImageNet & 44.0 \\
+    \OURS & YFCC100M & 39.6 \\
+    %\OURS PIC  & ImageNet & 45.9 \\
+    \bottomrule
+  \end{tabular}
+  \caption{
+    Comparison of \OURS to AlexNet features pre-trained supervisedly and unsupervisedly on different datasets.
+    A full multi-layer perceptron is retrained on top of the frozen pre-trained features.
+    We report classification accuracy (acc@1).
+    Expect for Noroozi and Favaro~\cite{noroozi2016unsupervised},
+    all the numbers are taken from Bojanowski and Joulin~\cite{bojanowski2017unsupervised}.
+  }
+  \label{tab:mlpImageNet}
+\end{table}
+
+\OURS outperforms state-of-the-art unsupervised methods by a significant margin, achieving $8\%$ better accuracy than the previous best performing method.
+This means that \OURS \emph{halves the gap} with networks trained in a supervised setting.
+
+\subsection{Stopping criterion}
+We monitor how the features learned with \OURS evolve along the training epochs on a down-stream task: object classification on the validation set of \textsc{Pascal} VOC with no fine-tuning.
+We use this measure to select the hyperparameters of our model as well as to check when the features stop improving.
+In Figure~\ref{convergence}, we show the evolution of both the classification accuracy on this task and a measure of the clustering quality (NMI between the cluster assignments and the true labels) throughout the training.
+Unsurprisingly, we notice that the clustering and features qualities follow the same dynamic.
+The performance saturates after $400$ epochs of training.
+
+
+\begin{figure}[!h]
+\centering
+\includegraphics[scale = 0.5]{figures-doublescale.pdf}
+\caption{In red: validation mAP \textsc{Pascal} VOC classification performance.
+         In blue: evolution of the clustering quality.}
+\label{convergence}
+\end{figure}
+
+
+\section{Further discussion}
+
+In this section, we discuss some technical choices and variants of \OURS more specifically.
+
+\subsection{Alternative clustering algorithm}
+
+\noindent\textbf{Graph clustering.}
+We consider Power Iteration Clustering (PIC)~\cite{lin2010power} as an alternative clustering method.
+It has been shown to yield good performance for large scale collections~\cite{douze2017evaluation}.
+
+Since PIC is a graph clustering approach, we generate a nearest neighbor graph by connecting all images to their 5 neighbors in the Euclidean space of image descriptors. 
+We denote by $f_\theta(x)$ the output of the network with parameters $\theta$ applied to image $x$. 
+We use the sparse graph matrix $G=\mathbb{R}^{n \times n}$. 
+We set the diagonal of $G$ to 0 and non-zero entries are defined as 
+\[
+w_{ij} = e^{-\frac{\|f_\theta(x_i) - f_\theta(x_j)\|^2}{\sigma^2}}
+\]
+with $\sigma$ a bandwidth parameter.
+In this work, we use a variant of PIC~\cite{douze2017evaluation,CL12} that does: 
+\begin{enumerate}
+\item 
+	Initialize $v \leftarrow [1/n,..., 1/n]^\top \in \mathbb{R}^n$;
+\item  
+	Iterate \[
+	v \leftarrow N_1(\alpha (G + G^\top) v + (1 - \alpha) v),
+	\]
+	where $\alpha = 10^{-3}$ is a regularization parameter and $N_1:v \mapsto v / \|v\|_1$ the L1-normalization function; 
+\item 
+	Let $G'$ be the directed unweighted subgraph of $G$ where we keep edge $i \rightarrow j$ of $G$ such that 
+	\[
+	j = \mathrm{argmax}_j w_{ij}(v_j - v_i). 
+	\] 
+	If $v_i$ is a local maximum (ie. $\forall j\ne i, v_j \le v_i$), then no edge starts from it. 
+	The clusters are given by the connected components of $G'$. 
+	Each cluster has one local maximum. 
+\end{enumerate}
+
+An advantage of PIC clustering is not to require the setting beforehand of the number of clusters.
+However, the parameter $\sigma$ influences the number of clusters: when it is larger, the edges become more uniform and the number of clusters decreases, and the other way round when $\sigma$ increased. 
+In the following, we set $\sigma=0.2$.
+
+As our PIC implementation relies on a graph of nearest neighbors, we show in Figure~\ref{nn-retrieval} some query images and their $3$ nearest neighbors in the feature space with a network trained with the PIC version of DeepCluster and a random baseline.
+A randomly initialized network performs quite well in some cases (sunset query for example), where the image has a simple low-level structure.
+The top row in Fig.~\ref{nn-retrieval} seems to represent a query for which the performance of the random network is quite good whereas the bottom query is too complex for the random network to retrieve good matches.
+Moreover, we notice that the nearest neighbors matches are largely improved after the network has been trained with \OURS.
+
+\begin{figure}[!h]
+\centering
+
+\begin{tabular}{ccccccc}
+Query &&& Random &&& \OURS PIC
+\\
+\includegraphics[scale = 0.2]{images-query_04-003-959.jpg}&&&
+\includegraphics[scale = 0.2]{images-random_04-003-959.jpg}&&&
+\includegraphics[scale = 0.2]{images-imnetsob_04-003-959.jpg}
+\\
+
+ \includegraphics[scale = 0.2]{images-query_14-024-196.jpg}&&&
+ \includegraphics[scale = 0.2]{images-random_14-024-196.jpg}&&&
+ \includegraphics[scale = 0.2]{images-imnetsob_14-024-196.jpg}
+\\
+ \includegraphics[scale = 0.2]{images-query_21-002-768.jpg}&&&
+ \includegraphics[scale = 0.2]{images-random_21-002-768.jpg}&&&
+ \includegraphics[scale = 0.2]{images-imnetsob_21-002-768.jpg}
+\\
+
+\includegraphics[scale = 0.2]{images-query_11-001-098.jpg}&&&
+\includegraphics[scale = 0.2]{images-random_11-001-098.jpg}&&&
+\includegraphics[scale = 0.2]{images-imnetsob_11-001-098.jpg}
+\end{tabular}
+
+\caption{Images and their $3$ nearest neighbors in a subset of Flickr in the feature space. The query images are shown on the left column.
+ The following $3$ columns correspond to a randomly initialized network and the last $3$ to the same network after training with PIC \OURS.
+}
+\label{nn-retrieval}
+\end{figure}
+
+\noindent\textbf{Comparison with $k$-means.}
+First, we give an insight about the distribution of the images in the clusters. 
+We show in Figure~\ref{clustersize} the sizes of the clusters produced by the $k$-means and PIC versions of \OURS at the last epoch of training (this distribution is stable along the epochs).
+We observe that $k$-means produces more balanced clusters than PIC.
+Indeed, for PIC,  almost one third of the clusters are of a size lower than $10$ while the biggest cluster contains roughly $3000$ examples.
+In this situation of very unbalanced clusters, it is important in our method to train the convnet by sampling images based on a uniform distribution over the clusters to prevent the biggest cluster from dominating the training.
+
+\begin{figure}[!h]
+\centering
+\includegraphics[scale = 0.5]{figures-clustersize.pdf}
+\caption{Sizes of clusters produced by the $k$-means and PIC versions of \OURS at the last epoch of training.}
+\label{clustersize}
+\end{figure}
+
+We report in Table~\ref{tab:pic} the results for the different \textsc{Pascal} VOC transfer tasks with a model trained with the PIC version of DeepCluster.
+For this set of transfer tasks, the models trained with $k$-means and PIC versions of \OURS perform in comparable ranges.
+
+\begin{table}[h!]
+  \centering
+  \begin{tabular}{@{}l c cc c cc c cc@{}}
+    \toprule
+                      &Clustering algorithm& \multicolumn{2}{c}{Classification} &~~& \multicolumn{2}{c}{Detection} &~~& \multicolumn{2}{c}{Segmentation} \\
+                      \cmidrule{3-4} \cmidrule{6-7} \cmidrule{9-10}
+        && \textsc{fc6-8} & \textsc{all}   && \textsc{fc6-8} & \textsc{all}  && \textsc{fc6-8} & \textsc{all} \\
+                      \midrule
+    \OURS& $k$-means  & 72.0  & 73.7  && 51.4 & 55.4 && 43.2 & 45.1 \\
+    \OURS& PIC        & 71.0  & 73.0  && 53.6 & 54.4 && 42.4 & 43.8 \\
+    \bottomrule
+  \end{tabular}
+  \caption{
+    Evaluation of PIC versus $k$-means on \textsc{Pascal} VOC transfer tasks.
+  }
+  \label{tab:pic}
+\end{table}
+
+
+\subsection{Variants of \OURS}
+In Table~\ref{tab:flick},  we report the results of models trained with different variants of \OURS: a different training set, an alternative clustering method or without input preprocessing.
+In particular, we notice that the performance of \OURS on raw RGB images degrades significantly.
+\begin{table}[t]
+  \centering
+  \resizebox{\columnwidth}{!}{%
+    \begin{tabular}{@{}l c ccccc c ccccc@{}}
+      \toprule
+            &~~~& \multicolumn{5}{c}{ImageNet} &~~~& \multicolumn{5}{c}{Places} \\
+            \cmidrule{3-7} \cmidrule{9-13}
+      Method && \texttt{conv1} & \texttt{conv2} & \texttt{conv3} & \texttt{conv4} & \texttt{conv5} && \texttt{conv1} & \texttt{conv2} & \texttt{conv3} & \texttt{conv4} & \texttt{conv5} \\
+      \midrule
+      Places labels                                     && --   & --   & --   & --   & --             && $22.1$ & $35.1$ & $40.2$ & $43.3$ & $44.6$  \\
+      ImageNet labels                                   && $19.3$ & $36.3$ & $44.2$ & $48.3$ & $50.5$           && $22.7$ & $34.8$ & $38.4$ & $39.4$ & $38.7$  \\
+      Random                                            && $11.6$ & $17.1$ & $16.9$ & $16.3$ & $14.1$           && $15.7$ & $20.3$ & $19.8$ & $19.1$ & $17.5$  \\
+      \midrule
+    Best competitor ImageNet && $\textbf{18.2}$ & $30.6$ & $35.4$ & $35.2$ & $32.8$ && $23.3$ & $\textbf{33.9}$ & $36.3$ & $34.7$ & $32.5$ \\
+    \midrule
+    \OURS            && $13.4$ & $32.3$ & $\textbf{41.0}$ & $39.6$ & $\textbf{38.2}$ && $19.6$ & $33.2$ & $\textbf{39.2}$ & $\textbf{39.8}$ & $34.7$ \\
+    \OURS YFCC100M   && $13.5$ & $30.9$ & $38.0$ & $34.5$ & $31.4$ && $19.7$ & $33.0$ & $38.4$ & $39.0$ & $35.2$\\
+    \OURS PIC        && $13.5$ & $32.4$ & $40.8$ & $\textbf{40.5}$ & $37.8$ && $19.5$ & $32.9$ & $39.1$ & $39.5$ & $\textbf{35.9}$ \\
+    \OURS RGB        && $18.0$ & $\textbf{32.5}$ & $39.2$ & $37.2$ & $30.6$ && $\textbf{23.8}$ & $32.8$ & $37.3$ & $36.0$ & $31.0$ \\
+    \bottomrule
+  \end{tabular}
+}
+  %\vspace{\soustable}
+  \caption{
+    Impact of different variants of our method on the performance of \OURS.
+    We report classification accuracy of linear classifiers on ImageNet and Places using activations from the convolutional layers of an AlexNet as features.
+    We compare the standard version of \OURS to different settings: YFCC100M as pre-training set; PIC as clustering method; raw RGB inputs.
+%s    Regardless of the different variants, \OURS outperforms the best published numbers on most tasks.
+  }
+  \label{tab:flick}
+\end{table}
+
+In Table~\ref{tab:classif}, we compare the performance of \OURS depending on the clustering method and the pre-training set.
+We evaluate this performance on three different classification tasks: with fine-tuning on \textsc{Pascal} VOC, without, and by retraining the full MLP on ImageNet.
+We report the classification accuracy on the validation set.
+%We notice that, pre-trained on ImageNet, the performance of PIC seems to compare favorably with the one of $k$-means.
+Overall, we notice that the regular version of \OURS (with $k$-means) yields better results than the PIC variant on both ImageNet and the uncured dataset YFCC100M.
+
+\begin{table}[h!]
+  \centering
+  \begin{tabular}{@{}lcccccc@{}}
+    \toprule
+     Dataset & Clustering&& \multicolumn{2}{c}{\textsc{Pascal} VOC} &~~& ImageNet \\
+                                        \cmidrule{4-5} \cmidrule{7-7}
+        &&& \textsc{fc6-8} & \textsc{all} && \textsc{fc6-8} \\
+    \midrule
+    ImageNet & $k$-means && 72.0  & 73.7  && 44.0  \\
+    ImageNet & PIC        && 71.0  & 73.0  && 45.9 \\
+    YFCC100M & $k$-means  && 67.3  & 69.3  && 39.6 \\
+    YFCC100M & PIC        && 66.0  & 69.0  && 38.6 \\
+    \bottomrule
+  \end{tabular}
+  \caption{
+    Performance of \OURS with different pre-training sets and clustering algorithms measured as classification accuracy on \textsc{Pascal} VOC and ImageNet.
+  }
+  \label{tab:classif}
+\end{table}
+
+\section{Additional visualisation}
+\subsection{Visualise VGG-$16$ features}
+We assess the quality of the representations learned by the VGG-$16$ convnet with \OURS.
+To do so, we learn an input image that maximises the mean activation of a target filter in the last convolutional layer.
+We also display the top $9$ images in a random subset of $1$ million images from Flickr that activate the target filter maximally.
+In Figure~\ref{fig:vgg}, we show some filters for which the top $9$ images seem to be semantically or stylistically coherent.
+We observe that the filters, learned without any supervision, capture quite complex structures.
+In particular, in Figure~\ref{fig:human}, we display synthetic images that correspond to filters that seem to focus on human characteristics.
+
+\begin{figure}[t]
+\centering
+\begin{tabular}{cccccccc}
+\includegraphics[width=0.16\linewidth]{images-vgg-layer13-channel191.jpeg}
+\includegraphics[width=0.16\linewidth]{images-vgg-layer12-channel191-small.jpeg}&
+\includegraphics[width=0.16\linewidth]{images-vgg-layer13-channel5.jpeg}
+\includegraphics[width=0.16\linewidth]{images-vgg-layer12-channel5-small.jpeg}&
+\includegraphics[width=0.16\linewidth]{images-vgg-layer13-channel86.jpeg}
+\includegraphics[width=0.16\linewidth]{images-vgg-layer12-channel86-small.jpeg}&
+\\
+\includegraphics[width=0.16\linewidth]{images-vgg-layer13-channel83.jpeg}
+\includegraphics[width=0.16\linewidth]{images-vgg-layer12-channel83-small.jpeg}&
+\includegraphics[width=0.16\linewidth]{images-vgg-layer13-channel63.jpeg}
+\includegraphics[width=0.16\linewidth]{images-vgg-layer12-channel63-small.jpeg}&
+\includegraphics[width=0.16\linewidth]{images-vgg-layer13-channel155.jpeg}
+\includegraphics[width=0.16\linewidth]{images-vgg-layer12-channel155-small.jpeg}&
+\\
+\includegraphics[width=0.16\linewidth]{images-vgg-layer13-channel225.jpeg}
+\includegraphics[width=0.16\linewidth]{images-vgg-layer12-channel225-small.jpeg}&
+\includegraphics[width=0.16\linewidth]{images-vgg-layer13-channel232.jpeg}
+\includegraphics[width=0.16\linewidth]{images-vgg-layer12-channel232-small.jpeg}&
+\includegraphics[width=0.16\linewidth]{images-vgg-layer13-channel240.jpeg}
+\includegraphics[width=0.16\linewidth]{images-vgg-layer12-channel240-small.jpeg}&
+\\
+\includegraphics[width=0.16\linewidth]{images-vgg-layer13-channel175.jpeg}
+\includegraphics[width=0.16\linewidth]{images-vgg-layer12-channel175-small.jpeg}&
+\includegraphics[width=0.16\linewidth]{images-vgg-layer13-channel3.jpeg}
+\includegraphics[width=0.16\linewidth]{images-vgg-layer12-channel3-small.jpeg}&
+\includegraphics[width=0.16\linewidth]{images-vgg-layer13-channel43.jpeg}
+\includegraphics[width=0.16\linewidth]{images-vgg-layer12-channel43-small.jpeg}&
+
+\end{tabular}
+\caption{
+Filter visualization and top 9 activated images (immediate right to the corresponding synthetic image) from a subset of 1 million images from YFCC100M for target filters in the last convolutional layer of a VGG-$16$ trained with \OURS.}
+\label{fig:vgg}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\begin{tabular}{cccccccc}
+\includegraphics[width=0.24\linewidth]{images-vgg-layer13-channel110.jpeg}
+\includegraphics[width=0.24\linewidth]{images-vgg-layer13-channel17.jpeg}
+\includegraphics[width=0.24\linewidth]{images-vgg-layer13-channel45.jpeg}
+\includegraphics[width=0.24\linewidth]{images-vgg-layer13-channel143.jpeg}
+\\
+\includegraphics[width=0.24\linewidth]{images-vgg-layer13-channel176.jpeg}
+\includegraphics[width=0.24\linewidth]{images-vgg-layer13-channel126.jpeg}
+\includegraphics[width=0.24\linewidth]{images-vgg-layer13-channel125.jpeg}
+\includegraphics[width=0.24\linewidth]{images-vgg-layer13-channel7.jpeg}
+
+\end{tabular}
+\caption{
+    Filter visualization by learning an input image that maximizes the response to a target filter~\cite{yosinski2015understanding} in the last convolutional layer of a VGG-$16$ convnet trained with \OURS.
+    Here, we manually select filters that seem to trigger on human characteristics (eyes, noses, faces, fingers, fringes, groups of people or arms).
+}
+\label{fig:human}
+\end{figure}
+
+
+
+
+\subsection{AlexNet}
+It is interesting to investigate what clusters the unsupervised learning approach actually learns. 
+Fig.~2(a) in the paper suggests that our clusters are correlated with ImageNet classes.
+In Figure~\ref{fig:clusters}, we look at the purity of the clusters with the ImageNet ontology to see which concepts are learned.
+More precisely, we show the proportion of images belonging to a \emph{pure cluster} for different synsets at different depths in the ImageNet ontology (pure cluster = more than 70\% of images are from that synset).
+The correlation varies significantly between categories, with the highest correlations for animals and plants.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=1\linewidth]{images-treeim.pdf} \\
+\caption{
+  {
+    \footnotesize
+    Proportion of images belonging to a \emph{pure cluster} for different synsets in the ImageNet ontology (pure cluster = more than 70\% of images are from that synset).
+    We show synsets at depth 6, 9 and 13 in the ontology, with ``zooms'' on the animal and mammal synsets.
+  }
+}
+\vspace{-1em}
+\label{fig:clusters}
+\end{figure}
+In Figure~\ref{fig:waouh2}, we display the top 9 activated images from a random subset of 10 millions images from YFCC100M for the first $100$ target filters in the last convolutional layer 
+(we selected filters whose top activated images do not depict humans).
+We observe that, even though our method is purely unsupervised, some filters trigger on images containing particular classes of objects.
+Some other filters respond strongly on particular stylistic effects or textures.
+
+\begin{figure}[t]
+\centering
+\begin{tabular}{ccccccc}
+Filter $0$ && Filter $1$ && Filter $2$ && Filter $3$
+\\
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel0-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel1-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel2-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel3-small.jpeg}
+\\
+Filter $5$ && Filter $6$ && Filter $7$ && Filter $8$
+\\
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel5-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel6-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel7-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel8-small.jpeg}
+\\
+Filter $9$ && Filter $10$ && Filter $11$ && Filter $13$
+\\
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel9-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel10-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel11-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel13-small.jpeg}
+\\
+Filter $14$ && Filter $16$ && Filter $18$ && Filter $24$
+\\
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel14-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel16-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel18-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel24-small.jpeg}
+\\
+Filter $24$ && Filter $25$ && Filter $26$ && Filter $27$
+\\
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel24-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel25-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel26-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel27-small.jpeg}
+\\
+Filter $28$ && Filter $30$ && Filter $33$ && Filter $34$
+\\
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel28-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel30-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel33-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel34-small.jpeg}
+\end{tabular}
+\end{figure}
+\begin{figure}[t]
+\centering
+\begin{tabular}{ccccccc}
+Filter $36$ && Filter $41$ && Filter $42$ && Filter $43$
+\\
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel36-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel41-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel42-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel43-small.jpeg}
+\\
+Filter $45$ && Filter $52$ && Filter $55$ && Filter $56$
+\\
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel45-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel52-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel55-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel56-small.jpeg}
+\\
+Filter $57$ && Filter $58$ && Filter $59$ && Filter $60$
+\\
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel57-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel58-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel59-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel60-small.jpeg}
+\\
+Filter $62$ && Filter $63$ && Filter $65$ && Filter $66$
+\\
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel62-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel63-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel65-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel66-small.jpeg}
+\\
+Filter $67$ && Filter $68$ && Filter $69$ && Filter $70$
+\\
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel67-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel68-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel69-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel70-small.jpeg}
+\\
+Filter $74$ && Filter $75$ && Filter $76$ && Filter $78$
+\\
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel74-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel75-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel76-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel78-small.jpeg}
+\end{tabular}
+\end{figure}
+\begin{figure}[t]
+\centering
+\begin{tabular}{ccccccc}
+Filter $79$ && Filter $81$ && Filter $83$ && Filter $84$
+\\
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel79-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel81-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel83-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel84-small.jpeg}
+\\
+Filter $85$ && Filter $88$ && Filter $90$ && Filter $91$
+\\
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel85-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel88-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel90-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel91-small.jpeg}
+\\
+Filter $92$ && Filter $93$ && Filter $96$ && Filter $97$
+\\
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel92-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel93-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel96-small.jpeg}&&
+\includegraphics[width=0.23\linewidth]{images-filter-layer4-channel97-small.jpeg}
+\end{tabular}
+\caption{
+  Top $9$ activated images from a random subset of $10$ millions images from YFCC100M for the $100$ first filters in the last convolutional layer of an AlexNet trained with \OURS (we do not display humans).
+}
+\label{fig:waouh2}
+\end{figure}
+
+\section{Erratum [18/03/2019]}
+
+In the original version of the paper, we report classification accuracy averaged over $10$ crops for the linear classifier experiments on Places and ImageNet datasets.
+However, other methods report accuracy of the central crop so our comparison wasn't fair.
+Nevertheless, it does not change the conclusion of these experiments, our approach still outperforms the state of the art from \texttt{conv3} to \texttt{conv5} layers.
+In Table~\ref{tab:erratum}, we show our results both for single and $10$ crops.
+\begin{table}[t]
+  \centering
+  \resizebox{\columnwidth}{!}{%
+    \begin{tabular}{@{}l c ccccc c ccccc@{}}
+      \toprule
+            &~~~& \multicolumn{5}{c}{ImageNet} &~~~& \multicolumn{5}{c}{Places} \\
+            \cmidrule{3-7} \cmidrule{9-13}
+      Method && \texttt{conv1} & \texttt{conv2} & \texttt{conv3} & \texttt{conv4} & \texttt{conv5} && \texttt{conv1} & \texttt{conv2} & \texttt{conv3} & \texttt{conv4} & \texttt{conv5} \\
+      \midrule
+      \OURS single crop  && $12.9$ & $29.2$ & $38.2$ & $39.8$ & $36.1$ && $18.6$ & $30.8$ & $37.0$ & $37.5$ & $33.1$ \\
+      \OURS $10$ crops  && $13.4$ & $32.3$ & $41.0$ & $39.6$ & $38.2$ && $19.6$ & $33.2$ & $39.2$ & $39.8$ & $34.7$ \\
+      \bottomrule
+    \end{tabular}
+  }
+  \vspace{\soustable}
+  \caption{
+    Linear classification on ImageNet and Places using activations from the convolutional layers of an AlexNet as features.
+  }
+  \label{tab:erratum}
+\end{table}

@@ -1,0 +1,54 @@
+\subsection{Noisy quadratic analysis}
+\label{sec: noisyquadratic}
+
+\begin{wrapfigure}{t}{0.5 \textwidth}
+    \centering
+    \vspace{-0.4cm}%
+    \includegraphics[width=0.9\linewidth]{images/noisy_quad_convergence.png}%
+    \vspace{-0.1cm}%
+    \caption{Comparing expected optimization progress between SGD and Lookahead($k=5$) on the noisy quadratic model.  Each vertical slice compares the convergence of optimizers with the same final loss values. For Lookahead, convergence rates for 100 evenly spaced $\alpha$ values in the range $(0,1]$ are overlaid.}
+    \label{fig:noisy_quad_convergence}
+    \vspace{-0.4cm}%
+\end{wrapfigure}
+
+We analyze Lookahead on a noisy quadratic model to better understand its convergence guarantees. While simple, this model is a proxy for neural network optimization and effectively optimizing it remains a challenging open problem \citep{schaul2013no, martens2015optimizing, wu2018understanding, zhang2019algorithmic}. In this section, we will show under equal learning rates that Lookahead will converge to a smaller steady-state risk than SGD. We will then show through simulation of the expected dynamics that Lookahead is able to converge to this steady-state risk more quickly than SGD for a range of hyperparameter settings.
+
+\paragraph{Model definition} We use the same model as in \citet{schaul2013no} and \citet{wu2018understanding}. 
+\begin{equation}
+    \hat{\mathcal{L}}(\bx) = \frac{1}{2} (\bx - \bc)^T \bA (\bx - \bc),
+\end{equation}
+with $\bc \sim \mathcal{N}(\bx^*, \Sigma)$. We assume that both $\bA$ and $\Sigma$ are diagonal and that, without loss of generality, $\bx^* = \mathbf{0}$. While it is trivial to assume that $\bA$ is diagonal \footnote{Classical momentum's iterates are invariant to translations and rotations (see e.g. \citet{sutskever2013importance})  and Lookahead's linear interpolation is also invariant to such changes.} the co-diagonalizable noise assumption is non-trivial but is common --- see \citet{wu2018understanding} and \citet{zhang2019algorithmic} for further discussion. We use $a_i$ and $\sigma_i^2$ to denote the diagonal elements of $\bA$ and $\Sigma$ respectively. Taking the expectation over $\bc$, the expected loss of the iterates $\theta^{(t)}$ is,
+
+\begin{equation}\label{eqn:noisy_exp_loss}
+    \mathcal{L}(\theta^{(t)}) = \E[\hat{\mathcal{L}}(\theta^{(t)})]
+    = \frac{1}{2} \E [\sum_i a_i ({\theta_i^{(t)}}^2 + \sigma_i^2)]
+    = \frac{1}{2}\sum_i a_i (\E[\theta_i^{(t)}]^2 + \V[\theta_i^{(t)}] + \sigma_i^2).
+\end{equation}
+
+Analyzing the expected dynamics of the SGD iterates and the slow weights gives the following result.
+
+
+
+\begin{proposition}[Lookahead steady-state risk]\label{prop:noisy_quad}
+Let $0 < \gamma < 2/L$ be the learning rate of SGD and Lookahead where $L=\max_i a_i$. In the noisy quadratic model, the iterates of SGD and Lookahead with SGD as its inner optimizer converge to $0$ in expectation and the variances converge to the following fixed points:
+\begin{align}
+    V_{SGD}^* &= \frac{\gamma^2 \bA^2 \Sigma^2}{\bI - (\bI - \gamma \bA)^2} \\
+    V_{LA}^* &= \frac{\alpha^2 (\bI - (\bI - \gamma\bA)^{2k})}{\alpha^2 (\bI - (\bI - \gamma\bA)^{2k}) + 2\alpha(1 - \alpha)(\bI - (\bI - \gamma\bA)^k)} V_{SGD}^*
+    % V_{LA}^* = \frac{\alpha^2 (\bI - (\bI - \gamma\bA)^{2k})}{\bI - ((1 - \alpha) \bI + \alpha(\bI - \gamma\bA)^k)^2} \frac{\gamma^2 \bA^2 \Sigma}{\bI - (\bI - \gamma \bA)^2} 
+    % < \frac{\gamma^2 \bA^2 \Sigma}{\bI - (\bI - \gamma \bA)^2} = V_{SGD}^*
+\end{align}
+\end{proposition}
+
+
+\paragraph{Remarks}For the Lookahead variance fixed point, the first product term is always smaller than 1 for $\alpha \in (0,1)$, and thus Lookahead has a variance fixed point that is strictly smaller than that of the SGD inner-loop optimizer for the same learning rate. Evidence of this phenomenon is present in deep neural networks trained on the CIFAR dataset, shown in Figure~\ref{fig:cifar-every-batch}.
+
+
+
+In Proposition~\ref{prop:noisy_quad}, we use the same learning rate for both SGD and Lookahead. To fairly evaluate the convergence of the two methods, we compare the convergence rates under hyperparameter settings that achieve the same steady-state risk. In Figure~\ref{fig:noisy_quad_convergence} we show the expected loss after 1000 updates (computed analytically) for both Lookahead and SGD. This shows that there exists (fixed) settings of the Lookahead hyperparameters that arrive at the same steady state risk as SGD but do so more quickly. Moreover, Lookahead outperforms SGD across the broad spectrum of $\alpha$ values we simulated. Details, further simulation results, and additional discussion are presented in Appendix~\ref{app:quadratic}.
+
+% For the same learning rate, Lookahead will achieve a smaller loss as the variance is reduced more. However, the convergence speed will be slower as we must compare $1-\alpha + \alpha(\bI-\gamma\bA)^k$ to $(\bI-\gamma\bA)^k$ and the latter is always smaller for $\alpha < 1$. In our experiments, we observe that Lookahead typically converges much faster than its inner optimizer. We speculate that the learning rate for the inner optimizer is set sufficiently high such that the variance reduction term is more important.
+
+% MZ: TODOs below
+% We have asked the question: Does there exist choices of $\alpha$ and $\gamma$ for LA and SGD such that the two algorithms have equal variance fixed points but LA has faster convergence? It seems that the answer is no (though I haven't proved it, there is strong numerical evidence).
+
+% \paragraph{Extensions} Maybe we can show that adding momentum gives LA a more significant advantage. The momentum dynamics are \emph{much} more complicated but are computed in closed form by \citet{wu2018understanding}.

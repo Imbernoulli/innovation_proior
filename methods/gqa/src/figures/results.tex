@@ -1,0 +1,36 @@
+\begin{figure}[h]
+\centering
+\hspace{-0.5cm}
+\begin{tikzpicture}
+\begin{axis}[
+width=0.98\columnwidth,
+xmin=0.0, xmax=1.95,
+ymin=45.65, ymax=47.40,
+ylabel={Performance},
+xlabel={Time per sample (ms)},
+legend columns=1,
+legend cell align=left,
+legend style={
+    anchor=south,
+    at={(0.84, 0.05)},
+},
+]
+\addplot[only marks, mark=*, mark options={draw=mhcolor, fill=mhcolor, scale=2}] coordinates {
+    (0.372, 45.95)
+    (1.514, 47.206)
+};
+\node at (axis cs:0.372,45.95) [anchor= north west, color=darkgrey] {\small{MHA-Large}};            
+\node at (axis cs:1.514,47.206) [anchor= north east, color=darkgrey] {\small{MHA-XXL}};            
+\addplot[only marks, mark=*, mark options={draw=mqcolor, fill=mqcolor, scale=2}] coordinates {
+    (0.239, 46.571)
+};
+\node at (axis cs:0.239,46.548) [anchor= north west, color=darkgrey] {\small{MQA-XXL}};            
+\addplot[only marks, mark=*, mark options={draw=gqcolor, fill=gqcolor, scale=2}] coordinates {
+    (0.275, 47.136)
+};
+\node at (axis cs:0.275,47.136) [anchor= north west, color=darkgrey] {\small{GQA-XXL}};            
+\end{axis}
+\end{tikzpicture}
+    \caption{{\bf Uptrained \mq yields a favorable tradeoff compared to \mh with higher quality and faster speed than \mh-Large, and \gmq achieves even better performance with similar speed gains and comparable quality to \mh-XXL.} Average performance on all tasks as a function of average inference time per sample for T5-Large and T5-XXL with multi-head attention, and 5\% uptrained T5-XXL with \mq and \gmq-8 attention.}
+    \label{fig:perf_vs_time}
+\end{figure}

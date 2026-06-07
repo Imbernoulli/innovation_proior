@@ -1,0 +1,28 @@
+We explored a range of novel and existing techniques which ended up degrading or otherwise not affecting performance in our setting. We report them here; our evaluations for this section are not as thorough as those for the main architectural choices. 
+
+Our intention in reporting these results is to save time for future work, and to give a more complete picture of our attempts to improve performance or stability. We note, however, that these results must be understood to be specific to the particular setup we used. A pitfall of reporting negative results is that one might report that a particular technique doesn't work, when the reality is that this technique did not have the desired effect when applied in a particular way to a particular problem. Drawing overly general conclusions might close off potentially fruitful avenues of research.
+
+\begin{itemize}
+\item We found that doubling the depth (by inserting an additional Residual block after every up- or down-sampling block) hampered performance. 
+
+\item We experimented with sharing class embeddings between both \gen{} and \discr{} (as opposed to just within \gen{}). This is accomplished by replacing \discr{}'s class embedding with a projection from \gen{}'s embeddings, as is done in \gen{}'s BatchNorm layers. In our initial experiments this seemed to help and accelerate training, but we found this trick scaled poorly and was sensitive to optimization hyperparameters, particularly the choice of number of \discr{} steps per \gen{} step.
+
+\item We tried replacing BatchNorm in \gen{} with WeightNorm \citep{salimans2016weightnorm}, but this crippled training. We also tried removing BatchNorm and only having Spectral Normalization, but this also crippled training.
+
+\item We tried adding BatchNorm to \discr{} (both class-conditional and unconditional) in addition to Spectral Normalization, but this crippled training.
+
+\item We tried varying the choice of location of the attention block in \gen{} and \discr{} (and inserting multiple attention blocks at different resolutions) but found that at 128$\times$128 there was no noticeable benefit to doing so, and compute and memory costs increased substantially. We found a benefit to moving the attention block up one stage when moving to 256$\times$256, which is in line with our expectations given the increased resolution.
+
+\item We tried using filter sizes of 5 or 7 instead of 3 in either \gen{} or \discr{} or both. We found that having a filter size of 5 in \gen{} only provided a small improvement over the baseline but came at an unjustifiable compute cost. All other settings degraded performance. 
+\item We tried varying the dilation for convolutional filters in both \gen{} and \discr{} at 128$\times$128, but found that even a small amount of dilation in either network degraded performance.
+
+\item We tried bilinear upsampling in \gen{} in place of nearest-neighbors upsampling, but this degraded performance.
+\item In some of our models, we observed class-conditional mode collapse, where the model would only output one or two samples for a subset of classes but was still able to generate samples for all other classes. We noticed that the collapsed classes had embedings which had become very large relative to the other embeddings, and attempted to ameliorate this issue by applying weight decay to the shared embedding only. We found that small amounts of weight decay ($10^{-6}$) instead degraded performance, and that only even smaller values ($10^{-8}$) did not degrade performance, but these values were also too small to prevent the class vectors from exploding. Higher-resolution models appear to be more resilient to this problem, and none of our final models appear to suffer from this type of collapse.
+
+\item We experimented with using MLPs instead of linear projections from \gen{}'s class embeddings to its BatchNorm gains and biases, but did not find any benefit to doing so. We also experimented with Spectrally Normalizing these MLPs, and with providing these (and the linear projections) with a bias at their output, but did not notice any benefit.
+
+\item We tried gradient norm clipping (both the global variant typically used in recurrent networks, and a local version where the clipping value is determined on a per-parameter basis) but found this did not alleviate instability.
+
+
+\end{itemize}
+

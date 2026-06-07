@@ -1,0 +1,13 @@
+\newcommand{\genOdeTable}{%
+\multicolumn{1}{l|}{}                                   & \multicolumn{4}{c|}{Unconditional CIFAR-10 at 32$\times$32}                   & \multicolumn{2}{c|}{Class-conditional}  \\
+\multicolumn{1}{l|}{}                                   & \multicolumn{2}{c|}{VP}               & \multicolumn{2}{c|}{VE}               & \multicolumn{2}{c|}{ImageNet-64}        \\
+\tabucline{-}
+{\bf Sampling method}                                   & FID~$\downarrow$  & NFE~$\downarrow$  & FID~$\downarrow$  & NFE~$\downarrow$  & FID~$\downarrow$  & NFE~$\downarrow$    \\
+\tabucline{-}
+\low{Original sampler~\cite{Song2021sde,Dhariwal2021}}  & 2.85              & 256               & 5.45              & 8192              & 2.85              & 250                 \\
+Our Algorithm~\refpaper{alg:heun}                       & {\bf2.79}         & 512               & 4.78              & 8192              & 2.73              & 384                 \\
++ Heun \& our $t_i$                                     & 2.88              & 255               & 4.23              & \s191             & {\bf2.64}         & {\bf\s79}           \\
++ Our $\sigma(t)$ \& $s(t)$                             & 2.93              & {\bf\s35}         & 3.73              & {\bf\s\s27}       & \s\s--            & \s--                \\
+\tabucline{-}
+Black-box RK45                                          & 2.94              & 115               & {\bf3.69}         & \s\s93            & 2.66              & 131                 \\
+}

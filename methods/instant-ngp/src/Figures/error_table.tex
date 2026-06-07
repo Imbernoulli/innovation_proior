@@ -1,0 +1,25 @@
+\small \sffamily
+\rowcolors{2}{gray!8}{white}
+\setlength{\tabcolsep}{9.9pt}
+\begin{tabularx}{\linewidth}{llllllllll}
+\toprule
+\rowcolor{white}
+& \sceneMic& \sceneFicus& \sceneChair& \sceneHotdog& \sceneMaterials& \sceneDrums& \sceneShip& \sceneLego& avg.\\
+\midrule
+\rowcolor{white}
+
+Ours: Hash (\SI{1}{\second})& $26.09$& $21.30$& $21.55$& $21.63$& $22.07$& $17.76$& $20.38$& $18.83$& 	21.202\\
+Ours: Hash (\SI{5}{\second})& $32.60$& $30.35$& $30.77$& $33.42$& $26.60$& $23.84$& $26.38$& $30.13$& 	29.261\\
+Ours: Hash (\SI{15}{\second})& $34.76$& $32.26$& $32.95$& $35.56$& $28.25$& $25.23$& $28.56$& $33.68$& 	31.407\\
+Ours: Hash (\SI{1}{\minute})& $35.92$ \tikzcircle[bronze,fill=bronze]{2pt}& $33.05$ \tikzcircle[bronze,fill=bronze]{2pt}& $34.34$ \tikzcircle[bronze,fill=bronze]{2pt}& $36.78$& $29.33$& $25.82$ \tikzcircle[silver,fill=silver]{2pt}& $30.20$ \tikzcircle[bronze,fill=bronze]{2pt}& $35.63$ \tikzcircle[bronze,fill=bronze]{2pt}& 	32.635 \tikzcircle[bronze,fill=bronze]{2pt}\\
+Ours: Hash (\SI{5}{\minute})& $36.22$ \tikzcircle[silver,fill=silver]{2pt}& $33.51$ \tikzcircle[gold,fill=gold]{2pt}& $35.00$ \tikzcircle[silver,fill=silver]{2pt}& $37.40$ \tikzcircle[silver,fill=silver]{2pt}& $29.78$ \tikzcircle[bronze,fill=bronze]{2pt}& $26.02$ \tikzcircle[gold,fill=gold]{2pt}& $31.10$ \tikzcircle[gold,fill=gold]{2pt}& $36.39$ \tikzcircle[gold,fill=gold]{2pt}& 	33.176 \tikzcircle[gold,fill=gold]{2pt}\\
+\midrule
+mip-NeRF ($\sim$hours)& $36.51$ \tikzcircle[gold,fill=gold]{2pt}& $33.29$ \tikzcircle[silver,fill=silver]{2pt}& $35.14$ \tikzcircle[gold,fill=gold]{2pt}& $37.48$ \tikzcircle[gold,fill=gold]{2pt}& $30.71$ \tikzcircle[silver,fill=silver]{2pt}& $25.48$ \tikzcircle[bronze,fill=bronze]{2pt}& $30.41$ \tikzcircle[silver,fill=silver]{2pt}& $35.70$ \tikzcircle[silver,fill=silver]{2pt}& 	33.090 \tikzcircle[silver,fill=silver]{2pt}\\
+NSVF ($\sim$hours)& $34.27$& $31.23$& $33.19$& $37.14$ \tikzcircle[bronze,fill=bronze]{2pt}& $32.68$ \tikzcircle[gold,fill=gold]{2pt}& $25.18$& $27.93$& $32.29$& 	31.739\\
+NeRF ($\sim$hours)& $32.91$& $30.13$& $33.00$& $36.18$& $29.62$& $25.01$& $28.65$& $32.54$& 	31.005\\
+\midrule
+
+Ours: Frequency (\SI{5}{\minute})& $31.89$& $28.74$& $31.02$& $34.86$& $28.93$& $24.18$& $28.06$& $32.77$& 	30.056\\
+Ours: Frequency (\SI{1}{\minute})& $26.62$& $24.72$& $28.51$& $32.61$& $26.36$& $21.33$& $24.32$& $28.88$& 	26.669\\
+\bottomrule
+\end{tabularx}

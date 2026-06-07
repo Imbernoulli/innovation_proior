@@ -1,0 +1,41 @@
+
+\vspace*{-5pt}
+
+\section{Introduction}
+\label{sec:intro}
+
+Learning with graph structured data, such as molecules, social, biological,  and financial networks, requires effective representation of their graph structure~\citep{hamilton2017representation}. Recently, there has been a surge of interest in Graph Neural Network (GNN) approaches for representation learning of graphs~\citep{li2015gated,hamilton2017inductive,kipf2016semi,velivckovic2017graph, xu2018representation}. 
+%
+GNNs broadly follow a recursive neighborhood aggregation (or message passing) scheme, where each node aggregates feature vectors of its neighbors to compute its new feature vector~\citep{xu2018representation, gilmer2017neural}.
+After $k$ iterations of aggregation, a node is represented by its transformed feature vector, which captures the structural information within the node's $k$-hop neighborhood. 
+The representation of an entire graph can then be obtained through pooling~\citep{ying2018hierarchical}, for example, by summing the representation vectors of all nodes in the graph.
+
+Many GNN variants with different neighborhood aggregation and graph-level pooling schemes have been proposed~\citep{scarselli2009graph, battaglia2016interaction,defferrard2016convolutional,duvenaud2015convolutional,hamilton2017inductive,kearnes2016molecular,kipf2016semi, li2015gated,velivckovic2017graph, santoro2017simple, xu2018representation, santoro2018measuring, verma2018graph, ying2018hierarchical,zhang2018end}. Empirically, these GNNs have achieved state-of-the-art performance in many tasks such as node classification, link prediction, and graph classification. 
+%
+However, the design of new GNNs is mostly based on empirical intuition, heuristics, and experimental trial-and-error.
+There is little theoretical understanding of the properties and limitations of GNNs, and formal analysis of GNNs' representational capacity is limited. 
+
+Here, we present a theoretical framework for analyzing the representational power of GNNs. We formally characterize how expressive different GNN variants are in learning to represent and distinguish between different graph structures. 
+%
+Our framework is inspired by the close connection between GNNs and the Weisfeiler-Lehman (WL) graph isomorphism test~\citep{weisfeiler1968reduction}, a powerful test known to distinguish a broad class of graphs~\citep{babai1979canonical}. Similar to GNNs, the WL test iteratively updates a given node's feature vector by aggregating feature vectors of its network neighbors. What makes the WL test so powerful is its injective aggregation update that maps different node neighborhoods to different feature vectors.
+Our key insight is that a GNN can have as large discriminative power as the WL test if the GNN's aggregation scheme is highly expressive and can model injective functions.
+
+To mathematically formalize the above insight, our framework first represents the 
+set of feature vectors of a given node's neighbors as a \emph{multiset}, \ie, a set with possibly repeating elements. Then, the neighbor aggregation in GNNs can be thought of as an \emph{aggregation function over the multiset}. Hence, to have strong representational power, a GNN must be able to aggregate different multisets into different representations.
+We rigorously study several variants of multiset functions and theoretically characterize their discriminative power, \ie, %we study
+how well different aggregation functions can distinguish different multisets. The more discriminative the multiset function is, the more powerful the representational power of the underlying GNN. 
+
+Our main results are summarized as follows: \vspace{-5pt}
+\begin{itemize}[leftmargin=1cm]
+	\item[1)] We show that GNNs are \textit{at most} as powerful as the WL test in distinguishing %different
+        graph structures.  
+	\item[2)] We establish conditions on the neighbor aggregation and graph readout functions under which the resulting GNN is \textit{as powerful as} the WL test. 
+	\item[3)] We identify graph structures that cannot be distinguished by popular GNN variants, such as GCN~\citep{kipf2016semi} and GraphSAGE~\citep{hamilton2017inductive}, and we precisely characterize the kinds of graph structures such GNN-based models can capture.
+	\item[4)] We develop a simple neural architecture, {\em Graph Isomorphism Network (GIN)}, and show
+	that its discriminative/representational power is equal to the power of the WL test.
+\end{itemize}
+%
+We validate our theory via %by conducting extensive
+experiments on graph classification datasets, where the expressive power of GNNs is crucial to capture graph structures. In particular, we compare the performance of GNNs with various aggregation functions. Our results confirm that the most powerful GNN by our theory, \ie, Graph Isomorphism Network (GIN), also empirically has high representational power as it almost perfectly fits the training data, whereas the less powerful GNN variants often severely underfit the training data. In addition, the representationally more powerful GNNs outperform the others by test set accuracy and achieve state-of-the-art performance on many graph classification benchmarks.
+
+

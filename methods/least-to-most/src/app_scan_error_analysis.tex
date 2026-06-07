@@ -1,0 +1,66 @@
+\subsection{Error analysis: Least-to-most prompting}
+\label{app:scan-error}
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{|l|c|c|c|}
+    \hline
+    \textbf{Error type} & \texttt{code-002} & \texttt{code-001} & \texttt{text-002} \\
+    \hline
+    Decomposition error & 0 & 7 & 1\\
+    \hline
+    Incorrect interpretation of ``twice'' and ``thrice'' & 6 & 10 & 16 \\
+    \ \ - Following ``around'' & 6 & 3 & 15\\
+    \ \ - Following ``opposite'' & 0 & 3 & 1 \\
+    \ \ - Other & 0 & 4 &  \\
+    \hline
+    ``after'' interpreted as ``and'' & 7 & 4 & 0 \\
+    \hline
+    Incorrect interpretation of ``left'' and ''right'' & 0 & 0 & 4 \\
+    \hline
+    Copy error & 0 & 4 & 0 \\
+    \hline
+\end{tabular}
+\vspace{5pt}
+\caption{Least-to-most prompting error analysis of 20 random failures for the models \texttt{code-davinci-001} and \texttt{text-davinci-002} and all 13 errors for the model  \texttt{code-davinci-002}. Note that for some examples, the model made more than one type of error.}
+\label{table:scan-error-complete}
+\end{table}
+
+For least-to-most prompting, we analyzed 20 random failures for the models \texttt{code-davinci-001} and \texttt{text-davinci-002}, and we analyzed all 13 errors for the model \texttt{code-davinci-002}. The results are shown in Table~\ref{table:scan-error-complete}. Errors may either occur during command decomposition or during command translation. The translation errors are further split into the following types. Incorrect interpretation of ``twice'' and ``thrice'' means that the model made an error when applying ``twice'' and ``thrice'' to an expression. ``After'' interpreted as ``and'' means that the model translated an expression containing ``after'' as if it instead contained ``and''. Copy error means that the model made a mistake when copying an intermediate result.
+
+We observe that the best model \texttt{text-davinci-002} made only 2 types of mistakes: it sometimes makes a mistake when applying ``twice'' and ``thrice'' to an expression containing ``around'', and it sometimes interprets ``after'' as ``and''.  For \texttt{text-davinci-001}, which is the older version of the same model, the errors are spread across all types. In particular, it's worth noting that \texttt{text-davinci-001} makes a significant number of decomposition errors and copy errors that were completely eliminated by its successor.
+
+The model \texttt{text-davinci-002} made most of its mistakes when interpreting ``twice'' and ``thrice'' following ``around''. In addition, it sometimes made a mistake when translating ``left'' and ``right'', which is something we did not observe with the other models. In some cases, it dropped the command entirely, whereas in other cases it invented a new action such as ``LOOK\_LEFT'' (see examples below).
+
+\textbf{Examples of decomposition errors.}
+In the example ``run around left twice after jump around right thrice'', the \texttt{code-davinci-001} model does not properly decompose the sub-expression ``run around left twice''. Instead of decomposing it to the sequence [``run left'', ``run around left'', ``run around left twice''], it skips ``run around left'' and decomposes it to [``run left'', ``run around left twice'']. Consequently, the model translates this sub-expression to (``TURN\_LEFT'' + ``RUN'') * 2 instead of (``TURN\_LEFT'' + ``RUN'') * 4 * 2.
+
+In the example ``look around right twice after jump around left twice'', the \texttt{code-davinci-001} model does not properly decompose the sub-expression ``jump around left twice''. Instead of decomposing it to the sequence [``jump left'', ``jump around left'', ``jump around left twice''], it skips ``jump around left'' and decomposes it to [``jump left'', ``jump around left twice'']. Interestingly, the model is able to recover from this mistake and correctly translates the sub-expression to (``TURN\_LEFT'' + ``JUMP'') * 4 * 2, but still produces the wrong final action sequence because it interprets ``after'' like ``and''.
+
+\textbf{Examples of incorrect interpretation of ``twice'' and ``thrice''.}
+In the example ``walk opposite right twice after run around right thrice'', the \texttt{code-davinci-002} model correctly translates the expression ``run around right'' to (``TURN\_RIGHT'' + ``RUN'') * 4. Then it makes a mistake when applying ``thrice'' to this expression and produces (``TURN\_RIGHT'' + ``RUN'') * 9 instead of (``TURN\_RIGHT'' + ``RUN'') * 4 * 3 or (``TURN\_RIGHT'' + ``RUN'') * 12.
+
+In the example ``jump opposite right twice and jump around right thrice'', the  \texttt{code-davinci-002} model correctly translates the expression ``jump around right'' to (``TURN\_RIGHT'' + ``JUMP'') * 4.  Then it makes a mistake when applying ``thrice'' to this expression and produces (``TURN\_RIGHT'' + ``JUMP'') * 8 instead of (``TURN\_RIGHT'' + ``JUMP'') * 4 * 3 or (``TURN\_RIGHT'' + ``JUMP'') * 12.
+
+In the example ``walk around left thrice after run opposite left thrice'', the \texttt{code-davinci-001} model correctly translates the expression ``run opposite left'' to ``TURN\_LEFT'' * 2 + ``RUN''. Then it makes a mistake when applying ``thrice'' to this expression and produces ``TURN\_LEFT'' * 2 + ``RUN'' * 3 instead of (``TURN\_LEFT'' * 2 + ``RUN'') * 3.
+
+In the example ``walk around left thrice after look right twice'', the \texttt{code-davinci-001} model correctly translates the expression ``look right'' to ``TURN\_RIGHT'' + ``LOOK''. Then it makes a mistake when applying ``twice'' to this expression and produces ``TURN\_RIGHT'' + ``LOOK'' * 2 rather than (``TURN\_RIGHT'' + ``LOOK'') * 2.
+
+In the example ``walk left and run around right thrice'', the \texttt{code-davinci-001} model interprets ``thrice'' as `twice''. This means that it produces ``TURN\_LEFT'' + ``WALK'' + (``TURN\_RIGHT'' + ``RUN'') * 4 * 2 instead of ``TURN\_LEFT'' + ``WALK'' + (``TURN\_RIGHT'' + ``RUN'') * 4 * 3.
+
+In the example ``jump right twice and look around left thrice'', the \texttt{text-davinci-002} model correctly translates the sub-expression ``look around left'' to (``TURN\_LEFT'' + ``LOOK'') * 4. But when applying ``thrice'', it produces the incorrect translation (``TURN\_LEFT'' + ``LOOK'') * 3 instead of (``TURN\_LEFT'' + ``LOOK'') * 4 * 3.
+
+\textbf{Example of interpreting ``after'' as ``and''.}
+In the example ``run opposite left thrice after run around left twice'', the \texttt{code-davinci-002} model produces the correct translations for both sub-expressions that are connected by ``after'', but it combines them as if they were connected by ``and''. This means that the model produces (``TURN\_LEFT'' * 2 + ``RUN'') * 3 + (``TURN\_LEFT'' + ``RUN'') * 4 * 2 instead of (``TURN\_LEFT'' + ``RUN'') * 4 * 2 + (``TURN\_LEFT'' * 2 + ``RUN'') * 3.
+
+In the example ``walk around left thrice after walk twice'', the \texttt{code-davinci-002} model produces the correct translations for both sub-expressions that are connected by ``after'', but it combines them as if they were connected by ``and''. This means that the model produces (``TURN\_LEFT'' + ``WALK'') * 4 * 3 + ``WALK'' * 2 instead of  ``WALK'' * 2 + (``TURN\_LEFT'' + ``WALK'') * 4 * 3.
+
+In the example ``look around right twice after jump around left twice'', the \texttt{code-davinci-001} model produces the correct translations for both sub-expressions that are connected by ``after'', but it combines them as if they were connected by ``and''. This means that the model produces (``TURN\_RIGHT'' + ``LOOK'') * 4 * 2 + (``TURN\_LEFT'' + ``JUMP'') * 4 * 2 instead of (``TURN\_LEFT'' + ``JUMP'') * 4 * 2 + (``TURN\_RIGHT'' + ``LOOK'') * 4 * 2.
+
+\textbf{Examples of incorrect interpretation of ``left'' and ``right''.}
+In the example ``look opposite right thrice after look around left thrice'', the \texttt{text-davinci-002} model translates the component ``look left'' to ``LOOK'' instead of ``TURN\_LEFT LOOK''. As a consequence, the whole command is translated to ``LOOK'' * 4 * 3 + (``TURN\_RIGHT'' * 2 + ``LOOK'') * 3 instead of (``TURN\_LEFT'' + ``LOOK'') * 4 * 3 + (``TURN\_RIGHT'' * 2 + ``LOOK'') * 3.
+
+In the example ``turn around right thrice after look around left twice'', the \texttt{text-davinci-002} model makes up the new action ``LOOK\_LEFT'' as the translation of the component ``look left''. As a consequence, it translates the whole command to (``LOOK\_LEFT'' * 4) * 2 + (``TURN\_RIGHT'' * 4) * 3 instead of (``TURN\_LEFT'' + ``LOOK'') * 4 * 2 + (``TURN\_RIGHT'' * 4) * 3.
+
+\textbf{Example of copy error.}
+In the example ``walk opposite right twice after look around left thrice'', the \texttt{code-davinci-001} model produces the correct translations for both sub-expressions that are connected with ``after''. In particular, it correctly translates ``walk opposite right twice'' to (``TURN\_RIGHT'' * 2 + ``WALK'') * 2.  Then it makes two mistakes when combining them: it treats ``after'' like an ``and'', and it omits the parenthesis when copying the expression (``TURN\_RIGHT'' * 2 + ``WALK'') * 2. This means that the model produces the translation ``TURN\_RIGHT'' * 2 + ``WALK'' * 2 + (``TURN\_LEFT'' + ``LOOK'') * 4 * 3'' instead of (``TURN\_LEFT'' + ``LOOK'') * 4 * 3 + (``TURN\_RIGHT'' * 2 + ``WALK'') * 2.

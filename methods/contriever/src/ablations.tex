@@ -1,0 +1,122 @@
+\section{Ablation studies}
+
+% Pre-training setup:
+% \begin{itemize}
+% \item MoCo vs SimCLR (questions: is momentum useful? performance wrt queue size?)
+% \item BERT vs no BERT
+% \item Data augmentations (cropping, ICT, word masking/deleting, shuffling)
+% \item CLS token vs averaging, training data (ccnet, trec-covid, etc), size of vocab
+% \end{itemize}
+
+In this section, we investigate the influence of different design choices of the method used in the previous section.
+For these experiments, we use a reduced setting, where the model is pre-trained for 200,000 gradient steps, with a batch size of 2,048 (over 32 GPUs) on Wikipedia.
+For the fine-tuning on MS MARCO, the model is trained on 8 GPUs with a batch size of $512$ for 20,000 gradient steps with the AdamW optimizer, without hard negatives.
+%\eg{should we only report results after fine-tuning on MS MARCO? It will make the discussion simpler, and this is probably still the main use case of the paper}
+
+%In this subsection we investigation the influence of different components of the method used in the previous sections. For this we use a minimal setting, where the model is pretrained for 200k gradient steps on 32 gpus, for the finetuning phase on MSMarco the model is trained using 8 gpus during 20k gradients steps without hard negatives. The hyperparameters used here can be found in Table~\ref{tab:hyperparameters}.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics{queue_size.pdf}
+    \caption{\textbf{Queue size.} We report nDCG@10 before and after fine-tuning on MS MARCO.
+    \aj{same for simclr?}}
+    \label{fig:queue_size}
+\end{figure}
+
+\subsection{MoCo vs. SimCLR}
+First, we compare the two contrastive pre-training methods: MoCo and SimCLR.
+As in SimCLR, the number of negative examples is equal to the batch size, we train models with a batch size of \textcolor{red}{4,096} and restrict the queue in MoCo to the same number of elements.
+Thus, in this experiments, we investigate the effect of using of momentum encoder for the keys, instead of backpropagating the gradient and using stochastic gradient descent.
+We report results, with and without fine-tuning on MS MARCO in Table~\ref{tab:simclr_vs_moco}.
+We observe that the difference between the two methods is not important, especially after training on MS MARCO.
+Thus, we propose to use MoCo as it will allow to easily scale the number of negative examples used to train the model, an important ingredient for contrastive learning.
+\eg{We need to re-run either SimCLR w/ batch size 2,048 or MoCo w/ batch size 4,096.}
+
+\begin{table*}[h]
+  \center
+  \small
+  \begin{tabular}{l ccccccccc}
+    \toprule
+           & NFCorpus  & NQ   & FiQA & ArguAna & Quora & DBPedia & SciDocs & FEVER & AVG \\
+    \midrule
+    %MoCo   & 25.9 & 13.1 & 12.9 & 32.8 & 69.0 & 18.9 & 12.2 & 56.8 & 29.9 \\
+    %SimCLR & 24.2 & 21.6 & 13.0 & 33.7 & 74.9 & 17.9 & 13.6 & 56.1 & 31.9 \\
+    %\midrule
+    MoCo   & 31.1 & 37.2 & 23.4 & 41.6 & 82.7 & 36.9 & 15.7 & 71.5 & 41.5 \\
+    SimCLR & 29.6 & 36.5 & 23.3 & 38.6 & 83.6 & 34.4 & 16.2 & 72.3 & 41.8 \\
+    \bottomrule
+  \end{tabular}
+  \label{tab:simclr_vs_moco}
+  \caption{\textbf{MoCo vs. SimCLR.} In this table, we report nDCG@10 on the BEIR benchmark for SimCLR and MoCo, after fine-tuning on the MS MARCO dataset.}
+\end{table*}
+
+\subsection{Queue size}
+Next, we study the influence of the number of negatives used in the contrastive loss, by varying the queue size of the MoCo algorithm.
+We consider values ranging from 2,048 to 131,072, and report results in Figure~\ref{fig:queue_size}.
+We see that on average over the BEIR benchmark, increasing the number of negatives leads to better retrieval performance, especially in the unsupervised setting.
+However, it is interesting to note that this effect is not equally strong for all datasets.
+
+%\gi{Would be better with something similar with simclr?}
+
+%The use of a queue without backpropagation allows us to easily scale the size of the pool of negatives. As shown in Table~\ref{tab:queue_size}, scaling the queue size improves both the zero-shot performance and the performance after finetuning on MSMarco.
+
+\subsection{Data augmentations}
+Third, we compare different ways to generate pairs of positive examples from a single document or chunk of text.
+In particular, we compare random cropping, which leads to pairs with overlap, and the inverse cloze task, which was previously considered to pre-train retrievers.
+Interestingly, as shown in Table~\ref{tab:data_augmentation}, the random cropping strategy strongly outperforms the inverse cloze task.
+We argue that overlap between the two views of the data is beneficial, as it allows the network to learn lexical matching, similarly to BM25.
+We also investigate whether additional data perturbations, such as random word deletion or replacement, are beneficial for retrieval.
+After fine-tuning on MS MARCO, it seems that such data perturbations slightly degrade the performance of dense retrievers.
+
+\begin{table*}[h]
+  \center
+  \small
+  \begin{tabular}{l ccccccccc}
+    \toprule
+    & NFCorpus & NQ & ArguAna & Quora & DBPedia & SciDocs & FEVER & Overall \\
+    \midrule
+    ICT             & 30.5 & 37.5 & 32.6 & 82.3 & 33.1 & 14.6 & 67.9 & 39.5 \\
+    Crop            & 31.5 & 44.1 & 39.5 & 84.2 & 39.6 & 16.3 & 74.8 & 44.3 \\ % 46005732 - moco - qsize 65536 - ratio 10-50% 256 tokens
+    Crop + delete   & 31.6 & 42.3 & 39.2 & 84.6 & 39.7 & 16.2 & 71.8 & 43.4 \\ % 46211625 - moco - delete 10% - qsize 65536 - ratio 10-50% 256 tokens
+    Crop + replace  & 30.5 & 43.2 & 42.6 & 84.6 & 39.2 & 16.0 & 73.8 & 43.6 \\ % 46211626 - moco - replace 10% - qsize 65536 - ratio 10-50% 256 tokens
+    \bottomrule
+  \end{tabular}
+  \caption{\textbf{Data augmentions.} We report nDCG@10 after fine-tuning on MS MARCO.}
+  \label{tab:data_augmentation}
+\end{table*}
+
+
+%Data augmentations are key component of contrastive learning methods used in computer vision, in the main results presented in this paper we do a very minimal use of them. In Table~\ref{tab:augmentations} we consider different data augmentation strategies. Namely we present results with random deletion, random token replacement and random masking of p\% of the tokens. Additionally we consider cropping with and without overlap. 
+
+\subsection{Training data}
+Finally, we study the impact of the pre-training data on the performance of our retriever, by training on Wikipedia, CCNet or a mix of both sources of data.
+We report results in Table~\ref{tab:training_data}, and observe that there is no clear winner between the two data sources.
+Unsurprisingly, pre-training on Wikipedia leads to better performance on datasets for which documents also come from Wikipedia, such as NaturalQuestions or FEVER.
+On the other hand, on datasets from different domains than Wikipedia such as FiQA or ArguAna, training on the more diverse CCNet data leads to better results.
+To get the best of both worlds, we consider to strategies to mix the two data sources.
+In the 50/50\% strategy, examples are sampled uniformly across domain, meaning that half the batches are from Wikipedia and the other half from CCNet.
+In the uniform strategy, examples are sampled uniformly over the union of the dataset.
+Since CCNet is significantly larger than Wikipedia, this means that most of the batches are from CCNet.
+
+\begin{table*}[h]
+  \center
+  \small
+  \begin{tabular}{l cccccccccccccc}
+    \toprule
+           & NFCorpus & NQ & FiQA & ArguAna & Quora & DBPedia & SciDocs & FEVER & Overall \\
+    \midrule
+    %Wiki          & 27.6 & 17.7 & 35.6 & 75.4 & 21.0 & 13.3 & 64.5 & 63.0 & 33.0 \\ % 46005732 - moco - qsize 65536 - ratio 10-50% 256 tokens
+    %CCNet         & 29.5 & 25.8 & 35.2 & 80.6 & 20.5 & 14.9 & 60.9 & 59.4 & 34.9 \\ % 46307600 - moco - cc-net - qsize 65536 - m=0.999
+    %50/50\%       & 27.1 & 17.8 & 39.1 & 76.5 & 19.9 & 13.9 & 66.3 & 66.0 & 34.7 \\ % 46403749 - moco - 50-50 cc-net/wiki - lr 7e-5 - qsize 65536 - m=0.999
+    %Uniform       & 29.1 & 19.2 & 36.2 & 79.0 & 22.6 & 13.6 & 64.0 & 62.7 & 35.6 \\ % 46435971 - moco - uniform cc-net/wiki - lr 7e-5 - qsize 65536 - m=0.999
+    %\midrule
+    Wiki          & 31.5 & 44.1 & 26.8 & 39.5 & 84.2 & 39.6 & 16.3 & 74.8 & 44.3 \\
+    CCNet         & 31.8 & 39.9 & 31.6 & 43.3 & 84.5 & 36.1 & 16.0 & 66.4 & 42.4 \\
+    50/50\%       & 31.7 & 43.2 & 27.1 & 35.9 & 84.7 & 39.5 & 15.8 & 77.4 & 44.0 \\
+    Uniform       & 32.0 & 41.5 & 30.5 & 39.9 & 84.9 & 39.6 & 16.2 & 72.0 & 44.1 \\
+    \bottomrule
+  \end{tabular}
+  \caption{\textbf{Training data.} We report nDCG@10 after fine-tuning on MS MARCO.}
+  \label{tab:training_data}
+\end{table*}
+

@@ -1,0 +1,322 @@
+\section{Proposed Method}
+%In this section, we first review and compare the conventional AR language modeling and BERT for language pretraining in Section \ref{sec:background}.
+%Then, we detail the proposed generalized autoregressive pretraining objective in Section \ref{sec:tgt-aware}. 
+%Finally, we show how to incorporate ideas from Transformer-XL into XLNet in Section \ref{sec:xl}.
+%In this section, we first review and compare the conventional AR language modeling and BERT for language pretraining and then detail the proposed generalized autoregressive pretraining objective.
+
+
+\subsection{Background}
+\label{sec:background}
+In this section, we first review and compare the conventional AR language modeling and BERT for language pretraining.
+Given a text sequence $\rvx = \seq{x_1, \cdots, x_T}$, AR language modeling performs pretraining by maximizing the likelihood under the forward autoregressive factorization:
+% $\max_{\theta}\quad \log p_\theta(\rvx) 
+% 	= \sum_{t=1}^{T} \log p_\theta(x_t \mid \rvx_{<t})$.
+\begin{equation}
+\label{eqn:ar}
+\max_{\theta}\quad \log p_\theta(\rvx) 
+	= \sum_{t=1}^{T} \log p_\theta(x_t \mid \rvx_{<t}) 
+	= \sum_{t=1}^{T} \log \frac{ \expo{ h_\theta(\rvx_{1:t-1})^\top e(x_t) } }{\sum_{x'} \expo{ h_\theta(\rvx_{1:t-1})^\top e(x') } },
+\end{equation}
+where $h_\theta(\rvx_{1:t-1})$ is a context representation produced by neural models, such as RNNs or Transformers, and $e(x)$ denotes the embedding of $x$.
+%After pretraining, the neural model $h_\theta$ can be further finetuned on downstream task to produce task specific representation.
+In comparison, BERT is based on denoising auto-encoding.
+Specifically, for a text sequence $\rvx$, BERT first constructs a corrupted version $\hat{\rvx}$ by randomly setting a portion (e.g. 15\%) of tokens in $\rvx$ to a special symbol \mask.
+% Mathematically, the corruption procedure can be written as
+% \[ \hat{\rvx} = (1 - \rvm) \rvx + \rvm \mask, \]
+% where $\rvm$ is a binary mask of the same size as $x$, which uses $1$ to indicate a token will be masked.
+% This is followed by training a Transformer model to reconstruct only the masked tokens in the original text, denoted as $\bar{\rvx}$, based on the corrupted text $\hat{\rvx}$.
+% Formally, the training objective can be written as
+Let the masked tokens be $\bar{\rvx}$. The training objective is to reconstruct $\bar{\rvx}$ from $\hat{\rvx}$:
+\begin{equation}
+\label{eqn:ae}
+\max_{\theta}\quad \log p_\theta(\bar{\rvx} \mid \hat{\rvx}) 
+\approx \sum_{t=1}^{T} m_t \log p_\theta(x_t \mid \hat{\rvx}) 
+= \sum_{t=1}^{T} m_t \log \frac{ \expo{ H_\theta(\hat{\rvx})_t^\top e(x_t) } }{\sum_{x'} \expo{ H_\theta(\hat{\rvx})_t^\top e(x') } },
+\end{equation}
+where $m_t = 1$ indicates $x_t$ is masked, and $H_\theta$ is a Transformer that maps a length-$T$ text sequence $\rvx$ into a sequence of hidden vectors $H_\theta(\rvx) = \seq{H_\theta(\rvx)_1, H_\theta(\rvx)_2, \cdots, H_\theta(\rvx)_T}$.
+The pros and cons of the two pretraining objectives are compared in the following aspects:
+\begin{itemize}[leftmargin=*,topsep=0em,itemsep=0em]
+\item \textbf{Independence Assumption}: 
+As emphasized by the $\approx$ sign in Eq. (\ref{eqn:ae}), BERT factorizes the joint conditional probability $p(\bar{\rvx} \mid \hat{\rvx})$ based on an independence assumption that all masked tokens $\bar{\rvx}$ are separately reconstructed.
+%The sign $\approx$ in Eq. (\ref{eqn:ae}) is used to emphasize that BERT factorizes the joint conditional probability $p(\bar{\rvx} | \hat{\rvx})$ based on an assumption that all masked tokens $\bar{\rvx}$ are independently reconstructed.
+In comparison, the AR language modeling objective~\eqref{eqn:ar} factorizes $p_\theta(\rvx)$ using the product rule that holds universally without such an independence assumption.
+\item \textbf{Input noise}:
+% While the BERT hidden representation $H_\theta(\rvx)_t$ has access to information on both sides, notice that the input to the model is actually the corrupted version $\hat{\rvx}$ with artificial symbols like \mask.
+The input to BERT contains artificial symbols like \mask~that never occur in downstream tasks, which creates a pretrain-finetune discrepancy.
+% Since such noise never appears when adapting to downstream tasks, BERT inevitably faces a clear pretrain-finetune discrepancy.
+% To mitigate this issue,
+Replacing \mask~with original tokens as in \cite{devlin2018bert} does not solve the problem
+% Although the original work \cite{devlin2018bert} randomly replaces \mask with original tokens to mitigate the discrepancy, 
+ % resorts to randomly replacing the \mask symbol with either the original token or a random token, 
+because original tokens can be only used with a small probability --- otherwise Eq. (\ref{eqn:ae}) will be trivial to optimize.
+In comparison, AR language modeling does not rely on any input corruption and does not suffer from this issue.
+% the hidden representation $h_\theta(\rvx_{1:t-1})$ in AR language modeling always takes the noisy-free tokens $\rvx_{<t}$ as input.
+\item \textbf{Context dependency}: The AR representation $h_\theta(\rvx_{1:t-1})$ is only conditioned on the tokens up to position $t$ (i.e. tokens to the left), while the BERT representation $H_\theta(\rvx)_t$ has access to the contextual information on both sides.
+As a result, the BERT objective allows the model to be pretrained to better capture bidirectional context. %, leading to improved performance.
+
+
+\end{itemize}
+
+%Similarly, after pretraining, the model $H_\theta$ can used as a feature network and stack the task specific architecture upon it to perform finetuning.
+
+% To further articulate the pros and cons of the two pretraining objectives, it is helpful to examine how the hidden representation at position $t$, i.e. $h_\theta(\rvx_{1:t-1})$ and $H_\theta(\rvx)_t$, are produced respectively.
+
+\subsection{Objective: Permutation Language Modeling}
+\label{sec:objective}
+
+According to the comparison above, AR language modeling and BERT possess their unique advantages over the other.
+A natural question to ask is whether there exists a pretraining objective that brings the advantages of both while avoiding their weaknesses.
+
+Borrowing ideas from orderless NADE~\cite{uria2016neural}, we propose the permutation language modeling objective that not only retains the benefits of AR models but also allows models to capture bidirectional contexts.
+Specifically, for a sequence $\rvx$ of length $T$, there are $T!$ different orders to perform a valid autoregressive factorization.
+% Intuitively, if one shares the same model and performs autoregressive training under all possible permutations, in expectation, the model would have learned to gather information from all locations.
+Intuitively, if model parameters are shared across all factorization orders, in expectation, the model will learn to gather information from all positions on both sides.
+
+To formalize the idea, let $\mc{Z}_T$ be the set of all possible permutations of the length-$T$ index sequence $\seq{1, 2, \dots, T}$.
+% Each element $\rvz \in \mc{Z}_T$ is a unique permutation. 
+We use $z_t$ and $\rvz_{<t}$ to denote the $t$-th element and the first $t-1$ elements of a permutation $\rvz \in \mc{Z}_T$.
+% Based on the notation, our proposed permuted language modeling objective can be expressed as:
+Then, our proposed permutation language modeling objective can be expressed as follows:
+\begin{equation}
+\label{eqn:plm}
+\max_{\theta}\quad \mbb{E}_{\rvz \sim \mc{Z}_T} \sbr{ \sum_{t=1}^{T} \log p_\theta(x_{z_t} \mid \rvx_{\rvz_{<t}}) }.
+\end{equation}
+Essentially, for a text sequence $\rvx$, we sample a factorization order $\rvz$ at a time and decompose the likelihood $p_\theta(\rvx)$ according to factorization order.
+Since the same model parameter $\theta$ is shared across all factorization orders during training, in expectation, $x_t$ has seen every possible element $x_i \neq x_t$ in the sequence, hence being able to capture the bidirectional context. Moreover, as this objective fits into the AR framework, it naturally avoids the independence assumption and the pretrain-finetune discrepancy discussed in Section \ref{sec:background}.
+
+
+\textbf{Remark on Permutation~}
+The proposed objective only permutes the factorization order, not the sequence order. 
+In other words, we keep the original sequence order, use the positional encodings corresponding to the original sequence, and rely on a proper attention mask in Transformers to achieve permutation of the factorization order.
+%In other words, permutation is achieved by using corresponding attention masks in Transformers. We keep the original sequence order, and use the positional encodings of the original sequence. 
+Note that this choice is necessary, since the model will only encounter text sequences with the natural order during finetuning.
+
+To provide an overall picture, we show an example of predicting the token $x_3$ given the same input sequence $\rvx$ but under different factorization orders in the Appendix \ref{sec:vis} with Figure \ref{fig:obj_overview}.
+
+% \todo{fix and explain permutation}
+% It is important to note that permutation here only refers to ``what to attend'', i.e., changing the attention masks, and we always use positional encodings in the \textbf{original sequence} to ensure that the original distances between tokens are maintained.
+
+% Different from the orderless NADE, given a permutation, we do not permute the input text sequence. Instead, we keep the original text order, use positional encoding to indicate token positions, and use proper attention masks to enforce the model to only attending valid tokens allowed by the permutation order. 
+
+% maintain consistent semantics across permutations.
+
+% For this training objective to work well in practice, it requires the shared model to be expressive and flexible enough to encode information in different ways.
+% Luckily, Transformer is exactly such a model, where different permutation orders can be simply implemented as the corresponding permuted attention masks, leaving the model architecture completely intact.
+
+\subsection{Architecture: Two-Stream Self-Attention for Target-Aware Representations}
+\begin{figure}[!h]
+	\centering
+	\includegraphics[width=0.95\linewidth]{fig/illustration.pdf}
+	\caption{(a): Content stream attention, which is the same as the standard self-attention. (b): Query stream attention, which does not have access information about the content $x_{z_t}$. (c): Overview of the permutation language modeling training with two-stream attention.}
+	\label{fig:plm}
+	\vspace{-1em}
+\end{figure}
+
+\label{sec:tgt-aware}
+% Despite the aforementioned advantages of Transformers, 
+While the permutation language modeling objective has desired properties, naive implementation with standard Transformer parameterization may not work.
+To see the problem, assume we parameterize the next-token distribution $p_\theta(X_{z_t} \mid \rvx_{\rvz_{<t}})$ using the standard Softmax formulation, i.e.,
+$
+p_\theta(X_{z_t} = x \mid \rvx_{\rvz_{<t}})
+= \frac{\expo{ e(x)^\top h_\theta(\rvx_{\rvz_{<t}}) }}{\sum_{x'} \expo{ e(x')^\top h_\theta(\rvx_{\rvz_{<t}}) }},
+$
+where $h_\theta(\rvx_{\rvz_{<t}})$ denotes the hidden representation of $\rvx_{\rvz_{<t}}$ produced by the shared Transformer network after proper masking.
+Now notice that the representation $h_\theta(\rvx_{\rvz_{<t}})$ does not depend on which position it will predict, i.e., the value of $z_t$.
+Consequently, the same distribution is predicted regardless of the target position,
+% . This is reduced to a bag-of-words context prediction objective, 
+which is not able to learn useful representations (see Appendix \ref{sec:tgt-aware-example} for a concrete example).
+To avoid this problem, we propose to re-parameterize the next-token distribution to be target position aware:
+% In concrete, the distribution can be written as
+\begin{equation}
+\label{eqn:tgt-aware}
+p_\theta(X_{z_t} = x \mid \rvx_{z_{<t}})
+= \frac{\expo{ e(x)^\top g_\theta(\rvx_{\rvz_{<t}}, z_t) }}{\sum_{x'} \expo{ e(x')^\top g_\theta(\rvx_{\rvz_{<t}}, z_t) }},
+\end{equation}
+where $g_\theta(\rvx_{\rvz_{<t}}, z_t)$ denotes a new type of representations which additionally take the target position $z_t$ as input. 
+% As a result, the model distributions for different target positions can be differentiated.
+
+\textbf{Two-Stream Self-Attention~}
+While the idea of target-aware representations removes the ambiguity in target prediction, how to formulate $g_\theta(\rvx_{\rvz_{<t}}, z_t)$ remains a non-trivial problem.
+Among other possibilities, we propose to ``stand'' at the target position $z_t$ and rely on the position $z_t$ to gather information from the context $\rvx_{\rvz_{<t}}$ through attention.
+For this parameterization to work, there are two requirements that are contradictory in a standard Transformer architecture: (1) to predict the token $x_{z_t}$, $g_\theta(\mathbf{x}_{\mathbf{z}_{<t}}, z_t)$ should only use the \textit{position} $z_t$ and not the \textit{content} $x_{z_t}$, otherwise the objective becomes trivial; (2) to predict the other tokens $x_{z_{j}}$ with $j > t$, $g_\theta(\mathbf{x}_{\mathbf{z}_{<t}}, z_t)$ should also encode the content $x_{z_t}$ to provide full contextual information.
+To resolve such a contradiction, we propose to use two sets of hidden representations instead of one:
+\begin{itemize}[leftmargin=*,topsep=0em,itemsep=0em]
+\item The content representation $h_\theta(\rvx_{\rvz_{\leq t}})$, or abbreviated as $h_{z_t}$, which serves a similar role to the standard hidden states in Transformer. This representation encodes \textit{both} the context and $x_{z_t}$ itself.
+% Specifically, $c_{z_t}$ encodes the information of $\rvx_{\rvz_{\leq t}}$ and is used to produce the key and value vectors $k_{z_t}, v_{z_t}$
+\item The query representation $g_\theta(\rvx_{\rvz_{<t}}, z_t)$, or abbreviated as $g_{z_t}$, which only has access to the contextual information $\rvx_{{\rvz}_{<t}}$ and the position $z_t$, but not the content $x_{z_t}$, as discussed above.
+\end{itemize}
+% Given the query and content representations, we can easily compute the target-aware hidden representation as shown in Eqn. \eqref{eqn:tgt-centered-attn}.
+%\begin{figure}
+%\centering
+%\begin{subfigure}{0.45\linewidth}
+%	\includegraphics[width=\linewidth]{fig/content_stream.pdf}
+%	\caption{Content stream attention, which is the same as the standard self-attention.}
+%	\label{fig:content_stream}
+%\end{subfigure}
+%\hspace{1em}
+%\rulesep
+%\hspace{1em}
+%\begin{subfigure}{0.45\linewidth}
+%	\includegraphics[width=\linewidth]{fig/query_stream.pdf}
+%	\caption{Query stream attention, which does not have access information about the content $x_{z_t}$.}
+%	\label{fig:query_stream}
+%\end{subfigure}
+%\caption{Two-stream attention.}
+%\label{fig:two_stream_attn}
+%\vspace{-1.2em}
+%\end{figure}
+Computationally, the first layer query stream is initialized with a trainable vector, i.e. $g_i^{(0)} = w$, while the content stream is set to the corresponding word embedding, i.e. $h_i^{(0)} = e(x_i)$.
+For each self-attention layer $m = 1, \dots, M$, the two streams of representations are \textit{schematically}\footnote{To avoid clutter, we omit the implementation details including multi-head attention, residual connection, layer normalization and position-wise feed-forward as used in Transformer(-XL). The details are included in Appendix \ref{sec:two-stream-detail} for reference.} updated with a shared set of parameters as follows (illustrated in Figures \ref{fig:plm} (a) and (b)):
+\begin{align*}
+\small
+	g_{z_t}^{(m)} &\leftarrow \text{Attention}(
+		\text{Q} = g_{z_t}^{(m-1)}, \text{KV}= \rvh_{\magenta{\rvz_{<t}}}^{(m-1)}; \theta),
+	&& (\text{query stream: use $z_t$ but cannot see $x_{z_t}$}) \\
+	h_{z_t}^{(m)} &\leftarrow \text{Attention}(
+		\text{Q} = h_{z_t}^{(m-1)}, \text{KV}= \rvh_{\magenta{\rvz_{\leq t}}}^{(m-1)}; \theta), 
+	&& (\text{content stream: use both $z_t$ and $x_{z_t}$}).
+\end{align*}
+% Again, notice that the two streams differ in whether they gather the content about the target token, as illustrated in \ref{fig:content_stream} and \ref{fig:query_stream}.
+where Q, K, V denote the query, key, and value in an attention operation \cite{vaswani2017attention}.
+% The difference between the two streams is illustrated in Figures \ref{fig:plm} (a) and (b).
+% The separation of the query and content streams ensures that the query representation never has access to the target token $x_t$. 
+The update rule of the content representations is exactly the same as the standard self-attention, so during finetuning, we can simply drop the query stream and use the content stream as a normal Transformer(-XL).
+% In other words, model behaviors are consistent
+% this parameterization does not change the model behavior during finetuning, making it easy to adapt the pretrained model to downstream tasks.
+Finally, we can use the last-layer query representation $g_{z_t}^{(M)}$ to compute Eq. (\ref{eqn:tgt-aware}).
+% =======
+% Again, notice that the two streams differ in whether they gather the content about the target token, as illustrated in Figure \ref{fig:two_stream_attn}. 
+% With the separation of the query and content stream, we make sure that the query representation never has access to the target token $x_t$. 
+% Meanwhile, the update of the content representation is exactly the same as the standard self-attention. 
+% So, during finetuning, we can simply drop the query stream and use our model as a normal Transformer(-XL).
+% In other words, this parameterization does not change the model behavior during finetuning, making it easy to adapt the pretrained model to downstream tasks.
+
+% Finally, the target-aware hidden state used to construct the next-token distribution is given by the last-layer query representation at the corresponding location, as in Eq. (\ref{eqn:tgt-aware}).
+% >>>>>>> ffccba0aea92014246a9fdaca2552bdc75a6fbd8
+% \begin{equation}
+% 	% h_\theta(\rvx_{\rvz_{<t}}, z_t) = q_{z_t}^{(M)} \implies 
+% 	p_\theta(X_{z_t} = x \mid \rvx_{z_{<t}})
+% 	= \frac{ \expo{ e(x)^\top g_{z_t}^{(M)} } }{ \sum_{x'} \expo{ e(x')^\top g_{z_t}^{(M)} } }.
+% \end{equation}
+
+\textbf{Partial Prediction~}
+While the permutation language modeling objective~\eqref{eqn:plm} has several benefits, it is a much more challenging optimization problem due to the permutation and causes slow convergence in preliminary experiments. To reduce the optimization difficulty, we choose to only predict the last tokens in a factorization order. Formally, we split $\rvz$ into a non-target subsequence $\rvz_{\leq c}$ and a target subsequence $\rvz_{> c}$, where $c$ is the cutting point. The objective is to maximize the log-likelihood of the target subsequence conditioned on the non-target subsequence, i.e.,
+\begin{equation}
+\max_{\theta}\quad \mbb{E}_{\rvz \sim \mc{Z}_T} \sbr[\Big]{ \log p_\theta(\rvx_{\rvz_{> c}} \mid \rvx_{\rvz_{\leq c}}) }
+= \mbb{E}_{\rvz \sim \mc{Z}_T} \sbr{ \sum_{t=c + 1}^{\abs{\rvz}} \log p_\theta(x_{z_t} \mid \rvx_{\rvz_{<t}}) }.
+\label{eqn:partial-plm}
+\end{equation}
+Note that $\rvz_{> c}$ is chosen as the target because it possesses the longest context in the sequence given the current factorization order $\rvz$.
+A hyperparameter $K$ is used such that about $1/K$ tokens are selected for predictions; i.e., $\abs{\rvz} / (\abs{\rvz} - c) \approx K$. For unselected tokens, their query representations need not be computed, which saves speed and memory.
+
+% \textbf{Objective Difference~}
+% Due to the space limit, we discuss the difference between the XLNet objective and existing BERT/AR objectives in Appendix~\ref{sec:discussion}.
+
+% % instead of maximizing the log-likelihood of the entire sequence $\rvx$,
+% we split $\rvz$ into two subsets $\rvz^a$ and $\rvz^b = \rvz \backslash \rvz^a$ and only maximize the log-likelihood of the partial sequence $\rvx_{\rvz^a}$ conditioned on $\rvx_{\rvz^b}$, i.e.,
+% \begin{equation}
+% \label{eqn:partial-plm}
+% \max_{\theta}\quad \mbb{E}_{\rvz \sim \mc{Z}_T} \sbr[\Big]{ \log p_\theta(\rvx_{\rvz^a} \mid \rvx_{\rvz^b}) }
+% = \mbb{E}_{\rvz \sim \mc{Z}_T} \sbr{ \sum_{t=1}^{\abs{\rvz^a}} \log p_\theta(x_{z_t^a} \mid \rvx_{\rvz_{<t}^a}, \rvx_{\rvz^b}) }.
+% \end{equation}
+% In plain English, we only predict a subset of tokens conditioning the others, which reduces.
+% Intuitively, this makes the problem much easier. 
+% Moreover, notice that the size of $\rvz^a$ and $\rvz^b$ can also influence the problem difficulty.
+% In this work, we predict one token for every $K$ positions, i.e., $\abs{\rvz^a} / \abs{\rvz} = 1 : K $.
+
+\subsection{Incorporating Ideas from Transformer-XL}
+\label{sec:xl}
+
+Since our objective function fits in the AR framework, 
+%it is natural to integrate the latest progress in the field of AR language modeling. We 
+we incorporate the state-of-the-art AR language model, Transformer-XL~\cite{dai2019transformer}, into our pretraining framework, and name our method after it.
+We integrate two important techniques in Transformer-XL, namely the relative positional encoding scheme and the segment recurrence mechanism.
+% In concrete, the two important techniques in Transformer-XL, namely the relative positional encoding scheme and the segment recurrence mechanism, needed to be adapted into the permutation framework.
+We apply relative positional encodings based on the original sequence as discussed earlier, which is straightforward.
+Now we discuss how to integrate the recurrence mechanism into the proposed permutation setting and enable the model to reuse hidden states from previous segments. 
+Without loss of generality, suppose we have two segments taken from a long sequence $\rvs$; i.e., $\tilde{\rvx} = \rvs_{1:T}$ and $\rvx = \mathbf{s}_{T+1:2T}$. Let $\tilde{\rvz}$ and $\rvz$ be permutations of $[1\cdots T]$ and $[T+1 \cdots 2T]$ respectively. 
+Then, based on the permutation $\tilde{\rvz}$, we process the first segment, and then cache the obtained content representations $\tilde{\rvh}^{(m)}$ for each layer $m$. 
+Then, for the next segment $\mathbf{x}$, the attention update with memory can be written as
+\[
+	h_{z_t}^{(m)} \gets \text{Attention} (\text{Q} = h_{z_t}^{(m - 1)}, \text{KV} = \sbr{ \tilde{\rvh}^{(m - 1)}, \rvh_{\rvz_{\leq t}}^{(m - 1)} }; \theta)
+\]
+where $[.,.]$ denotes concatenation along the sequence dimension. 
+%According to Eqn.~\eqref{eq:weights}, the attention operations only depend on the actual indices, so the above attention update is independent of $\tilde{\rvz}$ once the representations $\tilde{\rvh}^{(m)}$ are obtained. 
+Notice that positional encodings only depend on the actual positions in the original sequence. Thus, the above attention update is independent of $\tilde{\rvz}$ once the representations $\tilde{\rvh}^{(m)}$ are obtained. 
+This allows caching and reusing the memory without knowing the factorization order of the previous segment.
+In expectation, the model learns to utilize the memory over all factorization orders of the last segment.
+% For a more intuitive understanding, we illustrate this memory-augmented modification and the memory-free permutation language modeling side-by-side in Figure \ref{fig:plm_mem} and \ref{fig:plm} for comparison.
+%Comparison with using a standard Transformer without recurrence is illustrated in Figures \ref{fig:plm_mem} and \ref{fig:plm}.
+The query stream can be computed in the same way.
+Finally, Figure \ref{fig:plm} (c) presents an overview of the proposed permutation language modeling with two-stream attention (see Appendix \ref{sec:vis} for more detailed illustration).
+
+\subsection{Modeling Multiple Segments}
+
+Many downstream tasks have multiple input segments, e.g., a question and a context paragraph in question answering. We now discuss how we pretrain XLNet to model multiple segments in the autoregressive framework. During the pretraining phase, following BERT, we randomly sample two segments (either from the same context or not) and treat the concatenation of two segments as one sequence to perform permutation language modeling. We only reuse the memory that belongs to the same context. Specifically, the input to our model is the same as BERT: [CLS, A, SEP, B, SEP], where ``SEP'' and ``CLS'' are two special symbols and ``A'' and ``B'' are the two segments.
+Although we follow the two-segment data format, XLNet-Large does not use the objective of next sentence prediction \cite{devlin2018bert} as it does not show consistent improvement in our ablation study (see Section \ref{sec:ablation}).
+
+\textbf{Relative Segment Encodings~}
+Architecturally, different from BERT that adds an absolute segment embedding to the word embedding at each position, we extend the idea of relative encodings from Transformer-XL to also encode the segments. Given a pair of positions $i$ and $j$ in the sequence, if $i$ and $j$ are from the same segment, we use a segment encoding $\mathbf{s}_{ij} = \mathbf{s}_+$ or otherwise $\mb{s}_{ij} = \mb{s}_-$, where $\mathbf{s}_+$ and $\mathbf{s}_-$ are learnable model parameters for each attention head. In other words, we only consider whether the two positions are \textit{within the same segment}, as opposed to considering \textit{which specific segments they are from}. This is consistent with the core idea of relative encodings; i.e., only modeling the relationships between positions. When $i$ attends to $j$, the segment encoding $\mathbf{s}_{ij}$ is used to compute an attention weight $a_{ij} = (\mb{q}_i + \mb{b})^\top \mb{s}_{ij}$, where $\mb{q}_i$ is the query vector as in a standard attention operation and $\mb{b}$ is a learnable head-specific bias vector. Finally, the value $a_{ij}$ is added to the normal attention weight. There are two benefits of using relative segment encodings. First, the inductive bias of relative encodings improves generalization \cite{dai2019transformer}. Second, it opens the possibility of finetuning on tasks that have more than two input segments, which is not possible using absolute segment encodings.
+
+\subsection{Discussion}
+
+Comparing Eq. (\ref{eqn:ae}) and (\ref{eqn:partial-plm}), we observe that both BERT and XLNet perform partial prediction, i.e., only predicting a subset of tokens in the sequence. 
+This is a necessary choice for BERT because if all tokens are masked, it is impossible to make any meaningful predictions. 
+In addition, for both BERT and XLNet, partial prediction plays a role of reducing optimization difficulty by only predicting tokens with sufficient context. 
+However, the independence assumption discussed in Section \ref{sec:background} disables BERT to model dependency between targets.
+
+To better understand the difference, let's consider a concrete example [New, York, is, a, city]. Suppose both BERT and XLNet select the two tokens [New, York] as the prediction targets and maximize $\log p(\text{New York} \mid \text{is a city})$. Also suppose that XLNet samples the factorization order [is, a, city, New, York]. In this case, BERT and XLNet respectively reduce to the following objectives:
+\[
+\mathcal{J}_{\text{BERT}} = \log p(\text{New} \mid \text{is a city}) + \log p(\text{York} \mid \text{is a city}),
+\]
+\[
+\mathcal{J}_{\text{XLNet}} = \log p(\text{New} \mid \text{is a city}) + \log p(\text{York} \mid \magenta{\text{New}}, \text{is a city}).
+\]
+Notice that XLNet is able to capture the dependency between the pair (New, York), which is omitted by BERT. 
+Although in this example, BERT learns some dependency pairs such as (New, city) and (York, city), it is obvious that XLNet always learns \textbf{more} dependency pairs given the same target and contains ``denser'' effective training signals.
+
+For more formal analysis and further discussion, please refer to Appendix \ref{sec:discussion}.
+
+
+
+
+% \subsection{Partial Permutation Language Modeling} \label{sec:partial}
+% While the permutation language modeling objective~\eqref{eqn:plm} has a simple form, it is a much more challenging optimization problem because a model must capture all possible permutations with a shared set of parameters.
+% We found training to be difficult in preliminary experiments.
+% % Due the difficulty, we found the training loss goes down very slow in our preliminary experiments, which motivates us to implement a simple modification to ease the optimization problem.
+% To address this issue,
+% % instead of maximizing the log-likelihood of the entire sequence $\rvx$,
+% we split $\rvz$ into two subsets $\rvz^a$ and $\rvz^b = \rvz \backslash \rvz^a$ and only maximize the log-likelihood of the partial sequence $\rvx_{\rvz^a}$ conditioned on $\rvx_{\rvz^b}$, i.e.,
+% \begin{equation}
+% \label{eqn:partial-plm}
+% \max_{\theta}\quad \mbb{E}_{\rvz \sim \mc{Z}_T} \sbr[\Big]{ \log p_\theta(\rvx_{\rvz^a} \mid \rvx_{\rvz^b}) }
+% = \mbb{E}_{\rvz \sim \mc{Z}_T} \sbr{ \sum_{t=1}^{\abs{\rvz^a}} \log p_\theta(x_{z_t^a} \mid \rvx_{\rvz_{<t}^a}, \rvx_{\rvz^b}) }.
+% \end{equation}
+% In plain English, we only predict a subset of tokens conditioning the others, which reduces.
+% Intuitively, this makes the problem much easier. 
+% Moreover, notice that the size of $\rvz^a$ and $\rvz^b$ can also influence the problem difficulty.
+% In this work, we predict one token for every $K$ positions, i.e., $\abs{\rvz^a} / \abs{\rvz} = 1 : K $.
+% For positions that are not predicted, we only need to compute their content representations and save the computation of query stream.
+
+
+
+
+% The value of $L$ ranges from 1 to 5 in our implementation.
+
+% For the former, since the permutation can be easily implemented as properly masked attention as discussed earlier, using relative positional encoding during attention computation is straightforward.
+
+%\subsubsection{Relative Positional Encodings}
+%
+%The Transformer-XL computes the attention weight between the $i$-th token $x_i$ and the $j$-th token $x_j$ as $A_{ij} = f(i - j, h_i, h_j)$ where $f$ is an attention function (see Appendix for concrete formulation), $h_i$ and $h_j$ are content representations for $x_i$ and $x_j$, and $(i - j)$ encodes the relative distance between the two tokens. With the permutation language modeling objective, we consider the $i$-th and $j$-th token in a permutation order $z$, namely $x_{z_i}$ and $x_{z_j}$. The attention weight is now formulated as
+%\begin{equation}
+%A_{z_i, z_j} = f(z_i - z_j, h_{z_i}, h_{z_j}).
+%\label{eq:weights}
+%\end{equation}
+%Importantly, the distance between the \textit{actual} indices $z_i$ and $z_j$ are used for computing the attention weights instead of the permutation indices $i$ and $j$. The formulation in Eqn.~\eqref{eq:weights} is applied to both the query and content streams.
+%
+%The application of positional encodings is essential to permutation language modeling, because it enables learning the correct semantics even with the permutations. This differentiates XLNet from previous permutation AR models \cite{uria2016neural} which are essentially orderless. It is interesting to note that recurrent neural networks cannot be easily applied in our framework because there is not a notion of positional encodings, making it not possible to share parameters among different permutations.
+%
+%\subsubsection{Recurrence Mechanism}
+
+%Transformer-XL proposed to cache the representations in the last segment to be used as memory for the next segment, to increase the effective context length and improve optimization. 
+%We now discuss how to apply the same idea in the proposed permutation setting. 

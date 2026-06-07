@@ -1,0 +1,23 @@
+\begin{wrapfigure}{R}{0.5\textwidth}
+\begin{minipage}{0.99\textwidth}
+    \begin{algorithm}[H]
+       	\fcaption{\METHOD}
+       	\label{alg:method}
+       	\begin{algorithmic}[1]
+       	\STATE Offline dataset $\mathcal{D} = \{(s_t, a_t, s_{t+1}, r_t)_j\}$
+       	\STATE Initialize $\pi_\theta$, $Q_\phi$ 
+       	\FOR{iteration $i=1, 2, ...$}
+       	    \STATE Sample batch of $(s, a, s', r) \sim \mathcal{D}$
+            \STATE $y \gets r + \gamma \min_{i=1,2} \E_{a' \sim \pi_\theta} Q_{\phi'_i}(s', a')$
+            \STATE $\phi_{i} \longleftarrow \argmin \E[(y - Q_{\phi_i}(s, a))^2]$
+            \STATE Update $\theta$ according to Eq. 9
+            \STATE Update $\beta$ according to Eq. 13
+            \IF {$i >$ num\_pretrain\_steps}
+                \STATE Rollout policy
+                \STATE Add data to dataset
+            \ENDIF
+       	\ENDFOR
+       	\end{algorithmic}
+    \end{algorithm}
+\end{minipage}
+\end{wrapfigure}

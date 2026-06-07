@@ -1,0 +1,72 @@
+
+\documentclass{article}
+
+
+\usepackage{hyperref}
+
+\newcommand{\theHalgorithm}{\arabic{algorithm}}
+
+
+\usepackage[accepted]{mlsys2024}
+\input{package}
+\input{macro}
+
+\mlsystitlerunning{AWQ: Activation-aware Weight Quantization for On-Device LLM Compression and Acceleration}
+
+\begin{document}
+
+
+\twocolumn[
+\mlsystitle{AWQ: \underline{A}ctivation-aware \underline{W}eight \underline{Q}uantization for \\On-Device LLM Compression and Acceleration}
+
+
+\mlsyssetsymbol{equal}{*}
+\mlsyssetsymbol{equal-sys}{\dag}
+
+\begin{mlsysauthorlist}
+\mlsysauthor{Ji Lin}{equal,mit}
+\mlsysauthor{Jiaming Tang}{equal,mit,sjtu}
+\mlsysauthor{Haotian Tang}{equal-sys,mit}
+\mlsysauthor{Shang Yang}{equal-sys,mit}
+\mlsysauthor{Wei-Ming Chen}{nvidia}
+\mlsysauthor{Wei-Chen Wang}{mit}
+\mlsysauthor{Guangxuan Xiao}{mit}
+\mlsysauthor{Xingyu Dang}{mit,tsinghua}
+\mlsysauthor{Chuang Gan}{ibm,umass}
+\mlsysauthor{Song Han}{mit,nvidia}
+\end{mlsysauthorlist}
+
+\mlsysaffiliation{mit}{MIT}
+\mlsysaffiliation{sjtu}{Shanghai Jiao Tong University}
+\mlsysaffiliation{nvidia}{NVIDIA}
+\mlsysaffiliation{tsinghua}{Tsinghua University}
+\mlsysaffiliation{ibm}{MIT-IBM Watson AI Lab}
+\mlsysaffiliation{umass}{UMass Amherst}
+
+\mlsyscorrespondingauthor{Song Han}{songhan@mit.edu}
+\centering
+\url{https://github.com/mit-han-lab/llm-awq}
+
+
+\mlsyskeywords{Machine Learning, MLSys}
+\vskip 0.3in
+\input{text/0_abstract}
+]
+
+
+ 
+\newcommand{\mlsysEqualContributionOurs}{\textsuperscript{*}: Algorithm co-lead, \textsuperscript{\dag}: system co-lead.}
+\printAffiliationsAndNotice{\mlsysEqualContributionOurs} %
+\input{text/1_introduction}
+\input{text/2_related_work}
+\input{text/3_approach}
+\input{text/4_system}
+\input{text/5_experiments}
+\input{text/6_conclusion}
+
+
+\bibliography{main}
+\bibliographystyle{mlsys2024}
+
+
+\end{document}

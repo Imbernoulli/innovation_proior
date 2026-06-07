@@ -1,0 +1,10 @@
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\textwidth]{figures/scheme.pdf}
+    \vspace{-1.5em}
+    \caption{\small
+    \textbf{Illustration of \method \vs existing methods.} The language model, pre-trained on texts of length $L$, predicts the $T$th token ($T\gg L$).
+    (a) Dense Attention has \(O(T^2)\) time complexity and an increasing cache size. Its performance decreases when the text length exceeds the pre-training text length.
+    (b) Window Attention caches the most recent \(L\) tokens' KV. While efficient in inference, performance declines sharply once the starting tokens' keys and values are evicted. (c) Sliding Window with Re-computation rebuilds the KV states from the \(L\) recent tokens for each new token. While it performs well on long texts, its \(O(TL^2)\) complexity, stemming from quadratic attention in context re-computation, makes it considerably slow. (d) \method keeps the \emph{attention sink} (several initial tokens) for stable attention computation, combined with the recent tokens. It's efficient and offers stable performance on extended texts. Perplexities are measured using the Llama-2-13B model on the first book (65K tokens) in the PG-19 test set.}\label{fig:scheme}
+    \vspace{-1.5em}
+\end{figure}

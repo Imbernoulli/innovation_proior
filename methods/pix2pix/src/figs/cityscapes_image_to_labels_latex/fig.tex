@@ -1,0 +1,32 @@
+\begin{figure}
+
+\bgroup 
+ \def\arraystretch{0.2} 
+ \setlength\tabcolsep{0.2}
+\begin{tabular}{cccc}
+\begin{center}
+Input & Ground truth & L1 & cGAN \\ 
+\includegraphics[width=0.25\linewidth]{figs/cityscapes_image_to_labels_latex/input_lindau_000000_000019_leftImg8bit.jpg} &
+\includegraphics[width=0.25\linewidth]{figs/cityscapes_image_to_labels_latex/gt_lindau_000000_000019_leftImg8bit.jpg} &
+\includegraphics[width=0.25\linewidth]{figs/cityscapes_image_to_labels_latex/L1_lindau_000000_000019_leftImg8bit.jpg} &
+\includegraphics[width=0.25\linewidth]{figs/cityscapes_image_to_labels_latex/cGAN_lindau_000000_000019_leftImg8bit.jpg} \\ 
+\includegraphics[width=0.25\linewidth]{figs/cityscapes_image_to_labels_latex/input_frankfurt_000001_044525_leftImg8bit.jpg} &
+\includegraphics[width=0.25\linewidth]{figs/cityscapes_image_to_labels_latex/gt_frankfurt_000001_044525_leftImg8bit.jpg} &
+\includegraphics[width=0.25\linewidth]{figs/cityscapes_image_to_labels_latex/L1_frankfurt_000001_044525_leftImg8bit.jpg} &
+\includegraphics[width=0.25\linewidth]{figs/cityscapes_image_to_labels_latex/cGAN_frankfurt_000001_044525_leftImg8bit.jpg} %\\ 
+\includegraphics[width=0.25\linewidth]{figs/cityscapes_image_to_labels_latex/input_munster_000113_000019_leftImg8bit.jpg} &
+\includegraphics[width=0.25\linewidth]{figs/cityscapes_image_to_labels_latex/gt_munster_000113_000019_leftImg8bit.jpg} &
+\includegraphics[width=0.25\linewidth]{figs/cityscapes_image_to_labels_latex/L1_munster_000113_000019_leftImg8bit.jpg} &
+\includegraphics[width=0.25\linewidth]{figs/cityscapes_image_to_labels_latex/cGAN_munster_000113_000019_leftImg8bit.jpg} %\\ 
+\includegraphics[width=0.25\linewidth]{figs/cityscapes_image_to_labels_latex/input_frankfurt_000000_004617_leftImg8bit.jpg} &
+\includegraphics[width=0.25\linewidth]{figs/cityscapes_image_to_labels_latex/gt_frankfurt_000000_004617_leftImg8bit.jpg} &
+\includegraphics[width=0.25\linewidth]{figs/cityscapes_image_to_labels_latex/L1_frankfurt_000000_004617_leftImg8bit.jpg} &
+\includegraphics[width=0.25\linewidth]{figs/cityscapes_image_to_labels_latex/cGAN_frankfurt_000000_004617_leftImg8bit.jpg}
+
+\end{center}
+\end{tabular} \egroup 
+
+\vspace{-0.1in}
+\caption{Applying a conditional GAN to semantic segmentation. The cGAN produces sharp images that look at glance like the ground truth, but in fact include many small, hallucinated objects.}
+\label{cityscapes_image_to_labels}
+\end{figure}

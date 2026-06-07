@@ -1,0 +1,149 @@
+%!TEX root = main.tex
+
+\section{Introduction}
+Transformers~\cite{vaswani2017attention} have recently emerged as an alternative to convolutional neural networks (convnets) for visual recognition~\cite{dosovitskiy2020image,touvron2020training,zhao2020exploring}.
+Their adoption has been coupled with a training strategy inspired by natural language processing (NLP), that is, pretraining on large quantities of data and finetuning on the target dataset~\cite{devlin2018bert,radford2019language}. 
+The resulting Vision Transformers~(ViT)~\cite{dosovitskiy2020image} are competitive with convnets but, they have not yet delivered clear benefits over them: %y currently do not have substantial benefits over convnets: 
+they are computationally more demanding, require more training data, and their features do not exhibit unique properties. %; and there is no evidence of particular properties arising in their features.
+
+% In this paper, we question if a reason for these setbacks has been the use of supervision when pretraining these networks on images and explore self-supervised pretraining as an alternative.
+% The motivation is that a core feature of BERT pretraining~\cite{devlin2018bert} is the use of a self-supervised task where the network learns to predict masked words in a sentence.
+% These words provide a more richer signal to learn from than a single label per sentence. 
+% The problem is similar in the case of images since image-level supervision often reduces the diversity in an image to a single concept from a predefined set of a few thousand categories~\cite{russakovsky2015imagenet}.
+In this paper, we question whether the muted success of Transformers in vision can be explained by the use of supervision in their pretraining.
+Our motivation is that one of the main ingredients for the success of Transformers in NLP was the use of self-supervised pretraining, in the form of close procedure in BERT~\cite{devlin2018bert} or language modeling in GPT~\cite{radford2019language}.
+These self-supervised pretraining objectives use the words in a sentence to create pretext tasks that provide a richer learning signal than the supervised objective of predicting a single label per sentence.
+Similarly, in images, image-level supervision often reduces the rich visual information contained in an image to a single concept selected from a predefined set of a few thousand categories of objects~\cite{russakovsky2015imagenet}.
+% , it naturally requires a lot more samples to train powerful Transformer models.
+ % and show that self-supervised pretraining is a promising alternative
+% Our motivation is that in NLP, the BERT model~\cite{devlin2018bert} combined Transformers with a self-supervised objective to predict masked words in a sentence.
+
+%However, as shown in Dosovitskiy~\etal~\cite{dosovitskiy2020image}, directly using the BERT pretext task has limited success but the BERT pretext task is very specific to text and may not work for images.
+% We address this problem by investigating if self-supervised methods originally designed for convnets provide additional benefits to the features produced by ViTs.
+%We first investigate whether image based self-supervised methods originally designed for convnets can benefit ViTs.
+While the self-supervised pretext tasks used in NLP are text specific, many existing self-supervised methods have shown their potential on images with convnets~\cite{caron2020unsupervised, chen2020simple,grill2020bootstrap,he2020momentum}.
+They typically share a similar structure but with different components designed to avoid trivial solutions (collapse) or to improve performance~\cite{chen2020exploring}.
+In this work, inspired from these methods, we study the impact of self-supervised pretraining on ViT features.
+Of particular interest, we have identified several interesting properties that do not emerge with supervised ViTs, nor with convnets:
+
+\begin{itemize}
+\item
+Self-supervised ViT features explicitly contain the scene layout and, in particular, object boundaries, as shown in Figure~\ref{fig:att}.
+This information is directly accessible in the self-attention modules of the last block.
+\item
+Self-supervised ViT features perform particularly well with a basic nearest neighbors classifier ($k$-NN)~\emph{without any finetuning, linear classifier nor data augmentation}, achieving 78.3\% top-1 accuracy on ImageNet.
+%For instance, a ViT-Base model achieves 77.4\% top-1 accuracy on Imagenet with a $k$-NN classifier on frozen features.
+%This property is not as prominent when using convnets, nor when training ViT networks with other self-supervised components.
+\end{itemize}
+
+The emergence of segmentation masks seems to be a property shared across self-supervised methods.
+However, the good performance with $k$-NN only emerge when combining certain components such as momentum encoder~\cite{he2020momentum} and multi-crop augmentation~\cite{caron2020unsupervised}.
+Another finding from our study is the importance of using smaller patches with ViTs to improve the quality of the resulting features. 
+
+Overall, our findings about the importance of these components lead us to design a simple self-supervised approach that can be interpreted as a form of knowledge \textbf{di}stillation~\cite{hinton2015distilling} with \textbf{no} labels.
+The resulting framework, \OURS, simplifies self-supervised training by directly predicting the output of a teacher network---built with a momentum encoder---by using a standard cross-entropy loss.
+Interestingly, our method can work with only a centering and sharpening of the teacher output to avoid collapse, while
+other popular components such as predictor~\cite{grill2020bootstrap}, advanced normalization~\cite{caron2020unsupervised} or contrastive loss~\cite{he2020momentum} add little benefits in terms of stability or performance.
+Of particular importance, our framework is flexible and works on both convnets and ViTs without the need to modify the architecture, nor adapt internal normalizations~\cite{richemond2020byol}. 
+
+We further validate the synergy between \OURS and ViT by outperforming previous self-supervised features on the ImageNet linear classification benchmark with 80.1\% top-1 accuracy with a ViT-Base with small patches.
+We also confirm that \OURS works with convnets by matching the state of the art with a ResNet-50 architecture.
+Finally, we discuss different scenarios to use \OURS with ViTs in case of limited computation and memory capacity. 
+In particular, training \OURS with ViT takes just two 8-GPU servers over 3 days to achieve $76.1\%$ on ImageNet linear benchmark, which outperforms self-supervised systems based on convnets of comparable sizes with significantly reduced compute requirements~\cite{caron2020unsupervised,grill2020bootstrap}.
+
+\begin{figure}[t]
+\centering
+ \includegraphics[width=0.6\linewidth]{test.pdf}
+ %\includegraphics[width=0.65\linewidth]{figures/pullfig2.pdf}
+ % \includegraphics[trim=0 1cm 0 0, clip,width=1\linewidth]{figures/1page.pdf}
+\caption{
+\textbf{Self-distillation with no labels.}
+We illustrate \OURS in the case of one single pair of views ($x_1$, $x_2$) for simplicity.
+The model passes two different random transformations of an input image to the student and teacher networks.
+Both networks have the same architecture but different parameters. 
+The output of the teacher network is centered with a mean computed over the batch.
+Each networks outputs a $K$ dimensional feature that is normalized with a temperature softmax over the feature dimension.
+Their similarity is then measured with a cross-entropy loss.
+We apply a stop-gradient (sg) operator on the teacher to propagate gradients only through the student.
+The teacher parameters are updated with an exponential moving average (ema) of the student parameters.
+}
+\vspace{-1em}
+\label{fig:model}
+\end{figure}
+
+
+%Recent work has shown that self-supervised pretraining improves performance
+%when finetuning models on the same dataset~\cite{chen2020big}.  Therefore,
+%elf-supervised learning constitutes a possible solution to the problem
+%mentioned above. 
+% Providing self-supervised pretrained models for ViT is therefore of high interest,
+% as it could facilitates training and improve performance when transferring to downstream tasks
+% %improve performance when transferring ViTs to downstream tasks 
+% or when used for
+% low-shot learning~\cite{caron2020unsupervised,he2020momentum}. 
+% While there are
+% many self-supervised learning algorithms, based on contrastive
+% learning~\cite{he2020momentum, chen2020simple},
+% clustering~\cite{caron2020unsupervised}, metric
+% learning~\cite{grill2020bootstrap, chen2020exploring} or feature
+% whitening~\cite{zbontar2021barlow}, they have all been designed 
+% for convnets. Even though these methods could be applied to other architectures in principle,
+% obtaining good performance with ViTs turned out to be non-trivial.
+
+%to build a simpler method that maintains strong performance.
+%Even though the theory of self-supervised learning is still poorly understood,
+%contrasting between positive and negative pairs is believed to act as a regularization
+%to avoid trivial (also known as ``collapsed'') solutions of the optimization problem~\cite{chen2020simple,chen2020exploring}, and could be replaced by alternative normalization schemes with competitive performance~\cite{caron2020unsupervised,chen2020exploring,grill2020bootstrap}.
+
+%\begin{figure}[t]
+%\centering
+%\includegraphics[height=.4\linewidth]{images/banabeer.png} 
+%\includegraphics[height=.4\linewidth]{images/catoilet.png}
+%\caption{
+%\textbf{Self-attention mask of self-supervised Vision Transformer.}
+%}
+%\label{fig:pullfig}
+%\end{figure}
+
+
+
+
+% In this work, we first analyze how two of the recent self-supervised
+% algorithms, BYOL~\cite{grill2020bootstrap} and
+% SwAV~\cite{caron2020unsupervised} transfer to ViTs, leading to inferior results compared to
+% convnets.
+% %Even though these attempts not perform as well as on convnets,
+% Yet, from this negative experiment, we also identify several components that are particularly suitable to ViT architectures.
+% In particular, the momentum encoder of He~\etal~\cite{he2020momentum} turns out to be crucial to improve performance, but also to stabilize training.
+% This observation leads us to define a simpler self-supervised method that works well on both convnets and ViT architectures, with momentum, but without other regularization techniques ubiquitous in self-supervised algorithms, such as batch normalization~\cite{grill2020bootstrap}, group normalization~\cite{richemond2020byol}, or optimal transport~\cite{asano2019self,caron2020unsupervised}.
+% Our approach only requires a basic centering and a sharpening of the output of the momentum encoder.
+% Similar to BYOL~\cite{grill2020bootstrap}, we train a ``student'' network by predicting the output of a ``teacher'' network built from previous updates.
+% Our method, illustrated in Figure~\ref{fig:model} can be interpreted as a form of knowledge DIstillation~\cite{bucilua2006model,hinton2015distilling} that works with NO supervision (\OURS).
+
+
+%\begin{figure}[t]
+%  \centering
+%  \includegraphics{figures/1page.pdf}
+%  \caption{
+%    Pull figure goes here.
+%  }
+%  \label{fig:pullfig}
+%\end{figure}
+
+% Paragraph about the strong performance we obtain
+
+
+
+% Technical contributions of the paper? A bit too fuzzy right now
+%We thoroughly experiment with \OURS, confirming that the performance of self-supervised methods is likely independent of the use of batch normalization~\cite{richemond2020byol} or contrastive losses~\cite{chen2020simple}.
+%Our co-distillation method only requires a centering and sharpening of the mean teacher output to avoid a collapse. 
+%The centering operation only depends on first-order batch statistics, and can be approximated with a moving average from previous batches.
+%Thus, as our model does not depend on the current batch statistics, we observe that it is particularly adapted to training with small batches.
+%Our formulation also removes the need for asymmetry between student and teacher networks, further reinforcing the view of self-supervision as a form of co-distillation with no labels.
+
+%Finally, we thoroughly evaluate choices of teacher networks, experimenting with previous instances of the network and mean teachers, as well as different architectures leading to a form of co-distillation training.
+%Our findings are that XXX.
+
+%Formulating self-supervised learning as a form of ``co-distillation'' also unifies self-supervised pretraining and the self-training with soft pseudo labels~\cite{xie2020self}.
+%Self-supervised pre-training and self-training are often considered as distinct methodologies that can complement each other~\cite{zoph2020rethinking} and achieve strong performance in low-shot setting as shown in computer vision~\cite{chen2020big}, speech recognition~\cite{zhang2020pushing,xu2020self} and Natural Language Processing~\cite{du2020self}.
+%Using a method that can be used in both scenarios simplifies the overall pipeline of self-supervised pretraining and self-training with a small amount of annotated data.

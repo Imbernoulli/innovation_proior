@@ -1,0 +1,495 @@
+\documentclass[10pt,twocolumn,letterpaper]{article}
+\newif\ifforceplain\forceplainfalse %
+
+\newif\ifarxiv
+\arxivtrue
+
+\ifarxiv
+\usepackage{cvpr}\cvprfinalcopy                         %
+\else
+\usepackage{cvpr}\cvprfinalcopy                        %
+\fi
+
+\makeatletter						%
+\@namedef{ver@everyshi.sty}{}
+\makeatother
+\usepackage{tikz}
+
+\usepackage{times}					%
+
+\usepackage{epsfig}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{fancyhdr}
+
+\usepackage[mathscr]{eucal}
+\usepackage{amsfonts}
+\usepackage{color}
+\usepackage{calc}
+\usepackage[normalem]{ulem}  %
+
+\ifarxiv
+\newcommand{\ext}{jpg}  %
+\else
+\newcommand{\ext}{jpg}
+\fi
+
+\newcommand{\extraspaceafter}{}
+\newif\iflualatex
+\lualatexfalse
+\iflualatex
+	\renewcommand{\extraspaceafter}{\vspace*{1.5mm}}
+	\DeclareGraphicsRule{.jp2}{jpg}{.jp2}{#1}
+	\renewcommand{\extt}{jp2}
+	\usepackage[no-math]{fontspec}		%
+	\setmainfont[
+		Ligatures=TeX,
+		SmallCapsFont={TeX Gyre Termes},
+		SmallCapsFeatures={Letters=SmallCaps}
+	]{TeX Gyre Termes}					%
+									%
+	\setmonofont{Courier New}[			%
+	  	Scale=MatchLowercase
+	]
+	%
+	%
+\fi
+
+\usepackage[pagebackref=true,breaklinks=true,letterpaper=true,colorlinks,bookmarks=false]{hyperref}
+
+\def\httilde{\mbox{\tt\raisebox{-.5ex}{\symbol{126}}}}
+
+\newcommand{\disc}{\textsc{D}}
+\newcommand{\gen}{\textsc{G}}
+\newcommand{\arch}[1]{\textsc{#1}}
+\newcommand{\placeholderfig}[3]{\raisebox{\fboxsep+\fboxrule}{\fbox{\parbox[b][#2-2\fboxsep-2\fboxrule][t]{#1-2\fboxsep-2\fboxrule}{\center #3}}}}
+\DeclareMathOperator{\EX}{\mathbb{E}}%
+\def\smallint{\begingroup\textstyle \int\endgroup}
+\def\clap#1{\hbox to 0pt{\hss #1\hss}}%
+\def\initials#1{\protect\clap{\smash{\raisebox{1.4ex}{\tiny{\textsf{\textit{#1}}}}}}}%
+\definecolor{internationalkleinblue}{rgb}{0.0, 0.18, 0.65}	%
+\definecolor{olive}{rgb}{0.5, 0.5, 0.0}
+\definecolor{gray}{rgb}{0.7, 0.7, 0.7}
+\definecolor{maroon}{rgb}{0.69, 0.19, 0.38}
+\definecolor{celestialblue}{rgb}{0.29, 0.59, 0.82}
+\definecolor{darkblue}{rgb}{0.19, 0.19, 0.62}
+\definecolor{rust}{rgb}{0.72, 0.25, 0.05}
+\definecolor{red}{rgb}{1.00, 0.00, 0.00}
+\newcommand{\slerp}{\mathrm{slerp}}
+\newcommand{\lerp}{\mathrm{lerp}}
+\newcommand{\EDIT}[4][]{\strut{\color{#3}{\hspace{0pt}\initials{#2}{\color{red}\sout{#1}}{#4}}}}
+\newcommand{\TK}[2][]{\protect\EDIT[#1]{TK}{maroon}{#2}}
+\newcommand{\SL}[2][]{\protect\EDIT[#1]{SL}{olive}{#2}}
+\newcommand{\TA}[2][]{\protect\EDIT[#1]{TA}{rust}{#2}}
+\newcommand{\JL}[2][]{\protect\EDIT[#1]{JL}{red}{#2}}
+\newcommand{\MA}[2][]{\protect\EDIT[#1]{MA}{magenta}{#2}}
+\newcommand{\TODO}[2][]{\protect\EDIT[#1]{}{celestialblue}{#2}}
+\newcommand{\TBD}[2][]{\protect\EDIT[#1]{}{maroon}{#2}}
+\newcommand{\FINAL}[2][]{#2} %
+
+\newcommand{\xx}{{\bf x}}
+\newcommand{\yy}{{\bf y}}
+\newcommand{\zz}{{\bf z}}
+\newcommand{\ww}{{\bf w}}
+\newcommand{\tildeww}{{\bf\tilde w}}
+\newcommand{\barww}{{\bf\bar w}}
+\newcommand{\XX}{\mathcal{X}}
+\newcommand{\YY}{\mathcal{Y}}
+\newcommand{\ZZ}{\mathcal{Z}}
+\newcommand{\WW}{\mathcal{W}}
+\newcommand{\MU}{\boldsymbol{\mu}}
+\newcommand{\II}{\mathbf{I}}
+
+\newcommand{\JJ}{{\bf J}}
+\newcommand{\JJT}{{\bf J}^T}
+\newcommand{\SSigma}{{\bf \Sigma}}
+\newcommand{\real}{\mathbb{R}}
+\newcommand{\expectation}{\mathbb{E}}
+\newcommand{\tyy}{\tilde {\bf y}}
+
+\newcommand{\codelink}{\FINAL{\texttt{https://github.com/NVlabs/stylegan}}}
+\newcommand{\ffhqlink}{\FINAL{\texttt{\small{https://github.com/NVlabs/ffhq-dataset}}}}
+
+\input{figures}
+
+\pagestyle{plain}
+\ifcvprfinal\pagestyle{empty}\fi
+\begin{document}
+
+\title{Analyzing and Improving the Image Quality of StyleGAN}
+
+\author{Tero Karras\\
+NVIDIA%
+\and
+Samuli Laine\\
+NVIDIA%
+\and
+Miika Aittala\\
+NVIDIA%
+\and
+Janne Hellsten\\
+NVIDIA%
+\and
+Jaakko Lehtinen\\
+NVIDIA and Aalto University%
+\and
+Timo Aila\\
+NVIDIA%
+}
+
+\maketitle
+
+\ifcvprfinal\thispagestyle{empty}\fi
+\ifarxiv
+\pagestyle{plain}\thispagestyle{plain}
+\fi
+
+\ifforceplain\thispagestyle{plain}\pagestyle{plain}\fi
+
+\ifarxiv
+	\newcommand{\refappimagequality}{Appendix~\ref{app:imagequality}}
+	\newcommand{\refappimplementation}{Appendix~\ref{app:implementation}}
+	\newcommand{\refappregularization}{Appendix~\ref{app:regularization}}
+	\newcommand{\refappprojectiondetails}{Appendix~\ref{app:projectiondetails}}
+	\newcommand{\refapplsuncomparison}{Figures~\ref{fig:catscomparison} and~\ref{fig:carscomparison}}
+	\newcommand{\refappspectralnorm}{Appendix~\ref{app:spectralnorm}}
+	\newcommand{\refapppower}{Appendix~\ref{app:power}}
+\else
+	\newcommand{\refappimagequality}{Appendix~A}
+	\newcommand{\refappimplementation}{Appendix~B}
+	\newcommand{\refappregularization}{Appendix~C}
+	\newcommand{\refappprojectiondetails}{Appendix~D}
+	\newcommand{\refapplsuncomparison}{Figures~3 and 4 in the Supplement}
+	\newcommand{\refappspectralnorm}{Appendix~E}
+	\newcommand{\refapppower}{Appendix~F}
+\fi
+\newcommand{\reftablsun}{Table~\ref{tab:lsun}}
+
+\begin{abstract}
+
+The style-based GAN architecture (StyleGAN) yields state-of-the-art results in data-driven unconditional generative image modeling. 
+We expose and analyze several of its characteristic artifacts, and propose changes in both model architecture and training methods to address them.
+In particular, we redesign the generator normalization, revisit progressive growing, and regularize the generator to encourage good conditioning in the mapping from latent codes to images. 
+In addition to improving image quality, this path length regularizer yields the additional benefit that the generator becomes significantly easier to invert.
+\FINAL{This makes it possible to reliably attribute a generated image to a particular network.} 
+We furthermore visualize how well the generator utilizes its output resolution, and identify a capacity problem, motivating us to train larger models for additional quality improvements. 
+Overall, our improved model redefines the state of the art in unconditional image modeling, both in terms of existing distribution quality metrics as well as perceived image quality.
+
+\end{abstract}
+
+\section{Introduction}
+
+The resolution and quality of images produced by generative methods, especially generative adversarial networks (GAN) \cite{Goodfellow2014}, are improving rapidly \cite{Karras2017,Miyato2018B,Brock2018}. 
+The current state-of-the-art method for high-resolution image synthesis is StyleGAN \cite{Karras2018}, which has been shown to work reliably on a variety of datasets. 
+Our work focuses on fixing its characteristic artifacts and improving the result quality further.
+
+The distinguishing feature of StyleGAN \cite{Karras2018} is its unconventional generator architecture. Instead of feeding the input latent code $\zz \in \ZZ$ only to the beginning of a the network, the \emph{mapping network} $f$ first transforms it to an intermediate latent code $\ww \in \WW$.
+Affine transforms then produce \emph{styles} that control the layers of the \emph{synthesis network} $g$ via adaptive instance normalization (AdaIN) \cite{Huang2017,Dumoulin2016,Ghiasi2017,Dumoulin2018}.
+Additionally, stochastic variation is facilitated by providing additional random noise maps to the synthesis network.
+It has been demonstrated \cite{Karras2018,Shen2019} %
+that this design allows the intermediate latent space $\WW$ to be much less entangled than the input latent space $\ZZ$.
+In this paper, we focus all analysis solely on $\WW$, as it is the relevant latent space from the synthesis network's point of view.
+
+\figdroplets %
+
+Many observers have noticed characteristic artifacts in images generated by StyleGAN \cite{Bergstrom2019}. We identify two causes for these artifacts, and describe changes in architecture and training methods that eliminate them.
+First, we investigate the origin of common blob-like artifacts, and find that the generator creates them to circumvent a design flaw in its architecture. 
+In Section~\ref{sec:in}, we redesign the normalization used in the generator, which removes the artifacts.
+Second, we analyze artifacts related to progressive growing \cite{Karras2017} that has been highly successful in stabilizing high-resolution GAN training.
+We propose an alternative design that achieves the same goal\,---\,training starts by focusing on
+low-resolution images and then progressively shifts focus to higher and higher resolutions\,---\,without changing the network topology during training.
+This new design also allows us to reason about the effective resolution of the generated images, which turns out to be lower than expected, motivating a capacity increase (Section~\ref{sec:growing}).
+
+Quantitative analysis of the quality of images produced using generative methods continues to be a challenging topic. 
+Fr\'echet inception distance (FID) \cite{Heusel2017} measures differences in the density of two distributions in the high-dimensional feature space of an InceptionV3 classifier \cite{simonyan2014}. 
+Precision and Recall (P\&R) \cite{Sajjadi2018,Tuomas2019} provide additional visibility by explicitly quantifying the percentage of generated images that are similar to training data and the percentage of training data that can be generated, respectively. 
+We use these metrics to quantify the improvements.
+
+Both FID and P\&R are based on classifier networks that have recently been shown to focus on textures rather than shapes \cite{Geirhos2018}, and consequently, the metrics do not accurately capture all aspects of image quality.
+We observe that the perceptual path length (PPL) metric \cite{Karras2018}, originally introduced as a method for estimating the quality of latent space interpolations, correlates with consistency and stability of shapes.
+Based on this, we regularize the synthesis network to favor smooth mappings (Section~\ref{sec:Greg}) and achieve a clear improvement in quality.
+To counter its computational expense, we also propose executing all regularizations less frequently, observing that this can be done without compromising effectiveness.
+
+Finally, we find that projection of images to the latent space $\WW$ works significantly better with the new, path-length regularized \FINAL{StyleGAN2 generator than with the original StyleGAN. 
+This makes it easier to attribute a generated image to its source (Section~\ref{sec:proj}).}
+
+Our implementation and trained models are available at \texttt{\small https://github.com/NVlabs/stylegan2}
+
+\section{Removing normalization artifacts}
+\label{sec:in}
+
+\figarch %
+
+We begin by observing that most images generated by StyleGAN exhibit characteristic blob-shaped artifacts that resemble water droplets.
+As shown in Figure~\ref{fig:droplets}, even when the droplet may not be obvious in the final image, it is present in the intermediate feature maps of the generator.%
+\footnote{In rare cases (perhaps 0.1\% of images) the droplet is missing, leading to severely corrupted images. See \refappimagequality{} for details.}
+The anomaly starts to appear around 64$\times$64 resolution, is present in all feature maps, and becomes progressively stronger at higher resolutions.
+The existence of such a consistent artifact is puzzling, as the discriminator should be able to detect it.
+
+We pinpoint the problem to the AdaIN operation that normalizes the mean and variance of each feature map separately, thereby potentially destroying any information found in the magnitudes of the features relative to each other.
+We hypothesize that the droplet artifact is a result of the generator intentionally sneaking signal strength information past instance normalization:
+by creating a strong, localized spike that dominates the statistics, the generator can effectively scale the signal as it likes elsewhere.
+Our hypothesis is supported by the finding that when the normalization step is removed from the generator, as detailed below, the droplet artifacts disappear completely.
+
+\subsection{Generator architecture revisited}
+
+We will first revise several details of the StyleGAN generator to better facilitate our redesigned normalization. These changes have either a neutral or small positive effect on their own in terms of quality metrics.
+
+Figure~\ref{fig:arch}a shows the original StyleGAN synthesis network $g$ \cite{Karras2018}, and in Figure~\ref{fig:arch}b we expand the diagram to full detail by showing the weights and biases and breaking the AdaIN operation to its two constituent parts: normalization and modulation. This allows us to re-draw the conceptual gray boxes so that each box indicates the part of the network where one style is active (i.e., ``style block'').
+Interestingly, the original StyleGAN applies bias and noise within the style block, causing their relative impact to be inversely proportional to the current style's magnitudes. We observe that more predictable results are obtained by moving these operations outside the style block, where they operate on normalized data. Furthermore, we notice that after this change it is sufficient for the normalization and modulation to operate on the standard deviation alone (i.e., the mean is not needed).
+The application of bias, noise, and normalization to the constant input can also be safely removed without observable drawbacks. 
+This variant is shown in Figure~\ref{fig:arch}c, and serves as a starting point for our redesigned normalization.
+
+\subsection{Instance normalization revisited}
+
+\FINAL{One of the main strengths of StyleGAN is the ability to control the generated images via \emph{style mixing}, i.e., by feeding a different latent $\ww$ to different layers at inference time. In practice, style modulation may amplify certain feature maps by an order of magnitude or more.
+For style mixing to work, we must explicitly counteract this amplification on a per-sample basis\,---\,otherwise the subsequent layers would not be able to operate on the data in a meaningful way.
+
+If we were willing to sacrifice scale-specific controls (see video), we could simply remove the normalization, thus removing the artifacts and also improving FID slightly \cite{Tuomas2019}.
+We will now propose a better alternative that removes the artifacts while retaining full controllability.}
+The main idea is to base normalization on the \emph{expected} statistics of the incoming feature maps, but without explicit forcing.
+
+Recall that a style block in Figure~\ref{fig:arch}c consists of modulation, convolution, and normalization. 
+Let us start by considering the effect of a modulation followed by a convolution. The modulation scales each input feature map of the convolution based on the incoming style, which can alternatively be implemented by scaling the convolution weights:
+\begin{equation}
+\label{eq:modulation}
+w'_{ijk} = s_i \cdot w_{ijk},
+\end{equation}
+where $w$ and $w'$ are the original and modulated weights, respectively, $s_i$ is the scale corresponding to the $i$th input feature map, and $j$ and $k$ enumerate the output feature maps and spatial footprint of the convolution, respectively.
+
+Now, the purpose of instance normalization is to essentially remove the effect of $s$ from the statistics of the convolution's output feature maps.
+We observe that this goal can be achieved more directly. %
+Let us assume that the input activations are i.i.d.~random variables with unit standard deviation. After modulation and convolution, the output activations have standard deviation of
+\begin{equation}
+\sigma_j = \sqrt{\raisebox{0mm}[4.0mm][2.5mm]{$\underset{i,k}{{}\displaystyle\sum{}}$} {w'_{ijk}}^2},
+\label{eq:b}
+\end{equation}
+i.e.,~the outputs are scaled by the $L_2$ norm of the corresponding weights. The subsequent normalization aims to restore the outputs back to unit standard deviation.
+Based on Equation~\ref{eq:b}, this is achieved if we scale (``demodulate'') each output feature map $j$ by  $1/\sigma_j$. Alternatively, we can again bake this into the convolution weights:
+\begin{equation}
+w''_{ijk} = w'_{ijk} \bigg/ \sqrt{\raisebox{0mm}[4.0mm][2.5mm]{$\underset{i,k}{{}\displaystyle\sum{}}$} {w'_{ijk}}^2 + \epsilon},
+\label{eq:demodulation}
+\end{equation}
+where $\epsilon$ is a small constant to avoid numerical issues.
+
+\tabmain %
+
+We have now baked the entire style block to a single convolution layer whose weights are adjusted based on $s$ using Equations \ref{eq:modulation} and \ref{eq:demodulation} (Figure~\ref{fig:arch}d). Compared to instance normalization, our demodulation technique is weaker because it is based on statistical assumptions about the signal instead of actual contents of the feature maps. Similar statistical analysis has been extensively used in modern network initializers \cite{Glorot2010,He2015}, but we are not aware of it being previously used as a replacement for data-dependent normalization.
+Our demodulation is also related to weight normalization \cite{Salimans2016A} that performs the same calculation as a part of reparameterizing the weight tensor.
+Prior work has identified weight normalization as beneficial in the context of GAN training \cite{Xiang2017}.
+
+Our new design removes the characteristic artifacts (Figure~\ref{fig:VIN}) while retaining full controllability, as demonstrated in the accompanying video.
+FID remains largely unaffected (Table~\ref{tab:main}, rows~\arch{a},~\arch{b}), but there is a notable shift from precision to recall.
+We argue that this is generally desirable, since recall can be traded into precision via truncation, whereas the opposite is not true \cite{Tuomas2019}.
+In practice our design can be implemented efficiently using grouped convolutions, as detailed in \refappimplementation{}.
+To avoid having to account for the activation function in Equation~\ref{eq:demodulation}, we scale our activation functions so that they retain the expected signal variance.
+
+\section{Image quality and generator smoothness}
+\label{sec:Greg}
+
+\figVIN  %
+
+While GAN metrics such as FID or Precision and Recall (P\&R) successfully capture many aspects of the generator, they continue to have somewhat of a blind spot for image quality. For an example, refer to 
+\refapplsuncomparison{} that contrast generators with identical FID and P\&R scores but markedly different overall quality.%
+\footnote{%
+We believe that the key to the apparent inconsistency lies in the particular choice of feature space rather than the foundations of FID or P\&R.
+It was recently discovered that classifiers trained using ImageNet \cite{Russakovsky2014} tend to base their decisions much more on texture than shape \cite{Geirhos2018}, while humans strongly focus on shape \cite{Landau1988}. 
+This is relevant in our context because FID and P\&R use high-level features from InceptionV3 \cite{simonyan2014} and VGG-16 \cite{simonyan2014}, respectively, which were trained in this way and are thus expected to be biased towards texture detection. 
+As such, images with, e.g., strong cat textures may appear more similar to each other than a human observer would agree, thus partially compromising density-based metrics (FID) and manifold coverage metrics (P\&R).
+}
+
+\figpplimages %
+\figpplhistograms %
+
+We observe a correlation between perceived image quality and perceptual path length (PPL) \cite{Karras2018}, a metric that was originally introduced for quantifying the smoothness of the mapping from a latent space to the output image by measuring average LPIPS distances~\cite{Zhang2018metric} between generated images under small perturbations in latent space.
+Again consulting \refapplsuncomparison{}, a smaller PPL (smoother generator mapping) appears to correlate with higher overall image quality, whereas other metrics are blind to the change.
+\FINAL{Figure~\ref{fig:pplimages} examines this correlation more closely through per-image PPL scores on \textsc{LSUN Cat}, computed by sampling the latent space around $\ww \sim f(\mathbf{z})$. Low scores are indeed indicative of high-quality images, and vice versa.
+}
+Figure~\ref{fig:pplhistograms}a shows the corresponding histogram and reveals the long tail of the distribution.
+The overall PPL for the model is simply the expected value of these per-image PPL scores. %
+\FINAL{We always compute PPL for the entire image, as opposed to Karras~et~al.~\cite{Karras2018} who use a smaller central crop.}
+
+It is not immediately obvious why a low PPL should correlate with image quality.
+We hypothesize that during training, as the discriminator penalizes broken images, the most direct way for the generator to improve is to effectively stretch the region of latent space that yields good images.
+This would lead to the low-quality images being squeezed into small latent space regions of rapid change. %
+While this improves the average output quality in the short term, the accumulating distortions impair the training dynamics and consequently the final image quality.
+
+\FINAL{
+Clearly, we cannot simply encourage minimal PPL since that would guide the generator toward a degenerate solution with zero recall.
+Instead, we will describe a new regularizer that aims for a smoother generator mapping without this drawback.}
+As the resulting regularization term is somewhat expensive to compute, we first describe a general optimization that applies to \FINAL{any regularization technique.}
+
+\subsection{Lazy regularization}
+\label{sec:lazyreg}
+Typically the main loss function (e.g.,~logistic loss~\cite{Goodfellow2014}) and regularization terms (e.g.,~$R_1$~\cite{Mescheder2018}) are written as a single expression and are thus optimized simultaneously.
+We observe that the regularization terms can be computed less frequently than the main loss function, thus greatly diminishing their computational cost and the overall memory usage. 
+Table~\ref{tab:main}, row~\arch{c} shows that no harm is caused when $R_1$ regularization is performed only once every 16 minibatches, and we adopt the same strategy for our new regularizer as well.
+\refappimplementation{} gives implementation details.
+
+\subsection{Path length regularization}
+\label{sec:pathreg}
+
+ 
+ %
+\FINAL{We would like to encourage that a fixed-size step in $\WW$ results in a non-zero, fixed-magnitude change in the image. 
+We can measure the deviation from this ideal empirically by stepping into random directions in the image space and observing the corresponding $\ww$ gradients.
+These gradients should have close to an equal length regardless of $\ww$ or the image-space direction, indicating that the mapping from the latent space to image space is well-conditioned \cite{Odena2018}.
+}
+
+At a single $\ww \in \WW$, the local metric scaling properties of the generator mapping $g(\ww) : \WW \mapsto \YY$  are captured by the Jacobian matrix $\mathbf{J}_\ww = {\partial g(\ww)}/{\partial \ww}$. %
+Motivated by the desire to preserve the expected lengths of vectors regardless of the direction, we formulate our regularizer as
+\begin{equation}
+\expectation_{\ww, \yy \sim \mathcal{N}(0, \mathbf{I})} \left(\left\lVert \mathbf{J}_\ww^T \yy\right\rVert_2 - a\right)^2,
+\end{equation}
+where $\yy$ are random images with normally distributed pixel intensities, and $\ww \sim f(\mathbf{z})$, where $\mathbf{z}$ are normally distributed. We show in \refappregularization{} that, in high dimensions, this prior is minimized when $\mathbf{J}_\ww$ is orthogonal (up to a global scale) at any $\ww$. An orthogonal matrix preserves lengths and introduces no squeezing along any dimension.
+
+To avoid explicit computation of the Jacobian matrix, we use the identity $\JJT_\ww \yy = \nabla_\ww (g(\ww)\cdot \yy)$, which is efficiently computable using standard backpropagation \cite{Dauphin2015}. The constant $a$ is set dynamically during optimization as the long-running exponential moving average of the lengths $\lVert\JJT_\ww \yy\rVert_2$, allowing the optimization to find a suitable global scale by itself.
+
+Our regularizer is closely related to the Jacobian clamping regularizer presented by Odena et~al.~\cite{Odena2018}. Practical differences include that we compute the products $\JJT_\ww \yy$ analytically whereas they use finite differences for estimating $\mathbf{J}_\ww \boldsymbol{\delta}$ with $\ZZ \ni \boldsymbol{\delta} \sim \mathcal{N}(0, \mathbf{I})$.
+It should be noted that spectral normalization \cite{Miyato2018B} of the generator \cite{Zhang2018sagan} only constrains the largest singular value, posing no constraints on the others and hence not necessarily leading to better conditioning.
+\FINAL{We find that enabling spectral normalization in addition to our contributions\,---\,or instead of them\,---\,invariably compromises FID, as detailed in \refappspectralnorm{}.}
+
+In practice, we notice that path length regularization leads to more reliable and consistently behaving models, making architecture exploration easier.
+\FINAL{We also observe that the smoother generator is significantly easier to invert (Section~\ref{sec:proj}).}
+Figure~\ref{fig:pplhistograms}b shows that path length regularization clearly tightens the distribution of per-image PPL \FINAL{scores, without pushing the mode to zero.}
+\FINAL{However, Table~\ref{tab:main}, row~\arch{d} points toward a tradeoff between FID and PPL in datasets that are less structured than \textsc{FFHQ}.}
+
+\section{Progressive growing revisited}
+\label{sec:growing}
+
+\figpgartifacts %
+
+Progressive growing \cite{Karras2017} has been very successful in stabilizing high-resolution image synthesis, but it causes its own characteristic artifacts. 
+The key issue is that the progressively grown generator appears to have a strong location preference for details; 
+the accompanying video shows that when features like teeth or eyes should move smoothly over the image, they may instead remain stuck in place before jumping to the next preferred location. 
+Figure~\ref{fig:pgartifacts} shows a related artifact. 
+We believe the problem is that in progressive growing each resolution serves momentarily as the output resolution, forcing it to generate maximal frequency details, which then leads to the trained network to have excessively high frequencies in the intermediate layers, compromising shift invariance \cite{zhang2019}. \refappimagequality{} shows an example.
+These issues prompt us to search for an alternative formulation that would retain the benefits of progressive growing without the drawbacks.
+
+\subsection{Alternative network architectures}
+\label{sec:altarch}
+
+\figGDarch %
+
+While StyleGAN uses simple feedforward designs in the generator (synthesis network) and discriminator, there is a vast body of work dedicated to the study of better network architectures.
+Skip connections \cite{Ronneberger2015,Karnewar2019}, residual networks \cite{He2015b,Gulrajani2017,Miyato2018B}, and hierarchical methods \cite{Denton2015,Zhang2016,Zhang2017} have proven highly successful also in the context of generative methods.
+As such, we decided to re-evaluate the network design of StyleGAN and search for an architecture that produces high-quality images without progressive growing.
+
+Figure~\ref{fig:GDarch}a shows \FINAL{MSG-GAN \cite{Karnewar2019}}, which connects the matching resolutions of the generator and discriminator using multiple skip connections. 
+The MSG-GAN generator is modified to output a mipmap \cite{Williams1983} instead of an image, and a similar representation is computed for each real image as well.
+In Figure~\ref{fig:GDarch}b we simplify this design by upsampling and summing the contributions of RGB outputs corresponding to different resolutions. 
+In the discriminator, we similarly provide the downsampled image to each resolution block of the discriminator.
+We use bilinear filtering in all up and downsampling operations. 
+In Figure~\ref{fig:GDarch}c we further modify the design to use residual connections.%
+\footnote{In residual network architectures, the addition of two paths leads to a doubling of signal variance, which we cancel by multiplying with $1/\sqrt 2$. 
+This is crucial for our networks, whereas in classification resnets~\cite{He2015b} the issue is typically hidden by batch normalization.}
+This design is similar to LAPGAN \cite{Denton2015} without the per-resolution discriminators employed by Denton~et~al.
+
+\tabskips %
+
+Table~\ref{tab:skips} compares three generator and three discriminator architectures: original feedforward networks as used in StyleGAN, skip connections, and residual networks, all trained without progressive growing.
+FID and PPL are provided for each of the 9 combinations.
+We can see two broad trends: skip connections in the generator drastically improve PPL in all configurations, and a residual discriminator network is clearly beneficial for FID.
+The latter is perhaps not surprising since the structure of discriminator resembles classifiers where residual architectures are known to be helpful. 
+However, a residual architecture was harmful in the generator\,---\,the lone exception was FID in \textsc{LSUN Car} when both networks were residual. 
+
+For the rest of the paper we use a skip generator and a residual discriminator, without progressive growing.
+This corresponds to configuration~\arch{e} in Table~\ref{tab:main}, and it significantly improves FID and PPL. 
+
+\subsection{Resolution usage}
+\label{sec:resusage}
+
+\figresolutionusage %
+
+The key aspect of progressive growing, which we would like to preserve, is that the generator will initially focus on low-resolution features and then slowly shift its attention to finer details.
+The architectures in Figure~\ref{fig:GDarch} make it possible for the generator to first output low resolution images that are not affected by the higher-resolution layers in a significant way, and later shift the focus to the higher-resolution layers as the training proceeds. Since this is not enforced in any way, the generator will do it only if it is beneficial. To analyze the behavior in practice, we need to quantify how strongly the generator relies on particular resolutions over the course of training.
+
+Since the skip generator (Figure~\ref{fig:GDarch}b) forms the image by explicitly summing RGB values from multiple resolutions, we can estimate the relative importance of the corresponding layers by measuring how much they contribute to the final image. In Figure~\ref{fig:resolutionusage}a, we plot the standard deviation of the pixel values produced by each tRGB layer as a function of training time. We calculate the standard deviations over 1024 random samples of $\ww$ and normalize the values so that they sum to 100\%.
+
+At the start of training, we can see that the new skip generator behaves similar to progressive growing\,---\,now achieved without changing the network topology.
+It would thus be reasonable to expect the highest resolution to dominate towards the end of the training. The plot, however, shows that this fails to happen in practice, which indicates that the generator may not be able to ``fully utilize'' the target resolution. To verify this, we inspected the generated images manually and noticed that they generally lack some of the pixel-level detail that is present in the training data\,---\,the images could be described as being sharpened versions of $512^2$ images instead of true $1024^2$ images.
+
+This leads us to hypothesize that there is a capacity problem in our networks, which we test by doubling the number of feature maps in the highest-resolution layers of both networks.%
+\footnote{We double the number of feature maps in resolutions $64^2$--$1024^2$ while keeping other parts of the networks unchanged. This increases the total number of trainable parameters in the generator by 22\% (25M $\rightarrow$ 30M) and in the discriminator by 21\% (24M $\rightarrow$ 29M).}
+This brings the behavior more in line with expectations: Figure~\ref{fig:resolutionusage}b shows a significant increase in the contribution of the highest-resolution layers, and Table~\ref{tab:main}, row~\arch{f} shows that FID and Recall improve markedly. 
+\FINAL{The last row shows that baseline StyleGAN also benefits from additional capacity, but its quality remains far below StyleGAN2.}
+
+\tablsun            %
+
+Table~\ref{tab:lsun} compares StyleGAN and StyleGAN2 in four LSUN categories, again showing clear improvements in FID and significant advances in PPL.
+It is possible that further increases in the size could provide additional benefits.%
+
+\section{Projection of images to latent space}
+\label{sec:proj}
+
+Inverting the synthesis network $g$ is an interesting problem that has many applications. 
+Manipulating a given image in the latent feature space requires finding a matching latent code $\ww$ for it first.
+Previous research \cite{Abdal2019,Gabbay2019} suggests that instead of finding a common latent code $\ww$, the results improve if a separate $\ww$ is chosen for each layer of the generator.
+The same approach was used in an early encoder implementation~\cite{puzer}. 
+While extending the latent space in this fashion finds a closer match to a given image, it also enables projecting arbitrary images that should have no latent representation.
+Instead, we concentrate on finding latent codes in the original, unextended latent space, as these correspond to images that the generator could have produced.
+
+\figprojimgcarhorizontal  %
+\figprojhist %
+
+Our projection method differs from previous methods in two ways. First, we add ramped-down noise to the latent code during optimization in order to explore the latent space more comprehensively.
+Second, we also optimize the stochastic noise inputs of the StyleGAN generator, regularizing them to ensure they do not end up carrying coherent signal.
+The regularization is based on enforcing the autocorrelation coefficients of the noise maps to match those of unit Gaussian noise over multiple scales.
+Details of our projection method can be found in \refappprojectiondetails{}.
+
+\subsection{Attribution of generated images}
+
+\FINAL{
+Detection of manipulated or generated images is a very important task. 
+At present, classifier-based methods can quite reliably detect generated images, regardless of their exact origin ~\cite{Li2018,Yu2018,Wang2019,Zhang2019ganartifacts,Wang2019b}.
+However, given the rapid pace of progress in generative methods, this may not be a lasting situation.
+Besides general detection of fake images, we may also consider a more limited form of the problem: being able to attribute a fake image to its specific source~\cite{Albright2019}. With StyleGAN, this amounts to checking if there exists a $\ww \in \WW$ that re-synthesis the image in question.}
+
+We measure how well the projection succeeds by computing the LPIPS~\cite{Zhang2018metric} distance
+between original and re-synthesized image as \mbox{$D_\mathrm{LPIPS}[\boldsymbol{x}, g(\tilde{g}^{-1}(\boldsymbol{x}))]$}, where $\boldsymbol{x}$ is the image being analyzed
+and \mbox{$\tilde{g}^{-1}$} denotes the approximate projection operation.
+Figure~\ref{fig:projhist} shows histograms of these distances for \textsc{LSUN Car} and \textsc{FFHQ} datasets using the original StyleGAN and StyleGAN2, and
+Figure~\ref{fig:projimgcar} shows example projections. 
+\FINAL{The images generated using StyleGAN2 can be projected into $\WW$ so well that they can be almost unambiguously attributed to the generating network.
+However, with the original StyleGAN, even though it should technically be possible to find a matching latent code, it appears that the mapping from $\WW$ to images is too complex for this to succeed reliably in practice.
+We find it encouraging that StyleGAN2 makes source attribution easier even though the image quality has improved significantly.}
+
+\section{Conclusions and future work}
+
+We have identified and fixed several image quality issues in StyleGAN, improving the quality further and considerably advancing the state of the art in several datasets.
+In some cases the improvements are more clearly seen in motion, as demonstrated in the accompanying video.
+\refappimagequality{} includes further examples of results obtainable using our method.
+\FINAL{Despite the improved quality, StyleGAN2 makes it easier to attribute a generated image to its source.}
+
+Training performance has also improved.
+At $1024^2$ resolution, the original StyleGAN (config~\arch{a} in Table~\ref{tab:main}) trains at 37 images per second on NVIDIA DGX-1 with 8 Tesla V100 GPUs, while our config~\arch{e} trains 40\% faster at 61 img/s.
+Most of the speedup comes from simplified dataflow due to weight demodulation, lazy regularization, and code optimizations.
+StyleGAN2 (config~\arch{f}, larger networks) trains at 31 img/s, and is thus only slightly more expensive to train than original StyleGAN.
+Its total training time was 9 days for \textsc{FFHQ} and 13 days for \textsc{LSUN Car}.
+
+\FINAL{The entire project, including all exploration, consumed 132 MWh of electricity, of which 0.68 MWh went into training the final \textsc{FFHQ} model. In total, we used about 51 single-GPU years of computation (Volta class GPU). A more detailed discussion is available in \refapppower{}.}
+
+In \FINAL{the} future, it could be fruitful to study further improvements to the path length regularization, e.g.,~by replacing the pixel-space $L_2$ distance with a data-driven feature-space metric.
+\FINAL{Considering the practical deployment of GANs, we feel that it will be important to find new ways to reduce the training data requirements. This is especially crucial in applications where it is infeasible to acquire tens of thousands of training samples, and with datasets that include a lot of intrinsic variation.}
+
+\vspace{-2mm}
+\paragraph*{\FINAL{Acknowledgements}}
+\FINAL{
+We thank Ming-Yu Liu for an early review, Timo Viitanen for help with the public release, David Luebke for in-depth discussions and helpful comments, and Tero Kuosmanen for technical support with the compute infrastructure. 
+}
+
+{\small
+\bibliographystyle{ieee_fullname}
+\bibliography{paper}
+}
+
+\ifarxiv
+\clearpage
+\appendix
+\input{supplemental-body}
+\fi
+
+\end{document}

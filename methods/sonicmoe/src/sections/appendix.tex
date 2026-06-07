@@ -1,0 +1,64 @@
+\appendix
+\input{sections/appendix/roadmap}
+
+\clearpage
+\input{Table/notations}
+
+\clearpage
+
+% \input{Table/moe_scaling}
+
+\section{\Algname's comparison with existing MoE kernel design} \label{sec:appendix:kernel_comparison}
+\input{sections/appendix/compare-with-other-moe}
+
+
+
+\section{Gradient computation} \label{sec:appendix:dH_proof}
+\input{algorithm/dZ_proof}
+
+
+\section{Efficient top-$K$ sorting kernel for MoE} \label{sec:appendix:top-k}
+\input{sections/appendix/topk}
+
+\section{Referenced tables, figures, and \Algname~algorithms} \label{sec:appendix:more_kernel}
+\input{sections/appendix/more_kernel} 
+
+% \section{\Algname~algorithm} \label{sec:appendix:more_kernel}
+
+
+% \section{\Algname's extension to Blackwell GPUs}
+
+\clearpage
+\section{\Algname's ablation study on kernel-level throughput} \label{sec:appendix:kernel_ablation}
+\input{sections/appendix/kernel_ablation}
+
+
+
+% \section{Wasted FLOPs due to tile quantization effect w.r.t. MoE activation ratio $\rho$} \label{sec:appendix:wasted_flops}
+% \input{sections/wasted_computes} 
+
+
+% \section{Similarity of forward output and score gradient between TR and TC} 
+% \label{sec:appendix:tc_tr_divergence}
+% \input{sections/appendix/TR_divergence}
+
+
+\section{More experiments}\label{sec:appendix:more_experiments}
+\input{sections/appendix/more_experiments}
+
+
+\section{Activation memory and training throughput benchmark configurations} \label{sec:appendix:config}
+\input{sections/appendix/benchmark}
+
+
+\section{Hyperparameter details for LM training} \label{sec:appendix:exp-details}
+\input{sections/appendix/hyperparam}
+
+
+
+
+
+
+
+% \section{Use of Large Language Models}
+% In accordance with ICLR 2026's policies on Large Language Model (LLM) usage, we disclose that LLMs were employed in the preparation of this submission. Specifically, LLMs assisted in refining the language and generating initial versions of plotting code. Subsequent to their generation, all outputs were thoroughly reviewed and validated by human authors to ensure accuracy and compliance with ethical standards. This approach aligns with ICLR's Code of Ethics, which mandates transparency and accountability in research practices.

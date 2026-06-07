@@ -1,0 +1,91 @@
+\providecommand{\main}{..}
+\documentclass[\main/hippo]{subfiles}
+\begin{document}
+
+\section{Derivations of HiPPO Projection Operators}
+\label{sec:derivations}
+
+We derive the memory updates associated with the translated Legendre (LegT)
+and translated Laguerre (LagT) measures as presented in
+\cref{subsec:high_order_projection}, along with the scaling Legendre (LegS)
+measure (\cref{sec:theory_legs}).
+To show the generality of the framework, we also derive memory updates with
+Fourier basis (recovering the Fourier Recurrent Unit~\citep{zhang2018learning})
+and with Chebyshev basis.
+
+The majority of the work has already been accomplished by setting up the
+projection framework, and the proof simply requires following the technical
+outline laid out in \cref{sec:hippo-framework-details}.
+In particular, the definition of the coefficients \eqref{eq:coefficient} and reconstruction \eqref{eq:reconstruction} does not change,
+and we only consider how to calculate the coefficients dynamics \eqref{eq:coefficient-dynamics}.
+
+For each case, we follow the general steps:
+\begin{description}%
+  \item[Measure and Basis]
+    define the measure $\mu^{(t)}$ or weight $\omega(t, x)$ and basis functions $p_n(t, x)$,
+  \item[Derivatives]
+    compute the derivatives of the measure and basis functions,
+  \item[Coefficient Dynamics]
+    plug them into the coefficient dynamics
+    (equation~\eqref{eq:coefficient-dynamics}) to derive the ODE that describes how
+    to compute the coefficients $c(t)$,
+  \item[Reconstruction]
+    provide the complete formula to reconstruct an approximation to the function $f_{\le t}$,
+    which is the optimal projection under this measure and basis.
+\end{description}
+
+The derivations in \cref{sec:derivation-legt,sec:derivation-lagt}
+prove \cref{thm:legt-lagt}, and the derivations in \cref{sec:derivation-legs}
+prove \cref{thm:legs}.
+\cref{sec:derivation-fourier,sec:derivation-chebyshev} show additional results for Fourier-based bases.
+
+Figure~\ref{fig:measures} illustrates the overall framework when we use Legendre
+and Laguerre polynomials as the basis,
+contrasting our main families of time-varying measures $\mu^{(t)}$.
+
+
+
+\begin{figure}
+  \centering
+  \includegraphics[width=\linewidth]{figures/measures.pdf}
+  \caption{
+    \textbf{Illustration of HiPPO measures.}
+    At time $t_0$, the history of a function $f(x)_{x \le t_0}$ is summarized by polynomial approximation with respect to the measure $\mu^{(t_0)}$ (blue), and similarly for time $t_1$ (purple).
+    (Left) The Translated Legendre measure (\textbf{LegT}) assigns weight in the window $[t-\theta, t]$.
+    For small $t$, $\mu^{(t)}$ is supported on a region $x < 0$ where $f$ is not defined.
+    When $t$ is large, the measure is not supported near $0$, causing the projection of $f$ to forget the beginning of the function.
+    (Middle) The Translated Laguerre (\textbf{LagT}) measure decays the past exponentially.
+    It does not forget, but also assigns weight on $x < 0$.
+    (Right) The Scaled Legendre measure (\textbf{LegS}) weights the entire history $[0, t]$ uniformly.
+  }
+  \label{fig:measures}
+\end{figure}
+
+
+
+\IfFileExists{./derivations/legt.tex}{
+  \subfile{./derivations/legt}
+
+  \subfile{./derivations/lagt}
+
+  \subfile{./derivations/legs}
+
+  \subfile{./derivations/fourier}
+
+  \subfile{./derivations/chebyshev}
+  }{
+  \subfile{./src/derivations/legt}
+  \subfile{./src/derivations/lagt}
+  \subfile{./src/derivations/legs}
+  \subfile{./src/derivations/fourier}
+  \subfile{./src/derivations/chebyshev}
+}
+
+
+
+
+
+
+
+\end{document}
+

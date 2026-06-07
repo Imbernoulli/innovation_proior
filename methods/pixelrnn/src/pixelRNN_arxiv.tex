@@ -1,0 +1,99 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%% ICML 2016 EXAMPLE LATEX SUBMISSION FILE %%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Use the following line _only_ if you're still using LaTeX 2.09.
+%\documentstyle[icml2016,epsf,natbib]{article}
+% If you rely on Latex2e packages, like most moden people use this:
+\documentclass{article}
+
+% use Times
+\usepackage{times}
+% For figures
+\usepackage{graphicx} % more modern
+\usepackage{amsmath} % less modern
+\usepackage{amssymb} % less modern
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage[export]{adjustbox}
+
+
+% For citations
+\usepackage{natbib}
+\usepackage{multirow}
+
+% For algorithms
+\usepackage{algorithm}
+\usepackage{algorithmic}
+
+\usepackage{booktabs}
+
+% As of 2011, we use the hyperref package to produce hyperlinks in the
+% resulting PDF.  If this breaks your system, please commend out the
+% following usepackage line and replace \usepackage{icml2016} with
+% \usepackage[nohyperref]{icml2016} above.
+\usepackage{hyperref}
+
+% Packages hyperref and algorithmic misbehave sometimes.  We can fix
+% this with the following command.
+\newcommand{\theHalgorithm}{\arabic{algorithm}}
+
+\renewcommand{\vec}{\mathbf}
+
+
+% Employ the following version of the ``usepackage'' statement for
+% submitting the draft version of the paper for review.  This will set
+% the note in the first column to ``Under review.  Do not distribute.''
+% \usepackage[accepted]{icml2016_arxiv} 
+
+% Employ this version of the ``usepackage'' statement after the paper has
+% been accepted, when creating the final version.  This will set the
+% note in the first column to ``Proceedings of the...''
+\usepackage[accepted]{icml2016}
+
+
+% The \icmltitle you define below is probably too long as a header.
+% Therefore, a short form for the running title is supplied here:
+\icmltitlerunning{Pixel Recurrent Neural Networks}
+
+\renewcommand{\baselinestretch}{0.99}
+
+\begin{document} 
+
+\twocolumn[
+\icmltitle{Pixel Recurrent Neural Networks}
+
+% It is OKAY to includeb= author information, even for blind
+% submissions: the style file will automatically remove it for you
+% unless you've provided the [accepted] option to the icml2016
+% package.
+\icmlauthor{A\"aron van den Oord}{avdnoord@google.com}
+\icmlauthor{Nal Kalchbrenner}{nalk@google.com}
+\icmlauthor{Koray Kavukcuoglu}{korayk@google.com}
+\icmladdress{\vspace{0.3cm} Google DeepMind}
+
+
+% You may provide any keywords that you 
+% find helpful for describing your paper; these are used to populate 
+% the "keywords" metadata in the PDF but will not be shown in the document
+\icmlkeywords{PixelRNN, Discrete Image Distribution, Image Density Models, Recurrent Neural Networks}
+
+\vskip 0.3in
+]
+
+\input{abstract}
+\input{introduction}
+\input{framework}
+\input{model}
+\input{experiments}
+\input{conclusions}
+\input{acknowledgements}
+
+\bibliography{pixelRNN}
+\bibliographystyle{icml2016}
+
+\input{appendix}
+
+\end{document} 
+
+

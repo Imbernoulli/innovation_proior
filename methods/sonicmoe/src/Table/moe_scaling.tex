@@ -1,0 +1,46 @@
+\begin{table}[!ht]
+\centering
+\caption{\small \textbf{MoE Scaling Trends:} Here, we show the activation ratio as experts activated per token $K$ / total experts $E$ and expert granularity is shown as model embedding dimension ($d$) / expert intermediate size ($n$) for frontier open source models. We do not include the shared experts for the MoE sparsity calculation. The trend indicates new open-source MoE models tend to be more granular and sparser. }
+
+\label{tab:moe-scaling}
+
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.1}
+% \fontsize{7pt}{8pt}\selectfont
+\fontsize{8pt}{10pt}\selectfont
+ % \fontsize{7pt}{8pt}\selectfont
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Model} & \textbf{Release date} & \textbf{Parameters} & \textbf{Expert activation ratio ($K/E$)} & \textbf{Expert granularity ($d/n$)} \\
+\midrule
+Mixtral 8x22B \citep{mistral2024mixtral}&11/23 & 131B & 25.0\% (2/8) & $6144 / 16384 = 0.38$ \\
+
+DBRX \citep{dbrx2024}&03/24 & 132B & 25.0\% (4/16) & $6144 / 10752 = 0.57$ \\
+
+
+Phi-3.5-MoE \citep{azure2024phi35moe}& 09/24 & 42B & 12.5\% (2/16) & $4096 / 6400 = 0.64$ \\
+
+OLMoE \citep{muennighoff2024olmoe} & 09/24 & 7B & 12.5\% (8/64) & $2048 / 1024 = 2.00$ \\
+
+Granite 3.1-MoE \citep{granite3.1_language_models}& 12/24 & 3B & 20.0\% (8/40) & $1536 / 512 = 3.00$ \\
+\textbf{DeepSeek-V3} \citep{deepseekai2025deepseekv3technicalreport}& \textbf{12/24} & \textbf{671B} & \textbf{3.13\% (8/256)} & \textbf{$7168 / 2048 = 3.50$} \\
+
+\textbf{Qwen3 MoE} \citep{qwen3_2024} & \textbf{04/25} & \textbf{235B} & \textbf{6.25\% (8/128)} & \textbf{$4096 / 1536 = 2.67$} \\
+
+\textbf{QWen3-30B-A3B} \citep{qwen3technicalreport} & \textbf{05/25} & \textbf{30.5B} & \textbf{6.25\% (8/128)} & \textbf{$2048 / 768 = 2.67$} \\
+
+\textbf{Kimi K2} \citep{kimiteam2025kimik2openagentic} & \textbf{07/25} & \textbf{1.04T} & \textbf{2.08\% (8/384)} & \textbf{$7168 / 2048 = 3.50$} \\
+
+gpt-oss-120b \citep{openai2025gptoss120bgptoss20bmodel} & 08/25 & 120B & 3.13\% (4/128) & $2880 / 2880 = 1.00$ \\
+
+\textbf{GLM-4.5-Air} \citep{zeng2025glm}& \textbf{08/25} & \textbf{106B} & \textbf{6.25\% (8/128)} & \textbf{$4096 / 1408 = 2.91$} \\
+
+\textbf{Qwen3-Next-80B-A3B-Instruct} \citep{qwen3technicalreport} & \textbf{09/25} & \textbf{81B} & \textbf{1.95\% (10/512)} & \textbf{$2048/512=4.00$} \\
+
+\textbf{DeepSeek-V3.2-Exp} \citep{deepseekai2024deepseekv32} & \textbf{10/25} & \textbf{685B} & \textbf{3.13\% (8/256)} & \textbf{$7168/2048=3.50$} \\
+
+\bottomrule
+\end{tabular}
+% \vspace{-2em}
+\end{table}
+\raggedbottom

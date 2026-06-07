@@ -1,0 +1,57 @@
+\subsection{Noisy quadratic analysis}
+\label{sec: noisyquadratic}
+
+We analyze Lookahead on the noisy quadratic model to shed light on its convergence guarantees. While simple, effectively optimizing this model remains a challenging open topic and a proxy for neural network optimization \citep{schaul2013no, martens2015optimizing, wu2018understanding}.
+
+\paragraph{Model definition} We use the same model as in \citet{wu2018understanding}. 
+\begin{equation}
+    \hat{\mathcal{L}}(\bx) = \frac{1}{2} (\bx - \bc)^T \bA (\bx - \bc),
+\end{equation}
+with $\bc \sim \mathcal{N}(\bx^*, \Sigma)$. As in \cite{wu2018understanding} we will assume that both $\bA$ and $\Sigma$ are diagonal and that $\bx^* = 0$. We use $\sigma^2_i$ and $a_i$ to denote the diagonal elements of $\bA$ and $\Sigma$ respectively. Taking the expectation over $\bc$ for a fixed $\bx$,
+
+\begin{equation}
+    \mathcal{L}(\bx) = \E[\hat{\mathcal{L}}(\bx)] = \frac{1}{2} \sum a_i (x_i^2 + \sigma_i^2) 
+\end{equation}
+
+Finally, considering the trajectory of $\bx^{(t)}$ over gradient based optimization, we get a discrete stochastic process which we can take expectation over:
+
+\begin{equation}
+    \E[\mathcal{L}(\bx^{(t)})] = \frac{1}{2}\sum a_i (\E[x_i^{(t)}]^2 + \V[x_i^{(t)}] + \sigma_i^2)
+\end{equation}
+
+\paragraph{SGD dynamics} We can characterize the expected dynamics of SGD with learning rate $\gamma$ in this model.
+
+\begin{align}
+    \E[\bx^{(t+1)}] &= (\bI - \gamma \bA) \E[\bx^{(t)}] \\
+    \V[\bx^{(t+1}] &= (\bI - \gamma \bA)^2\V[\bx^{(t)}] + \gamma^2 \bA^2 \sigma^2
+\end{align}
+
+Each of these represent contraction mappings (if the algorithm converges), which by Banach's fixed point theorem have unique fixed points which can easily be solved for. Doing so yields,
+
+\begin{align}
+    E_{SGD}^* &= 0 \\
+    V_{SGD}^* &= \frac{\gamma^2 \bA^2 \sigma^2}{\bI - (\bI - \gamma \bA)^2}
+\end{align}
+
+\paragraph{Lookahead dynamics} Similarly, we can compute the expected dynamics of the Lookahead slow weights (for SGD)
+
+\begin{align}
+    \E[\phi^{(t+1)}] &= [1 - \alpha + \alpha(\bI - \gamma\bA)^k]\E[\phi^{(t)}] \\
+    \V[\phi^{(t+1}] &= [1 - \alpha + \alpha(\bI - \gamma\bA)^k]^2 \V[\phi^{(t)}] + \alpha^2 \sum_{i=1}^{k-1} (\bI - \gamma\bA)^{2i}\gamma^2\bA^2\sigma^2
+\end{align}
+
+Solving for the fixed points as before gives,
+
+\begin{align}
+    E_{LA}^* &= 0 \\
+    V_{LA}^* &= \frac{\alpha^2 (\bI - (\bI - \gamma\bA)^{2k})}{\bI - (1 - \alpha + \alpha(\bI - \gamma\bA)^k)^2} \frac{\gamma^2 \bA^2 \sigma^2}{\bI - (\bI - \gamma \bA)^2}
+\end{align}
+
+For the variance fixed point, the RHS product term is exactly the SGD fixed point. We can write the denominator of the LHS term as $\alpha^2 (\bI - (\bI - \gamma\bA)^{2k}) + 2\alpha(\bI - (\bI - \gamma\bA)^k)(1-\alpha)$. This term is always larger than the numerator for $\alpha \in (0,1)$, and thus Lookahead has a variance fixed point that is strictly smaller than that of SGD for the same learning rate. 
+
+\paragraph{Convergence of Lookahead} The above analysis shows that for the same learning rate, Lookahead will achieve a smaller loss as the variance is reduced more. However, the convergence speed will be slower as we must compare $1-\alpha + \alpha(\bI-\gamma\bA)^k$ to $(\bI-\gamma\bA)^k$ and the latter is always smaller for $\alpha < 1$. In our experiments, we observe that Lookahead typically converges faster than its inner optimizer. We speculate that the learning rate for the inner optimizer is set sufficiently high such that the variance reduction term is more important.
+
+% MZ: TODOs below
+% We have asked the question: Does there exist choices of $\alpha$ and $\gamma$ for LA and SGD such that the two algorithms have equal variance fixed points but LA has faster convergence? It seems that the answer is no (though I haven't proved it, there is strong numerical evidence).
+
+% \paragraph{Extensions} Maybe we can show that adding momentum gives LA a more significant advantage. The momentum dynamics are \emph{much} more complicated but are computed in closed form by \citet{wu2018understanding}.

@@ -1,0 +1,175 @@
+\section{Experiments} 
+\label{sec:app}
+
+In this section, we show experiments and applications. Our method enables a large expanse of text-guided semantic modifications of our subject instances, including recontextualization, modification of subject properties such as material and species, art rendition, and viewpoint modification. Importantly, across all of these modifications, we are able to \textbf{preserve the unique visual features that give the subject its identity and essence}. If the task is recontextualization, then the subject features are unmodified, but appearance (e.g., pose) may change. If the task is a stronger semantic modification, such as crossing between our subject and another species/object, then the key features of the subject are preserved after modification. In this section, we reference the subject's unique identifier using [V]. We include specific Imagen and Stable Diffusion implementation details in the supp. material.
+
+\begin{figure}[h!]
+\centering
+\includegraphics[clip,width=\columnwidth]{figures/textual_inversion.pdf}
+\caption[]{
+\textbf{Comparisons with Textual Inversion~\cite{gal2022image}} Given 4 input images (top row), we compare: DreamBooth Imagen (2nd row), DreamBooth Stable Diffusion (3rd row), Textual Inversion (bottom row). Output images were created with the following prompts (left to right): ``a [V] vase in the snow", ``a [V] vase on the beach", ``a [V] vase in the jungle", ``a [V] vase with the Eiffel Tower in the background".
+DreamBooth is stronger in both subject and prompt fidelity.
+\label{fig:comparison_gal}}
+\end{figure}
+
+\begin{figure*}[t]
+\centering
+\includegraphics[clip,width=1\textwidth]{figures/dataset.png}
+\caption[]{
+\textbf{Dataset}. Example images for each subject in our proposed dataset.
+\label{fig:dataset}}
+\end{figure*}
+
+\begin{table}[t]
+\centering
+\resizebox{\columnwidth}{!}{
+  \begin{tabular}{lcccc}
+    \toprule
+    Method & DINO $\uparrow$ & CLIP-I $\uparrow$ & CLIP-T $\uparrow$\\
+    \midrule
+    Real Images & 0.774 & 0.885 & N/A \\
+    DreamBooth (Imagen) & \textbf{0.696} & \textbf{0.812} & \textbf{0.306} \\
+    DreamBooth (Stable Diffusion) & 0.668 & 0.803 & 0.305 \\
+    Textual Inversion (Stable Diffusion) & 0.569 & 0.780 & 0.255 \\
+    \bottomrule
+  \end{tabular}
+}
+\caption{Subject fidelity (DINO, CLIP-I) and prompt fidelity (CLIP-T, CLIP-T-L) quantitative metric comparison.
+\label{table:comparison_experiment}}
+\end{table}
+
+\begin{table}[t]
+\centering
+\resizebox{\columnwidth}{!}{
+  \begin{tabular}{lcc}
+    \toprule
+    Method & Subject Fidelity $\uparrow$ & Prompt Fidelity $\uparrow$\\
+    \midrule
+    DreamBooth (Stable Diffusion) & \textbf{68\%} & \textbf{81\%} \\
+    Textual Inversion (Stable Diffusion) & 22\% & 12\% \\
+    Undecided & 10\% & 7\% \\
+    \bottomrule
+  \end{tabular}
+}
+\caption{Subject fidelity and prompt fidelity user preference.
+\label{table:user_study}}
+\end{table}
+
+\subsection{Dataset and Evaluation}
+
+\paragraph{Dataset}
+We collected a dataset of 30 subjects, including unique objects and pets such as backpacks, stuffed animals, dogs, cats, sunglasses, cartoons, etc. We separate each subject into two categories: objects and live subjects/pets. 21 of the 30 subjects are objects, and 9 are live subjects/pets. We provide one sample image for each of the subjects in Figure~\ref{fig:dataset}. Images for this dataset were collected by the authors or sourced from Unsplash~\cite{unsplash}.
+We also collected 25 prompts: 20 recontextualization prompts and 5 property modification prompts for objects; 10 recontextualization, 10 accessorization, and 5 property modification prompts for live subjects/pets. The full list of prompts can be found in the supplementary material.
+
+For the evaluation suite we generate four images per subject and per prompt, totaling 3,000 images. This allows us to robustly measure performances and generalization capabilities of a method. We make our dataset and evaluation protocol publicly available on the project webpage for future use in evaluating subject-driven generation.
+
+\paragraph{Evaluation Metrics}
+One important aspect to evaluate is subject fidelity: the preservation of subject details in generated images. For this, we compute two metrics: CLIP-I and DINO~\cite{caron2021emerging}. CLIP-I is the average pairwise cosine similarity between CLIP~\cite{radford2021learning} embeddings of generated and real images. Although this metric has been used in other work~\cite{gal2022image}, it is not constructed to distinguish between different subjects that could have highly similar text descriptions (e.g. two different yellow clocks). Our proposed DINO metric is the average pairwise cosine similarity between the ViT-S/16 DINO embeddings of generated and real images. This is our preferred metric, since, by construction and in contrast to supervised networks, DINO is not trained to ignore differences between subjects of the same class. Instead, the self-supervised training objective encourages distinction of unique features of a subject or image. The second important aspect to evaluate is prompt fidelity, measured as the average cosine similarity between prompt and image CLIP embeddings. We denote this as CLIP-T.
+
+\begin{figure}[t]
+\centering
+\includegraphics[clip,width=1\columnwidth]{figures/prior_ablation_1.pdf}
+\caption[]{
+\textbf{Encouraging diversity with prior-preservation loss.} Naive fine-tuning can result in overfitting to input image context and subject appearance (e.g. pose). PPL acts as a regularizer that alleviates overfitting and encourages diversity, allowing for more pose variability and appearance diversity. 
+\label{fig:prior_pres_target}
+\vspace{-10pt}}
+\end{figure}
+
+\subsection{Comparisons}
+
+We compare our results with Textual Inversion, the recent concurrent work of Gal et al.~\cite{gal2022image}, using the hyperparameters provided in their work. We find that this work is the only comparable work in the literature that is subject-driven, text-guided and generates novel images. We generate images for DreamBooth using Imagen, DreamBooth using Stable Diffusion and Textual Inversion using Stable Diffusion. We compute DINO and CLIP-I subject fidelity metrics and the CLIP-T prompt fidelity metric. In Table~\ref{table:comparison_experiment} we show sizeable gaps in both subject and prompt fidelity metrics for DreamBooth over Textual Inversion. We find that DreamBooth (Imagen) achieves higher scores for both subject and prompt fidelity than DreamBooth (Stable Diffusion), approaching the upper-bound of subject fidelity for real images. We believe that this is due to the larger expressive power and higher output quality of Imagen.
+
+Further, we compare Textual Inversion (Stable Diffusion) and DreamBooth (Stable Diffusion) by conducting a user study. 
+% We sample 300 images from each method by uniformly sampling over all 30 subjects, and randomly sample over prompts.
+For subject fidelity, we asked 72 users to answer questionnaires of 25 comparative questions (3 users per questionnaire), totaling 1800 answers. Samples are randomly selected from a large pool. Each question shows the set of real images for a subject, and one generated image of that subject by each method (with a random prompt). Users are asked to answer the question: ``Which of the two images best reproduces the identity (e.g. item type and details) of the reference item?'', and we include a ``Cannot Determine / Both Equally'' option. Similarly for prompt fidelity, we ask ``Which of the two images is best described by the reference text?''. We average results using majority voting and present them in Table~\ref{table:user_study}. We find an overwhelming preference for DreamBooth for both subject fidelity and prompt fidelity. This shines a light on results in Table~\ref{table:comparison_experiment}, where DINO differences of around $0.1$ and CLIP-T differences of $0.05$ are significant in terms of user preference. Finally, we show qualitative comparisons in Figure~\ref{fig:comparison_gal}. We observe that DreamBooth better preserves subject identity, and is more faithful to prompts. We show samples of the user study in the supp. material.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[clip,width=1\textwidth]{figures/gallery_1.pdf}
+\caption[]{
+\textbf{Recontextualization.} We generate images of the subjects in different environments, with high preservation of subject details and realistic scene-subject interactions. We show the prompts below each image.
+\label{fig:recontext}
+\vspace{-10pt}}
+\end{figure*}
+
+\subsection{Ablation Studies}
+\label{sec:app_ablation}
+
+\paragraph{Prior Preservation Loss Ablation}
+We fine-tune Imagen on 15 subjects from our dataset, with and without our proposed prior preservation loss (PPL). The prior preservation loss seeks to combat language drift and preserve the prior. We compute a prior preservation metric (PRES) by computing the average pairwise DINO embeddings between generated images of random subjects of the prior class and real images of our specific subject. The higher this metric, the more similar random subjects of the class are to our specific subject, indicating collapse of the prior. We report results in Table~\ref{table:ablation_prior_pres} and observe that PPL substantially counteracts language drift and helps retain the ability to generate diverse images of the prior class. Additionally, we compute a diversity metric (DIV) using the average LPIPS~\cite{zhang2018perceptual} cosine similarity between generated images of same subject with same prompt. We observe that our model trained with PPL achieves higher diversity (with slightly diminished subject fidelity), which can also be observed qualitatively in Figure~\ref{fig:prior_pres_target}, where our model trained with PPL overfits less to the environment of the reference images and can generate the dog in more diverse poses and articulations.
+
+\begin{table}[t]
+\centering
+\resizebox{\columnwidth}{!}{
+  \begin{tabular}{lcccccc}
+    \toprule
+    Method & PRES $\downarrow$ & DIV $\uparrow$ & DINO $\uparrow$ & CLIP-I $\uparrow$ & CLIP-T $\uparrow$  \\
+    \midrule
+    DreamBooth (Imagen) w/ PPL & \textbf{0.493} & \textbf{0.391} & 0.684 & 0.815 & \textbf{0.308} \\
+    DreamBooth (Imagen) & 0.664 & 0.371 & \textbf{0.712} & \textbf{0.828} & 0.306 \\
+    \bottomrule
+  \end{tabular}
+}
+\caption{Prior preservation loss (PPL) ablation displaying a prior preservation (PRES) metric, diversity metric (DIV) and subject and prompt fidelity metrics.
+\label{table:ablation_prior_pres}}
+\end{table}
+
+\begin{table}[t]
+\centering
+\resizebox{0.5\columnwidth}{!}{
+  \begin{tabular}{lccccc}
+    \toprule
+    Method & DINO $\uparrow$ & CLIP-I $\uparrow$  \\
+    \midrule
+    Correct Class & \textbf{0.744} & \textbf{0.853} \\
+    No Class & 0.303 & 0.607 \\
+    Wrong Class & 0.454 & 0.728 \\
+    \bottomrule
+  \end{tabular}
+}
+\caption{Class name ablation with subject fidelity metrics.
+\label{table:class_name}
+\vspace{-12pt}}
+\end{table}
+
+\paragraph{Class-Prior Ablation}
+We finetune Imagen on a subset of our dataset subjects (5 subjects) with no class noun, a randomly sampled incorrect class noun, and the correct class noun. With the correct class noun for our subject, we are able to faithfully fit to the subject, take advantage of the class prior, allowing us to generate our subject in various contexts. When an incorrect class noun (e.g. ``can'' for a backpack) is used, we run into contention between our subject and and the class prior - sometimes obtaining cylindrical backpacks, or otherwise misshapen subjects. If we train with no class noun, the model does not leverage the class prior, has difficulty learning the subject and converging, and can generate erroneous samples. Subject fidelity results are shown in Table~\ref{table:class_name}, with substantially higher subject fidelity for our proposed approach.
+
+\subsection{Applications}
+
+\paragraph{Recontextualization}
+We can generate novel images for a specific subject in different contexts (Figure~\ref{fig:recontext}) with descriptive prompts (``a [V] [class noun] [context description]''). Importantly, we are able to generate the subject in new poses and articulations, with previously unseen scene structure and realistic integration of the subject in the scene (e.g. contact, shadows, reflections). 
+
+\vspace{-0.2cm}
+
+\paragraph{Art Renditions}
+Given a prompt ``a painting of a [V] [class noun] in the style of [famous painter]'' or ``a statue of a [V] [class noun] in the style of [famous sculptor]'' we are able to generate artistic renditions of our subject. Unlike style transfer, where the source structure is preserved and only the style is transferred, we are able to generate meaningful, novel variations depending on the artistic style, while preserving subject identity. E.g, as shown in Figure~\ref{fig:applications}, ``Michelangelo'', we generated a pose that is novel and not seen in the input images.
+
+\vspace{-0.2cm}
+
+\begin{figure}[t]
+\centering
+\includegraphics[clip,width=1\columnwidth]{figures/applications.pdf}
+\caption[]{
+\textbf{Novel view synthesis, art renditions, and property modifications}. We are able to generate novel and meaningful images while faithfully preserving subject identity and essence. More applications and examples in the supplementary material.
+\label{fig:applications}}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[clip,width=\columnwidth]{figures/limitations_1.pdf}
+\caption[]{
+{\bf Failure modes.} Given a rare prompted context the model might fail at generating the correct environment (a). It is possible for context and subject appearance to become entangled (b). Finally, it is possible for the model to overfit and generate images similar to the training set, especially if prompts reflect the original environment of the training set (c).
+\label{fig:limitations}}
+\end{figure}
+
+\paragraph{Novel View Synthesis}
+We are able to render the subject under novel viewpoints. In Figure~\ref{fig:applications}, we generate new images of the input cat (with consistent complex fur patterns) under new viewpoints. We highlight that the model has not seen this specific cat from behind, below, or above - yet it is able to extrapolate knowledge from the class prior to generate these novel views given only 4 frontal images of the subject.
+
+\paragraph{Property Modification}
+We are able to modify subject properties. For example, we show crosses between a specific Chow Chow dog and different animal species in the bottom row of Figure~\ref{fig:applications}. We prompt the model with sentences of the following structure: ``a cross of a [V] dog and a [target species]''. In particular, we can see in this example that the identity of the dog is well preserved even when the species changes - the face of the dog has certain unique features that are well preserved and melded with the target species. Other property modifications are possible, such as material modification (e.g. ``a transparent [V] teapot'' in Figure~\ref{fig:recontext}). Some are harder than others and depend on the prior of the base generation model.
+
+\subsection{Limitations}
+We illustrate some failure models of our method in Figure~\ref{fig:limitations}. The first is related to not being able to accurately generate the prompted context. Possible reasons are a weak prior for these contexts, or difficulty in generating both the subject and specified concept together due to low probability of co-occurrence in the training set. The second is context-appearance entanglement, where the appearance of the subject changes due to the prompted context, exemplified in Figure~\ref{fig:limitations} with color changes of the backpack. Third, we also observe overfitting to the real images that happen when the prompt is similar to the original setting in which the subject was seen.
+
+Other limitations are that some subjects are easier to learn than others (e.g. dogs and cats). Occasionally, with subjects that are rarer, the model is unable to support as many subject variations. Finally, there is also variability in the fidelity of the subject and some generated images might contain hallucinated subject features, depending on the strength of the model prior, and the complexity of the semantic modification.

@@ -1,0 +1,101 @@
+
+\begin{table}[t]
+    \centering
+    \caption{\small{FID $\downarrow$ on CIFAR-10 for different orders of Runge-Kutta (RK) methods and DPM-Solvers, varying the number of function evaluations (NFE). For RK methods, we evaluate diffusion ODEs w.r.t. both $t$ (Eq.~\eqref{eqn:diffusion_ode}) and $\lambda$ (Eq.~\eqref{eqn:diffusion_ode_logSNR}). We use uniform step size in $t$ for RK ($t$), and uniform step size in $\lambda$ for RK ($\lambda$) and DPM-Solvers.}}
+    \label{tab:RK_compare}
+        \small{
+    \begin{tabular}{lrrrrrrr}
+    \toprule
+      Sampling method $\backslash$ NFE & 12 & 18 & 24 & 30 & 36 & 42 & 48\\
+    \midrule
+      RK2 ($t$) & 16.40 & 7.25 & 3.90 & 3.63 & 3.58 & 3.59 & 3.54 \\
+      RK2 ($\lambda$) & 107.81 & 42.04 & 17.71 & 7.65 & 4.62 & 3.58 & 3.17 \\
+      DPM-Solver-2 & \textbf{5.28} & \textbf{3.43} & \textbf{3.02} & \textbf{2.85} & \textbf{2.78} & \textbf{2.72} & \textbf{2.69} \\
+    \arrayrulecolor{black!30}\midrule
+      RK3 ($t$) & 48.75 & 21.86 & 10.90 & 6.96 & 5.22 & 4.56 & 4.12 \\
+      RK3 ($\lambda$) & 34.29 & 4.90 & 3.50 & 3.03 & 2.85 & 2.74 & 2.69 \\
+      DPM-Solver-3 & \textbf{6.03} & \textbf{2.90} & \textbf{2.75} & \textbf{2.70} & \textbf{2.67} & \textbf{2.65} & \textbf{2.65} \\
+    \arrayrulecolor{black}\bottomrule
+    \end{tabular}
+    }
+\end{table}
+
+
+\begin{figure}[t]
+\centering
+	\begin{subfigure}{0.32\linewidth}
+		\centering
+		  %
+			\includegraphics[width=\linewidth]{figures/dpm_cifar10_continuous-crop.pdf}
+			\caption{\label{fig:cifar10_fid_continuous}CIFAR-10 (continuous)}
+	\end{subfigure}
+	\begin{subfigure}{0.32\linewidth}
+		\centering
+		  %
+			\includegraphics[width=\linewidth]{figures/dpm_cifar10_ddpm-crop.pdf}
+			\caption{CIFAR-10 (discrete)}
+	\end{subfigure}
+	\begin{subfigure}{0.32\linewidth}
+		\centering
+			\includegraphics[width=\linewidth]{figures/dpm_celeba_ddpm-crop.pdf}
+			\caption{CelebA 64x64 (discrete)} 
+	\end{subfigure} \\
+	
+	\begin{subfigure}{0.32\linewidth}
+		\centering
+			\includegraphics[width=\linewidth]{figures/dpm_imagenet64_ddpm-crop.pdf}
+			\caption{ImageNet 64x64 (discrete)} 
+	\end{subfigure}
+	\begin{subfigure}{0.32\linewidth}
+		\centering
+			\includegraphics[width=\linewidth]{figures/imagenet128_guided-crop.pdf}
+			\caption{ImageNet 128x128 (discrete)} 
+	\end{subfigure}
+	\begin{subfigure}{0.32\linewidth}
+		\centering
+			\includegraphics[width=\linewidth]{figures/bedroom_guided-crop.pdf}
+			\caption{LSUN bedroom 256x256 (discrete)} 
+	\end{subfigure}
+	\caption{\label{fig:fid}\small{Sample quality measured by FID $\downarrow$ of different sampling methods for DPMs on CIFAR-10 with both continuous-time and discrete-time models, CelebA 64x64, ImageNet 64x64, ImageNet 128x128 and LSUN bedroom 256x256 with discrete-time models, varying the number of function evaluations (NFE). The method $^\dagger$GGDM~\citep{watson2021learning} needs extra training to optimize the sample trajectory, while other methods are training-free. To get the strongest baseline, we use the quadratic step size for DDIM on CelebA, which has a better FID than that of the uniform step size in the original paper~\citep{song2020denoising}.}
+}
+\vspace{-.2in}
+\end{figure}
+
+
+
+
+
+
+
+
+\section{Experiments}
+\label{sec:experiments}
+In this section, we show that as a training-free sampler, DPM-Solver can greatly speedup the sampling of existing pre-trained DPMs, including both continuous-time and discrete-time ones, with both linear noise schedule~\citep{ho2020denoising,song2020denoising} and cosine noise schedule~\citep{nichol2021improved}. We vary different number of function evaluations (NFE) which is the number of calls to the noise prediction model $\epsilonv_\theta(\x_t,t)$, and compare the sample quality between DPM-Solver and other methods. For each experiment, We draw 50K samples and use the widely adopted FID score~\citep{heusel2017gans} to evaluate the sample quality, where lower FID usually implies better sample quality.
+
+Unless explicitly mentioned, we always use the solver combination with the uniform step size schedule in Sec.~\ref{sec:adaptive} if the NFE budget is less than 20, and otherwise the DPM-Solver-3 with the adaptive step size schedule in Sec.~\ref{sec:adaptive}. We refer to Appendix~\ref{appendix:implementation} for other implementation details of DPM-Solver and Appendix~\ref{appendix:experiment} for detailed settings.
+
+\subsection{Comparison with Continuous-Time Sampling Methods}
+\label{sec:exp_continuous}
+We firstly compare DPM-Solver with other continuous-time sampling methods for DPMs. The compared methods include the Euler-Maruyama discretization for diffusion SDEs~\citep{song2020score}, the adaptive step size solver for diffusion SDEs~\citep{jolicoeur2021gotta} and the RK methods for diffusion ODEs~\citep{song2020score,dormand1980family} in Eq.~\eqref{eqn:diffusion_ode}. We compare these methods for sampling from a pre-trained continuous-time ``VP deep'' model~\citep{song2020score} on the CIFAR-10 dataset~\citep{Krizhevsky09learningmultiple} with the linear noise schedule.
+
+
+Fig.~\ref{fig:cifar10_fid_continuous} shows the efficiency of compared solvers. We use uniform time steps with 50, 200, 1000 NFE for the diffusion SDE with Euler discretization, and vary the tolerance hyperparameter~\citep{song2020score,jolicoeur2021gotta} for the adaptive step size SDE solver~\citep{jolicoeur2021gotta} and RK45 ODE solver~\citep{dormand1980family} to control the NFE. DPM-Solver can generate good sample quality within around 10 NFE, while other solvers have large discretization error even in 50 NFE, which shows that DPM-Solver can achieve $\sim$5 speedup of the previous best solver. In particular, we achieve 4.70 FID with 10 NFE, 3.75 FID with 12 NFE, 3.24 FID with 15 NFE, and 2.87 FID with 20 NFE, which is the fastest sampler on CIFAR-10.
+
+
+As an ablation study, 
+we also compare the second-order and third-order DPM-Solver and RK methods, as shown in Table~\ref{tab:RK_compare}. We compare RK methods for diffusion ODEs w.r.t. both time $t$ in Eq.~\eqref{eqn:diffusion_ode} and half-log-SNR $\lambda$ by applying change-of-variable (see detailed formulations in Appendix~\ref{appendix:RK}). The results show that given the same NFE, the sample quality of DPM-Solver is consistently better than RK methods with the same order. The superior efficiency of DPM-Solver is particularly evident in the few-step regime under 15 NFE, where RK methods have rather large discretization errors. 
+This is mainly because DPM-Solver analytically computes the linear term, avoiding the corresponding discretization error. 
+Besides, the higher order DPM-Solver-3 converges faster than DPM-Solver-2, which matches  the order analysis in Theorem~\ref{thrm:order}.
+
+
+\subsection{Comparison with Discrete-Time Sampling Methods}
+We use the method in Sec.~\ref{sec:discrete-time} for using DPM-Solver in discrete-time DPMs, and then compare DPM-Solver with other discrete-time training-free samplers, including DDPM~\citep{ho2020denoising}, DDIM~\citep{song2020denoising}, Analytic-DDPM~\citep{bao2022analytic}, Analytic-DDIM~\citep{bao2022analytic}, PNDM~\citep{liu2022pseudo}, FastDPM~\citep{kong2021fast} and It\^o-{T}aylor~\citep{tachibana2021taylor}. We also compare with GGDM~\citep{watson2021learning}, which uses the same pre-trained model but needs further training for the sampling trajectory.
+We compare the sample quality by varying NFE from 10 to 1000.
+
+
+Specifically, we use the discrete-time model trained by $L_{\text{simple}}$ in~\citep{ho2020denoising} on the CIFAR-10 dataset with linear noise schedule; the discrete-time model in~\citep{song2020denoising} on CelebA 64x64~\citep{liu2015deep} with linear noise schedule; the discrete-time model trained by $L_{\text{hybrid}}$ in~\citep{nichol2021improved} on ImageNet 64x64~\citep{deng2009imagenet} with cosine noise schedule; the discrete-time model with classifier guidance in~\citep{dhariwal2021diffusion} on ImageNet 128x128~\citep{deng2009imagenet} with linear noise schedule; the discrete-time model in~\citep{dhariwal2021diffusion} on LSUN bedroom 256x256~\citep{yu2015lsun} with linear noise schedule. For the models trained on ImageNet, we only use their ``mean'' model and omit the ``variance'' model. As shown in Fig.~\ref{fig:fid}, 
+on all  datasets, DPM-Solver can obtain reasonable samples within 12 steps (FID 4.65 on CIFAR-10, FID 3.71 on CelebA 64x64 and FID 19.97 on ImageNet 64x64, FID 4.08 on ImageNet 128x128), which is $4\sim 16 \times$ faster than the previous fastest training-free sampler.
+DPM-Solver even outperforms GGDM, which requires additional training. 
+
+
+

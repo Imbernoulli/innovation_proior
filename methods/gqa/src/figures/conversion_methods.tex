@@ -1,0 +1,33 @@
+\begin{figure}[h]
+\centering
+\hspace{-0.5cm}
+\begin{tikzpicture}
+\begin{axis}[
+    xbar,
+    bar shift=0pt,
+    enlarge y limits=0.3,
+    width=0.95\columnwidth,
+    height=0.65\columnwidth,
+    bar width=16pt,
+    major y tick style = transparent,    
+    xmajorgrids = true,
+    symbolic y coords={Mean, First, Random},
+    yticklabels={Mean, First, Random},   
+    ytick={Mean, First, Random},
+    y dir=reverse,
+    xmin=54.3,
+    axis y line*=none,
+    axis x line*=bottom,
+]
+    \addplot[style={meancolor,fill=meancolor,mark=none}]
+        coordinates {(55.55,Mean)};
+    \addplot[style={firstcolor,fill=firstcolor,mark=none}]
+        coordinates {(55.45,First)};             
+    \addplot[style={randomcolor,fill=randomcolor,mark=none}]
+        coordinates {(55.23,Random)};
+  
+\end{axis}
+\end{tikzpicture}        
+    \caption{Performance comparison of different checkpoint conversion methods for T5-Large uptrained to \mq with proportion $\alpha=0.05$. `Mean' mean-pools key and value heads, `First' selects the first head and `Random' initializes heads from scratch.}
+    \label{fig:conversion_methods}
+\end{figure}

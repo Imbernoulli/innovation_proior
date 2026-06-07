@@ -1,0 +1,28 @@
+\firstpara{VAR tokenizer.}
+As aforementioned, we use the vanilla VQVAE architecture~\cite{vqgan} and a multi-scale quantization scheme with $K$ extra convolutions (0.03M extra parameters).
+We use a shared codebook for all scales with $V=4096$.
+Following the baseline \cite{vqgan}, our tokenizer is also trained on OpenImages~\cite{openimages} with the compound loss \eqref{eq:vaeloss} and a spatial downsample ratio of $16\times$.
+
+
+\para{VAR transformer.}
+Our main focus is on VAR algorithm so we keep a simple model architecture design.
+We adopt the architecture of standard decoder-only transformers akin to GPT-2 and VQGAN~\cite{gpt2,vqgan} with adaptive normalization (AdaLN), which has widespread adoption and proven effectiveness in many visual generative models~\cite{stylegan,stylegan2,stylegan3,stylegan-xl,stylegan-t,gigagan,dit,chen2023pixart}.
+For class-conditional synthesis, we use the class embedding as the start token \texttt{[s]} and also the condition of AdaLN.
+We found normalizing $queries$ and $keys$ to unit vectors before attention can stablize the training.
+We do not use advanced techniques in large language models, such as rotary position embedding (RoPE), SwiGLU MLP, or RMS Norm~\cite{llama1,llama2}.
+Our model shape follows a simple rule like \cite{scalinglaw} that the width $w$, head counts $h$, and drop rate $dr$ are linearly scaled with the depth $d$ as follows:
+\begin{align}
+    w = 64d,\quad\quad h = d,\quad\quad dr = 0.1\cdot d/24.
+\end{align}\vspace{-3pt}
+Consequently, the main parameter count $N$ of a VAR transformer with depth $d$ is given by\footnote{Due to resource limitation, we use a single shared adaptive layernorm (AdaLN) acorss all attention blocks in 512$\times$512 synthesis. In this case, the parameter count would be reduced to around $12dw^2 + 6w^2 \approx 49152\,d^3$.
+}:
+\vspace{1pt}
+\begin{align}
+    N(d) = \underbrace{d\cdot4w^2}_\text{self-attention} + \underbrace{d\cdot8w^2}_\text{feed-forward} + \underbrace{d\cdot6w^2}_\text{adaptive layernorm} = 18\,dw^2 = 73728\,d^3. \label{eq:param}
+\end{align}\vspace{-4pt}
+
+All models are trained with the similar settings: a base learning rate of $10^{-4}$ per 256 batch size, an AdamW optimizer with $\beta_1=0.9$, $\beta_2=0.95$, $\text{decay}=0.05$, a batch size from 768 to 1024 and training epochs from 200 to 350 (depends on model size).
+The evaluations in \secref{sec:exp} suggest that such a simple model design are capable of scaling and generalizing well.
+
+
+    

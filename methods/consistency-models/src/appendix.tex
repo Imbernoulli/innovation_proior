@@ -1,0 +1,825 @@
+\setcounter{tocdepth}{4}
+\tableofcontents
+\allowdisplaybreaks
+\begin{appendices}
+\section{Proofs}\label{app:proof}
+\subsection{Notations}
+We use $\vf_{\vtheta}(\rvx, t)$ to denote a consistency model parameterized by $\vtheta$, and $\vf(\rvx, t; \vphi)$ the consistency function of the empirical PF ODE in \cref{eq:e_pfode}. Here $\vphi$ symbolizes its dependency on the pre-trained score model $\vs_\vphi(\rvx, t)$. For the consistency function of the PF ODE in \cref{eq:pfode}, we denote it as $\vf(\rvx, t)$. Given a multi-variate function $\vh(\rvx, \rvy)$, we let $\partial_1 \vh(\rvx, \rvy)$ denote the Jacobian of $\vh$ over $\rvx$, and analogously $\partial_2 \vh(\rvx, \rvy)$ denote the Jacobian of $\vh$ over $\rvy$. Unless otherwise stated, $\rvx$ is supposed to be a random variable sampled from the data distribution $p_\text{data}(\rvx)$, $n$ is sampled uniformly at random from $\llbracket 1, N-1 \rrbracket$, and $\rvx_{t_{n}}$ is sampled from $\mcal{N}(\rvx; t_n^2 \mI)$. Here $\llbracket 1, N-1 \rrbracket$ represents the set of integers $\{1,2,\cdots, N-1\}$. Furthermore, recall that we define
+\begin{align*}
+    \hat{\rvx}_{t_n}^\vphi \coloneqq \rvx_{t_{n+1}} + (t_n - t_{n+1})\Phi(\rvx_{t_{n+1}}, t_{n+1}; \vphi),
+\end{align*}
+where $\Phi(\cdots; \vphi)$ denotes the update function of a one-step ODE solver for the empirical PF ODE defined by the score model $\vs_\vphi(\rvx, t)$. By default, $\mbb{E}[\cdot]$ denotes the expectation over all relevant random variables in the expression.
+
+\subsection{Consistency Distillation}\label{app:proof_cd}
+\begin{customthm}{\ref{thm:convergence}}
+Let $\Delta t \coloneqq \max_{n \in \llbracket 1, N-1\rrbracket}\{|t_{n+1} - t_{n}|\}$, and $\vf(\cdot,\cdot;\vphi)$ be the consistency function of the empirical PF ODE in \cref{eq:e_pfode}. Assume $\vf_\vtheta$ satisfies the Lipschitz condition: there exists $L > 0$ such that for all $t \in [\epsilon, T]$, $\rvx$, and $\rvy$, we have $\norm{\vf_\vtheta(\rvx, t) - \vf_\vtheta(\rvy, t)}_2 \leq L \norm{\rvx - \rvy}_2$. Assume further that for all $n \in \llbracket 1, N-1 \rrbracket$, the ODE solver called at $t_{n+1}$ has local error uniformly bounded by $O((t_{n+1} - t_n)^{p+1})$ with $p\geq 1$. Then, if $\mcal{L}_\text{CD}^N(\vtheta, \vtheta; \vphi) = 0$, we have
+\begin{align*}
+    \sup_{n, \rvx}\|\vf_{\vtheta}(\rvx, t_n) - \vf(\rvx, t_n; \vphi)\|_2 = O((\Delta t)^p).
+\end{align*}
+\end{customthm}
+\begin{proof}
+    From $\mcal{L}_\text{CD}^N(\vtheta, \vtheta; \vphi) = 0$, we have
+    \begin{align}
+        \mcal{L}_\text{CD}^N(\vtheta, \vtheta; \vphi) = \mbb{E}[\lambda(t_n) d(\vf_\vtheta({\rvx}_{t_{n+1}}, t_{n+1}), \vf_{\vtheta}(\hat{\rvx}_{t_n}^\vphi, t_n))] = 0.\label{eq:zero_loss}
+    \end{align}
+    According to the definition, we have $p_{t_n}(\rvx_{t_n}) = p_\text{data}(\rvx) \otimes \mcal{N}(\bm{0}, t_n^2 \mI)$ where $t_n \geq \epsilon > 0$. It follows that $p_{t_n}(\rvx_{t_n}) > 0$ for every $\rvx_{t_n}$ and $1 \leq n \leq N$. Therefore, \cref{eq:zero_loss} entails
+    \begin{align}
+        \lambda(t_n) d(\vf_\vtheta({\rvx}_{t_{n+1}}, t_{n+1}), \vf_{\vtheta}(\hat{\rvx}_{t_n}^\vphi, t_n)) \equiv 0.
+    \end{align}
+    Because $\lambda(\cdot) > 0$ and $d(\rvx, \rvy) = 0 \Leftrightarrow \rvx = \rvy$, this further implies that
+    \begin{align}
+        \vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1}) \equiv \vf_{\vtheta}(\hat{\rvx}_{t_n}^\vphi, t_n).\label{eq:zero_loss_identity}
+    \end{align}
+    Now let $\ve_{n}$ represent the error vector at $t_n$, which is defined as
+    \begin{align*}
+        \ve_{n} \coloneqq \vf_\vtheta(\rvx_{t_{n}}, t_{n}) - \vf(\rvx_{t_n}, t_n; \vphi).
+    \end{align*}
+    We can easily derive the following recursion relation
+    \begin{align}
+        \ve_{n+1} &= \vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1}) - \vf(\rvx_{t_{n+1}}, t_{n+1}; \vphi)\notag\\
+        &\stackrel{(i)}{=} \vf_\vtheta(\hat{\rvx}_{t_{n}}^\vphi, t_{n}) - \vf(\rvx_{t_{n}}, t_{n}; \vphi)\notag\\
+        &= \vf_\vtheta(\hat{\rvx}_{t_{n}}^\vphi, t_{n}) - \vf_\vtheta(\rvx_{t_n}, t_n) + \vf_\vtheta(\rvx_{t_n}, t_n) - \vf(\rvx_{t_{n}}, t_{n}; \vphi)\notag\\
+        &= \vf_\vtheta(\hat{\rvx}_{t_{n}}^\vphi, t_{n}) - \vf_\vtheta(\rvx_{t_n}, t_n) + \ve_{n},\label{eq:recursion}
+    \end{align}
+    where (i) is due to \cref{eq:zero_loss_identity} and $\vf(\rvx_{t_{n+1}}, t_{n+1}; \vphi) =  \vf(\rvx_{t_{n}}, t_{n}; \vphi)$. Because $\vf_\vtheta(\cdot, t_n)$ has Lipschitz constant $L$, we have
+    \begin{align*}
+        \norm{\ve_{n+1}}_2 &\leq \norm{\ve_{n}}_2 + L \norm{\hat{\rvx}_{t_n}^\vphi - \rvx_{t_n}}_2\\
+        &\stackrel{(i)}{=}  \norm{\ve_{n}}_2 + L\cdot O((t_{n+1} - t_n)^{p+1})\\
+        &=\norm{\ve_{n}}_2 + O((t_{n+1} - t_n)^{p+1}),
+    \end{align*}
+    where (i) holds because the ODE solver has local error bounded by $O((t_{n+1}-t_n)^{p+1})$. In addition, we observe that $\ve_1 = \bm{0}$, because
+    \begin{align*}
+        \ve_1 &= \vf_\vtheta(\rvx_{t_1}, t_1) - \vf(\rvx_{t_1}, t_1; \vphi) \\
+        &\stackrel{(i)}{=} \rvx_{t_1} - \vf(\rvx_{t_1}, t_1; \vphi)\\
+        &\stackrel{(ii)}{=} \rvx_{t_1} - \rvx_{t_1}\\
+        &= \bm{0}.
+    \end{align*}
+    Here (i) is true because the consistency model is parameterized such that $\vf(\rvx_{t_1}, t_1; \vphi) = \rvx_{t_1}$ and (ii) is entailed by the definition of $\vf(\cdot, \cdot; \vphi)$. This allows us to perform induction on the recursion formula \cref{eq:recursion} to obtain
+    \begin{align*}
+        \norm{\ve_{n}}_2 &\leq \norm{\ve_{1}}_2 + \sum_{k=1}^{n-1} O((t_{k+1} - t_k)^{p+1}) \\
+        &= \sum_{k=1}^{n-1} O((t_{k+1} - t_k)^{p+1})\\
+        &= \sum_{k=1}^{n-1} (t_{k+1} - t_k) O((t_{k+1} - t_k)^{p})\\
+        &\leq \sum_{k=1}^{n-1} (t_{k+1} - t_k) O((\Delta t)^{p})\\
+        &= O((\Delta t)^p) \sum_{k=1}^{n-1} (t_{k+1} - t_k)\\
+        &= O((\Delta t)^p) (t_{n} - t_1)\\
+        &\leq O((\Delta t)^p) (T-\epsilon)\\
+        &= O((\Delta t)^p),
+    \end{align*}
+    which completes the proof.
+\end{proof}
+
+\subsection{Consistency Training}\label{app:proof_ct}
+
+The following lemma provides an unbiased estimator for the score function, which is crucial to our proof for \cref{thm:ct}.
+
+\begin{lemma}\label{lem:grad_log_p_t}
+    Let $\rvx \sim p_\text{data}(\rvx)$, $\rvx_t \sim \mcal{N}(\rvx; t^2 \mI)$, and $p_t(\rvx_t) = p_\text{data}(\rvx) \otimes \mcal{N}(\bm{0}, t^2\mI)$. We have $\nabla \log p_t(\rvx) = -\mbb{E}[\frac{\rvx_t - \rvx}{t^2} \mid \rvx_t ]$.
+\end{lemma}
+\begin{proof}
+According to the definition of $p_t(\rvx_t)$, we have $\nabla \log p_t(\rvx_t) = \nabla_{\rvx_t} \log \int p_\text{data}(\rvx) p(\rvx_t \mid \rvx) \ud \rvx$, where $p(\rvx_t \mid \rvx) = \mcal{N}(\rvx_t; \rvx, t^2 \mI)$. This expression can be further simplified to yield
+\begin{align*}
+    \nabla \log p_t(\rvx_t) &= \frac{\int p_\text{data}(\rvx) \nabla_{\rvx_t} p(\rvx_t \mid \rvx) \ud \rvx}{\int p_\text{data}(\rvx) p(\rvx_t \mid \rvx) \ud \rvx}\\
+    &=\frac{\int p_\text{data}(\rvx) p(\rvx_t \mid \rvx) \nabla_{\rvx_t} \log p(\rvx_t \mid \rvx) \ud \rvx}{\int p_\text{data}(\rvx) p(\rvx_t \mid \rvx) \ud \rvx}\\
+    &=\frac{\int p_\text{data}(\rvx) p(\rvx_t \mid \rvx) \nabla_{\rvx_t} \log p(\rvx_t \mid \rvx) \ud \rvx}{p_t(\rvx_t)}\\
+    &=\int \frac{p_\text{data}(\rvx) p(\rvx_t \mid \rvx)}{p_t(\rvx_t)} \nabla_{\rvx_t} \log p(\rvx_t \mid \rvx) \ud \rvx\\
+    &\stackrel{(i)}{=}\int p(\rvx \mid \rvx_t) \nabla_{\rvx_t} \log p(\rvx_t \mid \rvx) \ud \rvx\\
+    &= \mbb{E}[\nabla_{\rvx_t} \log p(\rvx_t \mid \rvx) \mid \rvx_t]\\
+    &= -\mbb{E}\left[\frac{\rvx_t - \rvx}{t^2} \mid \rvx_t\right],
+\end{align*}
+where (i) is due to Bayes' rule.
+\end{proof}
+
+\begin{customthm}{\ref{thm:ct}}
+    Let $\Delta t \coloneqq \max_{n \in \llbracket 1, N-1\rrbracket}\{|t_{n+1} - t_{n}|\}$. Assume $d$ and $\vf_{\vtheta^{-}}$ are both twice continuously differentiable with bounded second derivatives, the weighting function $\lambda(\cdot)$ is bounded, and $\mbb{E}[\norm{\nabla \log p_{t_n}(\rvx_{t_{n}})}_2^2] < \infty$. Assume further that we use the Euler ODE solver, and the pre-trained score model matches the ground truth, \ie, $\forall t\in[\epsilon, T]: \vs_{\vphi}(\rvx, t) \equiv \nabla \log p_t(\rvx)$. Then,
+    \begin{align*}
+       \mcal{L}_\text{CD}^N(\vtheta, \vtheta^{-}; \vphi) = \mcal{L}_\text{CT}^N(\vtheta, \vtheta^{-}) + o(\Delta t),
+    \end{align*}
+    where the expectation is taken with respect to $\rvx \sim p_\text{data}$, $n \sim \mcal{U}\llbracket 1,N-1 \rrbracket$, and $\rvx_{t_{n+1}} \sim \mcal{N}(\rvx; t_{n+1}^2 \mI)$. The consistency training objective, denoted by $\mcal{L}_\text{CT}^N(\vtheta, \vtheta^{-})$, is defined as
+    \begin{align*}
+        \mbb{E}[\lambda(t_n) d(\vf_\vtheta(\rvx + t_{n+1}\rvz, t_{n+1}), \vf_{\vtheta^{-}}(\rvx + t_n\rvz, t_n))],
+    \end{align*}
+    where $\rvz \sim \mcal{N}(\bf{0}, \mI)$. Moreover, $\mcal{L}_\text{CT}^N(\vtheta, \vtheta^{-}) \geq O(\Delta t)$ if $\inf_N \mcal{L}_\text{CD}^N(\vtheta, \vtheta^{-}; \vphi) > 0$.
+\end{customthm}
+\begin{proof}
+With Taylor expansion, we have
+\begin{align}
+    &\mcal{L}_\text{CD}^N(\vtheta, \vtheta^{-}; \vphi) = \mbb{E}[\lambda(t_n)d(\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1}), \vf_{\vtheta^{-}}(\hat{\rvx}_{t_n}^\vphi, t_n)]\notag \\
+    =& \mbb{E}[\lambda(t_n) d(\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1}), \vf_{\vtheta^{-}}(\rvx_{t_{n+1}} + (t_{n+1} - t_n)t_{n+1} \nabla\log p_{t_{n+1}}(\rvx_{t_{n+1}}), t_n))]\notag \\
+    =& \mbb{E}[\lambda(t_n) d(\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1}), \vf_{\vtheta^{-}}(\rvx_{t_{n+1}}, t_{n+1}) + \partial_1\vf_{\vtheta^{-}}(\rvx_{t_{n+1}}, t_{n+1})(t_{n+1} - t_n)t_{n+1} \nabla \log p_{t_{n+1}}(\rvx_{t_{n+1}})\notag \\
+    &\qquad + \partial_2 \vf_{\vtheta^{-}}(\rvx_{t_{n+1}}, t_{n+1}) (t_n-t_{n+1}) + o(|t_{n+1} - t_n|) )]\notag \\
+    =& \mbb{E}\{\lambda(t_n) d(\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1}),\vf_{\vtheta^{-}}(\rvx_{t_{n+1}}, t_{n+1})) + \lambda(t_n)\partial_2 d(\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1}),\vf_{\vtheta^{-}}(\rvx_{t_{n+1}}, t_{n+1}))[\notag \\
+    &\quad \partial_1\vf_{\vtheta^{-}}(\rvx_{t_{n+1}}, t_{n+1})(t_{n+1} - t_n)t_{n+1} \nabla \log p_{t_{n+1}}(\rvx_{t_{n+1}}) + \partial_2 \vf_{\vtheta^{-}}(\rvx_{t_{n+1}}, t_{n+1}) (t_n-t_{n+1}) + o(|t_{n+1} - t_n|)]\}\notag \\
+    =& \mbb{E}[\lambda(t_n) d(\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1}),\vf_{\vtheta^{-}}(\rvx_{t_{n+1}}, t_{n+1}))]\notag \\
+    &\quad + \mbb{E}\{\lambda(t_n) \partial_2 d(\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1}),\vf_{\vtheta^{-}}(\rvx_{t_{n+1}}, t_{n+1}))[\partial_1\vf_{\vtheta^{-}}(\rvx_{t_{n+1}}, t_{n+1})(t_{n+1} - t_n)t_{n+1} \nabla \log p_{t_{n+1}}(\rvx_{t_{n+1}})]\}\notag \\
+    &\qquad + \mbb{E}\{\lambda(t_n) \partial_2 d(\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1}),\vf_{\vtheta^{-}}(\rvx_{t_{n+1}}, t_{n+1}))[\partial_2 \vf_{\vtheta^{-}}(\rvx_{t_{n+1}}, t_{n+1}) (t_n-t_{n+1})]\} + \mbb{E}[o(|t_{n+1} - t_n|)]
+    .\label{eq:taylor1}
+\end{align}
+Then, we apply \cref{lem:grad_log_p_t} to \cref{eq:taylor1} and use Taylor expansion in the reverse direction to obtain
+\begin{align}
+    &\mcal{L}_\text{CD}^N(\vtheta, \vtheta^{-}; \vphi)\notag \\
+    =& \mbb{E}[\lambda(t_n) d(\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1}),\vf_{\vtheta^{-}}(\rvx_{t_{n+1}}, t_{n+1}))]\notag \\
+    &\quad + \mbb{E}\left\{\lambda(t_n)\partial_2 d(\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1}),\vf_{\vtheta^{-}}(\rvx_{t_{n+1}}, t_{n+1}))\left[\partial_1\vf_{\vtheta^{-}}(\rvx_{t_{n+1}}, t_{n+1})(t_{n} - t_{n+1})t_{n+1} \mbb{E}\left[\frac{\rvx_{t_{n+1}} - \rvx}{t_{n+1}^2}\Big| \rvx_{t_{n+1}} \right]\right]\right \}\notag \\
+    &\qquad + \mbb{E}\{\lambda(t_n)\partial_2 d(\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1}),\vf_{\vtheta^{-}}(\rvx_{t_{n+1}}, t_{n+1}))[\partial_2 \vf_{\vtheta^{-}}(\rvx_{t_{n+1}}, t_{n+1}) (t_n-t_{n+1})]\} + \mbb{E}[o(|t_{n+1} - t_n|)]\notag\\
+    \stackrel{(i)}{=}& \mbb{E}[\lambda(t_n)d(\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1}),\vf_{\vtheta^{-}}(\rvx_{t_{n+1}}, t_{n+1}))]\notag \\
+    &\quad + \mbb{E}\left\{\lambda(t_n)\partial_2 d(\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1}),\vf_{\vtheta^{-}}(\rvx_{t_{n+1}}, t_{n+1}))\left[\partial_1\vf_{\vtheta^{-}}(\rvx_{t_{n+1}}, t_{n+1})(t_{n} - t_{n+1})t_{n+1} \left(\frac{\rvx_{t_{n+1}} - \rvx}{t_{n+1}^2} \right)\right]\right \}\notag \\
+    &\qquad + \mbb{E}\{\lambda(t_n)\partial_2 d(\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1}),\vf_{\vtheta^{-}}(\rvx_{t_{n+1}}, t_{n+1}))[\partial_2 \vf_{\vtheta^{-}}(\rvx_{t_{n+1}}, t_{n+1}) (t_n-t_{n+1})]\} + \mbb{E}[o(|t_{n+1} - t_n|)]\notag\\
+    =& \mbb{E}\bigg[\lambda(t_n)d(\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1}),\vf_{\vtheta^{-}}(\rvx_{t_{n+1}}, t_{n+1}))\notag \\
+    &\quad + \lambda(t_n)\partial_2 d(\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1}),\vf_{\vtheta^{-}}(\rvx_{t_{n+1}}, t_{n+1}))\left[\partial_1\vf_{\vtheta^{-}}(\rvx_{t_{n+1}}, t_{n+1})(t_{n} - t_{n+1})t_{n+1} \left(\frac{\rvx_{t_{n+1}} - \rvx}{t_{n+1}^2} \right)\right] \notag \\
+    &\quad +\lambda(t_n)\partial_2 d(\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1}),\vf_{\vtheta^{-}}(\rvx_{t_{n+1}}, t_{n+1}))[\partial_2 \vf_{\vtheta^{-}}(\rvx_{t_{n+1}}, t_{n+1}) (t_n-t_{n+1})] + o(|t_{n+1} - t_n|)\bigg] \notag\\
+    &\qquad + \mbb{E}[o(|t_{n+1} - t_n|)]\notag \\
+    =& \mbb{E}\left[\lambda(t_n) d\left(\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1}), \vf_{\vtheta^{-}}\left(\rvx_{t_{n+1}} + (t_{n} - t_{n+1})t_{n+1}\frac{\rvx_{t_{n+1}} - \rvx}{t_{n+1}^2} , t_n\right)\right)\right] + \mbb{E}[o(|t_{n+1} - t_n|)]\notag\\
+    =& \mbb{E}\left[\lambda(t_n) d\left(\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1}), \vf_{\vtheta^{-}}\left(\rvx_{t_{n+1}} + (t_{n} - t_{n+1})\frac{\rvx_{t_{n+1}} - \rvx}{t_{n+1}} , t_n\right)\right)\right] + \mbb{E}[o(|t_{n+1} - t_n|)]\notag\\
+    =& \mbb{E}\left[\lambda(t_n)d\left(\vf_\vtheta(\rvx + t_{n+1} \rvz, t_{n+1}), \vf_{\vtheta^{-}}\left(\rvx + t_{n+1}\rvz + (t_{n} - t_{n+1})\rvz , t_n\right)\right)\right] + \mbb{E}[o(|t_{n+1} - t_n|)]\notag\\
+    =& \mbb{E}\left[\lambda(t_n)d\left(\vf_\vtheta(\rvx + t_{n+1} \rvz, t_{n+1}), \vf_{\vtheta^{-}}\left(\rvx + t_{n}\rvz , t_n\right)\right)\right] + \mbb{E}[o(|t_{n+1} - t_n|)]\notag\\
+    =& \mbb{E}\left[\lambda(t_n)d\left(\vf_\vtheta(\rvx + t_{n+1} \rvz, t_{n+1}), \vf_{\vtheta^{-}}\left(\rvx + t_{n}\rvz , t_n\right)\right)\right] + \mbb{E}[o(\Delta t)]\notag\\
+    =& \mbb{E}\left[\lambda(t_n)d\left(\vf_\vtheta(\rvx + t_{n+1} \rvz, t_{n+1}), \vf_{\vtheta^{-}}\left(\rvx + t_{n}\rvz , t_n\right)\right)\right] + o(\Delta t)\notag \\
+    =& \mcal{L}_\text{CT}^N(\vtheta, \vtheta^{-}) + o(\Delta t),
+\end{align}
+where (i) is due to the law of total expectation, and $\rvz \coloneqq \frac{\rvx_{t_{n+1}} - \rvx}{t_{n+1}} \sim \mcal{N}(\bm{0}, \mI)$. This implies $\mcal{L}_\text{CD}^N(\vtheta, \vtheta^{-}; \vphi) = \mcal{L}_\text{CT}^N(\vtheta, \vtheta^{-}) + o(\Delta t)$ and thus completes the proof for \cref{eq:cd2}. Moreover, we have $\mcal{L}_\text{CT}^N(\vtheta, \vtheta^{-}) \geq O(\Delta t)$ whenever $\inf_N \mcal{L}_\text{CD}^N(\vtheta, \vtheta^{-}; \vphi) > 0$. Otherwise, $\mcal{L}_\text{CT}^N(\vtheta, \vtheta^{-}) < O(\Delta t)$ and thus $\lim_{\Delta t \to 0} \mcal{L}_\text{CD}^N(\vtheta, \vtheta^{-}; \vphi) = 0$, which is a clear contradiction to $\inf_N \mcal{L}_\text{CD}^N(\vtheta, \vtheta^{-}; \vphi) > 0$.
+\end{proof}
+\begin{remark}
+    When the condition $\mathcal{L}_\text{CT}^N(\vtheta, \vtheta^{-}) \geq O(\Delta t)$ is not satisfied, such as in the case where $\vtheta^{-} = \operatorname{stopgrad}(\vtheta)$, the validity of $\mathcal{L}_\text{CT}^N(\vtheta, \vtheta^{-})$ as a training objective for consistency models can still be justified by referencing the result provided in \cref{thm:ctct}.
+\end{remark}
+
+\section{Continuous-Time Extensions}\label{app:continuous}
+The consistency distillation and consistency training objectives can be generalized to hold for infinite time steps ($N\to\infty$) under suitable conditions.
+
+\subsection{Consistency Distillation in Continuous Time} \label{sec:ctcd}
+Depending on whether $\vtheta^- = \vtheta$ or $\vtheta^- = \operatorname{stopgrad}(\vtheta)$ (same as setting $\mu=0$), there are two possible continuous-time extensions for the consistency distillation objective $\mcal{L}_\text{CD}^N(\vtheta, \vtheta^{-}; \vphi)$. Given a twice continuously differentiable metric function $d(\rvx, \rvy)$, we define $\mG(\rvx)$ as a matrix, whose $(i,j)$-th entry is given by
+\begin{align*}
+    [\mG(\rvx)]_{ij} \coloneqq \frac{\partial^2 d(\rvx, \rvy)}{\partial y_i \partial y_j} \bigg|_{\rvy=\rvx}.
+\end{align*}
+Similarly, we define $\mH(\rvx)$ as
+\begin{align*}
+    [\mH(\rvx)]_{ij} \coloneqq \frac{\partial^2 d(\rvy, \rvx)}{\partial y_i \partial y_j} \bigg|_{\rvy=\rvx}.
+\end{align*}
+The matrices $\mG$ and $\mH$ play a crucial role in forming continuous-time objectives for consistency distillation. Additionally, we denote the Jacobian of $\vf_\vtheta(\rvx, t)$ with respect to $\rvx$ as $\frac{\partial \vf_\vtheta(\rvx, t)}{\partial \rvx}$.
+
+When $\vtheta^{-}=\vtheta$ (with no stopgrad operator), we have the following theoretical result.
+\begin{theorem}\label{thm:ctcd1}
+    Let $t_n = \tau(\frac{n-1}{N-1})$, where $n \in \llbracket 1, N \rrbracket$, and $\tau(\cdot)$ is a strictly monotonic function with $\tau(0) = \epsilon$ and $\tau(1) = T$. Assume $\tau$ is continuously differentiable in $[0,1]$, $d$ is three times continuously differentiable with bounded third derivatives, and $\vf_{\vtheta}$ is twice continuously differentiable with bounded first and second derivatives. Assume further that the weighting function $\lambda(\cdot)$ is bounded, and $\sup_{\rvx,t\in[\epsilon, T]}\norm{\vs_\vphi(\rvx, t)}_2 < \infty$. Then with the Euler solver in consistency distillation, we have
+    \begin{align}
+        \lim_{N \to \infty} (N-1)^2 \mcal{L}_\text{CD}^N(\vtheta, \vtheta; \vphi) = \mcal{L}_\text{CD}^\infty(\vtheta, \vtheta; \vphi) \label{eq:ctcd_obj},
+    \end{align}
+    where $\mcal{L}_\text{CD}^{\infty} (\vtheta, \vtheta; \vphi)$ is defined as
+    \begin{align}
+        \frac{1}{2} \mbb{E}\left[\frac{\lambda(t)}{[(\tau^{-1})'(t)]^2} \left(\frac{\partial \vf_\vtheta(\rvx_t, t)}{\partial t} - t \frac{\partial \vf_\vtheta(\rvx_t, t)}{\partial \rvx_t} \vs_\vphi(\rvx_{t}, t)\right)\tran \mG(\vf_\vtheta(\rvx_t, t)) \left(\frac{\partial \vf_\vtheta(\rvx_t, t)}{\partial t} - t \frac{\partial \vf_\vtheta(\rvx_t, t)}{\partial \rvx_t} \vs_\vphi(\rvx_{t}, t)\right)\right].
+    \end{align}
+    Here the expectation above is taken over $\rvx \sim p_\text{data}$, $u \sim \mcal{U}[0, 1]$, $t = \tau(u)$, and $\rvx_t \sim \mcal{N}(\rvx, t^2\mI)$.
+\end{theorem}
+\begin{proof}
+    Let $\Delta u = \frac{1}{N-1}$ and $u_n = \frac{n-1}{N-1}$. First, we can derive the following equation with Taylor expansion:
+    \begin{align}
+        &\vf_\vtheta(\hat{\rvx}_{t_n}^\vphi, t_n) - \vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1}) = \vf_{\vtheta}(\rvx_{t_{n+1}} +  t_{n+1} \vs_\vphi(\rvx_{t_{n+1}}, t_{n+1})\tau'(u_{n})\Delta u, t_n) - \vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1})\notag \\
+        =& t_{n+1} \frac{\partial \vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1})}{\partial \rvx_{t_{n+1}}}\vs_\vphi(\rvx_{t_{n+1}}, t_{n+1})\tau'(u_{n})\Delta u  - \frac{\partial \vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1})}{\partial t_{n+1}}\tau'(u_{n})\Delta u  + O((\Delta u)^2),\label{eq:ctcd1}
+    \end{align}
+    Note that $\tau'(u_{n}) = \frac{1}{\tau^{-1}(t_{n+1})}$. Then, we apply Taylor expansion to the consistency distillation loss, which gives
+    \begin{align}
+        &(N-1)^2 \mcal{L}_\text{CD}^N(\vtheta, \vtheta; \vphi) = \frac{1}{(\Delta u)^2}\mcal{L}_\text{CD}^N(\vtheta, \vtheta; \vphi) = \frac{1}{(\Delta u)^2} \mbb{E}[\lambda(t_n)d(\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1}), \vf_{\vtheta}(\hat{\rvx}_{t_n}^\vphi, t_n)]\notag \\
+        \stackrel{(i)}{=}&\begin{multlined}[t][0.9\displaywidth]
+            \frac{1}{2 (\Delta u)^2}\bigg(\mbb{E}\{\lambda(t_n)\tau'(u_{n})^2 [\vf_\vtheta(\hat{\rvx}_{t_n}^\vphi, t_n) - \vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1})]\tran \mG(\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1}))\\ \cdot [\vf_\vtheta(\hat{\rvx}_{t_n}^\vphi, t_n) - \vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1})]\} + \mbb{E}[O(|\Delta u|^3)]\bigg)
+        \end{multlined}\notag \\
+        \stackrel{(ii)}{=}&\!\begin{multlined}[t][0.9\displaywidth]
+            \frac{1}{2}\mbb{E}\bigg[\lambda(t_n) \tau'(u_{n})^2 \left(\frac{\partial \vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1})}{\partial t_{n+1}} - t_{n+1} \frac{\partial \vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1})}{\partial \rvx_{t_{n+1}}} \vs_\vphi(\rvx_{t_{n+1}}, t_{n+1})\right)\tran \mG(\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1})) \\
+            \cdot \bigg(\frac{\partial \vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1})}{\partial t_{n+1}} - t_{n+1} \frac{\partial \vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1})}{\partial \rvx_{t_{n+1}}} \vs_\vphi(\rvx_{t_{n+1}}, t_{n+1})\bigg)\bigg] + \mbb{E}[O(|\Delta u|)]
+        \end{multlined}\notag \\
+        =&\!\begin{multlined}[t][0.9\displaywidth]
+                \frac{1}{2}\mbb{E}\bigg[\frac{\lambda(t_n)}{[(\tau^{-1})'(t_{n})]^2} \left(\frac{\partial \vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1})}{\partial t_{n+1}} - t_{n+1} \frac{\partial \vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1})}{\partial \rvx_{t_{n+1}}} \vs_\vphi(\rvx_{t_{n+1}}, t_{n+1})\right)\tran \mG(\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1})) \\
+                \cdot \bigg(\frac{\partial \vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1})}{\partial t_{n+1}} - t_{n+1} \frac{\partial \vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1})}{\partial \rvx_{t_{n+1}}} \vs_\vphi(\rvx_{t_{n+1}}, t_{n+1})\bigg)\bigg] + \mbb{E}[O(|\Delta u|)] \label{eq:ctcd2}
+        \end{multlined}
+    \end{align}
+    where we obtain (i) by expanding $d(\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1}), \cdot)$ to second order and observing $d(\rvx, \rvx) \equiv 0$ and $\nabla_\rvy d(\rvx, \rvy)|_{\rvy=\rvx} \equiv \bm{0}$. We obtain (ii) using \cref{eq:ctcd1}. By taking the limit for both sides of \cref{eq:ctcd2} as $\Delta u \to 0$ or equivalently $N \to \infty$, we arrive at \cref{eq:ctcd_obj}, which completes the proof.
+\end{proof}
+\begin{remark}
+    Although \cref{thm:ctcd1} assumes the Euler ODE solver for technical simplicity, we believe an analogous result can be derived for more general solvers, since all ODE solvers should perform similarly as $N \to \infty$. We leave a more general version of \cref{thm:ctcd1} as future work.
+\end{remark}
+\begin{remark}
+    \cref{thm:ctcd1} implies that consistency models can be trained by minimizing $\mcal{L}_\text{CD}^\infty (\vtheta, \vtheta;\vphi)$. In particular, when $d(\rvx, \rvy) = \norm{\rvx - \rvy}_2^2$, we have
+    \begin{align}
+        \mcal{L}_\text{CD}^{\infty} (\vtheta, \vtheta; \vphi) = \mbb{E}\left[\frac{\lambda(t)}{[(\tau^{-1})'(t)]^2}\norm{\frac{\partial \vf_\vtheta(\rvx_t, t)}{\partial t} - t \frac{\partial \vf_\vtheta(\rvx_t, t)}{\partial \rvx_t} \vs_\vphi(\rvx_{t}, t)}^2_2 \right].
+    \end{align}
+    However, this continuous-time objective requires computing Jacobian-vector products as a subroutine to evaluate the loss function, which can be slow and laborious to implement in deep learning frameworks that do not support forward-mode automatic differentiation.
+\end{remark}
+\begin{remark}\label{remark}
+    If $\vf_\vtheta(\rvx, t)$ matches the ground truth consistency function for the empirical PF ODE of $\vs_\vphi(\rvx, t)$, then
+    \begin{align*}
+        \frac{\partial \vf_\vtheta(\rvx, t)}{\partial t} - t \frac{\partial \vf_\vtheta(\rvx, t)}{\partial \rvx} \vs_\vphi(\rvx, t) \equiv 0
+    \end{align*}
+    and therefore $\mcal{L}_\text{CD}^\infty(\vtheta, \vtheta; \vphi) = 0$. This can be proved by noting that $\vf_\vtheta(\rvx_t, t) \equiv \rvx_\epsilon$ for all $t \in [\epsilon, T]$, and then taking the time-derivative of this identity:
+    \begin{align*}
+        &\vf_\vtheta(\rvx_t, t) \equiv \rvx_\epsilon\\
+        \Longleftrightarrow&\frac{\partial \vf_\vtheta(\rvx_t, t)}{\partial \rvx_t} \frac{\ud \rvx_t}{\ud t} + \frac{\partial \vf_\vtheta(\rvx_t, t)}{\partial t} \equiv 0\\
+        \Longleftrightarrow&\frac{\partial \vf_\vtheta(\rvx_t, t)}{\partial \rvx_t} [-t \vs_\vphi(\rvx_t, t)] + \frac{\partial \vf_\vtheta(\rvx_t, t)}{\partial t} \equiv 0\\
+        \Longleftrightarrow&\frac{\partial \vf_\vtheta(\rvx_t, t)}{\partial t} - t \frac{\partial \vf_\vtheta(\rvx_t, t)}{\partial \rvx_t} \vs_\vphi(\rvx_t, t) \equiv 0.
+    \end{align*}
+    The above observation provides another motivation for $\mcal{L}_\text{CD}^\infty(\vtheta, \vtheta; \vphi)$, as it is minimized if and only if the consistency model matches the ground truth consistency function.
+\end{remark}
+
+For some metric functions, such as the $\ell_1$ norm, the Hessian $\mG(\rvx)$ is zero so \cref{thm:ctcd1} is vacuous. Below we show that a non-vacuous statement holds for the $\ell_1$ norm with just a small modification of the proof for \cref{thm:ctcd1}.
+\begin{theorem}\label{thm:ctcd_l1}
+    Let $t_n = \tau(\frac{n-1}{N-1})$, where $n \in \llbracket 1, N \rrbracket$, and $\tau(\cdot)$ is a strictly monotonic function with $\tau(0) = \epsilon$ and $\tau(1) = T$. Assume $\tau$ is continuously differentiable in $[0,1]$, and $\vf_{\vtheta}$ is twice continuously differentiable with bounded first and second derivatives. Assume further that the weighting function $\lambda(\cdot)$ is bounded, and $\sup_{\rvx, t\in[\epsilon,T]}\norm{\vs_\vphi(\rvx, t)}_2 < \infty$. Suppose we use the Euler ODE solver, and set $d(\rvx, \rvy) = \norm{\rvx - \rvy}_1$ in consistency distillation. Then we have
+    \begin{align}
+        \lim_{N \to \infty} (N-1) \mcal{L}_\text{CD}^N(\vtheta, \vtheta; \vphi) = \mcal{L}_\text{CD, $\ell_1$}^\infty(\vtheta, \vtheta; \vphi),\label{eq:ctcd_l1_obj}
+    \end{align}
+    where
+    \begin{align*}
+        \mcal{L}_\text{CD, $\ell_1$}^\infty(\vtheta, \vtheta; \vphi) \coloneqq \mbb{E}\left[\frac{\lambda(t)}{(\tau^{-1})'(t)}\norm{t \frac{\partial \vf_\vtheta(\rvx_{t}, t)}{\partial \rvx_{t}}\vs_\vphi(\rvx_{t}, t)  - \frac{\partial \vf_\vtheta(\rvx_{t}, t)}{\partial t}}_1\right]
+    \end{align*}
+    where the expectation above is taken over $\rvx \sim p_\text{data}$, $u \sim \mcal{U}[0, 1]$, $t = \tau(u)$, and $\rvx_t \sim \mcal{N}(\rvx, t^2\mI)$.
+\end{theorem}
+\begin{proof}
+    Let $\Delta u = \frac{1}{N-1}$ and $u_n = \frac{n-1}{N-1}$. We have
+    \begin{align}
+        &(N-1) \mcal{L}_\text{CD}^N(\vtheta, \vtheta; \vphi) = \frac{1}{\Delta u}\mcal{L}_\text{CD}^N(\vtheta, \vtheta; \vphi) = \frac{1}{\Delta u} \mbb{E}[\lambda(t_n)\| \vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1}) - \vf_{\vtheta}(\hat{\rvx}_{t_n}^\vphi, t_n)\|_1]\notag \\
+        \stackrel{(i)}{=}& \frac{1}{\Delta u} \mbb{E}\left[\lambda(t_n)\norm{t_{n+1} \frac{\partial \vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1})}{\partial \rvx_{t_{n+1}}}\vs_\vphi(\rvx_{t_{n+1}}, t_{n+1})\tau'(u_{n}) - \frac{\partial \vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1})}{\partial t_{n+1}}\tau'(u_{n}) + O((\Delta u)^2)}_1\right]\notag\\
+        =& \mbb{E}\left[\lambda(t_n)\tau'(u_{n})\norm{t_{n+1} \frac{\partial \vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1})}{\partial \rvx_{t_{n+1}}}\vs_\vphi(\rvx_{t_{n+1}}, t_{n+1})  - \frac{\partial \vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1})}{\partial t_{n+1}}  + O(\Delta u)}_1\right]\notag\\
+        =& \mbb{E}\left[\frac{\lambda(t_n)}{(\tau^{-1})'(t_{n})}\norm{t_{n+1} \frac{\partial \vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1})}{\partial \rvx_{t_{n+1}}}\vs_\vphi(\rvx_{t_{n+1}}, t_{n+1})  - \frac{\partial \vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1})}{\partial t_{n+1}}  + O(\Delta u)}_1\right]\label{eq:ctcd_l1}
+    \end{align}
+    where (i) is obtained by plugging \cref{eq:ctcd1} into the previous equation. Taking the limit for both sides of \cref{eq:ctcd_l1} as $\Delta u \to 0$ or equivalently $N\to \infty$ leads to \cref{eq:ctcd_l1_obj}, which completes the proof.
+\end{proof}
+\begin{remark}
+    According to \cref{thm:ctcd_l1}, consistency models can be trained by minimizing $\mcal{L}_\text{CD, $\ell_1$}^\infty(\vtheta, \vtheta; \vphi)$. Moreover, the same reasoning in \cref{remark} can be applied to show that $\mcal{L}_\text{CD, $\ell_1$}^\infty(\vtheta, \vtheta; \vphi) = 0$ if and only if $\vf_\vtheta(\rvx_t, t) = \rvx_\epsilon$ for all $\rvx_t \in \mathbb{R}^d$ and $t \in [\epsilon, T]$.
+\end{remark}
+
+In the second case where $\vtheta^- = \operatorname{stopgrad}(\vtheta)$, we can derive a so-called ``pseudo-objective'' whose gradient matches the gradient of $\mcal{L}_\text{CD}^N(\vtheta, \vtheta^{-}; \vphi)$ in the limit of $N\to\infty$. Minimizing this pseudo-objective with gradient descent gives another way to train consistency models via distillation. This pseudo-objective is provided by the theorem below.
+
+\begin{theorem}\label{thm:ctcd2}
+    Let $t_n = \tau(\frac{n-1}{N-1})$, where $n \in \llbracket 1, N \rrbracket$, and $\tau(\cdot)$ is a strictly monotonic function with $\tau(0) = \epsilon$ and $\tau(1) = T$. Assume $\tau$ is continuously differentiable in $[0,1]$, $d$ is three times continuously differentiable with bounded third derivatives, and $\vf_{\vtheta}$ is twice continuously differentiable with bounded first and second derivatives. Assume further that the weighting function $\lambda(\cdot)$ is bounded, $\sup_{\rvx, t\in[\epsilon,T]}\norm{\vs_\vphi(\rvx, t)}_2 < \infty$, and $\sup_{\rvx, t\in[\epsilon, T]}\norm{\nabla_\vtheta \vf_\vtheta(\rvx, t)}_2 < \infty$. Suppose we use the Euler ODE solver, and $\vtheta^{-} = \operatorname{stopgrad}(\vtheta)$ in consistency distillation. Then,
+    \begin{align}
+        \lim_{N \to \infty} (N-1) \nabla_\vtheta \mcal{L}_\text{CD}^N(\vtheta, \vtheta^{-}; \vphi) = \nabla_\vtheta \mcal{L}_\text{CD}^\infty(\vtheta, \vtheta^{-}; \vphi),\label{eq:ctcd_obj2}
+    \end{align}
+    where
+    \begin{align}
+        \mcal{L}_\text{CD}^{\infty} (\vtheta, \vtheta^{-}; \vphi) \coloneqq \mbb{E}\left[\frac{\lambda(t)}{(\tau^{-1})'(t)} \vf_\vtheta(\rvx_t, t) \tran \mH(\vf_{\vtheta^-}(\rvx_t, t)) \left(\frac{\partial \vf_{\vtheta^-}(\rvx_t, t)}{\partial t} - t \frac{\partial \vf_{\vtheta^-}(\rvx_t, t)}{\partial \rvx_t} \vs_\vphi(\rvx_{t}, t)\right)\right].
+    \end{align}
+    Here the expectation above is taken over $\rvx \sim p_\text{data}$, $u \sim \mcal{U}[0, 1]$, $t = \tau(u)$, and $\rvx_t \sim \mcal{N}(\rvx, t^2\mI)$.
+\end{theorem}
+\begin{proof}
+    We denote $\Delta u = \frac{1}{N-1}$ and $u_n = \frac{n-1}{N-1}$. First, we leverage Taylor series expansion to obtain
+    \begin{align}
+        &(N-1)\mcal{L}_\text{CD}^N(\vtheta, \vtheta^{-}; \vphi) = \frac{1}{\Delta u}\mcal{L}_\text{CD}^N(\vtheta, \vtheta^{-}; \vphi) = \frac{1}{\Delta u} \mbb{E}[\lambda(t_n)d(\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1}), \vf_{\vtheta^{-}}(\hat{\rvx}_{t_n}^\vphi, t_n)]\notag \\
+        \stackrel{(i)}{=}&\begin{multlined}[t][0.9\displaywidth]
+            \frac{1}{2 \Delta u}\bigg(\mbb{E}\{\lambda(t_n)[\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1}) - \vf_{\vtheta^-}(\hat{\rvx}_{t_n}^\vphi, t_n)]\tran \mH(\vf_{\vtheta^{-}}(\hat{\rvx}_{t_n}^\vphi, t_n))\\\cdot [\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1}) - \vf_{\vtheta^{-}}(\hat{\rvx}_{t_n}^\vphi, t_n)]\} + \mbb{E}[O(|\Delta u|^3)]\bigg)
+        \end{multlined}\notag \\
+        =&\frac{1}{2\Delta u}\mbb{E}\{\lambda(t_n)[\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1}) - \vf_{\vtheta^-}(\hat{\rvx}_{t_n}^\vphi, t_n)]\tran \mH(\vf_{\vtheta^{-}}(\hat{\rvx}_{t_n}^\vphi, t_n))[\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1}) - \vf_{\vtheta^-}(\hat{\rvx}_{t_n}^\vphi, t_n)]\} + \mbb{E}[O(|\Delta u|^2)]\label{eq:ctcd2_1}
+    \end{align}
+    where (i) is derived by expanding $d(\cdot, \vf_{\vtheta^{-}}(\hat{\rvx}_{t_n}^\vphi, t_n))$ to second order and leveraging $d(\rvx, \rvx) \equiv 0$ and $\nabla_\rvy d(\rvy, \rvx)|_{\rvy=\rvx} \equiv \bm{0}$. Next, we compute the gradient of \cref{eq:ctcd2_1} with respect to $\vtheta$ and simplify the result to obtain
+    \begin{align}
+        &(N-1) \nabla_\vtheta \mcal{L}_\text{CD}^N(\vtheta, \vtheta^{-}; \vphi) = \frac{1}{\Delta u} \nabla_\vtheta \mcal{L}_\text{CD}^N(\vtheta, \vtheta^{-}; \vphi)\notag \\
+        =&\frac{1}{2\Delta u} \nabla_\vtheta \mbb{E}\{\lambda(t_n)[\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1}) - \vf_{\vtheta^-}(\hat{\rvx}_{t_n}^\vphi, t_n)]\tran \mH(\vf_{\vtheta^{-}}(\hat{\rvx}_{t_n}^\vphi, t_n))[\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1}) - \vf_{\vtheta^-}(\hat{\rvx}_{t_n}^\vphi, t_n)]\} + \mbb{E}[O(|\Delta u|^2)]\notag \\
+        \stackrel{(i)}{=}&\frac{1}{\Delta u} \mbb{E}\{\lambda(t_n)[\nabla_\vtheta \vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1})]\tran \mH(\vf_{\vtheta^{-}}(\hat{\rvx}_{t_n}^\vphi, t_n))[\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1}) - \vf_{\vtheta^-}(\hat{\rvx}_{t_n}^\vphi, t_n)]\} + \mbb{E}[O(|\Delta u|^2)]\notag \\
+        \stackrel{(ii)}{=}&\!\begin{multlined}[t][0.9\displaywidth]
+                \frac{1}{\Delta u}\mbb{E}\bigg\{\lambda(t_n)[\nabla_\vtheta \vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1})]\tran \mH(\vf_{\vtheta^{-}}(\hat{\rvx}_{t_n}^\vphi, t_n))\bigg[t_{n+1} \frac{\partial \vf_{\vtheta^-}(\rvx_{t_{n+1}}, t_{n+1})}{\partial \rvx_{t_{n+1}}}\vs_\vphi(\rvx_{t_{n+1}}, t_{n+1})\tau'(u_{n})\Delta u \\ - \frac{\partial \vf_{\vtheta^-}(\rvx_{t_{n+1}}, t_{n+1})}{\partial t_{n+1}}\tau'(u_{n})\Delta u\bigg]\bigg\} + \mbb{E}[O(|\Delta u|)]
+            \end{multlined}\notag \\
+        =&\!\begin{multlined}[t][0.9\displaywidth]
+            \mbb{E}\bigg\{\lambda(t_n)[\nabla_\vtheta \vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1})]\tran \mH(\vf_{\vtheta^{-}}(\hat{\rvx}_{t_n}^\vphi, t_n))\bigg[t_{n+1} \frac{\partial \vf_{\vtheta^-}(\rvx_{t_{n+1}}, t_{n+1})}{\partial \rvx_{t_{n+1}}}\vs_\vphi(\rvx_{t_{n+1}}, t_{n+1})\tau'(u_{n}) \\ - \frac{\partial \vf_{\vtheta^-}(\rvx_{t_{n+1}}, t_{n+1})}{\partial t_{n+1}}\tau'(u_{n})\bigg]\bigg\} + \mbb{E}[O(|\Delta u|)]
+        \end{multlined}\notag \\
+        =&\!\begin{multlined}[t][0.9\displaywidth]
+            \nabla_\vtheta \mbb{E}\bigg\{\lambda(t_n)[\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1})]\tran \mH(\vf_{\vtheta^{-}}(\hat{\rvx}_{t_n}^\vphi, t_n))\bigg[t_{n+1} \frac{\partial \vf_{\vtheta^-}(\rvx_{t_{n+1}}, t_{n+1})}{\partial \rvx_{t_{n+1}}}\vs_\vphi(\rvx_{t_{n+1}}, t_{n+1})\tau'(u_{n}) \\ - \frac{\partial \vf_{\vtheta^-}(\rvx_{t_{n+1}}, t_{n+1})}{\partial t_{n+1}}\tau'(u_{n})\bigg]\bigg\} + \mbb{E}[O(|\Delta u|)]
+        \end{multlined}\\\notag
+        =&\!\begin{multlined}[t][0.9\displaywidth]
+            \nabla_\vtheta \mbb{E}\bigg\{\frac{\lambda(t_n)}{(\tau^{-1})'(t_{n})}[\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1})]\tran \mH(\vf_{\vtheta^{-}}(\hat{\rvx}_{t_n}^\vphi, t_n))\bigg[t_{n+1} \frac{\partial \vf_{\vtheta^-}(\rvx_{t_{n+1}}, t_{n+1})}{\partial \rvx_{t_{n+1}}}\vs_\vphi(\rvx_{t_{n+1}}, t_{n+1}) \\ - \frac{\partial \vf_{\vtheta^-}(\rvx_{t_{n+1}}, t_{n+1})}{\partial t_{n+1}}\bigg]\bigg\} + \mbb{E}[O(|\Delta u|)]
+        \end{multlined}\label{eq:ctcd2_grad}
+    \end{align}
+    Here (i) results from the chain rule, and (ii) follows from \cref{eq:ctcd1} and $\vf_\vtheta(\rvx, t) \equiv \vf_{\vtheta^{-}}(\rvx, t)$, since $\vtheta^{-} = \operatorname{stopgrad}(\vtheta)$. Taking the limit for both sides of \cref{eq:ctcd2_grad} as $\Delta u \to 0$ (or $N\to\infty$) yields \cref{eq:ctcd_obj2}, which completes the proof.
+\end{proof}
+\begin{remark}
+    When $d(\rvx, \rvy) = \norm{\rvx - \rvy}_2^2$, the pseudo-objective $\mcal{L}_\text{CD}^\infty (\vtheta, \vtheta^{-}; \vphi)$ can be simplified to
+    \begin{align}
+        \mcal{L}_\text{CD}^{\infty} (\vtheta, \vtheta^{-}; \vphi) = 2 \mbb{E}\left[\frac{\lambda(t)}{(\tau^{-1})'(t)}\vf_\vtheta(\rvx_t, t) \tran \left(\frac{\partial \vf_{\vtheta^-}(\rvx_t, t)}{\partial t} - t \frac{\partial \vf_{\vtheta^-}(\rvx_t, t)}{\partial \rvx_t} \vs_\vphi(\rvx_{t}, t)\right)\right].
+    \end{align}
+\end{remark}
+\begin{remark}
+    The objective $\mcal{L}_\text{CD}^\infty(\vtheta, \vtheta^{-}; \vphi)$ defined in \cref{thm:ctcd2} is only meaningful in terms of its gradient---one cannot measure the progress of training by tracking the value of $\mcal{L}_\text{CD}^\infty(\vtheta, \vtheta^{-}; \vphi)$, but can still apply gradient descent to this objective to distill consistency models from pre-trained diffusion models. Because this objective is not a typical loss function, we refer to it as the ``pseudo-objective'' for consistency distillation.
+\end{remark}
+\begin{remark}\label{remark2}
+    Following the same reasoning in \cref{remark}, we can easily derive that $\mcal{L}_\text{CD}^\infty(\vtheta, \vtheta^{-}; \vphi) = 0$ and $\nabla_\vtheta \mcal{L}_\text{CD}^\infty(\vtheta, \vtheta^{-}; \vphi) = \bm{0}$ if $\vf_\vtheta(\rvx, t)$ matches the ground truth consistency function for the empirical PF ODE that involves $\vs_\vphi(\rvx, t)$. However, the converse does not hold true in general. This distinguishes $\mcal{L}_\text{CD}^\infty(\vtheta, \vtheta^{-}; \vphi)$ from $\mcal{L}_\text{CD}^\infty(\vtheta, \vtheta; \vphi)$, the latter of which is a true loss function.
+\end{remark}
+
+\subsection{Consistency Training in Continuous Time}\label{sec:ctct}
+A remarkable observation is that the pseudo-objective in \cref{thm:ctcd2} can be estimated without any pre-trained diffusion models, which enables direct consistency training of consistency models. More precisely, we have the following result.
+
+\begin{theorem}\label{thm:ctct}
+    Let $t_n = \tau(\frac{n-1}{N-1})$, where $n \in \llbracket 1, N \rrbracket$, and $\tau(\cdot)$ is a strictly monotonic function with $\tau(0) = \epsilon$ and $\tau(1) = T$. Assume $\tau$ is continuously differentiable in $[0,1]$, $d$ is three times continuously differentiable with bounded third derivatives, and $\vf_{\vtheta}$ is twice continuously differentiable with bounded first and second derivatives. Assume further that the weighting function $\lambda(\cdot)$ is bounded, $\mbb{E}[\norm{\nabla \log p_{t_n}(\rvx_{t_{n}})}_2^2] < \infty$, $\sup_{\rvx, t\in[\epsilon, T]}\norm{\nabla_\vtheta \vf_\vtheta(\rvx, t)}_2 < \infty$, and $\vphi$ represents diffusion model parameters that satisfy $\vs_\vphi(\rvx, t) \equiv \nabla \log p_t(\rvx)$. Then if $\vtheta^{-} = \operatorname{stopgrad}(\vtheta)$, we have
+    \begin{align}
+        \lim_{N \to \infty} (N-1)\nabla_\vtheta \mcal{L}_\text{CD}^N(\vtheta, \vtheta^{-}; \vphi) = \lim_{N \to \infty} (N-1)\nabla_\vtheta \mcal{L}_\text{CT}^N(\vtheta, \vtheta^{-}) = \nabla_\vtheta \mcal{L}_\text{CT}^\infty(\vtheta, \vtheta^{-}),\label{eq:ctct_obj}
+    \end{align}
+    where $\mcal{L}^N_\text{CD}$ uses the Euler ODE solver, and
+    \begin{align}
+        \mcal{L}_\text{CT}^{\infty} (\vtheta, \vtheta^{-}) \coloneqq \mbb{E}\left[\frac{\lambda(t)}{(\tau^{-1})'(t)} \vf_\vtheta(\rvx_t, t) \tran \mH(\vf_{\vtheta^-}(\rvx_t, t)) \left(\frac{\partial \vf_{\vtheta^-}(\rvx_t, t)}{\partial t} + \frac{\partial \vf_{\vtheta^-}(\rvx_t, t)}{\partial \rvx_t} \cdot \frac{\rvx_t - \rvx}{t}\right)\right].
+    \end{align}
+    Here the expectation above is taken over $\rvx \sim p_\text{data}$, $u\sim\mcal{U}[0,1]$, $t=\tau(u)$, and $\rvx_t \sim \mcal{N}(\rvx, t^2\mI)$.
+\end{theorem}
+
+\begin{proof}
+    The proof mostly follows that of \cref{thm:ctcd2}. First, we leverage Taylor series expansion to obtain
+    \begin{align}
+        &(N-1)\mcal{L}_\text{CT}^N(\vtheta, \vtheta^{-}) = \frac{1}{\Delta u}\mcal{L}_\text{CT}^N(\vtheta, \vtheta^{-}) = \frac{1}{\Delta u} \mbb{E}[\lambda(t_n) d(\vf_\vtheta(\rvx + t_{n+1}\rvz, t_{n+1}), \vf_{\vtheta^{-}}(\rvx + t_n\rvz, t_n))]\notag \\
+        \stackrel{(i)}{=}&\begin{multlined}[t][0.9\displaywidth]
+            \frac{1}{2 \Delta u}\bigg(\mbb{E}\{\lambda(t_n)[\vf_\vtheta(\rvx + t_{n+1}\rvz, t_{n+1}) - \vf_{\vtheta^-}(\rvx + t_n \rvz, t_n)]\tran \mH(\vf_{\vtheta^{-}}(\rvx + t_n \rvz, t_n))\\ \cdot [\vf_\vtheta(\rvx + t_{n+1}\rvz, t_{n+1}) - \vf_{\vtheta^{-}}(\rvx + t_n \rvz, t_n)]\} + \mbb{E}[O(|\Delta u|^3)]\bigg)
+        \end{multlined}\notag \\
+        =&\begin{multlined}[t][0.9\displaywidth]
+            \frac{1}{2\Delta u}\mbb{E}\{\lambda(t_n)[\vf_\vtheta(\rvx + t_{n+1}\rvz, t_{n+1}) - \vf_{\vtheta^-}(\rvx + t_n \rvz, t_n)]\tran \mH(\vf_{\vtheta^{-}}(\rvx + t_n \rvz, t_n))\\ \cdot [\vf_\vtheta(\rvx + t_{n+1}\rvz, t_{n+1}) - \vf_{\vtheta^-}(\rvx + t_n \rvz, t_n)]\} + \mbb{E}[O(|\Delta u|^2)]
+        \end{multlined}\label{eq:ctct_1}
+    \end{align}
+    where $\rvz \sim \mcal{N}(\bm{0}, \mI)$, (i) is derived by first expanding $d(\cdot, \vf_{\vtheta^{-}}(\rvx + t_n\rvz, t_n))$ to second order, and then noting that $d(\rvx, \rvx) \equiv 0$ and $\nabla_\rvy d(\rvy, \rvx)|_{\rvy=\rvx} \equiv \bm{0}$. Next, we compute the gradient of \cref{eq:ctct_1} with respect to $\vtheta$ and simplify the result to obtain
+    \begin{align}
+        &(N-1) \nabla_\vtheta \mcal{L}_\text{CT}^N(\vtheta, \vtheta^{-}) = \frac{1}{\Delta u} \nabla_\vtheta \mcal{L}_\text{CT}^N(\vtheta, \vtheta^{-})\notag \\
+        =&\begin{multlined}[t][0.9\displaywidth]
+            \frac{1}{2\Delta u} \nabla_\vtheta \mbb{E}\{\lambda(t_n)[\vf_\vtheta(\rvx + t_{n+1}\rvz, t_{n+1}) - \vf_{\vtheta^-}(\rvx + t_n \rvz, t_n)]\tran \mH(\vf_{\vtheta^{-}}(\rvx + t_n \rvz, t_n))\\ \cdot[\vf_\vtheta(\rvx + t_{n+1}\rvz, t_{n+1}) - \vf_{\vtheta^-}(\rvx + t_n \rvz, t_n)]\} + \mbb{E}[O(|\Delta u|^2)]
+        \end{multlined}\notag \\
+        \stackrel{(i)}{=}&\begin{multlined}[t][0.9\displaywidth]
+            \frac{1}{\Delta u} \mbb{E}\{\lambda(t_n)[\nabla_\vtheta \vf_\vtheta(\rvx + t_{n+1}\rvz, t_{n+1})]\tran \mH(\vf_{\vtheta^{-}}(\rvx + t_n \rvz, t_n))\\ \cdot [\vf_\vtheta(\rvx + t_{n+1}\rvz, t_{n+1}) - \vf_{\vtheta^-}(\rvx + t_n \rvz, t_n)]\} + \mbb{E}[O(|\Delta u|^2)]
+        \end{multlined}\label{eq:continue} \\
+        \stackrel{(ii)}{=}&\begin{multlined}[t][0.9\displaywidth]
+                \frac{1}{\Delta u}\mbb{E}\bigg\{\lambda(t_n)[\nabla_\vtheta \vf_\vtheta(\rvx + t_{n+1}\rvz, t_{n+1})]\tran \mH(\vf_{\vtheta^{-}}(\rvx + t_n \rvz, t_n))\bigg[\tau'(u_n)\Delta u \partial_1 \vf_{\vtheta^{-}}(\rvx + t_n \rvz, t_n)\rvz \\ + \partial_2 \vf_{\vtheta^{-}}(\rvx + t_n \rvz, t_n)\tau'(u_n)\Delta u \bigg]\bigg\} + \mbb{E}[O(|\Delta u|)]
+            \end{multlined}\notag \\
+        =&\begin{multlined}[t][0.9\displaywidth]
+            \mbb{E}\bigg\{\lambda(t_n)\tau'(u_n)[\nabla_\vtheta \vf_\vtheta(\rvx + t_{n+1}\rvz, t_{n+1})]\tran \mH(\vf_{\vtheta^{-}}(\rvx + t_n \rvz, t_n))\bigg[\partial_1 \vf_{\vtheta^{-}}(\rvx + t_n \rvz, t_n)\rvz \\ + \partial_2 \vf_{\vtheta^{-}}(\rvx + t_n \rvz, t_n)\bigg]\bigg\} + \mbb{E}[O(|\Delta u|)]
+        \end{multlined}\notag \\
+        =&\begin{multlined}[t][0.9\displaywidth]
+            \nabla_\vtheta \mbb{E}\bigg\{\lambda(t_n)\tau'(u_n)[\vf_\vtheta(\rvx + t_{n+1}\rvz, t_{n+1})]\tran \mH(\vf_{\vtheta^{-}}(\rvx + t_n \rvz, t_n))\bigg[\partial_1 \vf_{\vtheta^{-}}(\rvx + t_n \rvz, t_n)\rvz \\ + \partial_2 \vf_{\vtheta^{-}}(\rvx + t_n \rvz, t_n)\bigg]\bigg\} + \mbb{E}[O(|\Delta u|)]
+        \end{multlined}\notag \\
+        =&\nabla_\vtheta \mbb{E}\bigg\{\lambda(t_n)\tau'(u_n)[\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1})]\tran \mH(\vf_{\vtheta^{-}}(\rvx_{t_n}, t_n))\bigg[\partial_1 \vf_{\vtheta^{-}}(\rvx_{t_n}, t_n)\frac{\rvx_{t_n} - \rvx}{t_n} + \partial_2 \vf_{\vtheta^{-}}(\rvx_{t_n}, t_n)\bigg]\bigg\} + \mbb{E}[O(|\Delta u|)]\notag \\
+        =&\nabla_\vtheta \mbb{E}\bigg\{\frac{\lambda(t_n)}{(\tau^{-1})'(t_n)}[\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1})]\tran \mH(\vf_{\vtheta^{-}}(\rvx_{t_n}, t_n))\bigg[\partial_1 \vf_{\vtheta^{-}}(\rvx_{t_n}, t_n)\frac{\rvx_{t_n} - \rvx}{t_n} + \partial_2 \vf_{\vtheta^{-}}(\rvx_{t_n}, t_n)\bigg]\bigg\} + \mbb{E}[O(|\Delta u|)]\label{eq:ctct_grad}
+    \end{align}
+    Here (i) results from the chain rule, and (ii) follows from Taylor expansion. Taking the limit for both sides of \cref{eq:ctct_grad} as $\Delta u \to 0$ or $N\to\infty$ yields the second equality in \cref{eq:ctct_obj}.
+
+    Now we prove the first equality. Applying Taylor expansion again, we obtain
+    \begin{align*}
+        &(N-1)\nabla_\vtheta \mcal{L}_\text{CD}^N(\vtheta, \vtheta^{-}; \vphi) = \frac{1}{\Delta u}\nabla_\vtheta \mcal{L}_\text{CD}^N(\vtheta, \vtheta^{-}; \vphi) = \frac{1}{\Delta u}\nabla_\vtheta \mbb{E}[\lambda(t_n)d(\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1}), \vf_{\vtheta^{-}}(\hat{\rvx}_{t_n}^\vphi, t_n))]\\
+        =& \frac{1}{\Delta u}\mbb{E}[\lambda(t_n)\nabla_\vtheta d(\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1}), \vf_{\vtheta^{-}}(\hat{\rvx}_{t_n}^\vphi, t_n))]\\
+        =& \frac{1}{\Delta u}\mbb{E}[\lambda(t_n) \nabla_\vtheta \vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1})\tran \partial_1 d(\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1}), \vf_{\vtheta^{-}}(\hat{\rvx}_{t_n}^\vphi, t_n))]\\
+        =& \frac{1}{\Delta u}\begin{multlined}[t][0.9\displaywidth]
+            \mbb{E}\bigg\{\lambda(t_n) \nabla_\vtheta \vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1})\tran \bigg[\partial_1 d(\vf_{\vtheta^{-}}(\hat{\rvx}_{t_n}^\vphi, t_n), \vf_{\vtheta^{-}}(\hat{\rvx}_{t_n}^\vphi, t_n)) \\+ \mH(\vf_{\vtheta^{-}}(\hat{\rvx}_{t_n}^\vphi, t_n)) (\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1}) - \vf_{\vtheta^{-}}(\hat{\rvx}_{t_n}^\vphi, t_n)) + O(|\Delta u|^2)\bigg]\bigg\}
+        \end{multlined}\\
+        =& \frac{1}{\Delta u}\mbb{E}\{\lambda(t_n) \nabla_\vtheta \vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1})\tran [\mH(\vf_{\vtheta^{-}}(\hat{\rvx}_{t_n}^\vphi, t_n)) (\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1}) - \vf_{\vtheta^{-}}(\hat{\rvx}_{t_n}^\vphi, t_n))] + O(|\Delta u|^2)\}
+        \\
+        =& \frac{1}{\Delta u}\mbb{E}\{\lambda(t_n) \nabla_\vtheta \vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1})\tran [\mH(\vf_{\vtheta^{-}}(\hat{\rvx}_{t_n}^\vphi, t_n)) (\vf_{\vtheta^{-}}(\rvx_{t_{n+1}}, t_{n+1}) - \vf_{\vtheta^{-}}(\hat{\rvx}_{t_n}^\vphi, t_n))] + O(|\Delta u|^2)\}\\
+        \stackrel{(i)}{=}&\begin{multlined}[t][0.9\displaywidth]
+            \frac{1}{\Delta u} \mbb{E}\{\lambda(t_n)[\nabla_\vtheta \vf_\vtheta(\rvx + t_{n+1}\rvz, t_{n+1})]\tran \mH(\vf_{\vtheta^{-}}(\rvx + t_n \rvz, t_n))\\ \cdot [\vf_\vtheta(\rvx + t_{n+1}\rvz, t_{n+1}) - \vf_{\vtheta^-}(\rvx + t_n \rvz, t_n)]\} + \mbb{E}[O(|\Delta u|^2)]
+        \end{multlined}
+    \end{align*}
+    where (i) holds because $\rvx_{t_{n+1}} = \rvx + t_{n+1} \rvz$ and $\hat{\rvx}_{t_n}^\vphi = \rvx_{t_{n+1}} -(t_n - t_{n+1}) t_{n+1} \frac{-(\rvx_{t_{n+1}} - \rvx)}{t_{n+1}^2} = \rvx_{t_{n+1}} + (t_n - t_{n+1}) \rvz = \rvx + t_n \rvz$. Because (i) matches \cref{eq:continue}, we can use the same reasoning procedure from \cref{eq:continue} to \cref{eq:ctct_grad} to conclude $\lim_{N \to \infty} (N-1)\nabla_\vtheta \mcal{L}_\text{CD}^N(\vtheta, \vtheta^{-}; \vphi) = \lim_{N \to \infty} (N-1)\nabla_\vtheta \mcal{L}_\text{CT}^N(\vtheta, \vtheta^{-})$, completing the proof.
+\end{proof}
+\begin{remark}
+    Note that $\mcal{L}_\text{CT}^\infty(\vtheta, \vtheta^{-})$ does not depend on the diffusion model parameter $\vphi$ and hence can be optimized without any pre-trained diffusion models.
+\end{remark}
+\begin{remark}
+    When $d(\rvx, \rvy) = \norm{\rvx - \rvy}_2^2$, the continuous-time consistency training objective becomes
+    \begin{align}
+        \mcal{L}_\text{CT}^{\infty} (\vtheta, \vtheta^{-}) = 2\mbb{E}\left[\frac{\lambda(t)}{(\tau^{-1})'(t)} \vf_\vtheta(\rvx_t, t) \tran \left(\frac{\partial \vf_{\vtheta^-}(\rvx_t, t)}{\partial t} + \frac{\partial \vf_{\vtheta^-}(\rvx_t, t)}{\partial \rvx_t} \cdot \frac{\rvx_t - \rvx}{t}\right)\right].
+    \end{align}
+\end{remark}
+\begin{remark}
+    Similar to $\mcal{L}_\text{CD}^\infty (\vtheta, \vtheta^{-}; \vphi)$ in \cref{thm:ctcd2}, $\mcal{L}_\text{CT}^\infty(\vtheta, \vtheta^{-})$ is a pseudo-objective; one cannot track training by monitoring the value of $\mcal{L}_\text{CT}^\infty(\vtheta, \vtheta^{-})$, but can still apply gradient descent on this loss function to train a consistency model $\vf_\vtheta(\rvx, t)$ directly from data. Moreover, the same observation in \cref{remark2} holds true: $\mcal{L}_\text{CT}^\infty(\vtheta, \vtheta^{-}) = 0$ and $\nabla_\vtheta \mcal{L}_\text{CT}^\infty(\vtheta, \vtheta^{-}) = \bm{0}$ if $\vf_\vtheta(\rvx, t)$ matches the ground truth consistency function for the PF ODE.
+\end{remark}
+\subsection{Experimental Verifications}
+\begin{figure}
+    \centering
+    \begin{subfigure}[b]{0.4\linewidth}
+        \includegraphics[width=\linewidth]{figures/distillation_compare.jpg}
+        \caption{Consistency Distillation}\label{fig:distillation_compare}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.4\linewidth}
+        \includegraphics[width=\linewidth]{figures/gen_compare.jpg}
+        \caption{Consistency Training}\label{fig:gen_compare}
+    \end{subfigure}
+    \caption{Comparing discrete consistency distillation/training algorithms with continuous counterparts.}\label{fig:compare}
+\end{figure}
+To experimentally verify the efficacy of our continuous-time CD and CT objectives, we train consistency models with a variety of loss functions on CIFAR-10. All results are provided in \cref{fig:compare}. We set $\lambda(t) = (\tau^{-1})'(t)$ for all continuous-time experiments. Other hyperparameters are the same as in \cref{tab:hyperparameters}. We occasionally modify some hyperparameters for improved performance. For distillation, we compare the following objectives:
+\begin{itemize}
+    \item CD $(\ell_2)$: Consistency distillation $\mcal{L}^{N}_\text{CD}$ with $N=18$ and the $\ell_2$ metric.
+    \item CD $(\ell_1)$: Consistency distillation $\mcal{L}^{N}_\text{CD}$ with $N=18$ and the $\ell_1$ metric. We set the learning rate to 2e-4.
+    \item CD (LPIPS): Consistency distillation $\mcal{L}^{N}_\text{CD}$ with $N=18$ and the LPIPS metric.
+    \item CD$^\infty$ $(\ell_2)$: Consistency distillation $\mcal{L}^\infty_\text{CD}$ in \cref{thm:ctcd1} with the $\ell_2$ metric. We set the learning rate to 1e-3 and dropout to 0.13.
+    \item CD$^\infty$ $(\ell_1)$: Consistency distillation $\mcal{L}^\infty_\text{CD}$ in \cref{thm:ctcd_l1} with the $\ell_1$ metric. We set the learning rate to 1e-3 and dropout to 0.3.
+    \item CD$^\infty$ (stopgrad, $\ell_2$): Consistency distillation $\mcal{L}^\infty_\text{CD}$ in \cref{thm:ctcd2} with the $\ell_2$ metric. We set the learning rate to 5e-6.
+    \item CD$^\infty$ (stopgrad, LPIPS): Consistency distillation $\mcal{L}^\infty_\text{CD}$ in \cref{thm:ctcd2} with the LPIPS metric. We set the learning rate to 5e-6.
+\end{itemize}
+We did not investigate using the LPIPS metric in \cref{thm:ctcd1} because minimizing the resulting objective would require back-propagating through second order derivatives of the VGG network used in LPIPS, which is computationally expensive and prone to numerical instability. As revealed by \cref{fig:distillation_compare}, the stopgrad version of continuous-time distillation (\cref{thm:ctcd2}) works better than the non-stopgrad version (\cref{thm:ctcd1}) for both the LPIPS and $\ell_2$ metrics, and the LPIPS metric works the best for all distillation approaches. Additionally, discrete-time consistency distillation outperforms continuous-time consistency distillation, possibly due to the larger variance in continuous-time objectives, and the fact that one can use effective higher-order ODE solvers in discrete-time objectives.
+
+For consistency training (CT), we find it important to initialize consistency models from a pre-trained EDM model in order to stabilize training when using continuous-time objectives. We hypothesize that this is caused by the large variance in our continuous-time loss functions. For fair comparison, we thus initialize all consistency models from the same pre-trained EDM model on CIFAR-10 for both discrete-time and continuous-time CT, even though the former works well with random initialization. We leave variance reduction techniques for continuous-time CT to future research.
+
+We empirically compare the following objectives:
+\begin{itemize}
+    \item CT (LPIPS): Consistency training $\mcal{L}_\text{CT}^N$ with $N=120$ and the LPIPS metric. We set the learning rate to 4e-4, and the EMA decay rate for the target network to 0.99. We do not use the schedule functions for $N$ and $\mu$ here because they cause slower learning when the consistency model is initialized from a pre-trained EDM model.
+    \item CT$^\infty$ $(\ell_2)$: Consistency training $\mcal{L}^{\infty}_\text{CT}$ with the $\ell_2$ metric. We set the learning rate to 5e-6.
+    \item CT$^\infty$ (LPIPS): Consistency training $\mcal{L}^\infty_\text{CT}$ with the LPIPS metric. We set the learning rate to 5e-6.
+\end{itemize}
+As shown in \cref{fig:gen_compare}, the LPIPS metric leads to improved performance for continuous-time CT. We also find that continuous-time CT outperforms discrete-time CT with the same LPIPS metric. This is likely due to the bias in discrete-time CT, as $\Delta t > 0$ in \cref{thm:ct} for discrete-time objectives, whereas continuous-time CT has no bias since it implicitly drives $\Delta t$ to $0$.
+
+\section{Additional Experimental Details}\label{app:exp}
+\begin{table}
+    \setlength{\tabcolsep}{15pt}
+    \caption{Hyperparameters used for training CD and CT models}\label{tab:hyperparameters}
+    \centering
+    \begin{adjustbox}{max width=\linewidth}
+        \begin{tabular}{l|cc|cc|cc}
+            \Xhline{3\arrayrulewidth}
+            Hyperparameter & \multicolumn{2}{c|}{CIFAR-10} & \multicolumn{2}{c|}{ImageNet $64\times 64$} & \multicolumn{2}{c}{LSUN $256\times 256$} \\
+            & CD & CT & CD & CT & CD & CT\\
+            \hline
+            Learning rate & 4e-4 & 4e-4 & 8e-6 & 8e-6 & 1e-5 & 1e-5\\
+            Batch size & 512 & 512 & 2048 & 2048 & 2048 & 2048\\
+            $\mu$ & 0 &  & 0.95 & & 0.95 & \\
+            $\mu_0$ & & 0.9 & & 0.95 & & 0.95\\
+            $s_0$ & & 2 & & 2 & & 2 \\
+            $s_1$ & & 150 & & 200 & & 150 \\
+            $N$ & 18 & & 40 & & 40 & \\
+            ODE solver & Heun & & Heun & & Heun & \\
+            EMA decay rate & 0.9999 & 0.9999 & 0.999943 & 0.999943 & 0.999943 & 0.999943\\
+            Training iterations & 800k & 800k & 600k & 800k & 600k & 1000k\\
+            Mixed-Precision (FP16) & No & No & Yes & Yes & Yes & Yes\\
+            Dropout probability & 0.0 & 0.0 & 0.0 & 0.0 & 0.0 & 0.0\\
+            Number of GPUs & 8 & 8 & 64 & 64 & 64 & 64\\
+            \Xhline{3\arrayrulewidth}
+        \end{tabular}
+    \end{adjustbox}
+\end{table}
+
+\paragraph{Model Architectures} We follow \citet{song2021scorebased,dhariwal2021diffusion} for model architectures. Specifically, we use the NCSN++ architecture in \citet{song2021scorebased} for all CIFAR-10 experiments, and take the corresponding network architectures from \citet{dhariwal2021diffusion} when performing experiments on ImageNet $64\times 64$, LSUN Bedroom $256\times 256$ and LSUN Cat $256\times 256$.
+
+\paragraph{Parameterization for Consistency Models} We use the same architectures for consistency models as those used for EDMs. The only difference is we slightly modify the skip connections in EDM to ensure the boundary condition holds for consistency models. Recall that in \cref{sec:consistency} we propose to parameterize a consistency model in the following form:
+\begin{align*}
+    \vf_\vtheta(\rvx, t) = c_\text{skip}(t)\rvx + c_\text{out}(t) F_\vtheta(\rvx, t).
+\end{align*}
+In EDM \cite{karras2022edm}, authors choose
+\begin{align*}
+    c_\text{skip}(t) = \frac{\sigma_\text{data}^2}{t^2 + \sigma_\text{data}^2},\quad c_\text{out}(t) = \frac{\sigma_\text{data} t }{\sqrt{\sigma_\text{data}^2 + t^2}},
+\end{align*}
+where $\sigma_\text{data} = 0.5$. However, this choice of $c_\text{skip}$ and $c_\text{out}$ does not satisfy the boundary condition when the smallest time instant $\epsilon \neq 0$. To remedy this issue, we modify them to
+\begin{align*}
+    c_\text{skip}(t) = \frac{\sigma_\text{data}^2}{(t-\epsilon)^2 + \sigma_\text{data}^2},\quad c_\text{out}(t) = \frac{\sigma_\text{data} (t-\epsilon) }{\sqrt{\sigma_\text{data}^2 + t^2}},
+\end{align*}
+which clearly satisfies $c_\text{skip}(\epsilon) = 1$ and $c_\text{out}(\epsilon) = 0$.
+
+\paragraph{Schedule Functions for Consistency Training} As discussed in \cref{sec:generation}, consistency generation requires specifying schedule functions $N(\cdot)$ and $\mu(\cdot)$ for best performance. Throughout our experiments, we use schedule functions that take the form below:
+\begin{align*}
+    N(k) &= \left\lceil \sqrt{\frac{k}{K} ((s_1 + 1)^2 - s_0^2) + s_0^2} - 1 \right\rceil + 1\\
+    \mu(k) &= \exp\left(\frac{s_0 \log \mu_0}{N(k)}\right),
+\end{align*}
+where $K$ denotes the total number of training iterations, $s_0$ denotes the initial discretization steps, $s_1 > s_0$ denotes the target discretization steps at the end of training, and $\mu_0 > 0$ denotes the EMA decay rate at the beginning of model training.
+
+\paragraph{Training Details}
+In both consistency distillation and progressive distillation, we distill EDMs \cite{karras2022edm}. We trained these EDMs ourselves according to the specifications given in \citet{karras2022edm}. The original EDM paper did not provide hyperparameters for the LSUN Bedroom $256\times 256$ and Cat $256\times 256$ datasets, so we mostly used the same hyperparameters as those for the ImageNet $64\times 64$ dataset. The difference is that we trained for 600k and 300k iterations for the LSUN Bedroom and Cat datasets respectively, and reduced the batch size from 4096 to 2048.
+
+We used the same EMA decay rate for LSUN $256\times 256$ datasets as for the ImageNet $64\times 64$ dataset. For progressive distillation, we used the same training settings as those described in \citet{salimans2022progressive} for CIFAR-10 and ImageNet $64\times 64$. Although the original paper did not test on LSUN $256\times 256$ datasets, we used the same settings for ImageNet $64\times 64$ and found them to work well.
+
+In all distillation experiments, we initialized the consistency model with pre-trained EDM weights. For consistency training, we initialized the model randomly, just as we did for training the EDMs. We trained all consistency models with the Rectified Adam optimizer \cite{liu2019variance}, with no learning rate decay or warm-up, and no weight decay. We also applied EMA to the weights of the online consistency models in both consistency distillation and consistency training, as well as to the weights of the training online consistency models according to \citet{karras2022edm}. For LSUN $256\times 256$ datasets, we chose the EMA decay rate to be the same as that for ImageNet $64\times 64$, except for consistency distillation on LSUN Bedroom $256\times 256$, where we found that using zero EMA worked better.
+
+When using the LPIPS metric on CIFAR-10 and ImageNet $64\times 64$, we rescale images to resolution $224\times 224$ with bilinear upsampling before feeding them to the LPIPS network. For LSUN $256\times 256$, we evaluated LPIPS without rescaling inputs. In addition, we performed horizontal flips for data augmentation for all models and on all datasets. We trained all models on a cluster of Nvidia A100 GPUs. Additional hyperparameters for consistency training and distillation are listed in \cref{tab:hyperparameters}.
+
+
+\section{Additional Results on Zero-Shot Image Editing}\label{app:editing}
+\begin{algorithm}[tb]
+    \caption{Zero-Shot Image Editing}
+    \label{alg:editing}
+ \begin{algorithmic}[1]
+    \STATE {\bfseries Input:} Consistency model $\vf_\vtheta(\cdot, \cdot)$, sequence of time points $t_1 > t_2 > \cdots > t_{N}$, reference image $\rvy$, invertible linear transformation $\mA$, and binary image mask $\bm{\Omega}$
+    \STATE $\rvy \gets \mA^{-1}[(\mA \rvy) \odot (1 - \bm{\Omega}) + \bm{0} \odot \bm{\Omega}]$
+    \STATE Sample $\rvx \sim \mcal{N}(\rvy, t_1^2 \mI)$
+    \STATE $\rvx \gets \vf_\vtheta(\rvx, t_1)$
+    \STATE $\rvx \gets \mA^{-1}[(\mA \rvy) \odot (1 - \bm{\Omega}) + (\mA\rvx) \odot \bm{\Omega}]$
+    \FOR{$n=2$ {\bfseries to} $N$}
+        \STATE Sample $\rvx \sim \mcal{N}(\rvx, (t_n^2 - \epsilon^2) \mI)$
+        \STATE $\rvx \gets \vf_\vtheta(\rvx, t_n)$
+        \STATE $\rvx \gets \mA^{-1}[(\mA\rvy) \odot (1-\bm{\Omega}) + (\mA\rvx) \odot \bm{\Omega}]$
+    \ENDFOR
+    \STATE {\bfseries Output:} $\rvx$
+ \end{algorithmic}
+\end{algorithm}
+
+With consistency models, we can perform a variety of zero-shot image editing tasks. As an example, we present additional results on colorization (\cref{fig:bedroom_colorization}), super-resolution (\cref{fig:bedroom_superres}), inpainting (\cref{fig:bedroom_inpainting}), interpolation (\cref{fig:bedroom_interp}), denoising (\cref{fig:bedroom_denoising}), and stroke-guided image generation (SDEdit, \citet{meng2021sdedit}, \cref{fig:bedroom_sdedit}). The consistency model used here is trained via consistency distillation on the LSUN Bedroom $256\times 256$.
+
+All these image editing tasks, except for image interpolation and denoising, can be performed via a small modification to the multistep sampling algorithm in \cref{alg:sampling}. The resulting pseudocode is provided in \cref{alg:editing}. Here $\rvy$ is a reference image that guides sample generation, $\bm{\Omega}$ is a binary mask, $\odot$ computes element-wise products, and $\mA$ is an invertible linear transformation that maps images into a latent space where the conditional information in $\rvy$ is infused into the iterative generation procedure by masking with $\bm{\Omega}$. Unless otherwise stated, we choose
+\begin{align*}
+    t_i = \left(T^{1/\rho} + \frac{i-1}{N-1}(\epsilon^{1/\rho} - T^{1/\rho})\right)^\rho
+\end{align*}
+in our experiments, where $N=40$ for LSUN Bedroom $256\times 256$.
+
+Below we describe how to perform each task using \cref{alg:editing}.
+\paragraph{Inpainting}
+When using \cref{alg:editing} for inpainting, we let $\rvy$ be an image where missing pixels are masked out, $\bm{\Omega}$ be a binary mask where 1 indicates the missing pixels, and $\mA$ be the identity transformation.
+
+\paragraph{Colorization}
+The algorithm for image colorization is similar, as colorization becomes a special case of inpainting once we transform data into a decoupled space. Specifically, let $\rvy \in \mbb{R}^{h\times w\times 3}$ be a gray-scale image that we aim to colorize, where all channels of $\rvy$ are assumed to be the same, \ie, $\rvy[:, :, 0] = \rvy[:, :, 1] = \rvy[:, :, 2]$ in NumPy notation. In our experiments, each channel of this gray scale image is obtained from a colorful image by averaging the RGB channels with
+\begin{align*}
+    0.2989 R + 0.5870 G + 0.1140 B.
+\end{align*}
+We define $\bm{\Omega} \in \{0, 1\}^{h\times w\times 3}$ to be a binary mask such that
+\begin{align*}
+    \bm{\Omega}[i, j, k] = \begin{cases}
+        1, &\quad \text{$k=1$ or $2$}\\
+        0, &\quad \text{$k=0$}
+    \end{cases}.
+\end{align*}
+Let $\mQ \in \mbb{R}^{3\times 3}$ be an orthogonal matrix whose first column is proportional to the vector $(0.2989, 0.5870, 0.1140)$. This orthogonal matrix can be obtained easily via QR decomposition, and we use the following in our experiments
+\begin{align*}
+    \mQ = \begin{pmatrix}
+        0.4471 & -0.8204 & 0.3563\\
+        0.8780 & 0.4785 &  0 \\
+        0.1705 & -0.3129 & -0.9343
+    \end{pmatrix}.
+\end{align*}
+We then define the linear transformation $\mA: \rvx \in \mbb{R}^{h\times w \times 3} \mapsto \rvy \in \mbb{R}^{h\times w \times 3}$, where
+\begin{align*}
+    \rvy[i, j, k] = \sum_{l=0}^2 \rvx[i, j, l] \mQ[l, k].
+\end{align*}
+Because $\mQ$ is orthogonal, the inversion $\mA^{-1} : \rvy \in \mbb{R}^{h \times w \time 3} \mapsto \rvx \in \mbb{R}^{h \times w \times 3}$ is easy to compute, where
+\begin{align*}
+    \rvx[i, j, k] = \sum_{l=0}^2 \rvy[i, j, l] \mQ[k, l].
+\end{align*}
+With $\mA$ and $\bm{\Omega}$ defined as above, we can now use \cref{alg:editing} for image colorization.
+
+\paragraph{Super-resolution} With a similar strategy, we employ \cref{alg:editing} for image super-resolution. For simplicity, we assume that the down-sampled image is obtained by averaging non-overlapping patches of size $p\times p$. Suppose the shape of full resolution images is $h \times w \times 3$. Let $\rvy \in \mbb{R}^{h\times w\times 3}$ denote a low-resolution image naively up-sampled to full resolution, where pixels in each non-overlapping patch share the same value. Additionally, let $\bm{\Omega} \in \{0, 1\}^{h/p\times w/p \times p^2 \times 3}$ be a binary mask such that
+\begin{align*}
+    \bm{\Omega}[i, j, k, l] = \begin{cases}
+        1, &\quad k \geq 1\\
+        0, &\quad k=0
+    \end{cases}.
+\end{align*}
+Similar to image colorization, super-resolution requires an orthogonal matrix $\mQ \in \mbb{R}^{p^2 \times p^2}$ whose first column is $(\nicefrac{1}{p}, \nicefrac{1}{p}, \cdots, \nicefrac{1}{p})$. This orthogonal matrix can be obtained with QR decomposition. To perform super-resolution, we define the linear transformation $\mA: \rvx \in \mbb{R}^{h \times w\times 3} \mapsto \rvy \in \mbb{R}^{h/p\times w/p \times p^2 \times 3}$, where
+\begin{align*}
+    \rvy[i, j, k, l] = \sum_{m=0}^{p^2-1} \rvx[i\times p+ (m - m\bmod p)/p, j \times p + m \bmod p, l ] \mQ[m, k].
+\end{align*}
+The inverse transformation $\mA^{-1}: \rvy \in \mbb{R}^{h/p\times w/p \times p^2 \times 3} \mapsto \rvx \in \mbb{R}^{h \times w\times 3}$ is easy to derive, with
+\begin{align*}
+    \rvx[i, j, k, l] = \sum_{m=0}^{p^2-1} \rvy[i\times p+ (m - m\bmod p)/p, j \times p + m \bmod p, l ] \mQ[k, m].
+\end{align*}
+Above definitions of $\mA$ and $\bm{\Omega}$ allow us to use \cref{alg:editing} for image super-resolution.
+
+\paragraph{Stroke-guided image generation} We can also use \cref{alg:editing} for stroke-guided image generation as introduced in SDEdit \cite{meng2021sdedit}. Specifically, we let $\rvy \in \mbb{R}^{h\times w \times 3}$ be a stroke painting. We set $\mA = \mI$, and define $\bm{\Omega}\in \mbb{R}^{h\times w \times 3}$ as a matrix of ones. In our experiments, we set $t_1 = 5.38$ and $t_2 = 2.24$, with $N=2$.
+
+\paragraph{Denoising} It is possible to denoise images perturbed with various scales of Gaussian noise using a single consistency model. Suppose the input image $\rvx$ is perturbed with $\mcal{N}(\bm{0}; \sigma^2 \mI)$. As long as $\sigma \in [\epsilon, T]$, we can evaluate $\vf_\vtheta(\rvx, \sigma)$ to produce the denoised image.
+
+\paragraph{Interpolation} We can interpolate between two images generated by consistency models. Suppose the first sample $\rvx_1$ is produced by noise vector $\rvz_1$, and the second sample $\rvx_2$ is produced by noise vector $\rvz_2$. In other words, $\rvx_1 = \vf_\vtheta(\rvz_1, T)$ and $\rvx_2 = \vf_\vtheta(\rvz_2, T)$. To interpolate between $\rvx_1$ and $\rvx_2$, we first use spherical linear interpolation to get
+\begin{align*}
+    \rvz = \frac{\sin[(1-\alpha) \psi]}{\sin(\psi)} \rvz_1 + \frac{\sin(\alpha \psi)}{\sin(\psi)}\rvz_2,
+\end{align*}
+where $\alpha \in [0, 1]$ and $\psi = \arccos(\frac{\rvz_1\tran \rvz_2}{\norm{\rvz_1}_2 \norm{\rvz_2}_2})$, then evaluate $\vf_\vtheta(\rvz, T)$ to produce the interpolated image.
+
+\begin{figure}
+    \centering
+    \begin{subfigure}[b]{0.11\textwidth}
+        \includegraphics[width=\textwidth]{figures/bedroom_gray.jpg}
+    \end{subfigure}\hfill
+    \begin{subfigure}[b]{0.77\textwidth}
+        \includegraphics[width=\textwidth]{figures/bedroom_colorization.jpg}
+    \end{subfigure}\hfill
+    \begin{subfigure}[b]{0.11\textwidth}
+        \includegraphics[width=\textwidth]{figures/bedroom_gt.jpg}
+    \end{subfigure}\hfill
+    \caption{Gray-scale images (left), colorized images by a consistency model (middle), and ground truth (right).}
+    \label{fig:bedroom_colorization}
+\end{figure}
+
+\begin{figure}
+    \centering
+    \begin{subfigure}[b]{0.11\textwidth}
+        \includegraphics[width=\textwidth]{figures/bedroom_subsampled.jpg}
+    \end{subfigure}\hfill
+    \begin{subfigure}[b]{0.77\textwidth}
+        \includegraphics[width=\textwidth]{figures/bedroom_superres.jpg}
+    \end{subfigure}\hfill
+    \begin{subfigure}[b]{0.11\textwidth}
+        \includegraphics[width=\textwidth]{figures/bedroom_superres_gt.jpg}
+    \end{subfigure}\hfill
+    \caption{Downsampled images of resolution $32\times 32$ (left), full resolution ($256\times 256$) images generated by a consistency model (middle), and ground truth images of resolution $256\times 256$ (right).}
+    \label{fig:bedroom_superres}
+\end{figure}
+
+\begin{figure}
+    \centering
+    \begin{subfigure}[b]{0.11\textwidth}
+        \includegraphics[width=\textwidth]{figures/bedroom_masked.jpg}
+    \end{subfigure}\hfill
+    \begin{subfigure}[b]{0.77\textwidth}
+        \includegraphics[width=\textwidth]{figures/bedroom_completion.jpg}
+    \end{subfigure}\hfill
+    \begin{subfigure}[b]{0.11\textwidth}
+        \includegraphics[width=\textwidth]{figures/bedroom_inpaint_gt.jpg}
+    \end{subfigure}\hfill
+    \caption{Masked images (left), imputed images by a consistency model (middle), and ground truth (right).}
+    \label{fig:bedroom_inpainting}
+\end{figure}
+
+\begin{figure}
+    \centering
+    \begin{subfigure}[b]{0.11\textwidth}
+        \includegraphics[width=\textwidth]{figures/bedroom_interp_left.jpg}
+    \end{subfigure}\hfill
+    \begin{subfigure}[b]{0.77\textwidth}
+        \includegraphics[width=\textwidth]{figures/bedroom_interp.jpg}
+    \end{subfigure}\hfill
+    \begin{subfigure}[b]{0.11\textwidth}
+        \includegraphics[width=\textwidth]{figures/bedroom_interp_right.jpg}
+    \end{subfigure}\hfill
+    \caption{Interpolating between leftmost and rightmost images with spherical linear interpolation. All samples are generated by a consistency model trained on LSUN Bedroom $256\times 256$.}
+    \label{fig:bedroom_interp}
+\end{figure}
+
+
+\begin{figure}
+    \centering
+    \begin{subfigure}[b]{0.11\textwidth}
+        \includegraphics[width=\textwidth]{figures/bedroom_denoising_input_0.jpg}
+    \end{subfigure}\hfill
+    \begin{subfigure}[b]{0.88\textwidth}
+        \includegraphics[width=\textwidth]{figures/bedroom_denoising_0.jpg}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.11\textwidth}
+        \includegraphics[width=\textwidth]{figures/bedroom_denoising_input_1.jpg}
+    \end{subfigure}\hfill
+    \begin{subfigure}[b]{0.88\textwidth}
+        \includegraphics[width=\textwidth]{figures/bedroom_denoising_1.jpg}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.11\textwidth}
+        \includegraphics[width=\textwidth]{figures/bedroom_denoising_input_2.jpg}
+    \end{subfigure}\hfill
+    \begin{subfigure}[b]{0.88\textwidth}
+        \includegraphics[width=\textwidth]{figures/bedroom_denoising_2.jpg}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.11\textwidth}
+        \includegraphics[width=\textwidth]{figures/bedroom_denoising_input_3.jpg}
+    \end{subfigure}\hfill
+    \begin{subfigure}[b]{0.88\textwidth}
+        \includegraphics[width=\textwidth]{figures/bedroom_denoising_3.jpg}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.11\textwidth}
+        \includegraphics[width=\textwidth]{figures/bedroom_denoising_input_4.jpg}
+    \end{subfigure}\hfill
+    \begin{subfigure}[b]{0.88\textwidth}
+        \includegraphics[width=\textwidth]{figures/bedroom_denoising_4.jpg}
+    \end{subfigure}
+    \caption{Single-step denoising with a consistency model. The leftmost images are ground truth. For every two rows, the top row shows noisy images with different noise levels, while the bottom row gives denoised images.}
+    \label{fig:bedroom_denoising}
+\end{figure}
+
+
+\begin{figure}
+    \centering
+    \begin{subfigure}[b]{0.11\textwidth}
+        \includegraphics[width=\textwidth]{figures/bedroom_sdedit_stroke.jpg}
+    \end{subfigure}\hfill
+    \begin{subfigure}[b]{0.88\textwidth}
+        \includegraphics[width=\textwidth]{figures/bedroom_sdedit.jpg}
+    \end{subfigure}
+    \caption{SDEdit with a consistency model. The leftmost images are stroke painting inputs. Images on the right side are the results of stroke-guided image generation (SDEdit).}
+    \label{fig:bedroom_sdedit}
+\end{figure}
+
+\section{Additional Samples from Consistency Models}\label{app:samples}
+
+We provide additional samples from consistency distillation (CD) and consistency training (CT) on CIFAR-10 (\cref{fig:cifar10_full_cd,fig:cifar10_full}), ImageNet $64\times 64$ (\cref{fig:imagenet64_full_cd,fig:imagenet64_full}), LSUN Bedroom $256\times 256$ (\cref{fig:bedroom_full_cd,fig:bedroom_full}) and LSUN Cat $256\times 256$ (\cref{fig:cat_full_cd,fig:cat_full}).
+
+\begin{figure}
+    \centering
+    \begin{subfigure}[b]{\textwidth}
+        \includegraphics[width=\textwidth]{figures/cifar10_edm_full.png}
+        \caption{EDM (FID=2.04)}
+    \end{subfigure}
+    \begin{subfigure}[b]{\textwidth}
+        \includegraphics[width=\textwidth]{figures/cifar10_cd1_full.png}
+        \caption{CD with single-step generation (FID=3.55)}
+    \end{subfigure}
+    \begin{subfigure}[b]{\textwidth}
+        \includegraphics[width=\textwidth]{figures/cifar10_cd2_full.png}
+        \caption{CD with two-step generation (FID=2.93)}
+    \end{subfigure}
+    \caption{Uncurated samples from CIFAR-10 $32\times 32$. All corresponding samples use the same initial noise.}
+    \label{fig:cifar10_full_cd}
+\end{figure}
+
+\begin{figure}
+    \centering
+    \begin{subfigure}[b]{\textwidth}
+        \includegraphics[width=\textwidth]{figures/imagenet64_edm_full.jpg}
+        \caption{EDM (FID=2.44)}
+    \end{subfigure}
+    \begin{subfigure}[b]{\textwidth}
+        \includegraphics[width=\textwidth]{figures/imagenet64_cd1_full.jpg}
+        \caption{CD with single-step generation (FID=6.20)}
+    \end{subfigure}
+    \begin{subfigure}[b]{\textwidth}
+        \includegraphics[width=\textwidth]{figures/imagenet64_cd2_full.jpg}
+        \caption{CD with two-step generation (FID=4.70)}
+    \end{subfigure}
+    \caption{Uncurated samples from ImageNet $64\times 64$. All corresponding samples use the same initial noise.}
+    \label{fig:imagenet64_full_cd}
+\end{figure}
+
+
+\begin{figure}
+    \centering
+    \begin{subfigure}[b]{\textwidth}
+        \includegraphics[width=\textwidth]{figures/bedroom_edm_full.jpg}
+        \caption{EDM (FID=3.57)}
+    \end{subfigure}
+    \begin{subfigure}[b]{\textwidth}
+        \includegraphics[width=\textwidth]{figures/bedroom_cd1_full.jpg}
+        \caption{CD with single-step generation (FID=7.80)}
+    \end{subfigure}
+    \begin{subfigure}[b]{\textwidth}
+        \includegraphics[width=\textwidth]{figures/bedroom_cd2_full.jpg}
+        \caption{CD with two-step generation (FID=5.22)}
+    \end{subfigure}
+    \caption{Uncurated samples from LSUN Bedroom $256\times 256$. All corresponding samples use the same initial noise.}
+    \label{fig:bedroom_full_cd}
+\end{figure}
+
+\begin{figure}
+    \centering
+    \begin{subfigure}[b]{\textwidth}
+        \includegraphics[width=\textwidth]{figures/cat_edm_full_new.jpg}
+        \caption{EDM (FID=6.69)}
+    \end{subfigure}
+    \begin{subfigure}[b]{\textwidth}
+        \includegraphics[width=\textwidth]{figures/cat_cd1_full_new.jpg}
+        \caption{CD with single-step generation (FID=10.99)}
+    \end{subfigure}
+    \begin{subfigure}[b]{\textwidth}
+        \includegraphics[width=\textwidth]{figures/cat_cd2_full_new.jpg}
+        \caption{CD with two-step generation (FID=8.84)}
+    \end{subfigure}
+    \caption{Uncurated samples from LSUN Cat $256\times 256$. All corresponding samples use the same initial noise.}
+    \label{fig:cat_full_cd}
+\end{figure}
+
+
+
+\begin{figure}
+    \centering
+    \begin{subfigure}[b]{\textwidth}
+        \includegraphics[width=\textwidth]{figures/cifar10_edm_full.png}
+        \caption{EDM (FID=2.04)}
+    \end{subfigure}
+    \begin{subfigure}[b]{\textwidth}
+        \includegraphics[width=\textwidth]{figures/cifar10_gen1_full.png}
+        \caption{CT with single-step generation (FID=8.73)}
+    \end{subfigure}
+    \begin{subfigure}[b]{\textwidth}
+        \includegraphics[width=\textwidth]{figures/cifar10_gen2_full.png}
+        \caption{CT with two-step generation (FID=5.83)}
+    \end{subfigure}
+    \caption{Uncurated samples from CIFAR-10 $32\times 32$. All corresponding samples use the same initial noise.}
+    \label{fig:cifar10_full}
+\end{figure}
+
+\begin{figure}
+    \centering
+    \begin{subfigure}[b]{\textwidth}
+        \includegraphics[width=\textwidth]{figures/imagenet64_edm_full.jpg}
+        \caption{EDM (FID=2.44)}
+    \end{subfigure}
+    \begin{subfigure}[b]{\textwidth}
+        \includegraphics[width=\textwidth]{figures/imagenet64_gen1_full.jpg}
+        \caption{CT with single-step generation (FID=12.96)}
+    \end{subfigure}
+    \begin{subfigure}[b]{\textwidth}
+        \includegraphics[width=\textwidth]{figures/imagenet64_gen2_full.jpg}
+        \caption{CT with two-step generation (FID=11.12)}
+    \end{subfigure}
+    \caption{Uncurated samples from ImageNet $64\times 64$. All corresponding samples use the same initial noise.}
+    \label{fig:imagenet64_full}
+\end{figure}
+
+
+\begin{figure}
+    \centering
+    \begin{subfigure}[b]{\textwidth}
+        \includegraphics[width=\textwidth]{figures/bedroom_edm_full.jpg}
+        \caption{EDM (FID=3.57)}
+    \end{subfigure}
+    \begin{subfigure}[b]{\textwidth}
+        \includegraphics[width=\textwidth]{figures/bedroom_gen1_full.jpg}
+        \caption{CT with single-step generation (FID=16.00)}
+    \end{subfigure}
+    \begin{subfigure}[b]{\textwidth}
+        \includegraphics[width=\textwidth]{figures/bedroom_gen2_full.jpg}
+        \caption{CT with two-step generation (FID=7.80)}
+    \end{subfigure}
+    \caption{Uncurated samples from LSUN Bedroom $256\times 256$. All corresponding samples use the same initial noise.}
+    \label{fig:bedroom_full}
+\end{figure}
+
+\begin{figure}
+    \centering
+    \begin{subfigure}[b]{\textwidth}
+        \includegraphics[width=\textwidth]{figures/cat_edm_full_new.jpg}
+        \caption{EDM (FID=6.69)}
+    \end{subfigure}
+    \begin{subfigure}[b]{\textwidth}
+        \includegraphics[width=\textwidth]{figures/cat_gen1_full_new.jpg}
+        \caption{CT with single-step generation (FID=20.70)}
+    \end{subfigure}
+    \begin{subfigure}[b]{\textwidth}
+        \includegraphics[width=\textwidth]{figures/cat_gen2_full_new.jpg}
+        \caption{CT with two-step generation (FID=11.76)}
+    \end{subfigure}
+    \caption{Uncurated samples from LSUN Cat $256\times 256$. All corresponding samples use the same initial noise.}
+    \label{fig:cat_full}
+\end{figure}
+
+\end{appendices}
+

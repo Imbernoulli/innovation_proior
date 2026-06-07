@@ -1,0 +1,62 @@
+\ifarxiv
+    \newcommand{\reftabFID}{Table~\ref{tab:FID}}
+    \newcommand{\shortreftabFID}{Table~\ref{tab:FID}}
+    \newcommand{\refsecseparability}{Section~\ref{sec:separability}}
+    \newcommand{\refsectruncation}{Appendix~\ref{sec:truncation}}
+\else
+    \newcommand{\reftabFID}{Table~1 of the paper}
+    \newcommand{\shortreftabFID}{Table~1}
+    \newcommand{\refsecseparability}{Section~4.2 of the paper}
+    \newcommand{\refsectruncation}{Appendix~B}
+\fi
+
+\section{Hyperparameters and training details}
+\label{sec:hyperparams}
+
+We build upon the official TensorFlow~\cite{Tensorflow} implementation of Progressive GANs by Karras~et~al.~\cite{Karras2017}, from which we inherit most of the training details.\footnote{\texttt{\scriptsize https://github.com/tkarras/progressive\_growing\_of\_gans}} This original setup corresponds to configuration \arch{a} in \reftabFID.
+In particular, we use the same \FINAL{discriminator architecture}, resolution-dependent minibatch sizes, Adam~\cite{Adam} hyperparameters, \FINAL{and exponential moving average of the generator}. We enable mirror augmentation for CelebA-HQ and FFHQ, \FINAL{but disable it for LSUN}.
+Our training time is approximately one week on an NVIDIA DGX-1 with 8 Tesla V100 GPUs.
+
+For our improved baseline (\arch{b} in \shortreftabFID), we make several modifications to improve the overall result quality.
+We replace the nearest-neighbor up/downsampling in both networks with bilinear sampling, which we implement by low-pass filtering the activations with a separable 2\textsuperscript{nd} order binomial filter after each upsampling layer and before each downsampling \FINAL{layer \cite{zhang2019}}.
+We implement progressive growing the same way as Karras~et~al.~\cite{Karras2017}, but we start from $8^2$ images instead of $4^2$.
+For the FFHQ dataset, we switch from WGAN-GP to the non-saturating loss \cite{Goodfellow2014} with $R_1$ regularization \cite{Mescheder2018} using $\gamma=10$.
+With $R_1$ we found that the FID scores keep decreasing for considerably longer than with WGAN-GP, and we thus increase the training time from 12M to 25M images.
+We use the same learning rates as Karras~et~al.~\cite{Karras2017} for FFHQ, but we found that setting the learning rate to 0.002 instead of 0.003 for $512^2$ and $1024^2$ leads to better stability with CelebA-HQ.
+
+For our style-based generator (\arch{f} in \shortreftabFID), we use leaky ReLU \cite{Maas2013} with $\alpha=0.2$ and equalized learning rate~\cite{Karras2017} for all layers.
+We use the same feature map counts in our convolution layers as Karras~et~al.~\cite{Karras2017}.
+Our mapping network consists of 8 fully-connected layers, and the dimensionality of all input and output activations\,---\,including $\zz$ and $\ww$\,---\,is 512.
+We found that increasing the depth of the mapping network tends to make the training unstable with high learning rates.
+We thus reduce the learning rate by two orders of magnitude for the mapping network, i.e., $\lambda' = 0.01\cdot\lambda$.
+We initialize all weights of the convolutional, fully-connected, and affine transform layers using $\mathcal{N}(0,1)$.
+The constant input in synthesis network is initialized to one.
+The biases and noise scaling factors are initialized to zero, except for the biases associated with $\yy_s$ that we initialize to one.
+
+The classifiers used by our separability metric (\refsecseparability) have the same architecture as our discriminator except that minibatch standard deviation~\cite{Karras2017} is disabled.
+We use the learning rate of $10^{-3}$, minibatch size of 8, Adam optimizer, and training length of 150,000 images.
+The classifiers are trained independently of generators, and the same~40 classifiers, one for each CelebA attribute, are used for measuring the separability metric for all generators.
+We will release the pre-trained classifier networks so that our measurements can be reproduced.
+
+\figpathlenbehavior
+
+We do not use batch normalization \cite{Ioffe2015}, spectral normalization \cite{Miyato2018B}, attention mechanisms \cite{Zhang2018sagan}, dropout \cite{srivastava2014}, or pixelwise feature vector normalization \cite{Karras2017} in our networks.
+
+\section{Training convergence}
+\figqualitybedroom
+
+Figure~\ref{fig:pathlenbehavior} shows how the FID and perceptual path length metrics evolve during the training of our configurations \arch{b} and \arch{f} with the FFHQ dataset.
+With $R_1$ regularization active in both configurations, FID continues to slowly decrease as the training progresses, 
+motivating our choice to increase the training time from 12M images to 25M images.
+Even when the training has reached the full $1024^2$ resolution, the slowly rising path lengths indicate that the improvements in FID come at the cost of a more entangled representation.
+Considering future work, it is an interesting question whether this is unavoidable, or if it were possible to encourage shorter path lengths without compromising the convergence of FID.
+
+\section{Other datasets}
+\label{sec:otherdatasets}
+
+Figures~\ref{fig:qualitybedroom},~\ref{fig:qualitycar}, and~\ref{fig:qualitycat} show an uncurated set of results for \textsc{LSUN} \cite{LSUN} \textsc{Bedroom}, \textsc{Cars}, and \textsc{Cats}, respectively. In these images we used the truncation trick from \refsectruncation with $\psi=0.7$ for resolutions $4^2-32^2$. The accompanying video provides results for style mixing and stochastic variation tests. As can be seen therein, in case of \textsc{Bedroom} the coarse styles basically control the viewpoint of the camera, middle styles select the particular furniture, and fine styles deal with colors and smaller details of materials. In \textsc{Cars} the effects are roughly similar. Stochastic variation affects primarily the fabrics in \textsc{Bedroom}, backgrounds and headlamps in \textsc{Cars}, and fur, background, and interestingly, the positioning of paws in \textsc{Cats}. Somewhat surprisingly the wheels of a car never seem to rotate based on stochastic inputs.
+
+These datasets were trained using the same setup as FFHQ for the duration of 70M images for \textsc{Bedroom} and \textsc{Cats}, and 46M for \textsc{Cars}. We suspect that the results for \textsc{Bedroom} are starting to  approach the limits of the training data, as in many images the most objectionable issues are the severe compression artifacts that have been inherited from the low-quality training data. \textsc{Cars} has much higher quality training data that also allows higher spatial resolution ($512\times384$ instead of $256^2$), and \textsc{Cats} continues to be a difficult dataset due to the high intrinsic variation in poses, zoom levels, and backgrounds.
+
+\figqualitycar
+\figqualitycat

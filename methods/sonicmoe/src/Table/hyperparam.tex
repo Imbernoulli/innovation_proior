@@ -1,0 +1,32 @@
+\begin{table}[!ht]
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.15}
+\fontsize{7pt}{8pt}\selectfont
+\centering
+\vspace{-0.6em}
+\caption{Common configurations for MoE pretraining experiment}
+
+\label{tab:config_tr}
+\begin{tabular}{l!{\vrule width 0.4pt}ccccccccccc}
+    \toprule
+    \textbf{Config name in Tables~\ref{tab:exp-sparse} and~\ref{tab:exp-ablation}} & \textbf{\# layers} & \textbf{\# attn heads} & \textbf{$d$} & \textbf{$n$} & \textbf{$E$} & \textbf{$K$} & \textbf{\# tokens in a minibatch} & \textbf{LR} & \textbf{WD} & \textbf{LR scheduler}  \\
+    
+    \midrule
+    
+    0.5B params, 20B tokens, 8/64 activated
+     & 12 & 12 & 768 & 256 & 64  & 8  & 0.5M & 6e-4 & 0.01 & cosine w/. warmup (10\% steps) \\
+    
+    0.5B params, 40B tokens, 2/64 activated
+     & 12 & 12 & 768 & 256 & 64  & 2 & 1M & 6e-4 & 0.01 & cosine w/. warmup (10\% steps) \\
+    
+    1.8B params, 40B tokens, 8/256 activated
+     & 12 & 12 & 768 & 256 & 256  & 8  & 1M& 6e-4 & 0.01 & cosine w/. warmup (10\% steps)  \\
+    
+    1.4B params, 50B tokens, 8/128 activated
+     & 18 & 12 & 768 & 256 & 128  & 8  & 1M& 4e-4 & 0.01 & cosine w/. warmup (10\% steps) \\
+    
+    1.4B params, 100B tokens, 2/128 activated  & 18 & 12 & 768 & 256 & 128  & 2  & 2M & 4e-4 & 0.01 & cosine w/. warmup (10\% steps) \\
+    
+    \bottomrule
+\end{tabular}
+\end{table}

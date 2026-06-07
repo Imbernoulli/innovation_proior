@@ -1,0 +1,345 @@
+\section{Experiments}
+\label{sec:experiments}
+
+This section presents a few analytical experiments and results. We first discuss our distillation strategy. Then we comparatively analyze the efficiency and accuracy of convnets and vision transformers. 
+
+\subsection{Transformer models}
+As mentioned earlier, our architecture design is identical to the one proposed by Dosovitskiy et al.~\cite{dosovitskiy2020image} with no convolutions. 
+Our only differences are the training strategies, and the distillation token. Also we do not use a MLP head for the pre-training but only a linear classifier. 
+% 
+To avoid any confusion, we refer to the results obtained in the prior work by ViT, and prefix ours by \ours. If not specified, \ours refers to our referent model \oursbase, which has the same architecture as ViT-B. 
+When we fine-tune \ours at a larger resolution, we append the resulting operating resolution at the end, e.g, \oursbaseup384.  
+Last, when using our distillation procedure, we identify it with an alembic sign as \oursdis. 
+
+The parameters of ViT-B (and therefore of \oursbase) are fixed as  $D=768$, $h=12$ and $d=D/h=64$.
+We introduce two smaller models, namely \ourssmall and \ourstiny, for which we change the number of heads, keeping $d$ fixed. Table~\ref{tab:models} summarizes the models that we consider in our paper. 
+
+
+\begin{table}[t]
+\caption{Variants of our DeiT architecture.
+The larger model, DeiT-B, has the same architecture as the ViT-B~\cite{dosovitskiy2020image}.
+The only parameters that vary across models are the embedding dimension and the number of heads, and we keep the dimension per head constant (equal to 64). 
+Smaller models have a lower parameter count, and a faster throughput. The throughput is measured for images at resolution 224$\times$224. 
+\label{tab:models}}
+\smallskip
+\centering
+\scalebox{0.8}
+{
+\begin{tabular}{l|cccccccc}
+\toprule
+Model       & ViT model         & embedding  & \#heads & \#layers & \#params & training & throughput  \\
+            &                   & dimension  &         &           &          & resolution & (im/sec)\\
+\midrule
+\ourstiny   &  N/A  &  \pzo192  & \pzo3 & 12 & \pzo\pzo5M & 224 & 2536 \\
+\ourssmall  &  N/A  &  \pzo384 & \pzo6 & 12 & \pzo22M& 224& \pzo940 \\
+\oursbase   &  ViT-B & \pzo768   & 12 & 12 & \pzo86M & 224 & \pzo292\\
+\bottomrule
+\end{tabular}}%}
+\end{table}
+
+
+\subsection{Distillation}
+\label{sec:distillation_results}
+
+Our distillation method produces a vision transformer that becomes on par with the best convnets in terms of the trade-off between accuracy and throughput, see Table~\ref{tab:throughput}. Interestingly, the distilled model outperforms its teacher in terms of the trade-off between accuracy and throughput. Our best model on ImageNet-1k is 85.2\% top-1 accuracy outperforms the best Vit-B model pre-trained on JFT-300M at resolution 384 (84.15\%). For reference, the current state of the art of 88.55\% achieved with extra training data was obtained by the ViT-H model (600M parameters) trained on JFT-300M at resolution 512. 
+% 
+Hereafter we provide several analysis and observations. 
+
+\paragraph{Convnets teachers.}
+
+We have observed that using a convnet teacher gives better performance than using a transformer.
+Table~\ref{tab:teacher} compares distillation results with different teacher architectures.
+The fact that the convnet is a better teacher is probably due to the inductive bias inherited by  the transformers through distillation, as explained in Abnar et al.~\cite{abnar2020transferring}.
+In all of our subsequent distillation experiments the default teacher is a RegNetY-16GF~\cite{Radosavovic2020RegNet} (84M parameters) that we trained with the same data and same data-augmentation as \ours.
+This teacher reaches $82.9\%$ top-1 accuracy on ImageNet.
+
+
+\begin{table}[t]
+\caption{We compare on ImageNet~\cite{Russakovsky2015ImageNet12} the performance (top-1 acc., \%) of the student as a function of the teacher model used for distillation. %
+\label{tab:teacher}
+\smallskip
+}
+\centering
+\scalebox{0.9}
+{
+\begin{tabular}{lc|cc}
+\toprule
+\multicolumn{2}{c}{Teacher}   & \multicolumn{2}{c}{Student: \oursbase\distil} \\
+ Models & acc. & pretrain & $\uparrow$384\\
+\midrule
+\oursbase  & 81.8 & 81.9 & 83.1\\
+\midrule
+RegNetY-4GF & 80.0 & 82.7 & 83.6\\
+RegNetY-8GF & 81.7 & 82.7 &  83.8\\
+RegNetY-12GF & 82.4 & 83.1 & 84.1\\
+RegNetY-16GF & 82.9 &  83.1 & 84.2\\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+
+\paragraph{Comparison of distillation methods.} 
+
+We compare the performance of different distillation strategies in Table~\ref{tab:distillation}. 
+Hard distillation significantly outperforms soft distillation for transformers, even when using only a class token: hard distillation reaches 83.0\% at resolution 224$\times$224, compared to the soft distillation accuracy of 81.8\%.
+%
+Our distillation strategy from Section~\ref{sec:distillation} further improves the performance, showing that the two tokens provide complementary information useful for classification: the classifier %
+on the two tokens is significantly better than the independent class and distillation classifiers, which by themselves already outperform the distillation baseline. 
+
+The distillation token gives slightly better results than the class token. 
+It is also more correlated to the convnets prediction. This difference in performance is probably due to the fact that it benefits more from the inductive bias of convnets.
+We give more details and an analysis in the next paragraph.
+The distillation token has an undeniable advantage for the  initial training. 
+
+\paragraph{Agreement with the teacher \& inductive bias?}
+As discussed above, the architecture of the teacher has an important impact.  Does it inherit existing inductive bias that would facilitate the training?  %
+While we believe it difficult to formally answer this question, we analyze in  
+Table~\ref{tab:agreement} the decision agreement between the convnet teacher, our image transformer \ours learned from labels only, and our transformer \oursdis. 
+
+Our distilled model is more correlated to the convnet than with a transformer learned from scratch. As to be expected, the classifier associated with the distillation embedding is closer to the convnet that the one associated with the class embedding, and conversely the one associated with the class embedding is more similar to \ours learned without distillation. Unsurprisingly, the joint class+distil classifier offers a middle ground.  
+%
+
+\begin{table}[t]
+\caption{Distillation experiments on Imagenet with \ours, 300 epochs of pre-training. 
+We report the results for our new distillation method in the last three rows. 
+We separately report the performance when classifying with only one of the class or distillation embeddings, and then with a classifier taking both of them as input.  \label{tab:distillation}
+%
+In the last row (class+distillation), the result %
+correspond to the late fusion of the class and distillation classifiers. %
+}
+\smallskip
+\centering
+\scalebox{0.88}
+{
+\begin{tabular}{l|cc|cccc}
+\toprule
+                              &  \multicolumn{2}{c}{Supervision}  &  \multicolumn{4}{c}{ImageNet top-1 (\%)} \\
+ method $\downarrow$          & label & teacher        & Ti 224  & S 224 & B 224 & B$\uparrow$384 \\
+\midrule
+ \ours -- no distillation    & \cmark &  \xmark  & 72.2 & 79.8    & 81.8  & 83.1 \\
+ \ours -- usual distillation & \xmark & soft & 72.2 & 79.8    & 81.8  &  83.2    \\ 
+ \ours -- hard  distillation &  \xmark& hard & 74.3 & 80.9    & 83.0  & 84.0 \\ 
+\midrule 
+\oursdis: class embedding   & \cmark & hard & 73.9    & 80.9  & 83.0  &  84.2\\
+\oursdis: distil. embedding & \cmark & hard & 74.6      &  81.1  & 83.1 & 84.4 \\ 
+\oursdis: class+distillation& \cmark & hard & 74.5      & 81.2 & 83.4  &  84.5 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+
+
+
+
+\paragraph{Number of epochs.} %
+%
+Increasing the number of epochs significantly improves the performance of training with distillation, see Figure~\ref{fig:distillation_epochs}. With 300 epochs, our distilled network \oursbasedis is already better than \oursbase. But while for the latter the performance saturates with longer schedules, our distilled network clearly benefits from a longer training time. 
+%
+
+\begin{table}[t]
+\caption{Disagreement analysis between convnet, image transformers and distillated transformers: We report the fraction of sample classified differently for all classifier pairs, i.e., the rate of different decisions. We include two models without distillation (a RegNetY and DeiT-B), so that we can compare how our distilled models and classification heads are correlated to these teachers. \smallskip  
+\label{tab:agreement}}
+\centering
+\scalebox{0.86}
+{
+\begin{tabular}{l|c|cc|ccc}
+\toprule
+             & \multirow{2}{*}{groundtruth}  &  \multicolumn{2}{c}{no distillation}  & \multicolumn{3}{c}{\oursdis student (of the convnet)} \\ 
+             &              & convnet & \ours &  class  &  distillation &  \oursdis \\
+\midrule 
+groundtruth                 & 0.000        & 0.171   & 0.182    & 0.170  &  0.169 &  0.166      \\
+convnet (RegNetY)           & 0.171        & 0.000   & 0.133    & 0.112  & 0.100 &   0.102     \\
+\ours                       & 0.182        & 0.133   &  0.000   &   0.109            & 0.110            &  0.107      \\
+\midrule
+\oursdis -- class only   &  0.170 &  0.112 &  0.109       & 0.000         & 0.050 &   0.033     \\
+\oursdis -- distil. only & 0.169 &  0.100 &   0.110      & 0.050  &  0.000     &  0.019      \\
+\oursdis -- class+distil.&  0.166 &  0.102 &  0.107       &      0.033         &   0.019        &  0.000  \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.75\linewidth]{figs/epochs_dist_ImageNet.pdf}
+    \caption{Distillation on ImageNet~\cite{Russakovsky2015ImageNet12} with \ours-B: performance as a function of the number of training epochs. We provide the performance without distillation (horizontal dotted line) as it saturates after 400 epochs. 
+    \label{fig:distillation_epochs}}
+\end{figure}
+
+
+
+\subsection{Efficiency vs accuracy: a comparative study with convnets}
+
+
+In the literature, the image classificaton methods are often compared as a compromise between accuracy and another criterion, such as FLOPs, number of parameters, size of the network, etc. 
+
+We focus  in Figure~\ref{fig:efficiency} on the tradeoff between the throughput (images processed per second) and the top-1 classification accuracy on ImageNet. 
+We focus on the popular state-of-the-art EfficientNet convnet, which has benefited from years of research on convnets and was optimized by architecture search on the ImageNet validation set. %
+
+Our method \ours is slightly below EfficientNet, which shows that we have almost closed the gap between vision transformers and convnets when training with Imagenet only. These results are a major improvement (\textbf{+6.3\%} top-1 in a comparable setting) over previous ViT models trained on Imagenet1k only~\cite{dosovitskiy2020image}. 
+% 
+Furthermore, when \ours benefits from the distillation from a relatively weaker RegNetY to produce \oursdis, it outperforms EfficientNet. It also outperforms by 1\% (top-1 acc.) the Vit-B model pre-trained on JFT300M at resolution 384 (85.2\% vs  84.15\%), while being significantly faster to train. 
+
+Table~\ref{tab:throughput} reports the numerical results in more details and additional evaluations on ImageNet V2 and ImageNet Real, that have a test set distinct from the ImageNet validation, which reduces overfitting on the validation set. Our results show that \oursbasedis and \oursbasedisup384  outperform, by some margin, the state of the art on the trade-off between accuracy and inference time on GPU. 
+
+\begin{table}[p]
+    \centering
+    \scalebox{0.85}
+    {\small 
+    \begin{tabular}{@{\ }l|r|c@{\ }c|c@{\ }|c@{\ }|c@{\ }}
+    \toprule
+            &              &     image       & throughput & \multicolumn{1}{c}{ImNet} & \multicolumn{1}{|c|}{Real}& \multicolumn{1}{c}{V2}\\ 
+    Network & \#param. & size & (image/s) &  top-1 &  top-1 &  top-1\\
+    \toprule
+    \multicolumn{7}{c}{Convnets}\\
+    \midrule
+    ResNet-18~\cite{He2016ResNet} & 12M & $224^{2}$ & 4458.4 &  69.8  & 77.3 & 57.1\\
+    ResNet-50~\cite{He2016ResNet} & 25M & $224^{2}$ & 1226.1 & 76.2 & 82.5 & 63.3\\
+    ResNet-101~\cite{He2016ResNet}& 45M & $224^{2}$ & \pzo753.6 & 77.4 & 83.7 & 65.7\\
+    ResNet-152~\cite{He2016ResNet} & 60M & $224^{2}$ & \pzo526.4 & 78.3& 84.1 & 67.0 \\
+    \midrule
+    RegNetY-4GF~\cite{Radosavovic2020RegNet}$\star$  &  21M & $224^{2}$ & 1156.7 & 80.0 & 86.4 & 69.4 \\
+    RegNetY-8GF~\cite{Radosavovic2020RegNet}$\star$  &  39M & $224^{2}$ & \pzo591.6 & 81.7 & 87.4  & 70.8 \\ 
+    RegNetY-16GF~\cite{Radosavovic2020RegNet}$\star$ &  84M & $224^{2}$ & \pzo334.7 & 82.9 & 88.1 & 72.4 \\
+    \midrule
+    EfficientNet-B0~\cite{tan2019efficientnet} & 5M & $224^{2}$ & 2694.3 & 77.1 & 83.5 & 64.3\\
+    EfficientNet-B1~\cite{tan2019efficientnet} & 8M & $240^{2}$ & 1662.5 & 79.1  & 84.9 & 66.9 \\
+    EfficientNet-B2~\cite{tan2019efficientnet} & 9M & $260^{2}$ & 1255.7  & 80.1 & 85.9 & 68.8 \\
+    EfficientNet-B3~\cite{tan2019efficientnet} &12M &$300^{2}$  & \pzo732.1 & 81.6  & 86.8 & 70.6 \\
+    EfficientNet-B4~\cite{tan2019efficientnet} & 19M & $380^{2}$ & \pzo349.4 & 82.9  & 88.0& 72.3 \\
+    EfficientNet-B5~\cite{tan2019efficientnet} & 30M & $456^{2}$ & \pzo169.1 & 83.6  & 88.3 & 73.6 \\
+    EfficientNet-B6~\cite{tan2019efficientnet} & 43M & $528^{2}$ & \pzo\pzo96.9 & 84.0 & 88.8 & 73.9 \\
+    EfficientNet-B7~\cite{tan2019efficientnet} & 66M & $600^{2}$ & \pzo\pzo55.1 & 84.3 & \_& \_ \\
+    \midrule
+    EfficientNet-B5 RA~\cite{Cubuk2019RandAugmentPA} & 30M & $456^{2}$ & \pzo\pzo96.9 & 83.7  & \_& \_ \\
+    EfficientNet-B7 RA~\cite{Cubuk2019RandAugmentPA} & 66M & $600^{2}$ & \pzo\pzo55.1 & 84.7 & \_& \_ \\
+    \midrule
+    KDforAA-B8 & 87M & $800^{2}$ & \pzo\pzo25.2 & 85.8 & \_ & \_ \\
+    \toprule
+    \multicolumn{7}{c}{Transformers}\\
+    \midrule
+    ViT-B/16~\cite{dosovitskiy2020image} & 86M  & $384^{2}$ & \pzo\pzo85.9 & 77.9 & 83.6 & \_ \\
+    ViT-L/16~\cite{dosovitskiy2020image} & 307M & $384^{2}$ & \pzo\pzo27.3 & 76.5  & 82.2 & \_ \\
+    \midrule
+    \ourstiny & 5M & $224^{2}$ & 2536.5 & 72.2  & 80.1  &  60.4\\
+    \ourssmall & 22M & $224^{2}$ & \pzo940.4 & 79.8 & 85.7  & 68.5 \\
+    \oursbase & 86M & $224^{2}$ & \pzo292.3 & 81.8  & 86.7 & 71.5\\
+    \midrule
+    \oursbaseup384 & 86M & $384^{2}$ & \pzo\pzo85.9 & 83.1 & 87.7 & 72.4\\
+    
+    \midrule
+    \ourstinydis & 6M & $224^{2}$ & 2529.5 & 74.5  &  82.1  & 62.9 \\
+    \ourssmalldis & 22M & $224^{2}$ & \pzo936.2 & 81.2 & 86.8  & 70.0  \\
+
+    \oursbasedis & 87M &  $224^{2}$ & \pzo290.9 & 83.4 & 88.3 & 73.2 \\
+    \midrule
+    \ourstinydis / 1000 epochs  & 6M &  $224^{2}$ & 2529.5 & 76.6  & 83.9 & 65.4 \\
+    \ourssmalldis / 1000 epochs & 22M &  $224^{2}$ & \pzo936.2 & 82.6 & 87.8 & 71.7\\
+    \oursbasedis / 1000 epochs  & 87M &  $224^{2}$ & \pzo290.9 & 84.2 & 88.7 & 73.9 \\
+
+
+    \midrule
+    \oursbasedisup384 & 87M & $384^{2}$ & \pzo\pzo85.8 & 84.5  & 89.0 & 74.8 \\
+    \midrule
+    \oursbasedisup384 / 1000 epochs & 87M & $384^{2}$ & \pzo\pzo85.8 & 85.2  & 89.3 & 75.2 \\
+    \bottomrule
+    \end{tabular}}
+    \caption{Throughput on and accuracy on Imagenet~\cite{Russakovsky2015ImageNet12}, Imagenet Real~\cite{Beyer2020ImageNetReal} and Imagenet V2 matched frequency~\cite{Recht2019ImageNetv2} of \ours and of several state-of-the-art convnets, for models trained with no external data.  The throughput is measured as the number of images that we can process per second  on one 16GB V100 GPU. For each model we take the largest possible batch size for the usual resolution of the model and calculate the average time over 30 runs to process that batch. With that we calculate the number of images processed per second. Throughput can vary according to the implementation: for a direct comparison and in order to be as fair as possible, we use for each model the definition in the same GitHub~\cite{pytorchmodels} repository. 
+    \newline 
+    $\star:$ \textit{Regnet optimized with a similar optimization procedure as ours, which boosts the results. These networks serve as teachers when we use our distillation strategy. }
+    \label{tab:throughput}}
+\end{table}
+
+
+
+
+
+\subsection{Transfer learning: Performance on downstream tasks}
+
+Although \ours perform very well on ImageNet it is important to evaluate them on other datasets with transfer learning in order to measure the power of generalization of \ours.
+We evaluated this on transfer learning  tasks by fine-tuning on the datasets in Table~\ref{tab:dataset}.
+Table~\ref{tab:sota} compares \ours transfer learning results  to those of ViT~\cite{dosovitskiy2020image} and state of the art convolutional architectures~\cite{tan2019efficientnet}.
+\ours is on par with competitive convnet models, which is in line with our previous conclusion on ImageNet.
+
+\begin{table}[t]
+\caption{Datasets used for our different tasks.  \label{tab:dataset}}
+\smallskip
+\centering
+{\small
+\begin{tabular}{l|rrr}
+\toprule
+Dataset & Train size & Test size & \#classes   \\
+\midrule
+ImageNet \cite{Russakovsky2015ImageNet12}  & 1,281,167 & 50,000 & 1000  \\ 
+iNaturalist 2018~\cite{Horn2018INaturalist}& 437,513   & 24,426 & 8,142 \\ 
+iNaturalist 2019~\cite{Horn2019INaturalist}& 265,240   & 3,003  & 1,010  \\ 
+Flowers-102~\cite{Nilsback08}& 2,040 & 6,149 & 102  \\ 
+Stanford Cars~\cite{Cars2013}& 8,144 & 8,041 & 196  \\  
+CIFAR-100~\cite{Krizhevsky2009LearningML}  & 50,000    & 10,000 & 100   \\ 
+CIFAR-10~\cite{Krizhevsky2009LearningML}  & 50,000    & 10,000 & 10   \\ 
+\bottomrule
+\end{tabular}}
+\vspace{-8pt}
+\end{table}
+
+
+\begin{table}[t]
+    \caption{We compare Transformers based models on different transfer learning task with ImageNet pre-training. We also report results with convolutional architectures for reference. 
+    \label{tab:sota}}
+    \smallskip
+    \centering
+    \scalebox{0.68}{
+    %\small 
+    \begin{tabular}{l|c|cccccc|r}
+    \toprule
+    Model                                      & ImageNet & CIFAR-10 & CIFAR-100  & Flowers & Cars & iNat-18 & iNat-19 & im/sec \\
+    \midrule                                                                          
+    Grafit ResNet-50~\cite{Touvron2020GrafitLF} & 79.6 & \_   & \_ & 98.2 & 92.5 & 69.8 & 75.9 & 1226.1\\
+    Grafit RegNetY-8GF~\cite{Touvron2020GrafitLF} & \_ & \_   & \_ & 99.0 & 94.0 & 76.8 & 80.0 & 591.6\\
+    ResNet-152~\cite{Chu2020FeatureSA} & \_ & \_ & \_ & \_ & \_ & 69.1 & \_ & 526.3\\
+    EfficientNet-B7~\cite{tan2019efficientnet}  & 84.3 & 98.9 & 91.7  & 98.8 & 94.7 & \_ & \_ & 55.1\\
+    \midrule                                                                          
+    ViT-B/32~\cite{dosovitskiy2020image}        & 73.4 & 97.8 & 86.3 & 85.4 & \_   & \_ & \_ & 394.5\\
+    ViT-B/16~\cite{dosovitskiy2020image}        & 77.9 & 98.1 & 87.1 & 89.5 & \_   & \_ & \_ & 85.9 \\
+    ViT-L/32~\cite{dosovitskiy2020image}        & 71.2 & 97.9 & 87.1 & 86.4 & \_   & \_ & \_ & 124.1\\
+    ViT-L/16~\cite{dosovitskiy2020image}        & 76.5 & 97.9 & 86.4 & 89.7 & \_   & \_ & \_ & 27.3 \\
+\midrule
+    \oursbase                                     & 81.8 & 99.1 &  90.8  & 98.4 &  92.1    & 73.2 & 77.7 &  292.3 \\
+    \oursbaseup384    & 83.1 & 99.1 &  90.8  & 98.5 &  93.3    &  79.5 &  81.4    &  \pzo85.9 \\
+    \oursbasedis   & 83.4 & 99.1  &  91.3  & 98.8 & 92.9 & 73.7  & 78.4 &   290.9\\
+    \oursbasedisup384 & 84.4 & 99.2 & 91.4   & 98.9 & 93.9 & 80.1 & 83.0 &  \pzo85.9  \\
+    \bottomrule
+    \end{tabular}}
+\end{table}
+
+
+\paragraph{Comparison vs training from scratch.}
+We investigate the performance when training from scratch on a small dataset, without Imagenet pre-training. We get the following results on the small CIFAR-10, which is small both w.r.t. the number of images and labels:
+\begin{center}
+    {\small 
+    \begin{tabular}{c|c|c|c}
+    \toprule
+    Method  & RegNetY-16GF & \ours-B & \oursbasedis \\
+   Top-1 & 98.0 & 97.5 & 98.5 \\ 
+    \bottomrule
+    \end{tabular}}
+\end{center}
+
+For this experiment, we tried we get as close as possible to the Imagenet pre-training counterpart, meaning that (1) we consider longer training schedules (up to 7200 epochs, which corresponds to 300 Imagenet epochs) so that the network has been fed a comparable number of images in total; (2) we re-scale images to $224\times224$ to ensure that we have the same augmentation. 
+The results are not as good as with Imagenet pre-training (98.5\% vs 99.1\%), which is expected since the network has seen a much lower diversity. However they show that it is possible to learn a reasonable transformer on CIFAR-10 only.
+
+\begin{comment}
+\begin{table}[t]
+    \centering
+    \scalebox{1.0}
+    {\small 
+    \begin{tabular}{c|c|c|c}
+    \toprule
+    Method  & RegNetY-16GF & \ours-B & \oursbasedis \\
+   Top-1 & 98.0 & 97.5 &  \\ 
+    \bottomrule
+    \end{tabular}}
+    \caption{ Performance with training on CIFAR-10 only.\hugo{Add results in the main text}
+    \label{tab:cifar_only}}
+\end{table}
+\end{comment}

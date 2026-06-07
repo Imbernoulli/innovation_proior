@@ -1,0 +1,17 @@
+\begin{table}
+\small
+    \setlength{\tabcolsep}{3pt}
+    
+    \centering
+    \begin{tabular}{llccccc}
+        \toprule
+          \textbf{OPT (Wiki PPL$\downarrow$)} & 1.3B & 2.7B & 6.7B & 13B & 30B  \\  \midrule
+        FP16& 14.62 & 12.47 & 10.86 & 10.13 & 9.56 \\ \midrule
+        RTN & 10476 & 193210 & 7622 & 17564 & 8170 \\
+        GPTQ & 46.67 & 28.15 & 16.65 & 16.74 &  11.75 \\ \cmidrule(lr){2-6}
+        \methodshort+GPTQ & \textbf{35.71} & \textbf{25.70} & \textbf{15.71} & \textbf{13.25} & \textbf{11.38}   \\
+        \bottomrule
+    \end{tabular}
+    \caption{Our method is orthogonal to GPTQ: it further closes the performance gap under extreme low-bit quantization (INT2-g64) when combined with GPTQ. Results are WikiText-2 perplexity of OPT models.  }
+    \label{tab:int2}
+\end{table}

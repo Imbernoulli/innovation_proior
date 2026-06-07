@@ -1,0 +1,657 @@
+
+===== page 1 [pdftotext] =====
+                     Kobe University Repository : Kernel
+                                                       PDF issue: 2026-06-07
+
+
+A development of weather forecast and optimal
+ship routing
+
+
+
+
+Sasa, Kenji
+Fujimatsu, Takuya
+Chen, Chen
+
+
+(Citation)
+Journal of Maritime Researches,8:25-41
+
+(Issue Date)
+2018-08
+(Resource Type)
+departmental bulletin paper
+(Version)
+Version of Record
+(JaLCDOI)
+https://doi.org/10.24546/81012983
+(URL)
+https://hdl.handle.net/20.500.14094/81012983
+
+===== page 2 [pdftotext] =====
+                Journal of Maritime Researches Vol. 8, March 2019: 25-41.
+
+
+
+     A DEVELOPMENT OF WEATHER FORECAST AND
+
+                           OPTIMAL SHIP ROUTING
+
+
+                                        Kenji SASA*
+                                    Takuya FUJIMATSU**
+                                       Chen CHEN***
+
+
+
+ABSTRACT
+
+     It is inevitable for vessels to forecast the influences in given weather conditions, such
+as waves, winds, currents, etc. Seafarers used to estimate the change of sea conditions
+from their experience with intuition, when the weather forecasting was not practically in
+use. The optimal weather routing has been studied from 1950s by combining the
+numerical weather forecasting. Major shipping companies already introduced the optimal
+routing mainly for container vessels, which are operating in tight schedule. It consists of
+the weather forecasting and estimation of ship performances in actual seas. The weather
+forecasting has been developed remarkably in recent decades, because of the engineering
+innovation of computer technology. Global weather information is released from some
+meteorological institutions, and can contribute to safe operation of vessels. On the other
+hand, there are some differences of estimated results in each meteorological institution.
+This point could affect the accuracy of optimal ship routing, such as the voyage time,
+voyage route, and fuel consumption, etc. In this study, the optimal shipping routes are
+numerically simulated for a container vessel in the North Pacific using the latest weather
+reanalysis database with the isochrotone method. The difference of optimal ship routing
+is compared from the spatial and time resolutions in different seasons. The effectiveness
+and future subjects to improve the optimal routing are considered at the end.
+
+Keywords: optimal ship routing, weather hindcast, ship performance, global database,
+isochrotone method, numerical simulation
+
+
+
+
+* Associate Professor, Graduate School of Maritime Sciences, Kobe University. 5-1-1 Fukaeminamimachi,
+Higashinada, Kobe, Hyogo, 658-0022, Japan. Email: sasa@maritime.kobe-u.ac.jp
+** Graduate School of Maritime Sciences, Kobe University
+*** Assistant Professor, Graduate School of Maritime Sciences, Kobe University
+
+                                                 25
+
+===== page 3 [pdftotext] =====
+A DEVELOPMENT OF WEATHER FORECAST AND OPTIMAL SHIP ROUTING
+Kenji SASA, Takuya FUJIMATSU, Chen CHEN
+
+
+1. INTRODUCTION
+     More than 95% of global logistics is transported at seas all over the world. The
+development of global network requires the punctuality of maritime transportation more
+than before. Vessels are strongly influenced with the variation of weather conditions,
+because vessel motions are occurred in waters with waves or currents. Waves are usually
+generated if winds have been blowing in certain durations and speeds. Ocean waves are
+irregular periodic phenomenon, which makes the theoretical modeling complicate. It also
+makes difficult the estimation of various influences such as the vessel’s motions or the
+wave resistances, than those on other transportations. Moreover, the weather forecasting
+has not been so reliable when the performance of computation was vulnerable was poor.
+In those periods, vessels have been fully operating with the experience with intuitions of
+ship’ masters. In 1950s, a new concept how to operate vessels using the weather
+forecasting is shown as the first study of optimal ship routing (James, 1957). Although
+related studies have followed after 1960s, the computing performance was not enough to
+forecast global weather accurately. Seakeeping theories have developed for decades since
+1950s, and many studies are shown how to estimate ship motions or added resistance in
+waves (Newman, 1978; Faltinsen, 1990; Kashiwagi, 1992). Some studies related on the
+speed loss of vessels by combining theories between seakeeping and propulsion, are also
+shown (Naito, et al, 1980; Faltinsen, et al, 1980). It can contribute the accurate evaluation
+of ship performances in actual seas, and the weather forecasting becomes accurate as the
+improvement of computation performance from 1990s. Global computation of weather
+and ocean are available by using high-performance computers in the field of meteorology.
+The optimal ship routing is on the tipping point because of these backgrounds, and the
+numerical computation is expected as more accurate. Various meteorological
+organizations computed weather and oceanographic parameters as the global analysis, and
+they make public on their web sites. Especially, two major databases are frequently used
+in many studies. One is the NCEP (National Center for Environment and Prediction),
+which is the American meteorological organization linked with the numerical models of
+WRF (Weather and Research Forecasting) and WaveWATCH III. Another is the ECMWF
+(European Centre for Medium-Range Weather Forecasts), which is based on the Europe.
+They show the global weather database every 6 hours on their web sites, NCEP-FNL and
+ERA interim, respectively. They cover the weather information globally. However, there
+are little measured weather data in the oceans than those in lands, especially in high
+latitudes or the Southern Hemisphere. Authors showed the validation of weather
+hindcasting in three sea areas in the Southern Hemisphere using the measured onboard
+data for 28,000DWT class bulk carrier (Lu, et al, 2017; Sasa, et al., 2017). Winds and
+waves could be pretty different in rough sea conditions there, and it is shown that the
+accuracy is not enough yet for some cases. Optimal route or navigation time strongly
+depends on ship performances in forecasted weather conditions. Thus, it is important to
+show the difference of simulated results with the latest global weather databases. This
+study aims to simulate optimum routes of the SR108 container vessel between Japan and
+
+                                             26
+
+===== page 4 [pdftotext] =====
+A DEVELOPMENT OF WEATHER FORECAST AND OPTIMAL SHIP ROUTING
+Kenji SASA, Takuya FUJIMATSU, Chen CHEN
+
+
+U.S.A. across the North Pacific Ocean in 2016. Numerical simulation of optimal routes is
+obtained by the isochrone method (Suzuki and Hagiwara, 1995), based on the reanalyzed
+weather databases of waves, winds, and currents in the global region. The accuracy of
+optimal ship routing is discussed here using the latest global weather databases, and
+authors finally summarize the future image of optimal ship routing combining weather
+forecasting and seakeeping theory.
+
+2. Theory of Optimal Ship Routing
+
+  Theories of the optimal ship routing are briefly explained here to evaluate the optimal
+route considering ship performance in weather conditions. In section 2.1, the isochrone
+method, which is one of the route analyses in oceans, is summarized. In section 2.2, the
+evaluation of speed loss is described in waves and currents. The optimal route problem is
+solved the following governing equations.
+
+
+                                  Xi+1  Xi + f ( Xi ,Ui , ti )                                  (1)
+
+                                     ì      Vi cos (qi + ai ) + N i
+                                     ïfi +                          Dt
+                                     ï             Rm (fi )
+                 f ( Xi ,Ui , ti )  í
+                                     ï      ( mp (fi+1 ) - mp (fi )) (Vi sin (qi + ai ) + Ei )
+                                     ï li +              Vi cos (qi + a i ) + N i
+                                                                                                 (2)
+                                     î
+
+                                        éf ù         éq ù
+                                  X i  ê i ú , Ui  ê i ú                                       (3)
+                                        ëli û        ëni û
+
+                                     tN
+                               J  å A ( X,U, t ) Dt + B ( t f , td )                            (4)
+                                     t0
+
+
+
+
+where, Xi is the position vector, φi is the latitude, and λi is the longitude at time ti. Ui
+is the control vector, Vi is the ship speed, ni is the propeller speed, mpi is the meridinal
+parts,αi is the drift angle, and Ni, Ei is the current speed in north-south direction, east-
+west direction, respectively. J is the evaluation function, A is the evaluated object, and B
+is the penalty from depart time, td, and finish time, tf. Eq.(1) is solved to minimize the
+value of J in Eq.(4).
+
+2.1 Isochrone Method
+   There are some kinds of simulation methods on the optimal ship routing, such as the
+Dynamic programming method or the Isochrone method. The former method is developed
+as the optimal model for multi step decision process in 1950s. defines computation grids
+for sea areas, as shown in Figure 2.1.
+
+                                                    27
+
+===== page 5 [pdftotext] =====
+A DEVELOPMENT OF WEATHER FORECAST AND OPTIMAL SHIP ROUTING
+Kenji SASA, Takuya FUJIMATSU, Chen CHEN
+
+
+
+
+      Figure 2.1 Definition of computation grids in Dynamic programming method
+
+Optimal grids are chosen from the previous ones with speed loss on given weather
+conditions. The latter one is characteristic that a vessel runs in variable courses from the
+initial great circle course, and optimal points is decided from multiple routes in each sector,
+which is drawn from the previous point as shown in Figure 2.2.
+
+
+
+
+                                             28
+
+===== page 6 [pdftotext] =====
+A DEVELOPMENT OF WEATHER FORECAST AND OPTIMAL SHIP ROUTING
+Kenji SASA, Takuya FUJIMATSU, Chen CHEN
+
+
+
+
+       Figure 2.2 Definition of optimal routes in each sector in Isochrone method
+
+As shown here, the isochrone is obtained for the number of sector as the longest distances
+among multiple routes in each sub-sector. Weather conditions in each point affect to the
+ship speed, the fuel consumption, etc. If a vessel is in head sea state, the ship speed tends
+to decrease. On the other hand, the ship speed does not vary very much in following sea
+state, even if wave conditions are rough. Finally, the optimal route is expressed as the
+minimum time route between the departure and destination points. The numerical
+flowchart of isochrone method is shown in Figure 2.3
+
+
+
+
+                                             29
+
+===== page 7 [pdftotext] =====
+A DEVELOPMENT OF WEATHER FORECAST AND OPTIMAL SHIP ROUTING
+Kenji SASA, Takuya FUJIMATSU, Chen CHEN
+
+
+
+   Departure and Arrival Points                   Ship Performances
+
+
+          Initial Forecasted Information of Wave, Wind, Current
+
+                                                                   Evaluation of Speed Loss
+
+        Compute X1 from X0 at t=t1 Every Sector and Sub-Sector
+
+
+         Updating Forecast Information of Wave, Wind, Current
+
+                                                                   Evaluation of Speed Loss
+
+      Compute Xj+1 from Xj at t=tj+1 Every Sector and Sub-Sector
+
+                                                                   Evaluation of Speed Loss
+
+          Compute XN from XN-1 at t=tN Nearest Point from Xf
+
+
+                                                              No
+                        Close to the Arrival Point?
+
+                                       Yes
+           Compute Voyage Time and Fuel Consumption to Xf
+
+                        Figure 2.3 Flowchart of isochrone method
+
+As you can see, the evaluation of ship speed is the most important parameter in a given
+weather conditions, waves, winds, currents, etc. They sometimes make the ship slower
+than the normal speed, and also increase the fuel oil consumption, the emission of
+greenhouse gas (Prpic-Orsic, et al., 2012). The ship speed is decided as the relation
+between the total thrust and resistance, as follows (Sasa et al., 2017):
+
+                                           dVi
+                         ( M + m ( )) dt  T (V ,  , c ) - R (V ,  , c )
+                                  11   i          T   i   i         T   i   i                 (5)
+
+
+where M is the mass of the ship, and m11(ω) is the added mass in surge mode, U is the ship
+speed, ω is the angular frequency, and χ is the relative wave direction. The total thrust
+includes the effect of thrust deductions for the ventilation and machinery factors. The total
+resistance consists of the resistance in still water and the added resistance in waves and
+winds. There are various theories of added resistance in the seakeeping theory (Faltinsen,
+1990; Kashiwagi, 1995). Damping force is relatively small in the longitudinal direction
+and is neglected in this study. In an irregular sea state, Eq. (5) must be solved in the time
+domain. If we estimate the speed loss accurately, these points must be taken into account.
+
+
+                                                 30
+
+===== page 8 [pdftotext] =====
+A DEVELOPMENT OF WEATHER FORECAST AND OPTIMAL SHIP ROUTING
+Kenji SASA, Takuya FUJIMATSU, Chen CHEN
+
+
+Nevertheless, this part is simply modeled from the measured data of various container
+ships (Shoji, ).
+
+
+                               V  ( an + b) - ( cH1/3 + dH1/3
+                                                           2
+                                                               ) f (q )                   (6)
+
+
+where, n is the propeller speed (rpm), H1/3 is the significant wave height, a, b, c, d are the
+coefficients (a=0.13133739, b=1.78677785, c=0.223417724, d=-0.00081424), and f(θ)
+is the function defined as
+
+
+                              f (q )  0.75exp ( -0.65q 2 ) + 0.25                        (7)
+
+
+where, θ is the relative wave direction (unit is radian) with 0 degree as the head sea
+state. Eqs. (5)(6) implicate that the speed loss is approximately expressed as the function
+of significant wave height and relative wave direction. The ship speed, V, is computed in
+each position by interpolating wave heights and direction in surrounding grids.
+
+3. Computation of Optimal Routing
+     As mentioned here, the meteorology has been improved in recent decades as the
+enhancement of numerical computation. This makes the global weather forecasting
+possible with higher spatial and time resolutions. The development can contribute to the
+optimal ship routing be more accurate. There are many parameters controls the accuracy,
+and the difference of computed results are compared in various conditions.
+
+3.1 Meteorological Database
+      There are many kinds of meteorological database distributed from meteorological
+agencies. Japan Meteorology Agency (JMA) distributes the high-resolution database near
+Japan, and it is suitable for the weather analysis in Asian region. On the other hand, the
+global weather information is required for vessels across the oceans such as the Pacific
+Ocean, the Atlantic Ocean, the Indian Ocean, etc. Two major organizations are recognized
+for the global weather forecasting and reanalysis in the field of meteorology. One is the
+NCEP (National Centers for Environmental and Prediction) which is based on the U.S.A.,
+and another is the ECMWF (European Centre for Medium-Ranged Weather and
+Forecasts). The NCEP distributes the objective analyzed data in the global region every
+1° and 6 hours, NCEP-FNL, which includes basic weather parameters such as the air
+temperature, the air pressure, the humidity, the sea water temperature, etc. The ECMWF
+distributes the same kinds of objective analyzed database in the global region every 0.75°
+and 6 hours, ERA interim, which includes weather parameters, wave parameters, etc.
+There are sparse observation points in oceans with high latitudes, and dense points in
+lower latitudes. The objective analyzed database is numerically adjusted for uneven
+
+                                               31
+
+===== page 9 [pdftotext] =====
+A DEVELOPMENT OF WEATHER FORECAST AND OPTIMAL SHIP ROUTING
+Kenji SASA, Takuya FUJIMATSU, Chen CHEN
+
+
+distribution of observed points using air and ocean models. Lu et al. (2017) showed the
+validation of estimated wave conditions for rough sea voyages in the Southern
+Hemisphere, and the range of errors is shown there. NOAA (National Oceanic and
+Atmospheric Administration) also distributes the estimated wave height, wave period, and
+wave direction, besides of wind speed and wind direction in the global region every 0.5°
+and 6 hours. Wave conditions are computed using the third generation wave model, Wave
+WATCH III (Tolman, 2002). They can available from the homepage of NOAA, and are
+used as the input weather conditions here. Figure 3.1 shows the one of the distributions of
+significant wave height in the whole earth at 0:00 January 1, 2016.
+
+
+
+
+          Figure 3.1 Global distribution of wave height (0:00 January 1, 2016)
+
+Figure 3.2 shows the vector distribution of averaged wind speed in the whole earth at 0:00
+January 1, 2016.
+
+
+
+
+                                            32
+
+===== page 10 [pdftotext] =====
+A DEVELOPMENT OF WEATHER FORECAST AND OPTIMAL SHIP ROUTING
+Kenji SASA, Takuya FUJIMATSU, Chen CHEN
+
+
+
+
+          Figure 3.2 Global distribution of wind speed (0:00 January 1, 2016)
+
+It is obvious that wave height and wind speed are remarkable in the North Pacific Ocean,
+etc. The spatial and time resolutions are important factors to discuss the accuracy of
+optimal ship routing. The difference of the voyage time or the averaged ship speed is
+compared in each setting of resolutions as shown in Table 3.1.
+
+                  Table 3.1 Settings of resolutions in space and time
+                                          0.5°                     1.0°
+                6 hours               Setting-6-05             Setting-6-10
+                12 hours              Setting-12-05
+
+3.2 Ship and Voyage Conditions
+     The optimal ship routing is numerically simulated for a container ship between Tokyo
+and Los Angles across the Pacific Ocean. The voyage speed is 22 knots, and the engine
+revolution is set as 150 rpm. The engine power is modeled as
+
+
+                                   P  a n3 + bDV + gDV 2                             (8)
+
+
+where, α, β, γ are coefficients of polynomials defined as 0.0690152, 671.5488892,
+and 129.2651672, respectively. The second and third terms are the variation of power due
+to waves. If the engine power varies, the fuel consumption, FOC, reacts simultaneously.
+It is simply modeled as
+
+
+
+
+                                           33
+
+===== page 11 [pdftotext] =====
+A DEVELOPMENT OF WEATHER FORECAST AND OPTIMAL SHIP ROUTING
+Kenji SASA, Takuya FUJIMATSU, Chen CHEN
+
+
+                                    FOC  0.21P                                        (9)
+
+Weather conditions are interpolated using four values on surrounding grids, and the ship
+speed and the fuel consumption are approximately estimated here.
+
+3.3 Simulated Results
+3.3.1 Results in Voyages from Tokyo to Los Angles
+     Computed results of optimal voyage route are shown in Figures 3.3-3.4 in January
+and August, 2016 from Tokyo to Los Angles.
+
+
+
+
+   Figure 3.3 Computed results of optimal voyage route (January, 2016, Setting-6-05)
+
+
+
+
+   Figure 3.4 Computed results of optimal voyage route (August, 2016, Setting-6-05)
+
+   It is obvious that optimum voyages routes look similar in winter (January) and
+summer (August) here. Dispersions are larger in 135W-180 than those in 135E-180.
+
+
+                                          34
+
+===== page 12 [pdftotext] =====
+A DEVELOPMENT OF WEATHER FORECAST AND OPTIMAL SHIP ROUTING
+Kenji SASA, Takuya FUJIMATSU, Chen CHEN
+
+
+Monthly averaged values of voyage time and distance are compared in each month are
+shown in Figure 3.5.
+
+
+
+
+Figure 3.5 Monthly averaged values of voyage time and distance (January to November,
+2016, from Tokyo to Los Angles, Setting-6-05)
+
+Differences of 4-5 hours between winter and summer seasons as the monthly averaged
+voyage time. It implicates that weather conditions affect to the computed results.
+
+3.3.2 Results in Voyages from Los Angles to Tokyo
+     Computed results of optimal voyage route are shown in Figures 3.6-3.7 in January
+and August, 2016 from Los Angles to Tokyo.
+
+
+
+
+  Figure 3.6 Computed results of optimal voyage route (January, 2016, Setting-6-05)
+
+
+
+
+                                         35
+
+===== page 13 [pdftotext] =====
+A DEVELOPMENT OF WEATHER FORECAST AND OPTIMAL SHIP ROUTING
+Kenji SASA, Takuya FUJIMATSU, Chen CHEN
+
+
+
+
+   Figure 3.7 Computed results of optimal voyage route (August, 2016, Setting-6-05)
+
+     Computed optimal routes have larger dispersions from Los Angles to Tokyo both in
+January and August. Especially, optimal routes in January are quite different those in
+Figure 3.3. Monthly averaged values of voyage time and distance are compared in each
+month are shown in Figure 3.8.
+
+
+
+
+Figure 3.8 Monthly averaged values of voyage time and distance (January to November,
+2016, from Los Angles to Tokyo, Setting-6-05)
+
+     The averaged voyage time is around 230 hours in winter season, and 10 hours longer
+than that in summer season. It is also longer for 7-8 hours than that in voyage from Tokyo
+to Los Angles. It implies that the ship is strongly influenced by weather conditions,
+especially in wave directions.
+
+3.3.3 Influences of Spatial Resolution
+
+                                           36
+
+===== page 14 [pdftotext] =====
+A DEVELOPMENT OF WEATHER FORECAST AND OPTIMAL SHIP ROUTING
+Kenji SASA, Takuya FUJIMATSU, Chen CHEN
+
+
+     As shown in Table 3.1, numerical simulations are compared with the difference of
+spatial and time resolutions. Figures 3.9-3.10 show computed results of optimal routes
+with 1.0° and 6 hours from Los Angles to Tokyo in January and August, 2016.
+
+
+
+
+   Figure 3.9 Computed results of optimal voyage route (January, 2016, Setting-6-10)
+
+
+
+
+  Figure 3.10 Computed results of optimal voyage route (August, 2016, Setting-6-10)
+
+     Optimal routes are different from those in Figure 3.6, and the spatial resolution
+contributes to the result in some cases. Little differences can be seen in August, 2016
+between Figure 3.7 and Figure 3.10. Although there are less days of rough sea conditions
+in August than in January, optimal routes are a bit different each other. Figure 3.11 shows
+the monthly averaged values of voyage time and distance with the spatial resolution of
+1.0°.
+
+
+                                            37
+
+===== page 15 [pdftotext] =====
+A DEVELOPMENT OF WEATHER FORECAST AND OPTIMAL SHIP ROUTING
+Kenji SASA, Takuya FUJIMATSU, Chen CHEN
+
+
+
+
+Figure 3.10 Monthly averaged values of voyage time and distance (January to November,
+2016, from Los Angles to Tokyo, Setting-6-10)
+
+    It is shown that there are relatively similar with those in Figure 3.8. However, the
+voyage distance is larger in May and August than winter season.
+
+3.3.4 Influences of Time Resolution
+     The difference of optimal routing is studied here as the influence of time resolution.
+Figures 3.11-3.12 show computed results of optimal routes with 0.5°and 12 hours from
+Los Angles to Tokyo in January and August, 2016.
+
+
+
+
+ Figure 3.11 Computed results of optimal voyage route (January, 2016, Setting-12-05)
+
+
+
+
+                                            38
+
+===== page 16 [pdftotext] =====
+A DEVELOPMENT OF WEATHER FORECAST AND OPTIMAL SHIP ROUTING
+Kenji SASA, Takuya FUJIMATSU, Chen CHEN
+
+
+
+
+  Figure 3.12 Computed results of optimal voyage route (August, 2016, Setting-12-05)
+
+     In Figure 3.11, optimal routes are quite different from those in Figure 3.6 and Figure
+3.9. Routes are concentrated in northern area of the Pacific Ocean. They are not so
+different in September, because weather conditions are relatively calm. Figure 3.11 shows
+the monthly averaged values of voyage time and distance with the time resolution of 12
+hours.
+
+
+
+
+Figure 3.10 Monthly averaged values of voyage time and distance (January to November,
+2016, from Los Angles to Tokyo, Setting-12-05)
+
+      Computed voyage times are nearly 10 hours shorter than those in Figure 3.8 or Figure
+3.10. It implicates that the time resolution affects to the accuracy than the spatial resolution.
+It is necessary to focus on these points in our next study.
+
+
+
+
+                                              39
+
+===== page 17 [pdftotext] =====
+A DEVELOPMENT OF WEATHER FORECAST AND OPTIMAL SHIP ROUTING
+Kenji SASA, Takuya FUJIMATSU, Chen CHEN
+
+
+4. Conclusions
+     Computed results of optimal ship routing are simulated and compared for a container
+vessel across the Northern Pacific in 2016. Main conclusions and future subjects can be
+summarized as follows.
+(1) Optimal voyage routes vary widely in the route from Los Angeles to Tokyo, westbound
+than those in the opposite route. Averaged voyage time is around 10 hours longer in winter
+season than those in summer season. Especially, the tendency is remarkable in winter
+season. It relates on the wave direction due to low pressures.
+(2) Computed optimal routes are not so different between 0.5° and 1.0° of spatial
+resolutions as the monthly averaged values. However, the difference is occurred if the
+weather condition is heavy.
+(3) The time resolution make more difference to the computed results than the spatial
+resolutions. The optimal route might not be accurate in sparse time resolutions more than
+12 hours.
+(4) In this study, the ship speed is simply estimated from encountered wave height and
+direction. The speed loss is small in the following seas, theoretically. However, ships
+actually avoid sea areas with low pressures, even if the following wave direction. This
+point will be additionally modeled in our future studies.
+(5) The speed loss should be evaluated on the theory of resistance and propulsion
+accurately. Authors already show these numerical analyses with measured onboard
+database. The accurate simulation can be expected by combining those theoretical models.
+(6) Patterns of deliberate speed loss is also studied in the measured data on actual seas.
+This point is also necessary to consider the evaluation of ship speed during the voyage.
+
+
+
+ACKNOWLEDGEMENTS
+     The authors would like to express their gratitude to Prof. Ruri Shoji, Tokyo University
+of Marine Science and Technology, for her guidance of optimal ship routing in conducting
+the study.
+
+REFERENCES
+Faltinsen, O.M., Minsaas, K.J., Liapism N. and Skjordal, S.O. (1980) “Prediction of
+     Resistance and Propulsion of a Ship in a Seaway”, Proceedings of 13th Symposium
+     of Naval Hydrodynamics, pp.505-529.
+Faltinsen, O.M. (1990) “Sea Loads on Ships and Offshore Structures”, Cambridge
+     University Press, 328p.
+James, R.W. (1957) “Application of Wave Forecasts to Marine Navigation”, US Navy
+     Hydrographic Office, Washington, 92p.
+Kashiwagi, M. (1992) “Added Resistance, Wave-induced Steady Sway Force and Yaw
+     Moment on an Advancing Ship”, Ship Technol. Res., Vol.39, pp.3-16.
+Lu, L.F., Sasa, K., Sasaki, W., Terada, D., Kano, T., and Mizojiri, T. (2017) “Rough Wave
+
+                                            40
+
+===== page 18 [pdftotext] =====
+A DEVELOPMENT OF WEATHER FORECAST AND OPTIMAL SHIP ROUTING
+Kenji SASA, Takuya FUJIMATSU, Chen CHEN
+
+
+    Simulation and Validation using Onboard Ship Motion Data in the Southern
+    Hemisphere to Enhance Ship Weather Routing”, Journal of Ocean Engineering,
+    Vol.144, pp.61-77.
+Naito, S., Nakamura, S., and Hara, S. (1980) “On the Prediction of Speed Loss of a Ship
+    in Waves”, Annual Journal of Naval Architects of Japan, Vol.146, pp.147-156. (in
+    Japanese)
+Newman, J.N (1978) “Marine Hydrodynamics”, MIT Press, 402p.
+Sasa, K., Faltinsen, O.M., Lu, L.F., Sasaki, W., Prpić-Oršić , J., Kashiwagi, M., and
+    Ikebuchi, T. (2017) “Development and Validation of Speed Loss for a Blunt-shaped
+    Ship in Two Rough Sea Voyages in the Southern Hemisphere”, Journal of Ocean
+    Engineering, Vol.142, pp.577-596.
+Suzuki, R., and Hagiwara, H. (1995) “Weather Routing Simulations using 10-Day
+  Numerical Forecasts”, Navigation (Japan Institute of Navigation), pp.81-88. (in
+  Japanese)
+
+
+
+
+                                          41

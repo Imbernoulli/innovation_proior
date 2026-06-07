@@ -1,0 +1,71 @@
+\section{IMPALA}
+\label{sec:architecture}
+
+
+
+
+\begin{figure}
+    \centering
+    \includegraphics[width=.7\columnwidth]{figures/Description.pdf}
+    \begin{minipage}[c][2.75cm][t]{.22\textwidth}
+    \begin{subfigure}{1\textwidth}
+        \centering
+        \includegraphics[scale=.11]{figures/Batched_A2C.pdf}
+        \caption{Batched A2C (sync step.)}
+        \label{batched_a2c_timeline}
+    \end{subfigure}\\
+    \begin{subfigure}{1\textwidth}
+        \centering
+        \includegraphics[scale=.11]{figures/Batched_A2.1C_2.pdf}
+        \caption{Batched A2C (sync traj.)}
+        \label{batched_a2_1c_timeline}
+    \end{subfigure}%
+    \end{minipage}%
+    \begin{minipage}[c][3cm][t]{.22\textwidth}
+    \begin{subfigure}{1.2\textwidth}
+        \centering
+        \includegraphics[scale=.11]{figures/IMPALA.pdf}
+        \caption{IMPALA}
+        \label{IMPALA_ga3c_timeline}
+    \end{subfigure}\\
+    \end{minipage}
+    \caption{Timeline for one unroll with 4 steps using different architectures. Strategies shown in \textbf{(a)} and \textbf{(b)} can lead to low GPU utilisation due to rendering time variance within a batch. In \textbf{(a)}, the actors are synchronised after every step. In \textbf{(b)} after every $n$ steps. IMPALA \textbf{(c)} decouples acting from learning.
+    }
+\end{figure}
+
+
+
+
+
+
+IMPALA (Figure~\ref{fig:impala_architecture}) uses an actor-critic setup to learn a policy $\pi$ and a baseline function $V^{\pi}$.  The process of generating experiences is decoupled from learning the parameters of $\pi$ and $V^{\pi}$. The architecture consists of a set of actors, repeatedly generating trajectories of experience,
+and one or more learners that use the experiences sent from actors to learn $\pi$ off-policy.
+
+At the beginning of each trajectory, an actor updates its own local policy $\mu$ to the latest learner policy $\pi$ and runs it for $n$ steps in its environment. After $n$ steps, the actor sends the trajectory of states, actions and rewards  $x_1, a_1, r_1, \dots, x_n, a_n, r_n$ together with the corresponding policy distributions $\mu(a_t|x_t)$ and initial LSTM state to the learner through a queue. The learner then continuously updates its policy $\pi$ on batches of trajectories, each collected from many actors. This simple architecture enables the learner(s) to be accelerated using GPUs and actors to be easily distributed across many machines. However, the learner policy $\pi$ is potentially several updates ahead of the actor's policy $\mu$ at the time of update, therefore there is a \textit{policy-lag} between the actors and learner(s). V-trace corrects for this lag to achieve extremely high data throughput while maintaining data efficiency. Using an actor-learner architecture, provides fault tolerance like distributed A3C but often has lower communication overhead since the actors send observations rather than parameters/gradients.
+
+
+
+
+
+
+
+
+With the introduction of very deep model architectures, the speed of a single GPU is often the limiting factor during training.
+IMPALA can be used with distributed set of learners to train large neural networks efficiently as shown in Figure~\ref{multiple_learners}.
+Parameters are distributed across the learners and actors retrieve the parameters from all the learners in parallel while only sending observations to a single learner.
+IMPALA use synchronised parameter update which is vital to maintain data efficiency when scaling to many machines \cite{DBLP:journals/corr/ChenMBJ16}.
+
+
+
+\subsection{Efficiency Optimisations}
+\label{sec:efficiency_optimizations}
+
+GPUs and many-core CPUs benefit greatly from running few large, parallelisable operations instead of many small operations.
+Since the learner in IMPALA performs updates on entire batches of trajectories, it is able to parallelise more of its computations than an online agent like A3C.
+As an example, a typical deep RL agent features a convolutional network followed by a Long Short-Term Memory (LSTM) \cite{LSTM} and a fully connected output layer after the LSTM. An IMPALA learner applies the convolutional network to all inputs in parallel by folding the time dimension into the batch dimension.
+Similarly, it also applies the output layer to all time steps in parallel once all LSTM states are computed.
+This optimisation increases the effective batch size to thousands.
+LSTM-based agents also obtain significant speedups on the learner by exploiting the network structure dependencies and operation fusion~\cite{DBLP:journals/corr/AppleyardKB16}.
+
+Finally, we also make use of several off the shelf optimisations available in TensorFlow \cite{abadi2017tensorflow} such as preparing the next batch of data for the learner while still performing computation, compiling parts of the computational graph with XLA (a TensorFlow Just-In-Time compiler) and optimising the data format to get the maximum performance from the cuDNN framework \cite{DBLP:journals/corr/ChetlurWVCTCS14}.
+

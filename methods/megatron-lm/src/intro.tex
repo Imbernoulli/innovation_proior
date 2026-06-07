@@ -1,0 +1,30 @@
+\section{Introduction}
+
+Natural Language Processing (NLP) is advancing quickly in part due to an increase in available compute and dataset size. The abundance of compute and data enables training increasingly larger language models via unsupervised pretraining \citep{devlin2018bert,Radford2019GPT2}. Empirical evidence indicates that larger language models are dramatically more useful for NLP tasks such as article completion, question answering, and natural language inference \cite{ALBERT2019,T5}. By finetuning these pretrained language models on downstream natural language tasks, one can achieve state of the art results as shown in recent work \cite{devlin2018bert, ELMo, Howard2018ULMFIT, Radford2018GPT, Radford2017Sentiment, Le2016seq2seqtransfer, roberta,transformerxl,xlnet,mtdnn,ALBERT2019}. 
+    
+As these models become larger, they exceed the memory limit of modern processors, and require additional memory management techniques such as activation checkpointing \citep{activation_checkpointing}. Widely used optimization algorithms such as ADAM require additional memory per parameter to store momentum and other optimizer state, which reduces the size of models that can be effectively trained. Several approaches to model parallelism overcome this limit by partitioning the model such that the weights and their associated optimizer state do not need to reside concurrently on the processor. For example, GPipe \cite{GPipe} and Mesh-Tensorflow \cite{mesh_tf} provide frameworks for model parallelism of different kinds. However, they require rewriting the model, and rely on custom compilers and frameworks that are still under development.
+    
+In this work,  we implement a simple and efficient model parallel approach using intra-layer model-parallelism. We exploit the inherent structure in transformer based language models to make a simple model-parallel implementation that trains efficiently in PyTorch, with no custom C++ code or compiler required. This approach is orthogonal to pipeline-based model parallelism as advocated by approaches such as GPipe~\cite{GPipe}. 
+    
+To demonstrate the scalability of our approach, we establish a baseline by training a model of 1.2 billion parameters on a single NVIDIA V100 32GB GPU, that sustains 39 TeraFLOPs. This is 30\% of the theoretical peak FLOPS for a single GPU as configured in a DGX-2H server, and is thus a strong baseline. Scaling the model to 8.3 billion parameters on 512 GPUs with 8-way model parallelism, we achieve up to 15.1 PetaFLOPs per second sustained over the entire application. This is 76\% scaling efficiency compared to the single GPU case. Figure \ref{fig:scale_line} shows more detailed scaling results.
+    
+\begin{figure}
+\begin{center}
+ \includegraphics[scale=0.18]{./flops_scaling_3.png}
+ \caption{Model (blue) and model+data (green) parallel FLOPS as a function of number of GPUs. Model parallel (blue): up to 8-way model parallel weak scaling with approximately 1 billion parameters per GPU (e.g. 2 billion for 2 GPUs and 4 billion for 4 GPUs). Model+data parallel (green): similar configuration as model parallel combined with 64-way data parallel.}
+ \label{fig:scale_line}
+\end{center}
+\end{figure}
+    
+To analyze the effect of model size scaling on accuracy, we train both left-to-right GPT-2 \cite{Radford2019GPT2} language models as well as BERT \cite{devlin2018bert} bidirectional transformers and evaluate them on several downstream tasks. We show that the existing BERT architecture results in model degradation as the size increases. We overcome this challenge by rearranging the layer normalization and residual connection in the transformer layers and show that with this change, results for the downstream tasks  on development sets improve monotonically as the model size increases. In addition, we show that our models achieve test set state of the art (SOTA) results on WikiText103, cloze-style prediction accuracy on LAMBADA, and reading comprehension RACE datasets.
+    
+
+In summary, our contributions are as follows:
+\begin{itemize}
+    \item We implement a simple and efficient model parallel approach by making only a few targeted modifications to an existing PyTorch transformer implementation.
+    \item We perform an in-depth empirical analysis of our model and data parallel technique and demonstrate up to 76\% scaling efficiency using 512 GPUs.
+    \item We show that careful attention to the placement of layer normalization in BERT-like models is critical to achieving increased accuracies as the model grows.
+    \item We demonstrate that scaling the model size results in improved accuracies for both GPT-2 (studied up to 8.3 billion parameters) and BERT (studied up to 3.9B parameters) models.
+    \item We showcase that our models achieve state of the art results on test sets: perplexity on WikiText103 (10.8 ppl), accuracy on LAMBADA (66.5\%), and accuracy on RACE (90.9\%).
+    \item We open source our code along with the training and evaluation pipelines at \url{https://github.com/NVIDIA/Megatron-LM}
+\end{itemize}

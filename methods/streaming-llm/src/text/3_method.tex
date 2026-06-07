@@ -1,0 +1,52 @@
+\vspace{-0.5em}
+\section{\method}
+\input{figtab/nll_curve}
+\vspace{-0.5em}
+\subsection{The Failure of Window Attention and Attention Sinks}
+While the window attention technique offers efficiency during inference, it results in an exceedingly high language modeling perplexity. Consequently, the model's performance is unsuitable for deployment in streaming applications. In this section, we use the concept of \emph{attention sink} to explain the failure of window attention, serving as the inspiration behind \method.
+\vspace{-1em}
+\myparagraph{Identifying the Point of Perplexity Surge.} 
+Figure~\ref{fig:nll_curve} shows the perplexity of language modeling on a 20K token text. It is evident that perplexity spikes when the text length surpasses the cache size, led by the exclusion of initial tokens. This suggests that the initial tokens, regardless of their distance from the predicted tokens, are crucial for maintaining the stability of LLMs.
+\vspace{-0.5em}
+\myparagraph{Why do LLMs break when removing \emph{initial} tokens' KV?} 
+We visualize attention maps from all layers and heads of the Llama-2-7B and models in Figure~\ref{fig:attention_visualization}. We find that, beyond the bottom two layers, the model consistently focuses on the initial tokens across all layers and heads. The implication is clear: removing these initial tokens' KV will remove a considerable portion of the denominator in the SoftMax function (Equation~\ref{equ:softmax}) in attention computation. This alteration leads to a significant shift in the distribution of attention scores away from what would be expected in normal inference settings.
+\vspace{-1em}
+\begin{equation}
+    \text{SoftMax}(x)_i = \frac{e^{x_i}}{e^{x_1} + \sum_{j=2}^{N} e^{x_j}}, \quad x_1 \gg x_j, j \in 2, \dots, N
+    \label{equ:softmax}
+\end{equation}
+\vspace{-1em}
+
+There are two possible explanations for the importance of the initial tokens in language modeling: (1) Either their semantics are crucial, or 
+(2) the model learns a bias towards their absolute position. To distinguish between these possibilities, we conduct experiments (Table~\ref{tab:linebreak}), wherein the first four tokens are substituted with the linebreak token ``\textbackslash n". The observations indicate that the model still significantly emphasizes these initial linebreak tokens. Furthermore, reintroducing them restores the language modeling perplexity to levels comparable to having the original initial tokens. This suggests that the absolute position of the starting tokens, rather than their semantic value, holds greater significance.
+\vspace{-0.5em}
+\myparagraph{LLMs attend to Initial Tokens as Attention Sinks.}
+\label{sec:attention_sink}
+To explain why the model disproportionately focuses on initial tokens—regardless of their semantic relevance to language modeling, we introduce the concept of ``\emph{attention sink}". The nature of the SoftMax function (Equation~\ref{equ:softmax}) prevents all attended tokens from having zero values. This requires aggregating some information from other tokens across all heads in all layers, even if the current embedding has sufficient self-contained information for its prediction. Consequently, the model tends to dump unnecessary attention values to specific tokens. A similar observation has been made in the realm of quantization outliers~\citep{xiao2023smoothquant,bondarenko2023quantizable}, leading to the proposal of SoftMax-Off-by-One~\citep{softmax1} as a potential remedy.
+\input{figtab/start_size_and_linebreak}
+Why do various autoregressive LLMs, such as Llama-2, MPT, Falcon, and Pythia, consistently focus on \textit{initial tokens} as their attention sinks, rather than other tokens? Our explanation is straightforward: Due to the sequential nature of autoregressive language modeling, initial tokens are visible to all subsequent tokens, while later tokens are only visible to a limited set of subsequent tokens. As a result, initial tokens are more easily trained to serve as attention sinks, capturing unnecessary attention.
+
+We've noted that LLMs are typically trained to utilize multiple initial tokens as attention sinks rather than just one. As illustrated in Figure~\ref{tab:start_size}, the introduction of four initial tokens, as attention sinks, suffices to restore the LLM's performance. In contrast, adding just one or two doesn't achieve full recovery. We believe this pattern emerges because these models didn't include a consistent starting token across all input samples during pre-training. Although Llama-2 does prefix each paragraph with a ``<s>" token, it's applied before text chunking, resulting in a mostly random token occupying the zeroth position. This lack of a uniform starting token leads the model to use several initial tokens as attention sinks. We hypothesize that by incorporating a stable learnable token at the start of all training samples, it could singularly act as a committed attention sink, eliminating the need for multiple initial tokens to ensure consistent streaming. We will validate this hypothesis in Section~\ref{sec:pretrain-fix}.
+
+\vspace{-1em}
+\subsection{Rolling KV Cache with Attention Sinks}
+\input{figtab/rolling_kv}
+To enable LLM streaming in already trained LLMs, we propose a straightforward method that can recover window attention's perplexity without any model finetuning. Alongside the current sliding window tokens, we reintroduce a few starting tokens' KV in the attention computation. The KV cache in \method can be conceptually divided into two parts, as illustrated in Figure~\ref{fig:rolling_kv}: (1) Attention sinks (four initial tokens) stabilize the attention computation; 2) Rolling KV Cache retains the most recent tokens, crucial for language modeling. \method' design is versatile and can be seamlessly incorporated into any autoregressive language model that employs relative positional encoding, such as RoPE~\citep{su2021roformer} and ALiBi~\citep{alibi}.
+
+When determining the relative distance and adding positional information to tokens, \method focuses on positions \emph{within the cache} rather than those \emph{in the original text}. This distinction is crucial for \method's performance. For instance, if the current cache (Figure~\ref{fig:rolling_kv}) has tokens [0, 1, 2, 3, 6, 7, 8] and is in the process of decoding the 9th token, the positions assigned are [0, 1, 2, 3, 4, 5, 6, 7], rather than the positions in the original text, which would be [0, 1, 2, 3, 6, 7, 8, 9].
+
+For encoding like RoPE, we cache the Keys of tokens \emph{prior to} introducing the rotary transformation. Then, we apply position transformation to the keys in the rolling cache at each decoding phase. On the other hand, integrating with ALiBi is more direct. Here, the contiguous linear bias is applied instead of a 'jumping' bias to the attention scores. This method of assigning positional embedding within the cache is crucial to \method's functionality, ensuring that the model operates efficiently even beyond its pre-training attention window size.
+
+\subsection{Pre-Training LLMs with Attention Sinks}
+\label{sec:pretrain-fix}
+\input{figtab/pretrain_fix}
+
+As elaborated in Section~\ref{sec:attention_sink}, a significant reason for the model's excessive attention to multiple initial tokens is the absence of a designated sink token to offload excessive attention scores. Due to this, the model inadvertently uses globally visible tokens, primarily the initial ones, as attention sinks. A potential remedy can be the intentional inclusion of a global trainable attention sink token, denoted as a ``Sink Token'', which would serve as a repository for unnecessary attention scores. Alternatively, replacing the conventional SoftMax function with a variant like SoftMax-off-by-One~\citep{softmax1}, 
+\begin{equation}
+    \small
+    \text{SoftMax}_1(x)_i = \frac{e^{x_i}}{1+\sum_{j=1}^{N} e^{x_j}},
+    \label{equ:softmax1}
+\end{equation}
+which does not require the attention scores on all contextual tokens to sum up to one, may also be effective. Note that $\text{SoftMax}_1$ is equivalent to prepending a token with an all-zero Key and Value features in the attention computation. We denote this method as ``Zero Sink'' to fit our framework.
+
+For validation, we pre-train three language models with 160 million parameters from scratch under identical settings. The first model utilizes the standard SoftMax attention (Vanilla), the second replaced the regular attention mechanism with $\text{SoftMax}_1$ (Zero Sink), and one prepending a learnable placeholder token (Sink Token) in all training samples. As shown in Table~\ref{tab:pretrain_fix}, while the zero sink alleviates the attention sink problem to some extent, the model still relies on other initial tokens as attention sinks. Introducing a sink token is highly effective in stabilizing the attention mechanism. Simply pairing this sink token with recent tokens sufficiently anchors the model's performance, and the resulting evaluation perplexity is even marginally improved. Given these findings, we recommend training future LLMs with a sink token in all samples to optimize streaming deployment.

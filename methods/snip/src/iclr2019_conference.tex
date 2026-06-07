@@ -1,0 +1,191 @@
+%\documentclass{article} % For LaTeX2e
+\documentclass[dvipsnames]{article} % NL: added the condition to add colors
+\usepackage{iclr2019_conference,times}
+\usepackage{hyperref}
+\usepackage{url}
+
+\input{math_commands.tex}
+
+% -------------------------------------------------------------------------------------------------
+% added by NL
+% -------------------------------------------------------------------------------------------------
+% algorithm table
+\usepackage{algorithm,algcompatible,amsmath}
+\algnewcommand\INPUT{\item[\textbf{Input:}]}%
+\algnewcommand\OUTPUT{\item[\textbf{Output:}]}%
+\renewcommand{\algorithmiccomment}[1]{\hfill{$\triangleright$ #1}}
+\algnewcommand{\IfThenElse}[3]{% \IfThenElse{<if>}{<then>}{<else>}
+  \State \algorithmicif\ #1\ \algorithmicthen\ #2\ \algorithmicelse\ #3}
+% algorithm curly brace
+\usepackage{tikz}
+\usetikzlibrary{decorations.pathreplacing,calc}
+\newcommand{\tikzmark}[1]{\tikz[overlay,remember picture] \node (#1) {};}
+\newcommand*{\AddNote}[4]{%
+\begin{tikzpicture}[overlay, remember picture]
+\draw [decoration={brace,amplitude=0.5em},decorate,thick,black]
+($(#3)!(#1.north)!($(#3)-(0,1)$)$) --  
+($(#3)!(#2.south)!($(#3)-(0,1)$)$)
+node [align=left, text width=3.0cm, pos=0.5, anchor=west] {#4};
+\end{tikzpicture}
+}%
+
+% wrap figure
+\usepackage{wrapfig}
+
+% roman numbers; e.g. \romannum{1} for Lowercase, \Romannum{1} for Uppercase
+\usepackage{romannum}
+% math
+\usepackage{amsfonts,bm, amssymb, bbm, mathtools}
+% define tight_itemize
+\usepackage{enumitem}
+\newenvironment{tight_itemize}{
+\begin{itemize}[leftmargin=10pt]
+  \setlength{\topsep}{0pt}
+  \setlength{\itemsep}{0pt}
+  \setlength{\parskip}{0pt}
+  \setlength{\parsep}{0pt}
+}{\end{itemize}}
+% Define \eg, \ie, and etc.
+\usepackage{xspace}
+\makeatletter
+\DeclareRobustCommand\onedot{\futurelet\@let@token\@onedot}
+\def\@onedot{\ifx\@let@token.\else.\null\fi\xspace}
+\def\eg{\emph{e.g}\onedot} \def\Eg{\emph{E.g}\onedot}
+\def\ie{\emph{i.e}\onedot} \def\Ie{\emph{I.e}\onedot}
+\def\cf{\emph{c.f}\onedot} \def\Cf{\emph{C.f}\onedot}
+\def\etc{\emph{etc}\onedot} \def\vs{\emph{vs}\onedot}
+\def\wrt{w.r.t\onedot} \def\dof{d.o.f\onedot}
+\def\etal{\emph{et al}\onedot}
+\makeatother
+% Define commands - highlight cell 
+\usepackage{xcolor,colortbl}
+\newcommand{\hlcell}{\cellcolor{gray!20}}  %{0.9}
+\newcommand{\hlcelldegree}[1]{\cellcolor{Green!#1}}  %{0.9}
+% Define commands - TODO
+\newcommand{\TODO}[1]{[\textbf{\textcolor{red}{TODO:}}\emph{\textcolor{red}{#1}}]}
+\newcommand{\NOTE}[1]{[\textbf{\textcolor{blue}{Note:}}\emph{\textcolor{blue}{#1}}]}
+% Define check marks 
+\usepackage{pifont}
+\newcommand{\cmark}{\ding{52}} % try 51, 52
+\newcommand{\xmark}{\ding{55}} % try 53, 54, 55, 56
+% Insert figures
+\usepackage{graphicx}
+\usepackage{subcaption} % for subfigure environment
+% Table
+\usepackage{booktabs} %(e.g. toprule)
+\usepackage{multirow}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}
+\newcolumntype{R}[1]{>{\raggedleft\arraybackslash}p{#1}}
+% Appendix
+\usepackage{appendix}
+% Typesetting
+% architecture (small preset)
+\newcommand{\slenet}[1]{{\small LeNet#1}}
+\newcommand{\salexnet}[1]{{\small AlexNet#1}}
+\newcommand{\svgg}[1]{{\small VGG#1}}
+\newcommand{\swrn}[1]{{\small WRN#1}}
+\newcommand{\srnn}[1]{{\small RNN#1}}
+\newcommand{\slstm}[1]{{\small LSTM#1}}
+\newcommand{\sgru}[1]{{\small GRU#1}}
+% architecture (no size preset - change accordingly in the context)
+\newcommand{\vlenet}[1]{LeNet#1}
+\newcommand{\valexnet}[1]{AlexNet#1}
+\newcommand{\vvgg}[1]{VGG#1}
+\newcommand{\vwrn}[1]{WRN#1}
+\newcommand{\vrnn}[1]{RNN#1}
+\newcommand{\vlstm}[1]{LSTM#1}
+\newcommand{\vgru}[1]{GRU#1}
+% methods
+\newcommand{\lwc}{{\small LWC}}
+\newcommand{\dns}{{\small DNS}}
+\newcommand{\lc}{{\small LC}}
+\newcommand{\sws}{{\small SWS}}
+\newcommand{\svd}{{\small SVD}}
+\newcommand{\obd}{{\small OBD}}
+\newcommand{\lobs}{{\small L-OBS}}
+\newcommand{\css}{{\small CSS}}
+\newcommand{\snip}{{\small SNIP}}
+% initialization
+\newcommand{\initrn}{{\small RN}}
+\newcommand{\inittn}{{\small TN}}
+\newcommand{\initvsx}{{\small VS-X}}
+\newcommand{\initvsh}{{\small VS-H}}
+% datasets
+\newcommand{\mnist}{{\small MNIST}}
+\newcommand{\fmnist}{{\small Fashion-MNIST}}
+\newcommand{\formnist}{{\small (Fashion-)MNIST}}
+\newcommand{\cifar}[1]{{\small CIFAR#1}}
+\newcommand{\timagenet}{{\small Tiny-ImageNet}}
+\newcommand{\imagenet}{{\small ImageNet}}
+% math notations
+\newcommand{\bkappa}{\bar{\kappa}}
+
+
+% AJ
+\newcommand{\SKIP}[1]{}
+% -------------------------------------------------------------------------------------------------
+
+
+\title{SNIP: Single-shot Network Pruning based on \\Connection Sensitivity}
+%\title{Cold gradient guided single-shot pruning for deep neural network
+% compression}
+%\title{Cold gradient guided single-shot pruning of deep neural networks}
+%\title{Pruning deep neural networks at one go on cold start}
+%\title{Pruning deep neural networks at a single stroke on cold start}
+%\title{Pruning deep neural networks on cold start at a single stroke}
+%\title{Pruning once on cold start for deep neural network compression}
+%\title{Pruning at a single stroke on cold start for deep neural network compression}
+%\title{Cold start gradient-based one-shot pruning}
+
+% Authors must not appear in the submitted version. They should be hidden
+% as long as the \iclrfinalcopy macro remains commented out below.
+% Non-anonymous submissions will be rejected without review.
+
+\author{Namhoon Lee, Thalaiyasingam Ajanthan \& Philip H. S. Torr\\
+University of Oxford\\
+\texttt{\{namhoon,ajanthan,phst\}@robots.ox.ac.uk} \\
+}
+
+% The \author macro works with any number of authors. There are two commands
+% used to separate the names and addresses of multiple authors: \And and \AND.
+%
+% Using \And between authors leaves it to \LaTeX{} to determine where to break
+% the lines. Using \AND forces a linebreak at that point. So, if \LaTeX{}
+% puts 3 of 4 authors names on the first line, and the last on the second
+% line, try using \AND instead of \And before the third author name.
+
+\newcommand{\fix}{\marginpar{FIX}}
+\newcommand{\new}{\marginpar{NEW}}
+
+\iclrfinalcopy % Uncomment for camera-ready version, but NOT for submission.
+
+\begin{document}
+
+
+\maketitle
+
+\begin{abstract}
+    \input{text/abstract}
+\end{abstract}
+
+\input{text/introduction}
+%\newpage
+\input{text/relatedwork}
+%\newpage
+\input{text/preliminaries}
+%\newpage
+\input{text/method}
+\input{text/experiments}
+\input{text/discussion}
+
+\input{text/acknowledgements}
+
+\bibliography{iclr2019_conference}
+\bibliographystyle{iclr2019_conference}
+
+\appendix
+%\appendixpage
+\input{text/appendix}
+
+\end{document}

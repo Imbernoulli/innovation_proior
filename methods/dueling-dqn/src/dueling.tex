@@ -1,0 +1,77 @@
+%!TEX root = main.tex
+%TODO(@Ziyu): Where are the nonlinearities? Also, did you use pooling? Did you explain more precisely in results section?
+
+The key insight behind our new architecture, as illustrated in Figure~\ref{fig:saliency}, is that for many states, it is unnecessary to estimate the value of each action choice. For example, in the Enduro game setting, knowing whether to move left or right only matters when a collision is eminent. In some states, it is of paramount importance to know which action to take, but in many other states the choice of action has no repercussion on what happens. For bootstrapping based algorithms, however, the estimation of state values is of great importance for every state.
+
+To bring this insight to fruition, we design a single $Q$-network architecture, as illustrated in Figure~\ref{fig:duelnet}, which we refer to as the dueling network. The lower layers of the dueling network are convolutional as in the original DQNs \cite{Mnih:2015}. However, instead of following the convolutional layers with a single sequence of fully connected layers, we instead use two sequences (or streams) of fully connected layers. The streams are constructed such that they have they have the capability of providing separate estimates of the value and advantage functions. Finally, the two streams are combined to produce a single output $Q$ function. As in \cite{Mnih:2015}, the output of the network is a set of $Q$ values, one for each action.
+
+Since the output of the dueling network is a $Q$ function, it can be trained with the many existing algorithms, such as DDQN and SARSA. In addition, it can take advantage of any improvements to these algorithms, including better replay memories, better exploration policies, intrinsic motivation, and so on. 
+
+The module that combines the two streams of fully-connected layers to output a $Q$ estimate requires very thoughtful design.  
+
+From the expressions for advantage $Q^{\pi}(s,a) = V^{\pi}(s) + A^{\pi}(s,a)$ and state-value $V^{\pi}(s) = \expectQ{Q^{\pi}(s,a)}{a \sim \pi(s)}$, it follows that $\expectQ{A^{\pi}(s,a)}{a \sim \pi(s)} = 0$. Moreover, for a deterministic policy, $a^* = \argmax_{a' \in \mathcal{A}} Q(s,a')$, it follows that $Q(s,a^*) = V(s)$ and hence $A(s,a^*)=0$.
+
+Let us consider the dueling network shown in Figure~\ref{fig:duelnet}, where we make one stream of fully-connected layers output a scalar ${V}(s;\theta,\beta)$, and the other stream output an $|\mathcal{A}|$-dimensional vector ${A}(s,a;\theta,\alpha)$. Here, $\theta$ denotes the parameters of the convolutional layers, while $\alpha$ and $\beta$ are the parameters of the two streams of fully-connected layers.
+
+
+Using the definition of advantage, we might be tempted to construct the aggregating module as follows:
+\be
+Q(s,a;\theta,\alpha,\beta) =  {V}(s;\theta,\beta) + {A}(s,a;\theta,\alpha),
+\label{eq:combo1}
+\ee
+Note that this expression applies to all $(s,a)$ instances; that is, to express equation~(\ref{eq:combo1}) in matrix form we need to replicate the scalar, ${V}(s;\theta,\beta)$, $|\mathcal{A}|$ times.
+
+However, we need to keep in mind that $Q(s,a;\theta,\alpha,\beta)$ is only a parameterized estimate of the true $Q$-function. Moreover, it would be wrong to conclude
+that ${V}(s;\theta,\beta)$ is a good estimator of the state-value function, or likewise that ${A}(s,a;\theta,\alpha)$ provides a reasonable estimate of the advantage function. 
+
+Equation~(\ref{eq:combo1}) is unidentifiable in the sense that given $Q$ we cannot recover ${V}$ and ${A}$ uniquely. To see this, add a constant to ${V}(s;\theta,\beta)$ and subtract the same constant from ${A}(s,a;\theta,\alpha)$. This constant cancels out resulting in the same $Q$ value. 
+% It is therefore not necessarily true that $V(s;\theta,\beta) = \max_a Q(s,a;\theta,\alpha,\beta)$ when acting according to the policy $Q(s,a;\theta,\alpha,\beta)$. 
+This lack of identifiability is mirrored by poor practical performance when this equation is used directly.
+
+To address this issue of identifiability, we can force the advantage function estimator to have zero advantage at the chosen action. That is, we let the last module of the network implement the forward mapping
+\begin{multline}
+Q(s,a;\theta,\alpha,\beta) =  {V}(s;\theta,\beta)~+\\
+\left({A}(s,a;\theta,\alpha) - \max_{a' \in |\mathcal{A}|}  {A}(s, a' ;\theta,\alpha) \right).
+\label{eq:combo3}
+\end{multline}
+Now, for $a^* = \argmax_{a' \in \mathcal{A}} Q(s,a';\theta,\alpha,\beta) = \argmax_{a' \in \mathcal{A}} A(s,a';\theta,\alpha)$, we obtain $Q(s,a^*;\theta,\alpha,\beta) =  {V}(s;\theta,\beta)$. Hence, the stream ${V}(s;\theta,\beta)$ provides an estimate of the value function, while the other stream produces an estimate of the advantage function.
+
+An alternative module replaces the max operator with an average:
+\begin{multline}
+Q(s,a;\theta,\alpha,\beta) =  {V}(s;\theta,\beta)~+\\
+\left({A}(s,a;\theta,\alpha) - \frac{1}{|\mathcal{A}|} \sum_{a'} {A}(s, a' ;\theta,\alpha) \right).
+\label{eq:combo2}
+\end{multline}
+On the one hand this loses the original semantics of $V$ and $A$ because they are now off-target by a constant, but on the other hand it increases the stability of the optimization: with (\ref{eq:combo2}) the advantages only need to change as fast as the mean, instead of having to compensate any change to the optimal action's advantage in (\ref{eq:combo3}). We also experimented with a softmax version of equation (\ref{eq:combo3}), but found it to deliver similar results to the simpler module of equation (\ref{eq:combo2}). Hence, all the experiments reported in this paper use the module of equation (\ref{eq:combo2}). 
+
+Note that while subtracting the mean in equation (\ref{eq:combo2}) helps with identifiability, it does not change the relative rank of the ${A}$ (and hence $Q$) values, preserving any greedy or $\epsilon$-greedy policy based on $Q$ values from equation (\ref{eq:combo1}).
+When acting, it suffices to evaluate the advantage stream to make decisions.
+
+It is important to note that equation (\ref{eq:combo2}) is viewed and implemented as part of the network and not as a separate algorithmic step. Training of the dueling architectures, as with standard $Q$ networks (e.g. the deep $Q$-network of \citet{Mnih:2015}), requires only back-propagation. The estimates ${V}(s;\theta,\beta)$ and ${A}(s,a;\theta,\alpha)$ are computed automatically without any extra supervision or algorithmic modifications. 
+
+As the dueling architecture shares the same input-output interface with standard $Q$ networks, 
+we can recycle all learning algorithms with $Q$ networks (\emph{e.g.}, DDQN and SARSA) to train the dueling architecture.
+
+% With the dueling network, we learn the value stream with every update to the $Q$ values.
+% This frequent updating, enables the dueling network to approximate the state
+% values better.
+% State value estimation is especially important to bootstrapping-based RL algorithms 
+% \cite{SuttonBarto:1998}.
+
+% The dueling architecture could also preserve the advantage orders
+% while allowing changes in state value.
+
+
+
+%\be
+%Q(s,a;\theta,\alpha,\beta) =  V(s;\theta,\beta) + \left( A(s,a;\theta,\alpha) - \sum_{a'} \sigma[Q(s,a;\theta,%\alpha,\beta)] A(s,a';\theta,\alpha) \right) \label{eq:combo3} 
+%\ee
+
+%\be
+%Q(s,a;\theta,\alpha,\beta) =  V(s;\theta,\beta) + \left( A(s,a;\theta,\alpha) - \frac{1}{N_a} \sum_{a'} A(s,a;\theta,\alpha) \right)
+%\label{eq:combo4}
+%\ee
+
+%TODO: NNET EQUATION AND DIAGRAM
+
+%TODO: GRADIENT CLIPPING, SOFTMAX, MAX, ETC.

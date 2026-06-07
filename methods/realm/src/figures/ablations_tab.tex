@@ -1,0 +1,24 @@
+{
+\begin{table}[t!]
+\caption{Ablation experiments on NQ's development set.}
+\vspace{.1in}
+\footnotesize \centering
+\begin{tabular}{@{}lcc@{}}
+\toprule
+\textbf{Ablation} & \makecell{\textbf{Exact}\\\textbf{Match}} & \makecell{\textbf{Zero-shot}\\\textbf{Retrieval}\\\textbf{Recall@5}}\\
+\midrule
+\thename & 38.2 & 38.5 \\
+\cmidrule{1-3}
+REALM retriever$+$Baseline encoder  & 37.4 & 38.5\\
+Baseline retriever$+$REALM encoder & 35.3 & 13.9 \\
+Baseline (ORQA) & 31.3 & 13.9\\
+\cmidrule{1-3}
+\thename with random uniform masks & 32.3 & 24.2\\
+\thename with random span masks & 35.3 & 26.1\\
+\cmidrule{1-3}
+30$\times$ stale MIPS & 28.7 & 15.1 \\
+\bottomrule
+\end{tabular}
+\label{tab:ablations}
+\end{table}
+}

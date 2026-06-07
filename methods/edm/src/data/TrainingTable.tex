@@ -1,0 +1,15 @@
+\newcommand{\genTrainingTable}{%
+\multicolumn{1}{l|}{}                                                                    & \multicolumn{4}{c|}{CIFAR-10~\cite{Krizhevsky2009cifar} at 32$\times$32}  & \multicolumn{2}{c|}{FFHQ~\cite{Karras2018stylegan} 64$\times$64}  & \multicolumn{2}{c|}{AFHQv2~\cite{Choi2020afhq} 64$\times$64}  \\
+\multicolumn{1}{l|}{}                                                                    & \multicolumn{2}{c|}{Conditional}  & \multicolumn{2}{c|}{Unconditional}    & \multicolumn{2}{c|}{Unconditional}                                & \multicolumn{2}{c|}{Unconditional}                            \\
+\tabucline{-}
+{\bf Training configuration}                                                             & VP         & VE                   & VP          & VE                      & VP         & VE                                                   & VP         & VE                                               \\
+\tabucline{-}
+\confhdr{a} \low{Baseline~\cite{Song2021sde}}\hfill\low{\scriptsize{($^*$pre-trained)}}  & 2.48       & 3.11                 & 3.01\smast  & 3.77\smast              & 3.39       & 25.95                                                & 2.58       & 18.52                                            \\
+\confhdr{b} \low{+ Adjust hyperparameters}                                               & 2.18       & 2.48                 & 2.51        & 2.94                    & 3.13       & 22.53                                                & 2.43       & 23.12                                            \\
+\confhdr{c} \low{+ Redistribute capacity}                                                & 2.08       & 2.52                 & 2.31        & 2.83                    & 2.78       & 41.62                                                & 2.54       & 15.04                                            \\
+\confhdr{d} \low{+ Our preconditioning}                                                  & 2.09       & 2.64                 & 2.29        & 3.10                    & 2.94       & \s3.39                                               & 2.79       & \s3.81                                           \\
+\confhdr{e} \low{+ Our loss function}                                                    & 1.88       & 1.86                 & 2.05        & 1.99                    & 2.60       & \s2.81                                               & 2.29       & \s2.28                                           \\
+\confhdr{f} \low{+ Non-leaky augmentation}                                               & {\bf1.79}  & {\bf1.79}            & {\bf1.97}   & {\bf1.98}               & {\bf2.39}  & {\bf\s2.53}                                          & {\bf1.96}  & {\bf\s2.16}                                      \\
+\tabucline{-}
+NFE                                                                                      & 35         & 35                   & 35          & 35                      & 79         & 79                                                   & 79         & 79                                               \\
+}

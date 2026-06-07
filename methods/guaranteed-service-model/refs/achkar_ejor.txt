@@ -1,0 +1,2553 @@
+Manuscript                                                                                   Click here to view linked References
+
+
+
+
+   1
+   2                 Extensions to the Guaranteed Service Model for Industrial
+   3
+   4
+   5
+                         Applications of Multi-Echelon Inventory Optimization
+   6
+   7              Victoria G. Achkara,b, Braulio B. Brunaudc, Héctor D. Pérezd, Rami Musac, Carlos A. Méndeza,b,
+   8
+   9                                                    Ignacio E. Grossmannd
+  10
+  11
+             a
+  12             Universidad Nacional del Litoral, Argentina
+  13
+  14
+             b
+                 INTEC (UNL – CONICET), Argentina
+  15         c
+                 Johnson & Johnson, USA
+  16
+             d
+  17             Carnegie Mellon University, USA
+  18
+  19         Keywords: inventory, optimization, guaranteed-service, multi-echelon
+  20
+  21
+  22         Abstract. Multi-echelon inventory optimization (MEIO) plays a key role in a supply chain seeking to
+  23
+  24         achieve specified customer service levels with a minimum capital in inventory. This is especially true
+  25         in real supply chains, which face supply and demand uncertainty. In this work, we propose a generalized
+  26
+  27         MEIO model based on the Guaranteed Service approach to allocate safety stock levels across the
+  28
+  29         network at the lowest holding cost. This model simultaneously accounts for several features that are
+  30         usually present in real multi-echelon supply chains: review periods, manufacturing facilities, hybrid
+  31
+  32         nodes (nodes with both internal and external demand), minimum order quantities (MOQ), and different
+  33
+  34         service level performance indicators (fill rate and cycle service levels). We propose an integrated
+  35         nonlinear programming model to support decision making, which can be reformulated as                    a
+  36
+  37         Quadratically Constrained Program (QCP), which leads to order of magnitude reductions in
+  38
+  39         computational time. The performance of the model is evaluated by solving illustrative and real-world
+  40         cases, and is validated with simulation.
+  41
+  42
+  43               1. INTRODUCTION
+  44
+  45                 On-time fulfilment of customer demand is critical in today’s customer-centric supply chains.
+  46
+  47         Achieving this goal depends in great part on the inventory levels and policies that are set along a supply
+  48
+  49         chain. However, efficient inventory control is particularly challenging when customer demand is
+  50         uncertain and retailers may not know the exact size of an order in advance. Other sources of uncertainty
+  51
+  52         may increase the problem complexity, such as lead time variability. Moreover, the decision at one stage
+  53
+  54         impacts inventory decisions at other stages. To overcome these challenges, having a safety stock serves
+  55         to mitigate the risk of stock-outs in the system. The purpose of multi-echelon inventory optimization
+  56
+  57         (MEIO) is to allocate safety stocks to meet customer service levels, while minimizing the total capital
+  58
+  59         tied up in inventory throughout the supply chain, in contrast to single-echelon inventory optimization
+  60
+  61
+  62
+                     1
+  63
+  64
+  65
+     (SEIO), which seeks to independently minimize cost at each echelon. MEIO has enabled companies to
+ 1
+ 2   reduce their inventories up to 30% and improve item availability up to 5% by supporting supply chain
+ 3   segmentation, and providing a better balance between lead time, inventory and service under
+ 4
+ 5   uncertainty (Payne, 2016). From an optimization perspective, making decisions about inventory in
+ 6
+ 7   multi-echelon systems is a challenging task because the objective functions usually involve non-
+ 8   linearities, and decision variables affect more than one echelon.
+ 9
+10         MEIO approaches have been studied in the literature for allocating safety stock in supply chains.
+11
+12   The intent of safety stock allocation is to determine an overall strategy for deploying inventory levels
+13   across the supply chain in order to buffer it against sources of uncertainty (Graves & Willems, 2003).
+14
+15   De Kok et al. (2018) present a general typology and review stochastic MEIO models in which they
+16
+17   classify the extensive research on multi-echelon inventory management under model assumptions,
+18   research goals, and different applied methodologies. They state that multi-echelon inventory systems
+19
+20   are still a very active area of research because of their complexity and practical relevance. More
+21
+22   recently, Gonçalves et al. (2020) present a systematic literature review describing the history and trends
+23   regarding the safety stock determination from an operations research perspective. They also highlight
+24
+25   that the number of contributions to MEIO has seen a significant increase from the year 2005 onwards,
+26
+27   and they list many potential directions and trends for future research.
+28         There are two widely known approaches in MEIO to determine safety stock levels: the stochastic-
+29
+30   service model (SSM) and the guaranteed-service model (GSM), which were introduced by Clark and
+31
+32   Scarf (1960) and Simpson (1958), respectively. These two approaches differ in terms of general
+33   characteristics and provide an interesting contrast on how a supply chain is represented for the purpose
+34
+35   of setting safety stocks. Detailed comparisons can be found in De Smet et al. (2019), Graves and
+36
+37   Willems (2003), and Simchi-Levi and Zhao (2012).
+38         The objective of this work is to develop a guaranteed-service optimization model to address the
+39
+40   problem of optimizing multi-echelon supply chain network inventory management for complex
+41
+42   systems. However, the GSM for multi-echelon supply chains developed in literature does not fully
+43
+     account for all the issues and characteristics arising in industrial practice. Many authors have developed
+44
+45   some extensions to the GSM, but to the best of our knowledge, nobody has developed a model that can
+46
+47   achieve optimum safety stocks on complex supply chains while integrating all the features typical of
+48
+     industrial environments presented in this work. We integrate them into a single model that enables an
+49
+50   improved real-world supply chain representation in order to provide support to strategic decision-
+51
+52   makers.
+53
+           This paper presents a model for multi-echelon inventory systems of a multi-product supply chain
+54
+55   with both demand and lead time uncertainty. The novelty in the proposed model is that it combines
+56
+57   several features. First, demand can occur at any node in the network. This can result in hybrid nodes
+58
+59
+     that have both dependent and independent demands. To the best of our knowledge, these characteristics,
+60   which represent the common operation mode of many real multi-echelon systems, has not been
+61
+62
+           2
+63
+64
+65
+     addressed before, as most of the literature on supply chain inventory management considers only
+ 1
+ 2   external demand at the final nodes of the network. Our proposed formulation also captures risk-pooling
+ 3   effects by consolidating the safety stock inventory of downstream nodes to the upstream nodes in the
+ 4
+ 5   multi-echelon supply chain. Second, manufacturing plants can be placed at any location in the network,
+ 6
+ 7   enabling the manufacture of any desired good at those locations. This feature allows generalizing and
+ 8   managing larger supply chains that have grown in their vertical integration. Capturing wider networks
+ 9
+10   can significantly improve the inventory decision-making process across the process supply chains as is
+11
+12   seen in those industries that produce both raw materials and finished goods. Third, fill rates can be used
+13   as an alternative customer service key performance indicator when setting safety stock levels. Fill rates
+14
+15   are not considered in the standard GSM, which relies on cycle service levels instead. However, fill rate
+16
+17   is the most widely applied service level measure in industry (Teunter et al., 2017).. We thus allow the
+18   modeler the flexibility of specifying the customer service metric to be used. In order to do this, we
+19
+20   propose a quadratic regression to estimate the equivalent Cycle Service Level (CSL) when fill rates are
+21
+22   used in the model as the desired customer service measure. In addition, minimum order quantities
+23   (MOQ) for replenishment orders are explicitly modelled. To the best of our knowledge, literature on
+24
+25   the impact of MOQ on safety stock levels is scarce and mostly focuses on continuous-review inventory
+26
+27   policies. Depending on the size of the order, using MOQ can cause overshoot in the inventory levels,
+28   impacting service levels and costs. This is frequently observed in almost all supply chains. Finally, the
+29
+30   resulting nonconvex Nonlinear Programming (NLP) model is reformulated as a Quadratically
+31
+32   Constrained Problem (QCP) by exploiting the structure of the constraints of the base model. Several
+33   computational examples for illustrative and real industrial systems are presented to illustrate the
+34
+35   application of the proposed model and its resulting improved computational performance.
+36
+37         The outline of the paper is as follows. The literature review and background with the basic
+38   concepts of the GSM are presented in the following subsection. The problem statement is given in
+39
+40   Section 2, followed by the model formulation in Section 3. Section 4 details the application of the model
+41
+42   on illustrative and real-world case studies. We conclude this article in Section 5. A Nomenclature
+43
+     section is presented at the end to facilitate the model understanding. A Supporting Information Section
+44
+45   is included to provide the data input used in the real case study and detail additional discoveries relating
+46
+47   to the impact of MOQ on service metrics.
+48
+49
+50
+         1.1 Literature and Background of the Guaranteed-service Model
+51
+52         The present paper relies on the GSM to optimize safety stocks. Although this approach was
+53   developed more than 50 years ago, 80% of the existing works on this topic have been published in the
+54
+55   last 2 decades (Eruguz et al., 2016). The first multi-echelon serial system for the GSM model was
+56
+57   proposed by Simpson (1958), and then it was extended to deal with different network topologies
+58
+     (Graves & Willems, 2000; Inderfurth, 1993; Inderfurth & Minner, 1998; Minner, 1998). Later,
+59
+60   Magnanti et al. (2006) developed a guaranteed-service approach for general acyclic networks. The main
+61
+62
+           3
+63
+64
+65
+     idea of the classic guaranteed service approach is that if the customer places an order of size dj(t) on
+ 1
+ 2   node j at time t, this order will be fulfilled by time t + Sj (Graves & Willems, 2000), with Sj being the
+ 3   guaranteed-service time of node j. Moreover, each node j receives a service commitment from its
+ 4
+ 5   upstream node i ∈ J, called inbound service time SIj (SIj = Si), and has an order processing time or lead
+ 6
+ 7   time of LTj. This lead time represents the time until the outputs are available to serve the demand,
+ 8   including material handling and transportation times (You & Grossmann, 2009). Both SIj and LTj are
+ 9
+10   times that must be taken into account to define Sj. The Net Lead Time (NLT) is a concept that links
+11
+12   them and represents the period of exposure that is not covered within the guaranteed service time and
+13   must be covered with safety stock. The NLT for node j is defined as NLTj = SIj + LTj - Sj. Figure 1
+14
+15   displays examples for different values of Sj. The first example (1), also called “pull” or “full delay”
+16
+17   scenario, is the case where node j promises to its customer a guaranteed service time equal to the worst-
+18   case replenishment time (Sj = SIj + LTj). This node places an order to its predecessor every time it
+19
+20   receives an order from its customer, then it waits for the upstream node to process its order before
+21
+22   processing the order without storing any inventory. In this case, NLTj = 0. On the other hand, if the
+23   customer bounds the maximum possible service time (Sj ≤ maxSj) and this maximum is less than the
+24
+25   worst-case replenishment time (maxSj ≤ SIj + LTj), node j should satisfy customer demand in less time
+26
+27   that the required to place an order on the supplier and process it. Therefore, NLTj > 0, meaning that
+28   there is a period of time that should be covered with safety stock, as shown in cases (2) and (3) in Figure
+29
+30   1.
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+46
+47
+48
+49
+50
+51
+52
+53
+54   Figure 1: Examples of different values for SIj, Sj, and NLTj: 1) pull scenario, 2) intermediate scenario,
+55
+56                                             and 3) push scenario.
+57
+58
+59         The aim of the GSM is to define the values of SIj and Sj in order to reduce the safety stock holding
+60   cost. This may seem a simple task for a single-echelon supply chain. However, as shown in Figure 2,
+61
+62
+           4
+63
+64
+65
+     the guaranteed-service time defined for one node impacts the downstream stages in the network,
+ 1
+ 2   because the guaranteed service time for the node becomes the inbound service time for its downstream
+ 3   successors (SIj = Si). In case (1), avoiding safety stocks in node j yields large inventory levels on the
+ 4
+ 5   successor stage k (proportional to NLTk), while in case (2) the inventory level in k is reduced by holding
+ 6
+ 7   stock in j. Therefore, the GSM on multi-echelon systems is more complex and requires optimizing the
+ 8   network as a whole.
+ 9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34                    Figure 2: Guaranteed service approach in multi-echelon supply chains.
+35
+36
+37         A key assumption of the basic GSM is that demand is bounded. If demand in a certain period
+38   exceeds the bound, it is assumed that other extraordinary measures such as overtime production are
+39
+40   used to satisfy excess demand. Moreover, it is assumed that each stage of the supply chain operates
+41
+42   under a periodic review inventory policy with a base-stock level, with the review period being common
+43   for all echelons. The demand is independent and identically distributed at each demand node, following
+44
+45   a normal distribution. Lead times are constant, and independent demand only occurs at final nodes in
+46
+47   the network. In addition, the service times at the initial and the final nodes are inputs. Finally, each plant
+48
+     has a coefficient that represents the bill of materials for product transformation and depends on location-
+49
+50   location relationships (network arcs).
+51
+52         Over the years, many authors have worked on extending the original GSM assumptions to enable
+53
+     real-world supply chain characteristics to be captured, as presented in the survey by Eruguz et al. (2016).
+54
+55   The authors in this survey summarize several extensions made to the basic model of Graves and
+56
+57   Willems (2000). The main assumptions that were relaxed are related to the external demand, lead time
+58
+     variability, capacity constraints, service time customization, alternative replenishment policies, review
+59
+60   periods, and extraordinary measures. Moreover, other authors have presented works about integrating
+61
+62
+           5
+63
+64
+65
+     the classic GSM with other activities or approaches. You and Grossmann (2008) develop models and
+ 1
+ 2   algorithms that simultaneously consider inventory optimization and supply chain network design under
+ 3   demand uncertainty. In a subsequent work, these authors present an integrated multi-echelon supply
+ 4
+ 5   chain design and inventory management model under uncertainty using the GSM (You & Grossmann,
+ 6
+ 7   2009). Klosterhalfen et al. (2013) propose an integrated hybrid guaranteed-service and stochastic-
+ 8   service approach for inventory optimization, that allows selecting the approach that minimizes costs.
+ 9
+10   Recently, the work by Ghadimi (2020) presents a model for joint optimization of production capacity
+11
+12   and safety stocks under the GSM approach. Bendadou et al. (2021) analyze the impact of merging
+13   activities in a supply chain under the GSM.
+14
+15         In addition to the extensions mentioned in (Eruguz et al., 2016), the inclusion of MOQ and fill
+16
+17   rate as a service level measure have significant importance for representing real-world supply chain
+18   dynamics and must be accounted for. Chopra and Meindl (2013) define the Cycle Service Level (CSL)
+19
+20   as the fraction of replenishment cycles that end with all the customer demand being met, where the
+21
+22   replenishment cycle is the interval between two successive replenishment deliveries. In other words, it
+23   is the probability that an order is fulfilled “on time in full” (OTIF). On the other hand, the product fill
+24
+25   rate (fr) is the fraction of product demand that is fulfilled on time from the product in inventory. The
+26
+27   latter one is known as the most widely applied service level measure in industry (Teunter et al., 2017).
+28   However, CSL is the measure required by the GSM. Chopra and Meindl (2013) describe how to
+29
+30   introduce the fill rate given a continuous review inventory policy with a formula that links both
+31
+32   indicators to obtain the equivalent CSL. They also describe how a large MOQ yields larger fill rates.
+33   Silver and Bischak (2011) present an exact fill rate in a periodic review base stock system under
+34
+35   normally distributed demand, and they state that the fill rate depends on four parameters, safety factor,
+36
+37   coefficient of variation, review period, and lead time, but not on the minimum order quantity. Other
+38   works (Park et al., 2018; Shen et al., 2019; Zhou et al., 2007; Zhu et al., 2015) focus on the impact of
+39
+40   the MOQ on inventory control rather than on safety inventory allocation. De Smet et al. (2019) combine
+41
+42   stochastic lead times with batching decisions for a distribution network based on the work of Humair
+43
+     et al. (2013) and calculate fill rates with an iterative procedure. More recently, Peeters (2020) accounts
+44
+45   for MOQ to set safety stock levels and review periods integrated with stochastic lead times, based on
+46
+47   the approach proposed by Humair et al. (2013), and using the Cycle Service Level (CSL) as a customer
+48
+     service measure. The present work is based on another approach proposed by Inderfurth (1993) to
+49
+50   integrating stochastic lead times, and is flexible in the sense that it enables specifying either CSL or fill
+51
+52   rates for each material at each location.
+53
+54
+55       2. PROBLEM STATEMENT
+56
+57         Given a supply chain with a fixed design for a set of materials p ∈ P that can be either raw
+58
+     materials or finished goods. The locations j ∈ J belong to a set of plants, distribution centers, and
+59
+60   retailers that can store different materials. Stock holding costs are incurred at all nodes; their unit costs
+61
+62
+           6
+63
+64
+65
+     are given. We assume uncertain demand and lead times. The objective is to determine the guaranteed-
+ 1
+ 2   service times for each material at each location, and consequently how much safety stock to maintain
+ 3   at each location to minimize the total holding costs and satisfy a specified customer service level. The
+ 4
+ 5   guaranteed-service time is a variable that affects more than one location, as discussed in the background
+ 6
+ 7   section (see Figure 1). Thus, the entire multi-echelon system must be considered for optimal decision-
+ 8   making.
+ 9
+10          Unlike most literature on the topic, this work does not assume there is a final customer demand
+11
+12   zone. One the other hand, we assume that external or independent demand for any material p can be
+13   placed at any node j in the network. Each node j can have an uncorrelated independent normally
+14
+15   distributed demand of material p with mean µIjp and variance σIjp. In addition, location j has an internal
+16
+17   or dependent demand if it is required to satisfy replenishment orders from downstream nodes, which is
+18   normally distributed with mean µDjp and variance σDjp. Demand is propagated upstream considering the
+19
+20   risk pooling assumptions described in You and Grossmann (2009). A node that satisfies both dependent
+21
+22   and independent demands is called a hybrid node, and an example of it is presented in Figure 3. . If a
+23   node is a hybrid one, demand is propagated upstream by pooling independent and dependent demand
+24
+25   separately.
+26
+27          Regarding the network topology, we assume divergent networks, as shown in Figure 3. In other
+28   words, a node that holds a material p can only receive this material from a single node and can distribute
+29
+30   it to one or more locations, as is usual in finished goods supply chains. The same node can be supplied
+31
+32   of another material q ∈ P from another location, but this last one should be the only supplier of q for
+33   that node. The route that each material follows, as well as the lead time distributions between two
+34
+35   connected nodes, are given. Lead times are assumed to follow an uncorrelated independent normal
+36
+37   distribution with mean µLTjp and standard deviation σLTjp. They represent the delay that is under the
+38   responsibility of node j, including transportation, material handling, and other processing times until
+39
+40   the material is ready to be shipped (i.e., is fulfilled).
+41
+42
+43
+44
+45
+46
+47
+48
+49
+50
+51
+52
+53
+54
+55
+56
+57
+58                         Figure 3: Example of a hybrid node and a divergent network.
+59
+60
+61
+62
+            7
+63
+64
+65
+           Plants can be located at any node. Plant nodes can hold stock of both raw materials and finished
+ 1
+ 2   goods. Nevertheless, the raw materials guaranteed-service time for raw materials is always required to
+ 3   be equal to zero to satisfy production demand immediately from stock. We introduce a general bill of
+ 4
+ 5   materials based on a material-material relation, instead of a location-location relation as in Graves and
+ 6
+ 7   Willems (2000). The value ϕpq determines the amount of material p required to produce a unit of material
+ 8   q, regardless of the plant location.
+ 9
+10         We assume a periodic review policy, with nested review periods (rjp) as inputs to the model and
+11
+12   common review days. Under a nested policy, every replenishment epoch of an upstream stage coincides
+13   with a shipment epoch towards its downstream stage (Eruguz et al., 2014). Furthermore, a minimum
+14
+15   order quantity moqjp may be enforced on replenishment orders. This means that if location j needs to
+16
+17   place an order, it will need to order at least the moqjp, which may force it to receive an amount larger
+18   than required.
+19
+20         The network topology is assumed to be fixed, so transportation costs are not evaluated in this
+21
+22   study. The service time of the most upstream nodes in the network and the maximum service time of
+23   each final node are given. We assume decentralized information; therefore, each node makes its own
+24
+25   replenishment decisions and has no delay in ordering. For each node, the safety stock factor k related
+26
+27   to the CSL, which is represented by the standard normal distribution through the z safety factor is also
+28   given, reflecting the percentage of time that the safety stock covers the demand variation. Alternatively,
+29
+30   the modeler can also ask for a fill rate to be considered as a target service measure.
+31
+32
+33       3. MODEL FORMULATION
+34
+35         The multi-echelon safety inventory optimization problem can be formulated as a nonlinear
+36
+37   program (NLP) that deals with the safety inventory planning in a given supply chain. The model
+38   proposed in Graves and Willems (2000) is used as a basis, and all sets, parameters, and variables of this
+39
+40   model are presented in the Nomenclature section. First, we assume that external demand is propagated
+41
+42   upstream to define internal demands through the complete network. If there are stages with more than
+43   one successor, we require a decision on how to combine the demand bounds for the downstream stages
+44
+45   to obtain a relevant demand bound for the upstream stage to position the safety stock (Graves &
+46
+47   Willems, 2000). There will be a relative reduction in variability as we combine demand streams due to
+48   risk pooling. Therefore, the dependent demand for material p at node j is obtained by converting the
+49
+50   demand for all materials q that require p as an input at all successor nodes k. The conversion is done via
+51
+52   the bill of materials ϕpq as a pre-processing step. The total demand is then the sum of the independent
+53   and dependent demands as shown in Equations (1)-(2). Note that the second term on both equations
+54
+55   correspond to the dependent demand mean and deviation, that is µDjp and σDjp. For nodes where material
+56
+57   p is distributed, rather than transformed into q, p = q and ϕpq = 1.
+58
+59
+60
+61
+62
+           8
+63
+64
+65
+      𝜇𝑗𝑝 = 𝜇𝐼 𝑗𝑝 + ∑            ∑ 𝜙𝑝𝑞 𝜇𝑘𝑞                           ∀ 𝑗 ∈ 𝐽, 𝑝 ∈ 𝑃𝑗                      (1)
+ 1
+                        (𝑝,𝑞)∈Φ (𝑗,𝑘)∈𝐴
+ 2
+ 3
+ 4    𝜎𝑗𝑝 = √𝜎𝐼 2𝑗𝑝 + ∑             ∑         2 𝜎2
+                                             𝜙𝑝𝑞                      ∀ 𝑗 ∈ 𝐽, 𝑝 ∈ 𝑃𝑗                     (2)
+                                                 𝑘𝑞
+ 5                       (𝑝,𝑞)∈Φ (𝑗,𝑘,𝑝)∈𝐴
+ 6
+ 7
+ 8       3.1 Constraints
+ 9
+10
+              The first set of constraints is related to bounding the guaranteed-service time variables. Equation
+11
+12   (3) defines the first inbound service time for the starting (source) nodes in the network J0, where si0 is
+13
+14   a given input. Equation (4) links the inbound guaranteed-service time SIjp and the guaranteed-service
+15
+     time of its upstream node Siq. A is a set with elements (i,j,p) indicating that there is an enabled route for
+16
+17   material p from i to j. Note that q = p and i ≠ j if it is a distribution link (i to j) of the same product p,
+18
+19   and q ≠ p and i = j if node j is a plant location that produces p from q. If there is a maximum accepted
+20
+21
+     delay for any material on a node, the inequality in (5) is active.
+22                                                                                                        (3)
+               0
+23    𝑆𝐼𝑗𝑝 = 𝑠𝑖𝑗𝑝                                ∀ 𝑗 ∈ 𝐽0 , 𝑝 ∈ 𝑃𝑗
+24
+25                                                                                                        (4)
+26    𝑆𝐼𝑗𝑝 ≥ 𝑆𝑖𝑞                                 ∀ (𝑖, 𝑗, 𝑝) ∈ 𝐴, (𝑞, 𝑝) ∈ Φ, 𝑝 ∈ 𝑃𝑗
+27
+28
+                                                                                                          (5)
+29    𝑆𝑗𝑝 ≤ 𝑚𝑎𝑥𝑆𝑗𝑝                               ∀ 𝑗 ∈ 𝐽, 𝑝 ∈ 𝑃𝑗
+30
+31   3.1.1.       Manufacturing locations
+32
+33            It is possible to understand the plant as two nodes connected by an arc that represents the
+34
+35   manufacturing time. On one hand, it is required that the safety stock of raw materials is enough to satisfy
+36   production demand with no delay, requiring maxSiq (maximum possible service time) to be equal to
+37
+38   zero for plant i and raw material q as shown in Figure 4. On the other hand, safety stocks of finished
+39
+40   goods are optional. A represents an enabled production process to obtain product p at node i, and there
+41   is a production lead-time ltip to represent the manufacturing time.
+42
+43
+44
+45
+46
+47
+48
+49
+50
+51                         Mandatory SS                  Production                  Optional SS
+52                                                                               for finished goods
+53
+                         for raw materials                lead time
+54
+55                                                         Bill of
+56                                                        Materials
+57
+58
+59
+60     Figure 4: Service time requirements in the plant for raw materials (RM) and finished goods (FG).
+61
+62
+              9
+63
+64
+65
+     3.1.2.    Stochastic lead times
+ 1
+ 2            Concerning the incorporation of stochastic lead times to the GSM, our work is based on the
+ 3   approach by Inderfurth (1993). In that work, a serial network is proposed with external demand at the
+ 4
+ 5   final nodes, called “demand nodes”, and upstream nodes are called “non-demand nodes”. Using the
+ 6
+ 7   theory of single-echelon inventory optimization, Inderfurth proposes that the safety stock at a demand
+ 8   node be calculated as:
+ 9
+10                                                                                                        (6)
+11    𝑆𝑆𝐼𝑗𝑝 = 𝑧√𝑁𝐿𝑇𝑗𝑝 𝜎𝐼𝑗𝑝 2 + 𝜇𝐼𝑗𝑝 2 𝜎𝐿𝑇𝑗𝑝 2                       ∀ 𝑗 ∈ 𝐽𝑝𝐼 , 𝑝 ∈ 𝑃𝑗
+12
+13   where 𝑆𝑆𝐼𝑗𝑝 represents the safety stock level to satisfy independent demand. The safety factor z
+14
+15   multiplies the square root that involves the combination of the two random variables: independent
+16
+17   demand (𝜇𝐼𝑗𝑝 , 𝜎𝐼𝑗𝑝 ) and lead time (𝑙𝑡𝑗𝑝 , 𝜎𝐿𝑇𝑗𝑝 ). At upstream stages, the stochastic lead time is converted
+18
+19   into a deterministic lead time ̂
+                                    𝑙𝑡𝑗𝑝 = 𝑙𝑡𝑗𝑝 + 𝑧𝐿𝑇 𝜎𝐿𝑇𝑗𝑝 , where zLT relates to the service level that denotes
+20
+21                                                                                        ̂𝑗𝑝 , and the safety
+     the probability that the lead time realization does not exceed the planned lead time 𝑙𝑡
+22
+23   stock for these non-demand nodes is calculated by:
+24
+25                           ̂𝑗𝑝 − 𝑆𝑗𝑝                                                                     (7)
+      𝑆𝑆𝐷𝑗𝑝 = 𝑧 𝜎𝐷𝑗𝑝 √𝑆𝐼𝑗𝑝 + 𝑙𝑡                               ∀ 𝑗 ∈ 𝐽𝑝𝐷 , 𝑝 ∈ 𝑃𝑗
+26
+27
+28            In our work, we propose that the safety stock for each hybrid node is equal to the summation of
+29
+30   safety stocks for independent and dependent demands, 𝑆𝑆𝑗𝑝 = 𝑆𝑆𝐼𝑗𝑝 + 𝑆𝑆𝐷𝑗𝑝 . Hence, on each node, we
+31
+32   define a safety stock to satisfy downstream orders and another safety stock for external orders. In
+33   general, these inventories are at the same location but have to be dedicated to each type of demand.
+34
+35   Therefore, this limits pooling at this location. In practice, safety stock can be considered as a whole to
+36
+37   satisfy demand if it does not mean a stockout on other customers at the same location.
+38   3.1.3.    Review periods
+39
+40            We assume nested review periods with common review days as in the work of Eruguz et al.
+41
+42   (2014), and that a replenishment order is ready to satisfy the demand on its period of arrival. A node
+43   that faces external demand, needs to cover with safety stock the demand during net lead time NLTjp =
+44
+45   SIjp - Sjp + ltjp + rjp, where rjp represents the review period. The guaranteed-service approach assumes
+46
+47   that there is no delay in placing an order and we assume that a replenishment is available to serve
+48   demand in its period of arrival. Hence, when an order is placed in a node, it is instantaneously
+49
+50   propagated upstream. Therefore, in upstream nodes NLTjp = SIjp - Sjp + ltjp + rjp – 1, as stated in Eruguz
+51
+52   et al. (2014). As mentioned above, we propose the alternative of hybrid nodes with both types of
+53   demand. However, we need to define unique guaranteed service times SIjp and Sjp. Inequalities (8) and
+54
+55   (9) account for the definition of the net lead times to be covered with safety stock to achieve the desired
+56
+57   service level for independent and dependent demands, respectively. These equations combine review
+58   periods and the stochastic lead time approach developed above. Note that SIjp, ltjp, rjp, and Sjp are
+59
+60   assumed to be the same for both types of demands, and ARG1 and ARG2 are positive continuous
+61
+62
+              10
+63
+64
+65
+     variables representing the terms in the square roots for the independent demand and dependent demand
+ 1
+ 2   safety stocks, respectively. For the same values of SIjp and Sjp, we can have different amounts of safety
+ 3   stocks for satisfying internal or external demands, because stochastic lead times are accounted for
+ 4
+ 5   differently for both demand types.
+ 6
+ 7    𝐴𝑅𝐺1 𝑗𝑝 ≥ 𝑆𝐼𝑗𝑝 − 𝑆𝑗𝑝 + 𝑙𝑡𝑗𝑝 + 𝑧 𝜎𝐿𝑇𝑗𝑝 + 𝑟𝑗𝑝 − 1                            ∀ 𝑗 ∈ 𝐽𝐷 , 𝑝 ∈ 𝑃𝑗     (8)
+ 8
+ 9
+                                                                                                       (9)
+10    𝐴𝑅𝐺2 𝑗𝑝 ≥ (𝑆𝐼𝑗𝑝 − 𝑆𝑗𝑝 + 𝑙𝑡𝑗𝑝 + 𝑟𝑗𝑝 ) 𝜎𝐼𝑗𝑝 2 + 𝜇𝐼𝑗𝑝 2 𝜎𝐿𝑇𝑗𝑝 2               ∀ 𝑗 ∈ 𝐽, 𝑝 ∈ 𝑃𝑗
+11
+12         Similarly, we need to define the upper bound of Sjp, which occurs when the net lead time is zero.
+13
+14   This upper bound is defined with inequalities (10) and (11). The former defines the upper bound as only
+15
+16   for the case of pure-dependent demand nodes, while the latter one accounts for the upper bound in the
+17   case of potential hybrid nodes. The tightest of both will define Sjp the upper bound. Note that ubjp is a
+18
+19   parameter in the model derived from (6) and (7), which allows choosing the largest upper bound when
+20
+21   there is a hybrid node.
+22
+                                                                                                                      (10)
+23    𝑆𝑗𝑝 ≤ 𝑆𝐼𝑗𝑝 + 𝑟𝑗𝑝 − 1 + 𝑙𝑡𝑗𝑝 + 𝑧 𝜎𝐿𝑇𝑗𝑝             ∀ 𝑗 ∈ (𝐽𝑝 − 𝐽𝑝𝐼𝐷 ), 𝑝 ∈ 𝑃𝑗
+24
+25
+                                                                                                                      (11)
+26    𝑆𝑗𝑝 ≤ 𝑆𝐼𝑗𝑝 + 𝑟𝑗𝑝 + 𝑙𝑡𝑗𝑝 + 𝑢𝑏𝑗𝑝                       ∀ 𝑗 ∈ 𝐽𝑝𝐼𝐷 , 𝑝 ∈ 𝑃𝑗
+27
+28                                                     2
+29                                       𝜇𝐼 𝑗𝑝                                                                        (12)
+      𝑢𝑏𝑗𝑝 = max {𝑧𝐿𝑇 𝜎𝐿𝑇𝑗𝑝 − 1 ; (              𝜎𝐿𝑇𝑗𝑝 ) }
+30                                       𝜎𝐼𝑗𝑝
+31
+32    3.1.4.    Fill rate as a target service level
+33
+34             As described previously, the GSM uses the Cycle Service Level (CSL) as the customer service
+35
+36
+      performance indicator when setting safety stocks. Since fill rate is more widely used in industry (Teunter
+37    et al., 2017), we extend the GSM to allow specifying fill rates if desired. Fill rates represent the fraction
+38
+39    of demand that was met on-time from inventory. Chopra and Meindl (2013) propose a formula to obtain
+40
+41    fill rates from a given safety stock value for continuous review policies. From this formula we can obtain
+42    the following constraint that links fill rate (fr) to the safety factor z, and consequently to the CSL:
+43
+44              𝜎𝑁𝐿𝑇                                                                                     (13)
+       𝑓𝑟 ≤          (𝑧 [1 − 𝐹𝑠 (𝑧)] − 𝑓𝑠 (𝑧)) + 1
+45               𝑄
+46
+47             Note that 𝜎𝑁𝐿𝑇 refers to the variability during net lead time, and in this work, we define 𝜎𝑁𝐿𝑇 =
+48
+49    𝜎𝐷 𝑗𝑝 √𝐴𝑅𝐺1 𝑗𝑝 + √𝐴𝑅𝐺2 𝑗𝑝 . On the other hand, Q refers to the replenishment quantity. For periodic
+50
+51
+52    review inventory policies this amount is not fixed as in continuous review policies. We assume an
+53    average replenishment quantity, Qjp = µjprjp0. Fs(z) and fs(z) correspond to the cumulative and density
+54
+55    normal distributions functions, respectively. Therefore, the complex function g(z) = z [1- Fs(z)] - fs (z))
+56
+57    needs to be included in the mathematical model. To overcome this difficulty, we propose a surrogate
+58    model through a second-order polynomial regression (h(z) = az2 + bz + c) to generate an approximation
+59
+60
+61
+62
+           11
+63
+64
+65
+      to g(z) in (13). The best-fit values obtained for the parameters in h(z) are a = -0.074700, b = 0.331986,
+ 1
+ 2    c = -0.357195, with R2 = 0.98. Figure 5 presents the original function g(z) and the surrogate model
+ 3    function h(z).
+ 4
+ 5
+ 6
+ 7
+ 8
+ 9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19                          Figure 5: Surrogate model h(z) and original function g(z) curves.
+20
+21
+22             Therefore, the constraint proposed in this model to find the minimum CSL needed to achieve the
+23    desired fill rate is given by Equation (14). Note that the safety factor z is now a continuous positive
+24
+25    variable ZVjp for those materials and locations that have fill rate levels active. The objective is to find
+26
+27    the lowest CSL level that can meet a defined fill rate.
+28
+                    1                                       2
+29     𝑓𝑟𝑗𝑝 ≤          ( 𝜎𝐷 𝑗𝑝 √𝐴𝑅𝐺1 𝑗𝑝 + √𝐴𝑅𝐺2 𝑗𝑝 ) (−𝑎 𝑍𝑉𝑗𝑝 + 𝑏 𝑍𝑉𝑗𝑝 − 𝑐) + 1
+30                 𝑄𝑗𝑝                                                                              (14)
+31
+32                                                                ∀ 𝑗 ∈ 𝐽, 𝑝 ∈ 𝑃𝑗 , (𝑗, 𝑝) ∈ 𝐹
+33
+34   3.1.5.    Minimum Order Quantity (MOQ)
+35            This requirement is frequently found in practice and studied in inventory control systems (Zhou
+36
+37   et al., 2007; Zhu et al., 2015). Nevertheless, to the best of our knowledge, there is little literature that
+38
+39   relates MOQ to safety inventories. When an MOQ is required, flexibility is reduced, because the
+40   customer needs to either order many units or none. However, this does not necessarily mean that the
+41
+42   risk and safety stocks are increased. Figure 6 depicts the effect that MOQ has on inventories. Plot (a)
+43
+44   presents inventory evolution through time for a periodic review policy with a review frequency of one
+45   week and no lead time (ltk = 0). In grey color, we can see the safety stock level (SSk) set to cover a
+46
+47   proportion of the demand variability during the net lead time. The basestock level B denotes the order-
+48
+49   up-to level that must be accounted for when a replenishment order is placed. The order quantity (Q) is
+50   equal to the demand during a review period (µjp rjp). Each replenishment cycle, that is, the time between
+51
+52   two consecutive replenishments deliveries (Chopra & Meindl, 2013) has a probability of non-stocking
+53
+54   out of 1 - α. The safety stock level is set to cover demand variability during the net lead time (1-α)100%
+55   of the times, this being the probability determined by the z factor.
+56
+57
+58
+59
+60
+61
+62
+              12
+63
+64
+65
+ 1
+ 2
+ 3
+ 4
+ 5
+ 6
+ 7
+ 8
+ 9
+10
+11
+12
+13
+14
+15                                                Figure 6: MOQ effect on inventory levels
+16
+17
+18         If there is an MOQ required by the supplier to a node, and the MOQ is larger than the standard
+19
+20   Q, the inventory level evolution will look like the one in Figure 6 (b). In this example, the MOQ size is
+21   three times the demand during the review period. Therefore, the first and the second periods have a low
+22
+23   probability of stocking out, because there will be more inventory than is needed to satisfy the expected
+24
+25   demand. However, the Cycle length is increased and a replenishment order is placed every three periods
+26   on average. The CSL measure will not be affected by the MOQ because there will be less replenishment
+27
+28   cycles (Chopra & Meindl, 2013). On the other hand, fill rate levels will increase, which means that
+29
+30   safety stocks can be reduced at the expense of increasing the cycle stock as a result of the MOQ
+31
+     requirement. The number of orders placed by the customer is not modified, and the overshoot in stock
+32
+33   causes that many periods have more stock than necessary to fulfil the order. Safety stock levels decrease
+34
+35   as shown in Figure 6 (c) if the MOQ is larger than the original Q. This reduction results in a decrease
+36
+     in the z factor, because now Qjp = MOQjp in (14).
+37
+38         Figure 7 depicts how fill rates are generally larger than CSL for a given value of z. In the green
+39
+40   lines, it is possible to see different curves for fill rates for increasing MOQ sizes, being MOQ1 the
+41
+42
+     smaller one and MOQ4 the larger one. The larger the MOQ is, the larger is the fill rate achieved for a
+43   specified safety factor z.
+44
+45                                     100%
+46                                      90%
+47
+                                        80%
+
+
+
+                       Service level
+48
+49                                      70%                                                            CSL
+50                                      60%                                                            fill rate with MOQ1
+51                                                                                                     fill rate with MOQ2
+                                        50%
+52                                                                                                     fill rate with MOQ3
+53                                      40%                                                            fill rate with MOQ4
+54                                      30%
+55
+56
+                                        20%
+                                                  0.15   0.3          0.6          0.9   1.05   1.2                                    2.1
+                                                                            0.75                      1.35         1.65         1.95
+                                                                                                             1.5
+                                                               0.45
+                                              0                                                                           1.8
+57
+58
+59                                                                                         z
+60                 Figure 7: Fill rate sensitivity analysis with variations on replenishment quantities.
+61
+62
+           13
+63
+64
+65
+         3.2 Objective Function
+ 1
+ 2         The objective function is to minimize safety stock holding cost as defined in Equation (15), where
+ 3
+ 4   hjp is the coefficient that represents holding cost for each material p at each location j.
+ 5
+ 6    𝑚𝑖𝑛 ∑ ∑ ℎ𝑗𝑝 𝑍𝑉𝑗𝑝 ( 𝜎𝐷 𝑗𝑝 √𝐴𝑅𝐺1 𝑗𝑝 + √𝐴𝑅𝐺2 𝑗𝑝 )                                               (15)
+ 7
+           𝑗 ∈𝐽 𝑝 ∈𝑃𝑗
+ 8
+ 9
+10       3.3 Solution Approach
+11
+12
+13         The guaranteed service model, given by equations (3)-(5), (8)-(11), (14)-(15) is a nonconvex
+14   NLP with a concave objective function. Nonconvex NLP problems can in principle be solved with
+15
+16   global optimization solvers like BARON. However, for medium or large-scale problem sizes, the
+17
+18   computational time required to find a global solution may be very extensive. In order to improve the
+19   computational efficiency of the optimization, we propose a reformulation of the NLP model into a
+20
+21   quadratically constrained problem (QCP), which solvers like CPLEX and Gurobi can solve quite
+22
+23   effectively in reasonable computational times. To reformulate the problem we define a new variable Z
+24
+     that replaces all the square root terms in the problem, where 𝑍 = √𝜏 for a general expression τ.
+25
+26   Accordingly, the objective function of the NLP that is plotted in Figure 1 (a), will be reformulated as in
+27
+28   Figure 1 (b), where Equation (16) is the reformulation of the objective function in (20).
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44                            Figure 8: Objective function for NLP and QCP models.
+45
+46
+47
+48
+      𝑚𝑖𝑛 ∑ ∑ ℎ𝑗𝑝 𝑍𝑉𝑗𝑝 ( 𝜎𝐷 𝑗𝑝 𝑍1𝑗𝑝 + Z2𝑗𝑝 )                                                       (16)
+49         𝑗 ∈𝐽 𝑝 ∈𝑃𝑗
+50
+51         Inequalities (8) and (9) are reformulated by replacing the left-hand sides terms with variables Z1jp
+52   and Z2jp, resulting in Equations (17) and (18).
+53
+54      2                                                                                          (17)
+55    𝑍1𝑗𝑝 ≥ 𝑆𝐼𝑗𝑝 − 𝑆𝑗𝑝 + 𝑙𝑡𝑗𝑝 + 𝑧 𝜎𝐿𝑇𝑗𝑝 + 𝑟𝑗𝑝 − 1                      ∀ 𝑗 ∈ 𝐽𝐷 , 𝑝 ∈ 𝑃𝑗
+56
+        2
+57    Z2𝑗𝑝 ≥ (𝑆𝐼𝑗𝑝 − 𝑆𝑗𝑝 + 𝑙𝑡𝑗𝑝 + 𝑟𝑗𝑝 ) 𝜎𝐼𝑗𝑝 2 + 𝜇𝐼𝑗𝑝 2 𝜎𝐿𝑇𝑗𝑝 2        ∀ 𝑗 ∈ 𝐽, 𝑝 ∈ 𝑃𝑗             (18)
+58
+59
+60
+61
+62
+           14
+63
+64
+65
+           Equation (14) is replaced with Equations (19) and (20). Note that a new continuous positive
+ 1
+ 2   variable Ujp replaces ZVjp 2 to avoid a trilinear term as shown in Equation (19).
+ 3
+ 4    𝑄𝑗𝑝 (𝑓𝑟𝑗𝑝 − 1) ≤ (−𝑎 𝑈𝑗𝑝 + 𝑏 𝑍𝑉𝑗𝑝 − 𝑐) ( 𝜎𝐷 𝑗𝑝 𝑍1𝑗𝑝 + 𝑍2𝑗𝑝 )                                 (19)
+ 5
+ 6                                                                ∀ 𝑗 ∈ 𝐽, 𝑝 ∈ 𝑃𝑗 , (𝑗, 𝑝) ∈ 𝐹
+ 7       2
+ 8    𝑍𝑉𝑗𝑝 − 𝑈𝑗𝑝 ≤ 0                                ∀ 𝑗 ∈ 𝐽, 𝑝 ∈ 𝑃𝑗 , (𝑗, 𝑝) ∈ 𝐹                   (20)
+ 9
+10
+11
+           The new mathematical reformulation (MQC) is a quadratically constrained program, composed
+12   of Equations (3)-(5), (10)-(11), (16)-(20).
+13
+14
+15       4. APPLICATION AND RESULTS
+16
+17
+18       4.1 Illustrative example
+19
+20         An illustrative example is presented in Figure 9 to understand the model results and how different
+21
+22   considerations impact safety stock decisions. This case involves the production and distribution of a
+23   finished good (SKU1) obtained from two raw materials (Raw1 and Raw2), and a Plant location that
+24
+25   manufactures SKU1 and delivers it to three retailers that satisfy external demand. The proportion of raw
+26
+27   materials needed to obtain a unit of SKU1 are ϕRaw1, SKU1 = 1 and ϕRaw2, SKU1 = 0.014. Raw materials in
+28   the plant need to have enough safety stock to satisfy production demand with no delay. Thus, Sjp = 0
+29
+30   for Raw1 and Raw2 at the Plant. SKU1 storage in the Plant is optional, and Sjp = 0 for SKU1 at the three
+31
+32   retailers' locations. The production lead time is 2 weeks and it is represented by the loop above the plant.
+33   Table 1 displays the demand and lead time input data, maximum service time constraints, and unit
+34
+35   holding costs.
+36
+37
+38                                                                          SKU1
+39                                                                      Retailer 1
+40                                              2
+41
+42
+43
+44
+45                                                                          SKU1
+46                                            Plant                     Retailer 2
+47
+48
+49                                      Raw1 Raw2
+50
+51
+                                                                            SKU1
+                                              SKU1                      Retailer 3
+52
+53
+54                                 Figure 9: Illustrative example representation
+55
+56
+57
+58
+59
+60
+61
+62
+           15
+63
+64
+65
+                                            Table 1: Illustrative example input data
+ 1
+ 2                Material                        Raw1           Raw2         SKU1             SKU1         SKU1        SKU1
+ 3                Location                        Plant          Plant          Plant       Retailer1     Retailer2   Retailer3
+ 4
+ 5        Demand                 µjp           425,717          5,913      425,717          162,379        67,284     196,054
+ 6
+ 7         (units)                σjp          192,229          2,669      192,229          119,665        61,585     137,258
+ 8
+         Coefficient of Variation
+ 9                                                0.45           0.45           0.45           0.73         0.91        0.70
+10              (CV= σjp /µjp)
+11
+12      Lead Time                µLTjp              6              3             2               1             1          1
+13
+14        (weeks)                σLTjp              1.9           0.7            0.0            0.3            0.6       0.4
+15   Max Service Time Sjp (weeks)                   0              0              -              0             0          0
+16
+17               hjp ($/unit)                  0.01171       0.00002            0.12           0.12         0.12        0.12
+18
+19
+20
+           Results are detailed in Table 2. The computational tests are performed on an Intel® Core i7 CPU
+21
+22   with 8 GB RAM and 4 parallel threads using Gurobi 9.1.2 as the QCP solver. The model (MQC)
+23
+24   involves 34 continuous variables and 30 constraints. The CPU time required to obtain the optimal
+25
+     solution is less than 1 second and the total holding cost obtained is $13,181. It is possible to see that in
+26
+27   the plant the decision is not to hold safety stock, and to select a guaranteed service of 2 weeks for
+28
+29   supplying the retailers.
+30
+31
+32
+                                               Table 2: Illustrative example results
+33   Material                             Raw1            Raw2           SKU1            SKU1            SKU1          SKU1
+34
+35   Location                             Plant           Plant          Plant          Retailer1       Retailer2     Retailer3
+36
+37   Sjp (weeks)                           0                0             2                0               0             0
+38
+39   SSjp (units)                       1,125,289         10,600          0.0           459,359         243,782       536,961
+40
+41
+     Holding costjp ($/unit)             13,181            0.2            0.0           55,123          29,253        64,435
+42
+43
+44         It is worth mentioning that the guaranteed service time of SKU1 in Plant affects the retailers'
+45
+46   safety stock levels, which need to cover for 2 more weeks with stock, as this is the inbound service time
+47   (SIRetauler,SKU1 = 2 weeks). If this inbound service time continues to increase by relaxing the service time
+48
+49   constraint on the raw materials or increasing the production time, the safety stock at the retailers will
+50
+51   also increase, and it is possible that the model decides to hold safety stock upstream in the plant so as
+52   to take advantage of system-wide risk-pooling, and have a lower total safety stock in the supply chain.
+53
+54   Figure 10 (A) depicts the current case, with a production lead time of 2 weeks. The total safety stock in
+55
+56   the supply chain is 2,092,387 units with a cost of $154,145. In case (B), the production lead time is
+57   increased to 10 weeks, and the optimal solution for this case is to hold stock of SKU1 (1,143,300 units)
+58
+59   in the plant. The total holding costs increase to $249,232 because there is more time to cover. However,
+60
+61
+62
+           16
+63
+64
+65
+     the decision of pooling in the plant yields a lower cost than if we maintained the decision of no safety
+ 1
+ 2   stock in the plant for SKU1. In (C) we present the solution of case (B) if no safety stock for SKU1 in the
+ 3   plant is allowed. In this last case, the total cost is increased to $259,393 in comparison to the solution
+ 4
+ 5   in (B) because the opportunity of pooling and reducing the inbound service time for retailers is missed.
+ 6
+ 7                     (A)                                 (B)                                   (C)
+ 8
+ 9               2                                   10                                    10
+                              SSSKU1 =450 129                       SSSKU1 =318 289                     SSSKU1 =779 647
+10
+11
+12                            SSSKU1 =231656                       SSSKU1 =163 806                      SSSKU1 =401241
+            SSRaw1 =885 596                     SSRaw1 =885 596                       SSRaw1 =885 596
+13          SSRaw2 =8 697                       SSRaw2 =8 697                         SSRaw2 =8 697
+14          SSSKU1 = 0        SSSKU1 =516 306   SSSKU1 = 1 143 300 SSSKU1 =365 084    SSSKU1 = 0        SSSKU1 =894 269
+15
+16
+              Total SS = 2 092 387                Total SS = 2 884 774                  Total SS = 2 969 452
+17              Cost = $ 154 145                                                         Cost = $ 259 393
+                                                 Total Cost = $ 249 232
+18
+19
+20    Figure 10: Safety stock levels for different lead time cases: A) 2-week production lead time, B) 10-
+21
+22     week production lead time, C) 10-week production lead time with no safety stock for SKU1 at the
+23
+                                                          Plant
+24
+25
+26         For this illustrative example, there is no MOQ requirement. Therefore, we assume that for a
+27
+28   periodic review policy, the expected order size (Qjp) is equal to the demand during the review period,
+29
+30   that is µjp rjp. The last analysis of this illustrative example concerns the measurement of customer
+31   service. In the current case, there is a desired 97% CSL, which corresponds to a safety factor z of 1.88.
+32
+33   If a location, for example, Retailer 1, has to change the customer service metric from CSL to fill rate
+34
+35   for a given product, a different CSL can be required to achieve the expected fill rate, so z can change
+36   its value. In Figure 11, CSL and safety stocks are given for different cases varying target fill rates and
+37
+38   MOQ constraints for SKU1 on Retailer 1. The blue line indicates the expected fill rate, which is a given
+39
+40   input in all cases except in the first one, in which the CSL is defined to set safety stocks as the original
+41   example, and the fill rate in this case is obtained through (19).
+42
+43         The following scenarios consist of target fill rates and the CSL is obtained by the model. The
+44
+45   yellow dashed line represents the resulting CSL for each case, and the yellow bar is the correspondent
+46   safety stock (secondary vertical axis) for that z coverage. In addition, the brown dashed line and brown
+47
+48   bars represent the resulting CSL and safety stock when an MOQ constraint is active. The first case (the
+49
+50   left-most case) is the current illustrative example scenario. The desired CSL is 97%, and a near 100%
+51   fill rate is expected, with or without a required MOQ. However, safety stock levels decrease when a
+52
+53   large MOQ (500,000 units) is active. The second case sets a 98% fill rate to define safety stock levels.
+54
+55   The minimum required CSL to achieve this expected fill rate decreases together with its corresponding
+56   safety stock level, and a sharper decrease occurs when a large MOQ is required. In the subsequent
+57
+58   scenarios, the desired fill rates decrease and consequently, the CSL is lower. This difference is even
+59
+60   more remarkable in the presence of MOQs, having no safety stocks defined for fill rates less than or
+61
+62
+           17
+63
+64
+65
+     equal to 80%, with a minimum required CSL of 50%. In general, CSLs are lower than fill rates for a
+ 1
+ 2   given safety stock level.
+ 3
+ 4
+ 5
+ 6
+ 7
+ 8
+ 9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24                   Figure 11: Effect of fill rate and MOQ on CSL and safety stock levels.
+25
+26
+27       4.2 Small-size industrial case study
+28
+29          The MQC formulation is now applied to a small-size industrial case study (Figure 12), with two
+30
+31
+     echelons, 4 SKUs, and 31 raw materials coming from different locations. The first echelon has one plant
+32   and the second echelon has three retailers, as in the illustrative example presented above. The input data
+33
+34   is presented in Table S1 in the Supporting Information Section. Note that lead times have decimals
+35
+36   because they are averages of historic data. For MEIO purposes, the ceiling of the lead time is ⌈𝑙𝑡𝑗𝑝 ⌉ used
+37   as input.
+38
+39
+40
+41
+42
+43
+44
+45
+46
+47
+48
+49
+50
+51
+52
+53
+54
+55
+56
+57                                     Figure 12: Small-size industrial case
+58
+59
+60
+61
+62
+            18
+63
+64
+65
+                        The MQC model has 248 continuous variables and 280 constraints. While the NLP formulation
+ 1
+ 2   using BARON is not able to find a feasible solution within 1000 seconds, the proposed QCP formulation
+ 3   finds the optimal solution using Gurobi in 0.03 seconds. The optimal solution is $185,185 with Sjp=0
+ 4
+ 5   for raw materials in the plant and SKUs at the retailers as required, and Sjp=1 for SKUs in the plant. The
+ 6
+ 7   results were compared with commercial software (not identified due to confidentiality reasons), and the
+ 8   current safety stock levels in the plant and costs at each location are summarized in Figure 13. Total
+ 9
+10   holding costs and safety stocks levels for raw materials and finished goods are presented in Table 3.
+11
+12   While the vendor software obtained a 10% reduction in holding costs regarding the current safety stock
+13   levels, the proposed model in this work yields a 17% reduction, clearly showing the advantage of this
+14
+15   tool to achieve customer service levels with a minimum capital in inventory. Note that safety stocks at
+16
+17   the retailers are slightly larger with the proposed model. A possible reason for this is that we use the
+18   ceiling value of the lead times to cover stock over discrete periods. On the other hand, the model seems
+19
+20   to reduce the amount of inventory of raw materials, yielding the largest reduction in holding costs.
+21
+22                      $ 400 000
+23                      $ 350 000
+24
+25                      $ 300 000
+
+
+
+
+         Holding Cost
+26                      $ 250 000
+27
+                        $ 200 000
+28
+29                      $ 150 000
+30
+                        $ 100 000
+31
+32                       $ 50 000
+33                           $-
+34                                   Raws in Plant   Finished goods in Finished goods in Finished goods in Finished goods in
+35                                                         Plant           Retailer1         Retailer2         Retailer3
+36
+37                                           Model output      Current levels     Commercial software
+38
+39     Figure 13: Small-size industrial safety stock results of the proposed tool, the commercial software,
+40
+41                                                   and current levels in the supply chain
+42
+43
+44                                  Table 3: Small-size industrial safety stock levels and holding costs
+45                                                                                 Baseline
+46                                                          Model output                           Commercial software
+47                                                                              (Current level)
+48
+49                                  Raw materials            $ 126,532             $ 155,070              $ 193,080
+50    Holding cost
+                                    Finished goods           $ 635,971             $ 761,525              $ 634,950
+51
+52    Safety stock                  Raw materials            8,031,692             9,917,801             13,029,797
+53
+54              level               Finished goods           2,740,254             3,042 031              2,685,615
+55
+56
+57
+58
+59
+60
+61
+62
+                        19
+63
+64
+65
+         4.3 Medium-size industrial case study
+ 1
+ 2         This case involves the same network as in Figure 9, but now it has 20 finished goods and 120
+ 3
+ 4   raw materials, requiring 196 safety stock decisions. The MOQs constraints (Equations (19) and (20))
+ 5
+     are active for all nodes and materials, and the customer service measure of interest is the fill rate, which
+ 6
+ 7   is different for each material. The size of the QCP model is 1,973 constraints and 1,427 continuous
+ 8
+ 9   variables, and is solved to optimality within 3 seconds using Gurobi as the QCP solver. This further
+10
+     supports the usefulness of the proposed approach for solving real-world problems.
+11
+12
+13       5. VALIDATION THROUGH SIMULATION
+14
+15         All results obtained from the developed model are validated using simulation. The aim is to
+16
+17   evaluate if safety stocks can meet expected customer service levels (CSL and/or fill rate). This is done
+18
+19   using an open-sourced discrete-time inventory simulation software package written in the Julia
+20
+     language: InventoryManagement.jl (Perez, 2021). This simulator allows modeling multiproduct supply
+21
+22   networks of any topology (e.g., serial, divergent, convergent, tree, or general). Each of the features
+23
+24   included in the extended GSM model can be simulated using this software: hybrid nodes, MOQ, bill of
+25
+     materials, stochastic demand, and stochastic lead times. The software allows evaluating any static
+26
+27   (continuous or periodic review) and dynamic inventory control policy. For greater clarity, the validation
+28
+29   of the illustrative example is presented with two extra scenarios to analyze how some features affect the
+30
+     system behavior in the simulation.
+31
+32         Demand and lead times are randomly generated using normal distributions for each period.
+33
+34   Basestock levels are calculated following Equation (21). Note that the safety stock level SSjp includes
+35
+36
+     both safety stocks to satisfy dependent and independent demands at every location. The two following
+37   terms refer to the previously mentioned expected demands at each location during the Net Lead Time.
+38
+39    𝐵𝑗𝑝 = 𝑆𝑆𝑗𝑝 + 𝜇𝐷𝑗𝑝 (𝑆𝐼𝑗𝑝 − 𝑆𝑗𝑝 + ⌈𝑙𝑡𝑗𝑝 + 𝑧 𝜎𝐿𝑇𝑗𝑝 ⌉ + 𝑟𝑗𝑝 − 1) + 𝜇𝐼𝑗𝑝 (𝑆𝐼𝑗𝑝 − 𝑆𝑗𝑝 + ⌈𝑙𝑡𝑗𝑝 ⌉ + 𝑟𝑗𝑝 )
+40
+                                                                                                                (21)
+41                                                                                 ∀ 𝑗 ∈ (𝐽𝑝 − 𝐽𝑝𝐼𝐷 ), 𝑝 ∈ 𝑃𝑗
+42
+43          In each period, demand is generated, orders are placed and delivered, and inventory levels are
+44
+45   updated. During each review period, an order is placed if the inventory position of a material on a
+46   location is below the basestock level. The information is known at all levels but the management policy
+47
+48   is decentralized: each location asks the amount they need to reach the basestock level, no matter how
+49
+50   much the upstream node has on stock. If the available inventory is not able to meet demand, lost sales
+51   are considered (the extraordinary measures that are referred to in the GSM approach are ignored in the
+52
+53   simulation). In addition, there is no delay in ordering, so all echelons place orders simultaneously. The
+54
+55   period selected in this case is one day with 7,000 days (1,000 weeks) in each run, so as to simulate the
+56   stationary state at each location. Demand and review periods have a weekly basis. The sequence of
+57
+58   steps in the simulation of each period is the following:
+59
+60
+61
+62
+           20
+63
+64
+65
+         1. External demand is observed and discounted at each node with independent demand.
+ 1
+ 2           Unfulfilled demands are marked as lost sales.
+ 3       2. If the review period has been meet for a material, internal replenishment and lead times ltjp are
+ 4
+ 5           observed. Orders start being processed immediately with no delay (processing time includes
+ 6
+ 7           material handling, order preparation, shipments and/or manufacture). Internal demand is
+ 8           discounted at each node. Unfulfilled replenishment orders are marked as lost sales.
+ 9
+10       3. Stocks are updated with the replenishment orders that arrive at each node (placed ltjp periods
+11
+12           before).
+13         The illustrative case study was run and two additional scenarios were also tested, combining fill
+14
+15   rates as a target measure and MOQs for finished goods at retailers. The results of each of the scenarios
+16
+17   are shown in the following subsections.
+18
+19       5.1 Scenario 1: Illustrative example with 97% CSL as target
+20
+21
+22         The first scenario simulates the results of the illustrative example presented in Section 4.1, with
+23   a 97% CSL target for every material/location combination and no MOQs required. Table 4 presents the
+24
+25   safety stocks given by the model output and the basestock levels obtained.
+26
+27
+28                                 Table 4: Input data for simulation of Scenario 1
+29
+30        Location      Material     Safety Stock level     Basestock level    z factor   Expected CSL
+31
+32          Plant        SKU1             511,300             1,362,734         1.88          97%
+33
+34          Plant        raw1            1,116,603            5,373,773         1.88          97%
+35          Plant        raw2              10,530               40,094          1.88          97%
+36
+37        Retailer1      SKU1             331,214              655,972          1.88          97%
+38
+39        Retailer2      SKU1             180,548              315,116          1.88          97%
+40        Retailer3      SKU1             393,753              785,861          1.88          97%
+41
+42
+43
+44         The simulation is run for 1,000 weeks. Figure 14 displays on-hand inventory and inventory
+45   position for each material at each location through the first 50 weeks (350 days) for greater clarity.
+46
+47   While inventory levels are presented in dark colors, inventory positions are displayed in light colors.
+48
+49   Calculated CSL and fill rates from the simulation output are shown in Figure 15.
+50
+51
+52
+53
+54
+55
+56
+57
+58
+59
+60
+61
+62
+           21
+63
+64
+65
+                                                                    Plant, Raw 14
+ 1                                  100000
+
+
+
+
+                 Inventory units
+                                                         Inventory Level (on- hand)          Inventory Position
+ 2
+                                           50000
+ 3
+ 4
+                                                 0
+ 5                                                      1
+                                                       10
+                                                       19
+                                                       28
+                                                       37
+                                                       46
+                                                       55
+                                                       64
+                                                       73
+                                                       82
+                                                       91
+                                                     100
+                                                     109
+                                                      118
+                                                      127
+                                                      136
+                                                     145
+                                                     154
+                                                      163
+                                                      172
+                                                      181
+                                                     190
+                                                      199
+                                                     208
+                                                      217
+                                                     226
+                                                     235
+                                                     244
+                                                     253
+                                                     262
+                                                      271
+                                                     280
+ 6
+                                                     289
+                                                     298
+                                                     307
+                                                      316
+                                                     325
+                                                     334
+                                                     343
+                                                                                      Days
+ 7
+ 8
+                                                                    Plant, Raw 16
+                                     20000000
+
+
+
+
+                 Inventory units
+                                                         Inventory Level (on- hand)          Inventory Position
+ 9
+10                                        10000000
+11
+12                                                   0      1
+                                                           10
+                                                           19
+                                                           28
+                                                           37
+                                                           46
+                                                           55
+                                                           64
+                                                           73
+                                                           82
+                                                           91
+                                                         100
+                                                         109
+                                                          118
+                                                          127
+                                                          136
+                                                         145
+                                                         154
+                                                          163
+                                                          172
+                                                          181
+                                                         190
+                                                          199
+                                                         208
+13
+                                                          217
+                                                         226
+                                                         235
+                                                         244
+                                                         253
+                                                         262
+                                                          271
+                                                         280
+                                                         289
+                                                         298
+                                                         307
+                                                          316
+                                                         325
+                                                         334
+                                                         343
+                                                                                       Days
+14
+15                                            4000000
+                                                                     Plant, SKU 1
+
+
+                        Inventory units
+                                                         Inventory Level (on- hand)          Inventory Position
+16
+17                                            2000000
+18
+19                                                   0      1
+                                                           10
+                                                           19
+                                                           28
+                                                           37
+                                                           46
+                                                           55
+                                                           64
+                                                           73
+                                                           82
+                                                           91
+                                                         100
+                                                         109
+                                                          118
+                                                          127
+                                                          136
+                                                         145
+                                                         154
+                                                          163
+20
+                                                          172
+                                                          181
+                                                         190
+                                                          199
+                                                         208
+                                                          217
+                                                         226
+                                                         235
+                                                         244
+                                                         253
+                                                         262
+                                                          271
+                                                         280
+                                                         289
+                                                         298
+                                                         307
+                                                          316
+                                                         325
+                                                         334
+                                                         343
+                                                                                       Days
+21
+22                                                               Retailer 1, SKU 1
+                                              2000000       Inventory Level (on- hand)          Inventory Position
+23
+
+                         Inventory units
+24
+                                              1000000
+25
+26                                                   0      1
+                                                           10
+                                                           19
+                                                           28
+                                                           37
+                                                           46
+                                                           55
+                                                           64
+                                                           73
+                                                           82
+                                                           91
+                                                         100
+27
+                                                         109
+                                                          118
+                                                          127
+                                                          136
+                                                         145
+                                                         154
+                                                          163
+                                                          172
+                                                          181
+                                                         190
+                                                          199
+                                                         208
+                                                          217
+                                                         226
+                                                         235
+                                                         244
+                                                         253
+                                                         262
+                                                          271
+                                                         280
+                                                         289
+                                                         298
+                                                         307
+                                                          316
+                                                         325
+                                                         334
+                                                         343
+                                                                                       Days
+28
+29                                                               Retailer 2, SKU 1
+                                              1000000
+30
+
+                            Inventory units
+                                                         Inventory Level (on- hand)          Inventory Position
+31
+                                               500000
+32
+33                                                   0      1
+                                                           10
+                                                           19
+34
+                                                           28
+                                                           37
+                                                           46
+                                                           55
+                                                           64
+                                                           73
+                                                           82
+                                                           91
+                                                         100
+                                                         109
+                                                          118
+                                                          127
+                                                          136
+                                                         145
+                                                         154
+                                                          163
+                                                          172
+                                                          181
+                                                         190
+                                                          199
+                                                         208
+                                                          217
+                                                         226
+                                                         235
+                                                         244
+                                                         253
+                                                         262
+                                                          271
+                                                         280
+                                                         289
+                                                         298
+                                                         307
+                                                          316
+                                                         325
+                                                         334
+                                                         343
+35                                                                                     Days
+36
+                                                                 Retailer 3, SKU 1
+37                                            2000000
+                                                         Inventory Level (on- hand)          Inventory Position
+
+
+
+                         Inventory units
+38
+39                                            1000000
+
+40
+                                                     0
+41                                                          1
+                                                           10
+                                                           19
+                                                           28
+                                                           37
+                                                           46
+                                                           55
+                                                           64
+                                                           73
+                                                           82
+                                                           91
+                                                         100
+                                                         109
+                                                          118
+                                                          127
+                                                          136
+                                                         145
+                                                         154
+                                                          163
+                                                          172
+                                                          181
+                                                         190
+                                                          199
+                                                         208
+                                                          217
+                                                         226
+                                                         235
+                                                         244
+                                                         253
+42
+                                                         262
+                                                          271
+                                                         280
+                                                         289
+                                                         298
+                                                         307
+                                                          316
+                                                         325
+                                                         334
+                                                         343
+                                                                                       Days
+43
+44           Figure 14: Inventory levels and inventory positions from the simulation of Scenario 1
+45
+46
+47         It is possible to see that materials at all locations meet the expected 97% CSL approximately,
+48   with fill rates that in general surpass the CSLs. Service levels can be larger than expected because the
+49
+50   approach has some conservative measures, like using the ceiling value of lead times for both basestock
+51
+52   and safety stocks levels, and the stochastic approach proposed by Inderfurth also increases the mean
+53   lead time for the basestock level and pipeline inventory. Therefore, we consider that the safety stocks
+54
+55   set for this case are able to meet the desired customer service levels.
+56
+57
+58
+59
+60
+61
+62
+           22
+63
+64
+65
+                                             Customer Service Levels - 97% Target CSL
+ 1
+ 2                                                                                                           99.4%
+ 3                                                                                      97.0%
+ 4                               CSL                                                        97.5%
+ 5
+                                                                                         97.2%
+ 6
+                                                                                             97.7%
+ 7
+ 8
+ 9
+10                                                                                                            99.7%
+
+11                                                                                                       99.1%
+
+12                               FR                                                                       99.2%
+13                                                                                                   98.6%
+14                                                                                                        99.2%
+15
+16                                 90.0%           92.0%        94.0%        96.0%         98.0%          100.0%
+17
+                                           Raws in plant   SKU in Plant   Retailer1   Retailer2      Retailer3
+18
+19
+20                  Figure 15: CSL and fill rates obtained from Scenario 1 simulation output.
+21
+22
+23       5.1 Scenario 2: Illustrative example with 90% target fill rate
+24
+25         In Scenario 2, the service level target is changed to a 90% expected fill rate for all materials.
+26
+27
+     Table 5 presents the basestock level and the minimum z factor required to meet the 90% fill rate,
+28   obtained from variable ZV in Equations (19) and (20) in the optimization model. Note that all safety
+29
+30   factors, and thus expected CSLs, are strongly reduced, showing that a lower CSL is enough to meet the
+31
+32   desired fill rate. In Figure 16 it is possible to verify that the resulting CSL is approximately the expected
+33   one, with some expected differences due to the quadratic approximation proposed to obtain z. For
+34
+35   example, zRetailer1,SKU1 = 1.04 is obtained using the surrogated model h(x) displayed in Figure 5. It is
+36
+37   possible to detect a small difference between the polynomial approximation h(x) and the original
+38   formula g(x), which indicates zRetailer1,SKU1 = 0.95 to reach a 90% fill rate. A larger safety factor z yields
+39
+40   a slightly larger CSL (+2%) and fill rates (+5%).
+41
+42
+43                                Table 5: Input data for simulation of Scenario 2
+44    Location Material Safety Stock level Basestock level Expected fill rate z factor Expected CSL
+45
+46      Plant      SKU1           196,088                      1,047,522                          90%                 0.72   76%
+47
+48      Plant      raw1           643,590                      4,956,714                          90%                 1.17   83%
+49
+        Plant      raw2                5,012                      35,048                          90%                 0.97   88%
+50
+51    Retailer1    SKU1           183,666                        508,424                          90%                 1.04   85%
+52
+53    Retailer2    SKU1           112,890                        247,458                          90%                 1.18   88%
+54
+      Retailer3    SKU1           216,640                        608,748                          90%                 1.03   85%
+55
+56
+57
+58
+59
+60
+61
+62
+           23
+63
+64
+65
+                                      Customer Service Levels - 90% Target Fill Rate
+ 1
+ 2
+                                                                                    87.5%
+ 3
+                                                  75.6%
+ 4
+                            CSL                                                            89.3%
+ 5
+ 6                                                                                           90.1%
+
+ 7                                                                               86.1%
+
+ 8
+ 9
+10                                                                                                   92.7%
+11                                                                                           90.4%
+12                           FR                                                                              95.1%
+13
+                                                                                                             95.0%
+14
+                                                                                                   92.2%
+15
+16
+17                            70.0%       75.0%           80.0%          85.0%           90.0%         95.0%           100.0%
+18                                    Raws in plant       SKU in Plant     Retailer1       Retailer2       Retailer3
+19
+20
+21                  Figure 16: CSL and fill rates obtained from Scenario 2 simulation output.
+22
+23       5.2 Scenario 3: Illustrative example with 90% target fill rate and MOQ for retailers
+24
+25
+26         This scenario adds a minimum order quantity of 500,000 units to Scenario 2. This minimum order
+27   quantity is required by the plant, assuming that this is the minimum necessary batch size to deliver an
+28
+29   order from the plant to a retailer. In this case, we will only validate the results on the retailers. It is
+30
+31   assumed that demand upstream will increase according to the MOQ size because the plant will need
+32   enough inventory to deliver at least three orders of 500,000 units simultaneously to the retailers. In this
+33
+34   case, expected CSL (and z value) is reduced because the fill rate is chosen and also because of the MOQ
+35
+36   as discussed in Section 3.1.5. Table 6 shows the values of the safety factors (z) obtained in the model
+37   output and the expected CSL to obtain the given target fill rate considering the MOQ constraint.
+38
+39
+40                                Table 6: Input data for simulation of Scenario 3
+41
+42    Location Material Safety Stock level Basestock level Expected fill rate z factor Expected CSL
+43
+     Retailer1    SKU1            41,016                          365,774                              90%                      0.23   59%
+44
+45   Retailer2    SKU1                0                           134,568                              90%                      0.00   50%
+46
+47   Retailer3    SKU1            81,842                          473,950                              90%                      0.39   65%
+48
+49
+50         Figure 17 presents the resulting performance indicator values. Note that fill rates are achieved
+51
+52   with very low safety stock levels and no safety stock is necessary to account for the fill rate target at
+53
+54   Retailer2. The MOQ effect can be detected on inventory levels through time in Figure 18, that presents
+55   inventory levels for Retailer 2. Retailer 2 has the lowest demand, and therefore the MOQ is able to
+56
+57   cover more review periods, 7.4 weeks on average. In the zoomed-in rectangle, it is possible to detect
+58
+59   that an MOQ can cover several weeks.
+60
+61
+62
+           24
+63
+64
+65
+                                                                  Customer Service Levels - 90% Target Fill Rate
+ 1
+ 2                                                                                            77.5%
+ 3                                                      CSL          56.5%
+ 4                                                                                                    82.8%
+ 5
+ 6
+ 7
+ 8                                                                  Retailer 1, SKU 1                             95.5%
+
+ 9                         2 500 000
+                                                         FR   Inventory Level (on- hand)                       95.3%
+                                                                                                   Inventory Position
+
+
+
+
+       Inventory units
+10                         2 000 000
+                                                                                                                   96.6%
+11                         1 500 000
+12                         1 000 000                      50.0%      60.0%       70.0%        80.0%       90.0%    100.0%
+13                                                                        Retailer1    Retailer2    Retailer3
+                            500 000
+14
+                                  0
+15                                          1
+                                          172
+                                         343
+                                       Figure 17: CSL and fill rates obtained from Scenario 3 simulation output.
+                                         514
+                                         685
+                                         856
+                                        1027
+                                        1198
+                                        1369
+                                       1540
+                                         1711
+                                       1882
+                                       2053
+                                       2224
+                                       2395
+                                       2566
+                                       2737
+                                       2908
+                                       3079
+                                       3250
+                                       3421
+                                       3592
+                                       3763
+16
+                                       3934
+                                       4105
+                                       4276
+                                       4447
+                                       4618
+                                       4789
+                                       4960
+                                        5131
+                                       5302
+                                       5473
+                                       5644
+                                       5815
+                                       5986
+                                        6157
+                                       6328
+                                       6499
+                                       6670
+                                       6841
+17                                                                                        Days
+18
+19                                                                 Retailer 2, SKU 1
+20                         1 500 000
+
+
+
+
+         Inventory units
+21
+22                         1 000 000
+23
+24                          500 000
+25
+                                  0
+26                                          1
+                                          172
+                                         343
+                                          514
+                                         685
+                                         856
+                                        1027
+                                        1198
+                                        1369
+                                       1540
+                                         1711
+                                       1882
+                                       2053
+                                       2224
+                                       2395
+                                       2566
+                                       2737
+                                       2908
+                                       3079
+                                       3250
+                                       3421
+27
+                                       3592
+                                       3763
+                                       3934
+                                       4105
+                                       4276
+                                       4447
+                                       4618
+                                       4789
+                                       4960
+                                         5131
+                                       5302
+                                       5473
+                                       5644
+                                       5815
+                                       5986
+                                        6157
+                                       6328
+                                       6499
+                                       6670
+                                       6841
+28                                                                                        Days
+29
+30                             Figure 18: Inventory levels and Retailer   3, SKUfrom
+                                                               inventory positions 1 the simulation of Scenario 3
+31        3 000 000
+32
+
+
+       Inventory units
+          2 500 000
+33          It is000also remarkable that the obtained CSL levels from simulation are significantly larger than
+          2 000
+34        1 500 000
+     those1expected,      and this also impacts the resulting fill rates. This agrees with the analysis by Peeters
+35          000 000
+36   (2020),500which
+                 000    states that the guaranteed service model becomes less accurate for lower service levels
+37                  0                       1
+                                          172
+                                         343
+                                         514
+                                         685
+                                         856
+                                        1027
+     and also states that batching in a guaranteed service context leads to an excessive amount of inventory
+                                        1198
+                                        1369
+                                       1540
+                                         1711
+                                       1882
+                                       2053
+38
+                                       2224
+                                       2395
+                                       2566
+                                       2737
+                                       2908
+                                       3079
+                                       3250
+                                       3421
+                                       3592
+                                       3763
+                                       3934
+                                       4105
+                                       4276
+                                       4447
+                                       4618
+                                       4789
+                                       4960
+                                        5131
+                                       5302
+                                       5473
+                                       5644
+                                       5815
+                                       5986
+                                        6157
+                                       6328
+39
+                                       6499
+                                       6670
+                                       6841
+
+40
+     and significantly higher service levels. A simple simulation
+                                                          Days    used to illustrate this is detailed in the
+41   Supporting Information section and the summarized results are presented in Figure 19. The simulations
+42
+43   show that the safety stock settings tend to be more accurate for large expected CSLs in a system with
+44
+45
+     lost sales. Lower values of expected CSL tend to be less accurate, yielding larger effective CSL’s. When
+46   the coefficient of variation (CV) and the expected CSL are low, the CSL is generally underestimated
+47
+48   and this effect is amplified when there are large MOQs active. In practice, target CSL’s are generally
+49
+50   larger than 90%, so approximations tend to be accurate in that range. Nevertheless, the equivalent CSL
+51   resulting from selecting a fill rate as target measure brings the opportunity to largely decrease z safety
+52
+53   factors, and the gap in CSL estimations arises. Customer service is generally ensured while reductions
+54
+55   in safety stocks can be performed. Future research may explore how safety stocks or basestock levels
+56   can be adjusted to deal with CV and MOQ to obtain more precise estimations. In conclusion, the
+57
+58   validation of results through simulation allows demonstrating the accuracy of the model to obtain safety
+59
+60   stocks that can meet specified customer service levels.
+61
+62
+                             25
+63
+64
+65
+ 1
+ 2
+ 3
+ 4
+ 5
+ 6
+ 7
+ 8
+ 9
+10
+11
+12   Figure 19: Effective vs. Expected CSL obtained for MOQ = 0 (left), MOQ = 3µ (middle), and MOQ =
+13
+14                                       7µ (right) and for different CVs.
+15
+16
+17       6. CONCLUSIONS
+18
+19         In this paper, we have presented an NLP optimization model based on the guaranteed-service
+20
+21   approach model that determines the optimal safety stock allocation in multi-echelon divergent
+22   networks. The proposed model integrates several features commonly found in industrial practice that
+23
+24   have a strong impact on inventory levels. Therefore, the proposed tool is able to accurately represent
+25
+26   real systems, and to set tight safety stock levels in order to achieve target customer service levels with
+27   a minimum capital in inventory. Real-world examples from the pharmaceutical industry are presented
+28
+29   to illustrate the applicability of the proposed formulation. To solve the model efficiently, a QCP
+30
+31   reformulation is proposed by exploiting the mathematical structure of the constraints. The QCP
+32   outperforms the NLP formulation by allowing the use of QCP solvers, which leads to order of
+33
+34   magnitude reductions in computational time. Optimal solutions can be found with small computational
+35
+36   expense for medium/large scale problems (less than 5 seconds). To the best of our knowledge, this is
+37   the first model that brings together multiple features typical of industrial practice, such as MOQs, hybrid
+38
+39   nodes, and alternative service level measures to determine safety stock levels. It is also the first model
+40
+41   to introduce the QCP reformulation to improve the computational efficiency of the optimization. The
+42
+     simulation of the results demonstrates that the model is valid for achieving target service levels.
+43
+44         Future work will address an extension of the present formulation for cases of non-normal
+45
+46   demand, and a pre-processing procedure of input data in order to decide which mathematical
+47
+     formulation is appropriate to optimally determine safety stock levels. The effects of CV and MOQ on
+48
+49   CSL estimation can also be analyzed to review other potential safety stocks reductions. This research
+50
+51   can also be extended by including responsive characteristics to account for supply chain disruptions and
+52
+     by including storage capacity limitations. Another important extension is on constrained capacity on
+53
+54   nodes.
+55
+56
+57
+58
+59
+60
+61
+62
+           26
+63
+64
+65
+         7. NOMENCLATURE
+ 1
+ 2
+ 3       7.1 Sets
+ 4
+ 5   J              Set of locations
+ 6
+     P              Set of products
+ 7
+ 8   𝑃𝑗             Subsets of products that can be stored at location j
+ 9
+10   𝐽𝑝             Subsets of locations in the route of material p
+11
+12   𝐽0             Subset of starting locations in the network
+13
+14   𝐽𝐼             Subset of locations that face external demand
+15   𝐽𝐷             Subset of locations that face internal demand
+16
+17   A              Subset of routes segments (from node i to node j) enabled for material p
+18
+19   F              Set of locations that have materials with an active fill rate as a target
+20   Φ              Set of all valid material transformations (from material p to material q)
+21
+22
+23       7.2 Parameters
+24
+25   𝜇𝑗𝑝            Mean of the total demand of material p in location j
+26
+27   𝜎𝑗𝑝            Standard deviation of the total demand of material p in location j
+28
+29   𝜇𝐷 𝑗𝑝          Mean of the dependent demand of material p in location j
+30
+31   𝜎𝐷 𝑗𝑝          Standard deviation of the dependent demand of material p in location j
+32
+33   𝜇𝐼 𝑗𝑝          Mean of the independent demand of material p in location j
+34
+35   𝜎𝐼 𝑗𝑝          Standard deviation of the independent demand of material p in location j
+36
+37   𝑙𝑡𝑗𝑝           Lead time/order processing time of material p in location j
+38
+39   𝜎𝐿𝑇 𝑗𝑝         Standard deviation of the lead time/order processing time of material p in location j
+40
+41   ℎ𝑗𝑝            Holding cost of material p in location j
+42
+43   𝑠𝑖0𝑗𝑝          Inbound service time for the source nodes in the network
+44
+45   𝜙𝑝𝑞            Amount of material p required to produce material a unit of material q
+46
+     𝑢𝑏𝑗𝑝           Auxiliary parameter to calculate Sjp upper bound constraint according to comparisons
+47
+48                  in lead time variability
+49
+50   𝑚𝑎𝑥𝑆𝑗𝑝 Maximum service time accepted for material p in location j
+51
+52   𝑟𝑗𝑝            Stock review period for material p in location j
+53
+     𝑚𝑜𝑞𝑗𝑝          Minimum Order Quantity of material p that location j must place
+54
+55   𝑄𝑗𝑝            Replenishment order size of material p at location j
+56
+57   𝑓𝑟𝑗𝑝           Fill rate level of material p at location j
+58
+59   𝑧𝑗𝑝            Safety factor associated with CSL of material p at location j
+60
+61
+62
+             27
+63
+64
+65
+         7.3 Positive Variables
+ 1
+ 2     𝑆𝑗𝑝          Guaranteed service time within which location j will attend demand of material p
+ 3
+ 4     𝑆𝐼𝑗𝑝         Inbound Guaranteed service time at location j of material p
+ 5
+ 6     𝐴𝑅𝐺1 𝑗𝑝      Argument of square root for independent demand of material p at node j
+ 7
+ 8     𝐴𝑅𝐺2 𝑗𝑝      Argument of square root for dependent demand of material p at node j
+ 9
+10     𝑁𝐿𝑇𝑗𝑝        Net Lead time of material p at node j
+11
+12     𝑍1 𝑗𝑝        Variable used for quadratic reformulation on dependent demand net lead time formula
+13
+14
+       𝑍2 𝑗𝑝        Variable used for quadratic reformulation on independent demand net lead time
+15                  formula
+16
+17     𝑍𝑉𝑗𝑝         Variable used to replace z input factor when the fill rate is introduced to determine
+18
+19                  safety stocks
+       𝑈𝑗𝑝                                         2
+20                  Variable defined to replace 𝑍𝑉𝑗𝑝 and avoid trilinear terms
+21
+22
+23       8. ACKNOWLEDGMENTS
+24
+25
+26            The authors gratefully acknowledge the financial support from Johnson and Johnson, the
+27
+28   Fulbright Program and the Ministerio de Educación de Argentina, and the Center for Advanced Process
+29   Decision-making (CAPD) from Carnegie Mellon University. We would also like to thank Kyle
+30
+31   Harshbarger for his useful comments during EWO meetings in CMU and Alev Kaya for her valuable
+32
+33   insights on MEIO.
+34
+35       9. REFERENCES
+36
+37
+38   Bendadou, A., Kalai, R., Jemai, Z., & Rekik, Y. (2021). Impact of merging activities in a supply chain
+39        under the Guaranteed Service Model: Centralized and decentralized cases. Applied Mathematical
+40
+41        Modelling, 93, 509–524. https://doi.org/10.1016/j.apm.2020.12.024
+42
+43   Chopra,       S.,   &    Meindl,    P.    (2013).      Supply   Chain       Management.   In   Pearson.
+44        http://www.doiserbia.nb.rs/Article.aspx?ID=0013-32640670067A
+45
+46   de Kok, T., Grob, C., Laumanns, M., Minner, S., Rambau, J., & Schade, K. (2018). A typology and
+47
+48        literature review on stochastic multi-echelon inventory models. European Journal of Operational
+49        Research, 269(3), 955–983. https://doi.org/10.1016/j.ejor.2018.02.047
+50
+51   De Smet, N., Aghezzaf, E.-H., & Desmet, B. (2019). Optimising installation (R,Q) policies in
+52
+53        distribution networks with stochastic lead times: a comparative analysis of guaranteed- and
+54        stochastic service models. International Journal of Production Research, 57(13), 4148–4165.
+55
+56        https://doi.org/10.1080/00207543.2018.1518606
+57
+58   Eruguz, A. S., Jemai, Z., Sahin, E., & Dallery, Y. (2014). Optimising reorder intervals and order-up- to
+59        levels in guaranteed service supply chains. International Journal of Production Research, 52(1),
+60
+61
+62
+              28
+63
+64
+65
+          149–164. https://doi.org/10.1080/00207543.2013.831188
+ 1
+ 2   Eruguz, A. S., Sahin, E., Jemai, Z., & Dallery, Y. (2016). A comprehensive survey of guaranteed-
+ 3        service models for multi-echelon inventory optimization. International Journal of Production
+ 4
+ 5        Economics, 172, 110–125. https://doi.org/10.1016/j.ijpe.2015.11.017
+ 6
+ 7   Gonçalves, J. N. C., Sameiro Carvalho, M., & Cortez, P. (2020). Operations research models and
+ 8        methods for safety stock determination: A review. Operations Research Perspectives, 7(April),
+ 9
+10        100164. https://doi.org/10.1016/j.orp.2020.100164
+11
+12   Graves, S. C., & Willems, S. P. (2000). Optimizing Strategic Safety Stock Placement in Supply Chains.
+13        Manufacturing          &       Service       Operations      Management,         2(1),       68–83.
+14
+15        https://doi.org/10.1287/msom.2.1.68.23267
+16
+17   Graves, S. C., & Willems, S. P. (2003). Supply Chain Design: Safety Stock Placement and Supply
+18        Chain Configuration. In Handbooks in Operations Research and Management Science (Vol. 11,
+19
+20        Issue C, pp. 95–132). https://doi.org/10.1016/S0927-0507(03)11003-1
+21
+22   Humair, S., Ruark, J. D., Tomlin, B., & Willems, S. P. (2013). Incorporating Stochastic Lead Times
+23        Into the Guaranteed Service Model of Safety Stock Optimization. Interfaces, 43(5), 421–434.
+24
+25        https://doi.org/10.1287/inte.2013.0699
+26
+27   Inderfurth, K. (1993). Valuation of Leadtime Reduction in Multi-Stage Production Systems. In
+28        Operations Research in Production Planning and Control. https://doi.org/10.1007/978-3-642-
+29
+30        78063-9
+31
+32   Inderfurth, K., & Minner, S. (1998). Safety stocks in multi-stage inventory systems under different
+33        service    measures.       European   Journal   of   Operational    Research,    106(1),     57–73.
+34
+35        https://doi.org/10.1016/S0377-2217(98)00210-0
+36
+37   Klosterhalfen, S. T., Dittmar, D., & Minner, S. (2013). An integrated guaranteed- and stochastic-service
+38        approach to inventory optimization in supply chains. European Journal of Operational Research,
+39
+40        231(1), 109–119. https://doi.org/10.1016/j.ejor.2013.05.032
+41
+42   Magnanti, T. L., Max Shen, Z.-J., Shu, J., Simchi-Levi, D., & Teo, C.-P. (2006). Inventory placement
+43
+          in acyclic    supply chain       networks.   Operations   Research Letters,     34(2),     228–238.
+44
+45        https://doi.org/10.1016/j.orl.2005.04.004
+46
+47   Minner, S. (1998). Strategic Safety Stocks in Supply Chains.
+48
+     Park, J. H., Kim, J. S., & Shin, K. Y. (2018). Inventory control model for a supply chain system with
+49
+50        multiple types of items and minimum order size requirements. International Transactions in
+51
+52        Operational Research, 25(6), 1927–1946. https://doi.org/10.1111/itor.12262
+53
+     Payne, T. (2016). Key Principles for Implementing MEIO to Cope With Supply Chain Variability. In
+54
+55        Gartner.
+56
+57   Peeters, Y. A. M. (2020). Safety stock setting in the global supply chain of a life science company the
+58
+59
+          comparison of a guaranteed service model and stochastic service model [Eindhoven University
+60        of Technology MASTER]. https://research.tue.nl/en/studentTheses/safety-stock-setting-in-the-
+61
+62
+           29
+63
+64
+65
+          global-supply-chain-of-a-life-science
+ 1
+ 2   Perez,        H.   D.       (2021).     hdavid16/InventoryManagement.jl:     v0.3.2     (v0.3.2).       Zenodo.
+ 3        https://doi.org/https://doi.org/10.5281/zenodo.5725543
+ 4
+ 5   Shen, K., David, J., De Pessemier, T., Martens, L., & Joseph, W. (2019). An efficient genetic method
+ 6
+ 7        for multi-objective continuous production scheduling in Industrial Internet of Things. IEEE
+ 8        International Conference on Emerging Technologies and Factory Automation, ETFA, 2019-Septe,
+ 9
+10        1119–1126. https://doi.org/10.1109/ETFA.2019.8869049
+11
+12   Silver, E. A., & Bischak, D. P. (2011). The exact fill rate in a periodic review base stock system under
+13        normally                distributed         demand.           Omega,         39(3),                346–349.
+14
+15        https://doi.org/10.1016/j.omega.2010.08.003
+16
+17   Simchi-Levi, D., & Zhao, Y. (2012). Performance Evaluation of Stochastic Multi-Echelon Inventory
+18        Systems:           A     Survey.       Advances   in       Operations   Research,          2012,      1–34.
+19
+20        https://doi.org/10.1155/2012/126254
+21
+22   Simpson, K. F. . (1958). In-Process Inventories. INFORMS, 6(6), 863–873.
+23   Teunter, R. H., Syntetos, A. A., & Babai, M. Z. (2017). Stock keeping unit fill rate specification.
+24
+25        European               Journal        of     Operational        Research,        259(3),           917–925.
+26
+27        https://doi.org/10.1016/j.ejor.2016.11.017
+28   You, F., & Grossmann, I. E. (2008). Mixed-Integer Nonlinear Programming Models and Algorithms
+29
+30        for Large-Scale Supply Chain Design with Stochastic Inventory Management. Industrial &
+31
+32        Engineering Chemistry Research, 47(20), 7802–7817. https://doi.org/10.1021/ie800257x
+33   You, F., & Grossmann, I. E. (2009). Integrated multi-echelon supply chain design with inventories
+34
+35        under uncertainty: MINLP models, computational strategies. AIChE Journal, 59(4), NA-NA.
+36
+37        https://doi.org/10.1002/aic.12010
+38   Zhou, B., Zhao, Y., & Katehakis, M. N. (2007). Effective control policies for stochastic inventory
+39
+40        systems with a minimum order quantity and linear costs. International Journal of Production
+41
+42        Economics, 106(2), 523–531. https://doi.org/10.1016/j.ijpe.2006.06.020
+43
+     Zhu, H., Liu, X., & Chen, Y. (2015). Effective inventory control policies with a minimum order quantity
+44
+45        and batch ordering. International Journal of Production Economics, 168, 21–30.
+46
+47        https://doi.org/10.1016/j.ijpe.2015.06.008
+48
+49
+50
+51
+52
+53
+54
+55
+56
+57
+58
+59
+60
+61
+62
+              30
+63
+64
+65
+          Click here to access/download
+         Supplementary Material
+Paper MEIO_Supporting information_v10.docx
+

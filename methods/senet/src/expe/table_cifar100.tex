@@ -1,0 +1,20 @@
+\begin{table}
+\renewcommand\arraystretch{1.1}
+\small
+\caption{Classification error (\%) on CIFAR-100. }
+\label{tab:cifar100}
+\vspace{-1.8em}
+\begin{center}{\scalebox{0.91}{
+\begin{tabular}{l|p{1.1cm}<{\centering}|p{1.1cm}<{\centering}}
+\hline
+& original  & SENet  \\
+\hline
+ResNet-110 \cite{he_eccv2016preact} & $26.88$ & $23.85$ \\
+ResNet-164 \cite{he_eccv2016preact} & $24.33$ & $21.31$ \\
+WRN-16-8 \cite{zagoruyko_bmvc2016wrn} & $20.43$ & $19.14$ \\
+Shake-Even 29 2x4x64d \cite{xavier_2017shake} + Cutout \cite{terrance_2017cutout} & $15.85$ & $15.41$ \\
+\hline
+\end{tabular}}}
+%\setlength{\abovecaptionskip}{10pt}
+\end{center}
+\end{table}

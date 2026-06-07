@@ -1,0 +1,28 @@
+\section{Introduction}
+
+Can you imagine your own dog traveling around the world, or your favorite bag displayed in the most exclusive showroom in Paris? What about your parrot being the main character of an illustrated storybook?
+Rendering such imaginary scenes is a challenging task that requires synthesizing instances of specific subjects (e.g., objects, animals) in new contexts such that they naturally and seamlessly blend into the scene.
+
+Recently developed large text-to-image models have shown unprecedented capabilities, by enabling high-quality and diverse synthesis of images based on a text prompt written in natural language \cite{saharia2022photorealistic,ramesh2022hierarchical}. One of the main advantages of such models is the strong semantic prior learned from a large collection of image-caption pairs. Such a prior learns, for instance, to bind the word ``dog" with various instances of dogs that can appear in different poses and contexts in an image.  
+While the synthesis capabilities of these models are unprecedented, they lack the ability to mimic the appearance of subjects in a given reference set, and synthesize novel renditions of the \emph{same subjects} in different contexts. The main reason is that the expressiveness of their output domain is limited;  even the most detailed textual description of an object may yield instances with different appearances. Furthermore, even models whose text embedding lies in a shared language-vision space \cite{radford2021learning} cannot accurately reconstruct the appearance of given subjects but only create variations of the image content (Figure~\ref{fig:explanatory_figure}). 
+
+In this work, we present a new approach for ``personalization'' of text-to-image diffusion models (adapting them to user-specific image generation needs). Our goal is to expand the language-vision dictionary of the model such that it binds new words with specific subjects the user wants to generate. Once the new dictionary is embedded in the model, it can use these words to synthesize novel photorealistic images of the subject, contextualized in different scenes, while preserving their key identifying features. The effect is akin to a ``magic photo booth''---once a few images of the subject are taken, the booth generates photos of the subject in different conditions and scenes, as guided by simple and intuitive text prompts (Figure~\ref{fig:teaser}).
+
+More formally, given a few images of a subject ($\sim$3-5), our objective is to implant the subject into the output domain of the model such that it can be synthesized with a \emph{unique identifier}. To that end, we propose a technique to represent a given subject with rare token identifiers and fine-tune a pre-trained, diffusion-based text-to-image framework. 
+
+We fine-tune the text-to-image model with the input images and text prompts containing a unique identifier followed by the class name of the subject (e.g., ``A [V] dog”). The latter enables the model to use its prior knowledge on the subject class while the class-specific instance is bound with the unique identifier. In order to prevent \textit{language drift}~\cite{Lee2019CounteringLD,lu2020countering} that causes the model to associate the class name (e.g., ``dog") with the specific instance, we propose an \textit{autogenous, class-specific prior preservation loss}, which leverages the semantic prior on the class that is embedded in the model, and encourages it to generate diverse instances of the same class as our subject.
+
+We apply our approach to a myriad of text-based image generation applications including recontextualization of subjects, modification of their properties, original art renditions, and more, paving the way to a new stream of previously unassailable tasks. We highlight the contribution of each component in our method via ablation studies, and compare with alternative baselines and related work. We also conduct a user study to evaluate subject and prompt fidelity in our synthesized images, compared to alternative approaches.
+
+To the best of our knowledge, ours is the first technique that tackles this new challenging problem of subject-driven generation, allowing users, from just a few casually captured images of a subject, synthesize novel renditions of the subject in different contexts while maintaining its distinctive features.
+
+To evaluate this new task, we also construct a new dataset that contains various subjects captured in different contexts, and propose a new evaluation protocol that measures the subject fidelity and prompt fidelity of the generated results. We make our dataset and evaluation protocol publicly available on the project webpage.
+
+\begin{figure}[t]
+\centering
+\includegraphics[clip,width=.9\columnwidth]{figures/background_im_1.pdf}
+\caption{{\bf Subject-driven generation.} Given a particular clock (left), it is hard to generate it while maintaining high fidelity to its key visual features (second and third columns showing DALL-E2~\cite{ramesh2022hierarchical} image-guided generation and Imagen~\cite{saharia2022photorealistic} text-guided generation; text prompt used for Imagen: \textit{``retro style yellow alarm clock with a white clock face and a yellow number three on the right part of the clock face in the jungle"}). Our approach (right) can synthesize the clock with high fidelity and in new contexts (text prompt: \textit{``a [V] clock in the jungle"}).}
+\label{fig:explanatory_figure}
+\end{figure}
+
+

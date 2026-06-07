@@ -1,0 +1,158 @@
+\section{Discussion}
+
+\AlgoName{} learns self-supervised representations through a joint embedding of distorted images, with an objective function that maximizes similarity between the embedding vectors while reducing redundancy between their components. Our method does not require large batches of samples, nor does it require any particular asymmetry in the twin network structure. We discuss next the similarities and differences between our method and prior art, both from a conceptual and an empirical standpoint. For ease of comparison, all objective functions are recast with a common set of notations. The discussion ends with future directions.
+
+\subsection{Comparison with Prior Art}
+
+\paragraph{infoNCE}
+
+The \textsc{InfoNCE} loss, where NCE stands for Noise-Contrastive Estimation \cite{gutmann_noise-contrastive_2010}, is a popular type of contrastive loss function used for self-supervised learning (e.g. \cite{oord2018representation, chen2020simple, he2019momentum,henaff2019data}). It can be instantiated as:
+\begin{align*}
+\mathcal{L}_{infoNCE} \triangleq - \underbrace{\sum_b \frac{\langle z^A_{b}, 
+z^B_{b} \rangle_i}{\tau\norm{z^A_{b}}_2\norm{z^B_{b}}_2}}_\text{similarity term}\\
++ \underbrace{\sum_{b} \log\left( \sum_{b' \neq b} \exp \left(\frac{\langle z^A_{b}, 
+z^B_{b'} \rangle_i}{\tau\norm{z^A_{b}}_2\norm{z^B_{b'}}_2}\right)\right)}_\text{contrastive term}
+\end{align*}
+
+where $z^A$ and $z^B$ are the twin network outputs, $b$ indexes the sample in a batch, $i$ indexes the vector component of the output, and $\tau$ is a positive constant called temperature in analogy to statistical physics.
+
+For ready comparison, we rewrite \AlgoName{} loss function with the same notations:
+\begin{align*}
+\mathcal{L_{BT}} =  \underbrace{\sum_i \left(1-\frac{\langle z^A_{\boldsymbol{\cdot},i}, 
+z^B_{\boldsymbol{\cdot},i} \rangle_b}{\norm{z^A_{\boldsymbol{\cdot},i}  }_2 \norm{z^B_{\boldsymbol{\cdot},i}}_2}\right) ^2}_\text{invariance term} \\
++ \lambda \underbrace{\sum_{i} \sum_{j \neq i} \left(\frac{\langle z^A_{\boldsymbol{\cdot},i}, 
+z^B_{\boldsymbol{\cdot},j} \rangle_b}{\norm{z^A_{\boldsymbol{\cdot},i} }_2\norm{z^B_{\boldsymbol{\cdot},j}}_2}\right)^2}_\text{redundancy reduction term}
+\end{align*}
+
+Both \AlgoName{}' and \textsc{InfoNCE}'s objective functions have two terms, the first aiming at making the embeddings invariant to the distortions fed to the twin networks, the second aiming at maximizing the variability of the embedding learned.  Another common point between the two losses is that they both rely on batch statistics to measure this variability. However, the \textsc{InfoNCE} objective maximizes the variability of the embeddings by maximizing the pairwise distance between all pairs of samples, whereas our method does so by decorrelating the components of the embeddings vectors. 
+
+The contrastive term in \textsc{InfoNCE} can be interpreted as a non-parametric estimation of the entropy of the distribution of embeddings \cite{wang_understanding_2020}. An issue that arises with non-parametric entropy estimators is that they are prone to the curse of dimensionality: they can only be estimated reliably in a low-dimensional setting, and they typically require a large number of samples. 
+
+In contrast, our loss can be interpreted as a \emph{proxy} entropy estimator of the distribution of embeddings under \emph{a Gaussian parametrization} (see Appendix A). Thanks to this simplified parametrization, the variability of the embedding can be estimated from much fewer samples, and on very large-dimensional embeddings. Indeed, in the ablation studies that we perform, we find that (1) our method is robust to small batches unlike the popular \textsc{InfoNCE}-based method \textsc{SimCLR}, and (2) our method benefits from using very large dimensional embeddings, unlike \textsc{InfoNCE}-based methods which do not see a benefit in increasing the dimensionality of the output.
+
+Our loss presents several other interesting differences with infoNCE:
+\begin{itemize}
+\item In \textsc{infoNCE}, the embeddings are typically normalized along the feature dimension to compute a cosine similarity between embedded samples. We normalize the embeddings along the batch dimension instead.
+
+\item In our method, there is a parameter $\lambda$ that trades off how much emphasis is put on the invariance term vs. the redundancy reduction term. This parameter can be interpreted as the trade-off parameter in the \emph{Information Bottleneck} framework (see Appendix A). This parameter is not present in \textsc{infoNCE}. 
+
+\item \textsc{infoNCE} also has a hyperparameter, the temperature, which can be interpreted as the width of the kernel in a non-parametric kernel density estimation of entropy, and practically weighs the relative importance of the hardest negative samples present in the batch \cite{chen2020simple}.
+\end{itemize}
+
+A number of alternative methods to ours have been proposed to alleviate the reliance on large batches of the \textsc{infoNCE} loss. For example, MoCo \cite{he2019momentum, chen2020improved} builds a dynamic dictionary of negative samples with a queue and a moving-averaged encoder. This enables building a large and consistent dictionary on-the-fly that facilitates contrastive unsupervised learning. MoCo typically needs to store $>60{,}000$ sample embeddings. In contrast, our method does not require such a large dictionary, since it works well with a relatively small batch size (e.g. 256).
+
+
+
+\paragraph{Asymmetric Twins}
+
+\textsc{Bootstrap-Your-Own-Latent} (aka \textsc{BYOL}) \cite{grill2020bootstrap} and \textsc{SimSiam} \cite{chen2020exploring} are two recent methods which use a simple cosine similarity between twin embeddings as an objective function, without \emph{any} contrastive term:
+
+\begin{align*}
+\mathcal{L}_{cosine} = - \sum_b \frac{\langle z^A_{b}, 
+z^B_{b} \rangle_i}{\norm{z^A_{b}}_2\norm{z^B_{b}}_2}
+\end{align*}
+
+Surprisingly, these methods successfully avoid trivial solutions by introducing some asymmetry in the architecture and learning procedure of the twin networks. For example, \textsc{BYOL} uses a predictor network which breaks the symmetry between the two networks, and also enforces an exponential moving average on the target network weights to slow down the progression of the weights on the target network. Combined together, these two mechanisms surprisingly avoid trivial solutions. The reasons behind this success are the subject of recent theoretical and empirical studies \cite{tian_understanding_2020,chen2020exploring,fetterman_understanding_2020,richemond_byol_2020}. In particular, the ablation study \cite{chen2020exploring} shows that the moving average is not necessary, but that stop-gradient on one of the branch and the presence of the predictor network are two crucial elements to avoid collapse. Other works show that batch normalization \cite{tian_understanding_2020,fetterman_understanding_2020} or alternatively group normalization \cite{richemond_byol_2020} could play an important role in avoiding collapse.
+
+Like our method, these asymmetric methods do not require large batches, since in their case there is no interaction between batch samples in the objective function.
+
+It should be noted however that these asymmetric methods cannot be described as the optimization of an overall learning objective. Instead, there exists trivial solutions to the learning objective that these methods avoid via particular implementation choices and/or the result of non-trivial learning dynamics. In contrast, our method avoids trivial solutions by construction, making our method conceptually simpler and more principled than these alternatives (until their principle is discovered, see \cite{tian_understanding_2021} for an early attempt).
+
+ 
+
+\paragraph{Whitening}
+In a concurrent work, \cite{ermolov_whitening_2020} propose \textsc{W-MSE}. Acting on the embeddings from identical twin networks, this method performs a differentiable whitening operation (via Cholesky decomposition) of each batch of embeddings before computing a simple cosine similarity between the whitened embeddings of the twin networks. In contrast, the redundancy reduction term in our loss encourages the whitening of the batch embeddings as a soft constraint. The current W-MSE model achieves 66.3\% top-1 accuracy on the Imagenet linear evaluation benchmark. It is an interesting direction for future studies to determine whether improved versions of this hard-whitening strategy could also lead to state-of-the-art results on these large-scale computer vision benchmarks.
+
+
+\paragraph{Clustering}
+These methods, such as \textsc{DeepCluster} \cite{caron2018deep}, \textsc{SwAV} \cite{caron2020swav}, \textsc{SeLa} \cite{asano2019self}, perform contrastive-like comparisons without the requirement to compute all pairwise distances. Specifically, these methods simultaneously cluster the data while enforcing consistency between cluster assignments produced for different distortions of the same image, instead of comparing features directly as in contrastive learning. Clustering methods are also prone to collapse, \eg, empty clusters in k-means and avoiding them relies on careful implementation details. Online clustering methods like \textsc{SwAV} can be trained with large and small batches but require storing features when the number of clusters is much larger than the batch size. Clustering methods can also be combined with contrastive learning~\cite{li2020contrastive} to prevent collapse.
+% These methods can be trained with large and small batches and they do not require a large memory bank or a special momentum network (e.g. \textsc{SwAV} typically stores 3000 features). 
+
+
+\paragraph{Noise As Targets} This method \cite{bojanowski2017unsupervised} learns to map samples to fixed random targets on the unit sphere, which can be interpreted as a form of whitening. This objective uses a single network, and hence does not leverage the distortions induced by twin networks. Predefining random targets might limit the flexibility of the representation that can be learned.
+
+%This method  fixes a set of random targets and constrains the learned representations to align with them, a robust way to avoid collapsed solutions. For computational tractability, the assignment matrix is optimized for each batch on its restriction to this batch. Unlike most recent approaches to SSL, \emph{Noise As Targets} does not combine this objective with a twin network structure encoding different distortions of the same sample. It would be interesting to combine these approaches and compare this method with current SoTA methods.
+
+
+\paragraph{IMAX}
+
+In the early days of SSL, \cite{becker_self-organizing_1992,zemel_discovering_1990} proposed a loss function between twin networks given by:
+\begin{align*}
+\mathcal{L}_{IMAX} \triangleq   \log |\mathcal{C}_{(Z^A-Z^B)}|-\log |\mathcal{C}_{(Z^A+Z^B)}|
+\end{align*}
+where $|~|$ denotes the determinant of a matrix, $\mathcal{C}_{(Z^A-Z^B)}$ is the covariance matrix of the difference of the outputs of the twin networks and  $\mathcal{C}_{(Z^A+Z^B)}$ the covariance of the sum of these outputs. It can be shown that this objective maximizes the information between the twin network representations under the assumptions that the two representations are noisy versions of the same underlying Gaussian signal, and that the noise is independant, additive and Gaussian. This objective is similar to ours in the sense that there is one term that encourages the two representations to be similar and another term that encourages the units to be decorrelated. However, unlike \textsc{IMAX}, our objective is not directly an information quantity, and we have an extra trade-off parameter $\lambda$ that trades off the two terms of our loss. The \textsc{IMAX} objective was used in early work so it is not clear whether it can scale to large computer vision tasks. Our attempts to make it work on ImageNet were not successful.
+
+
+
+
+\subsection{Future Directions}
+
+We observe a steady improvement of the performance of our method as we increase the dimensionality of the embeddings (i.e. of the last layer of the projector network). This intriguing result is in stark contrast with other popular methods for SSL, such as \textsc{SimCLR} \cite{chen2020simple} and \textsc{BYOL} \cite{grill2020bootstrap}, for which increasing the dimensionality of the embeddings rapidly saturates performance. It is a promising avenue to continue this exploration for even higher dimensional embeddings ($>16{,}000$), but this would require the development of new methods or alternative hardware to accommodate the memory requirements of operating on such large embeddings.
+
+Our method is just one possible instanciation of the \emph{Information Bottleneck} principle applied to SSL. We believe that further refinements of the proposed loss function and algorithm could lead to more efficient solutions and even better performances. For example, the redundancy reduction term is currently computed from the off-diagonal terms of the cross-correlation matrix between the twin network embeddings, but alternatively it could be computed from the off-diagonal terms of the auto-correlation matrix of a single network's embedding. Our preliminary analyses seem to indicate that this alternative leads to similar performances (not shown). A modified loss could also be applied to the (unnormalized) cross-covariance matrix instead of the (normalized) cross-correlation matrix (see Ablations for preliminary analyses). 
+
+
+% In our hands we could not make it work well on ImageNet benchmarks. 
+
+%We note that this method still have interactions between terms of the batch, like contrastive method, but thanks to the Gaussian assumption the contrsative terme is simply connected to the covariance matrix, as ooposed to the full logexp difference in pairs. This hsould allow for small batches but in our hand this loss did not scale properly
+
+%Like other recent methods proposed for SSL, \AlgoName{} relies on carefully-engineered augmentations which encode the desired invariances of the representation to be learned. In order to makes these methods applicable to other modalities, it would be important to find a way to avoid the need for such carefully-engineered augmentations.
+
+%
+
+%Finally, like their supervised counterparts, self-supervised methods are prone to encoding biases present in the dataset, such as racial or gender biases @REF@. It is an important and active area of research to understand how to build models that will truly reflect the causal structure of the world and avoid learning these harmful biases @REF@.
+
+%
+%Bootstrap-Your-Own-Latent is a method that does not rely on contrastive examples, but on asymmetries between the twin networks to avoid collapse. Our method we do not require asymmetries, making the methods conceptually simpler. Like \textsc{BYOL} our method is robust to batch size and to the ablation of different augmentations, unlike \textsc{SimCLR}. 
+
+%Although their method is not explicitely contrastive, we note that it does require a batch size of moderate size (128 on Tiny ImageNet) to compute the whitening. 
+
+%Becker and Hinton. Description. How we are different.
+%ZCA type methods. Description. How we are different.
+%The main advantage of our method compared to this prior anc concurrent work is that we were able to show that our method scales to obtain results on par with SoTA on ImageNet and standard benchmarks for transfer learning. Discuss Hinton and Becker as a motivation. Joint gaussian process with noise assumption, and still the idea of maximizing mutual info and not the info bottleneck.
+
+%They are not using an information bottleneck loss, but maximizing information. It is a weird objective because the image itself maximizes info, the network can only loose infor. In prtactice. the limited dimensionality of the inpout coupled with the bilinear loss racts as an implicit botllneck which prevents trivisal solutions. But in pratice, their network performs worse than ours. 
+
+%In fact there is a close mathematical connection between the goal of whitening and the goal of maximizing information. Indeed, if our objective is obtained, the neurons are all decorrelated with each other and the neurons of twin networks are perfectly correlated. 
+
+%||XXt - I|| = 0 and ||
+
+%\paragraph{Uniformity on the Hypersphere}
+%\begin{align*}
+%\mathcal{L}_{unif} \triangleq \underbrace{\sum_b \frac{\langle z^A_{b}, 
+%z^B_{b} \rangle}{\norm{z^A_{b}}_2\norm{z^B_{b}}_2}}_\text{alignement term}\\
+%- \underbrace{ log\left( \sum_{b} \sum_{b' \neq b} exp \left(\frac{\langle %z^A_{b}, 
+%z^B_{b'} \rangle}{\tau\norm{z^A_{b}}_2\norm{z^B_{b'}}_2}\right)\right)}_\text{uniformity term}
+%\end{align*}
+
+%Despite being simple in form, our proposed metrics, when directly optimized with no other loss, empirically lead to comparable or better performance at down- stream tasks than contrastive learning.
+%Directly optimizing only Lalign and Luniform can lead to better representations. As shown in Tables 1 and 2, en- coders trained with only Lalign and Luniform consistently outperform their Lcontrastive-trained counterparts, for both tasks. 
+%Simpler than infoNCE, but still explicitely contrastive, was not shown to work on small batch sizes, and was not shown to scale on ImageNet
+
+
+%equations are good except that they are not centered and their loss is symmetrized 
+%For simplicity we omit the symmetrized contrastive term in the equation, which swaps the indices b and b', as this symmetrization of the loss does not affect our argument.
+%For simplicity we omitted the mean-centered operation of the representations along the batch dimension, which is also specific to our loss compared to SimCLR.
+
+%\begin{align*}
+%\mathcal{L}_{BT} = \lambda  \sum_i \left(1-\frac{\langle z^A_{\boldsymbol{\cdot},i} - \overline{z^A_{\boldsymbol{\cdot},i}}, 
+%z^B_{\boldsymbol{\cdot},i} - \overline{z^B_{\boldsymbol{\cdot},i}} \rangle}{\|z^A_{\boldsymbol{\cdot},i} - \overline{z^A_{\boldsymbol{\cdot},i}} \|\|z^B_{\boldsymbol{\cdot},i} - \overline{z^B_{\boldsymbol{\cdot},i}}\|}\right) ^2 \\
+%+ \sum_{j \neq i} \left(\frac{\langle z^A_{\boldsymbol{\cdot},i} - \overline{z^A_{\boldsymbol{\cdot},i}}, 
+%z^B_{\boldsymbol{\cdot},j} - \overline{z^B_{\boldsymbol{\cdot},j}} \rangle}{\|z^A_{\boldsymbol{\cdot},i} - \overline{z^A_{\boldsymbol{\cdot},i}} \|\|z^B_{\boldsymbol{\cdot},j} - \overline{z^B_{\boldsymbol{\cdot},j}}\|}\right)^2
+%\end{align*}
+
+%\paragraph{MoCo and MoCo2} momentum / memroy bank?
+
+%From a perspective on contrastive learning [29] as dictionary look-up, we build a dynamic dictionary with a queue and a moving-averaged encoder. This enables building a large and consistent dic- tionary on-the-fly that facilitates contrastive unsupervised learning.  F
+
+%igure 1. Momentum Contrast (MoCo) trains a visual represen- tation encoder by matching an encoded query q to a dictionary of encoded keys using a contrastive loss. The dictionary keys  are defined on-the-fly by a set of data samples. The dictionary is built as a queue, with the current mini-batch en- queued and the oldest mini-batch dequeued, decoupling it from the mini-batch size. The keys are encoded by a slowly progressing encoder, driven by a momentum update with the query encoder. This method enables a large and consistent dictionary for learning visual representations.
+
+%MocoV2: With simple modifications to MoCo— namely, using an MLP projection head and more data augmentation—we establish stronger baselines that outper- form SimCLR and do not require large training batches.
+
+%However, MoCo typically need to store the last 65K instances obtained from the last 250 batches [24].
+
+%Simply put, we use a “swapped” prediction mechanism where we predict the code of a view from the representation of another view.
+
+%Figure 1: Contrastive instance learning (left) vs. SwAV (right). In contrastive learning methods applied to instance classification, the features from different transformations of the same images are compared directly to each other. In SwAV, we first obtain “codes” by assigning features to prototype vectors. We then solve a “swapped” prediction problem wherein the codes obtained from one data augmented view are predicted using the other view. Thus, SwAV does not directly compare image features. Prototype vectors are learned along with the ConvNet parameters by backpropragation.
+
+% In practice, we store around 3K features, i.e., in the same range as the number of code vectors. This means that we only keep features from the last 15 batches with a batch size of 256, while contrastive methods typically need to store the last 65K instances obtained from the last 250 batches [24].

@@ -1,0 +1,33 @@
+\begin{figure*}[t]
+\small
+\begin{center}
+\subfigure[\texttt{SE\_2\_3}]{\includegraphics[trim={1cm 7cm 1cm 7cm},clip,width=0.28\textwidth,height=0.15\textheight]{activations-no-std/conv2_3_sigmoid.pdf}}\hspace{0.2cm}
+\subfigure[\texttt{SE\_3\_4}]{\includegraphics[trim={1cm 7cm 1cm 7cm},clip,width=0.28\textwidth,height=0.15\textheight]{activations-no-std/conv3_4_sigmoid.pdf}}
+    \hspace{0.2cm}
+\subfigure[\texttt{SE\_4\_6}]{\includegraphics[trim={1cm 7cm 1cm 7cm},clip,width=0.28\textwidth,height=0.15\textheight]{activations-no-std/conv4_6_sigmoid.pdf}}
+ \hspace{0.2cm} 
+\subfigure[\texttt{SE\_5\_1}]{\includegraphics[trim={1cm 7cm 1cm 7cm},clip,width=0.28\textwidth,height=0.15\textheight]{activations-no-std/conv5_1_sigmoid.pdf}}
+ \hspace{0.2cm} 
+\subfigure[\texttt{SE\_5\_2}]{\includegraphics[trim={1cm 7cm 1cm 7cm},clip,width=0.28\textwidth,height=0.15\textheight]{activations-no-std/conv5_2_sigmoid.pdf}}
+ \hspace{0.2cm}
+\subfigure[\texttt{SE\_5\_3}]{\includegraphics[trim={1cm 7cm 1cm 7cm},clip,width=0.28\textwidth,height=0.15\textheight]{activations-no-std/conv5_3_sigmoid.pdf}}
+\end{center}
+\vspace{-0.5cm}
+\caption{Activations induced by the Excitation operator at different depths in the SE-ResNet-50 on ImageNet. Each set of activations is named according to the following scheme: \texttt{SE\_stageID\_blockID}.  With the exception of the unusual behaviour at \texttt{SE\_5\_2}, the activations become increasingly class-specific with increasing depth.}
+\label{fig:class-activations}
+\end{figure*}
+
+\begin{figure*}[t]
+\small
+\begin{center}
+\subfigure[\texttt{SE\_2\_3}]{\includegraphics[trim={1cm 7cm 1cm 7cm},clip,width=0.28\textwidth,height=0.15\textheight]{activations-with-std/conv2_3_sigmoid_std.pdf}} \hspace{0.2cm}
+\subfigure[\texttt{SE\_3\_4}]{\includegraphics[trim={1cm 7cm 1cm 7cm},clip,width=0.28\textwidth,height=0.15\textheight]{activations-with-std/conv3_4_sigmoid_std.pdf}} \hspace{0.2cm}
+\subfigure[\texttt{SE\_4\_6}]{\includegraphics[trim={1cm 7cm 1cm 7cm},clip,width=0.28\textwidth,height=0.15\textheight]{activations-with-std/conv4_6_sigmoid_std.pdf}}  \hspace{0.2cm}
+\subfigure[\texttt{SE\_5\_1}]{\includegraphics[trim={1cm 7cm 1cm 7cm},clip,width=0.28\textwidth,height=0.15\textheight]{activations-with-std/conv5_1_sigmoid_std.pdf}}  \hspace{0.2cm}
+\subfigure[\texttt{SE\_5\_2}]{\includegraphics[trim={1cm 7cm 1cm 7cm},clip,width=0.28\textwidth,height=0.15\textheight]{activations-with-std/conv5_2_sigmoid_std.pdf}} \hspace{0.2cm}
+\subfigure[\texttt{SE\_5\_3}]{\includegraphics[trim={1cm 7cm 1cm 7cm},clip,width=0.28\textwidth,height=0.15\textheight]{activations-with-std/conv5_3_sigmoid_std.pdf}} \hspace{0.2cm}
+\end{center}
+\vspace{-1.5em}
+\caption{Activations induced by {\it Excitation} in the different modules of SE-ResNet-50 on image samples from the goldfish and plane classes of ImageNet. The module is named  ``\texttt{SE\_stageID\_blockID}''.}
+\label{fig:instance-activations}
+\end{figure*}

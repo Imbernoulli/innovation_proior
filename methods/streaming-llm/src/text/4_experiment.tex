@@ -1,0 +1,46 @@
+\section{Experiments}
+\label{sec:exps}
+We evaluate \method using four prominent recent model families: Llama-2~\citep{touvron2023llama2}, MPT~\citep{MosaicML2023Introducing}, PyThia~\citep{biderman2023pythia}, and Falcon~\citep{falcon40b}. Notably, Llama-2, Falcon, and Pythia incorporate RoPE~\citep{su2021roformer}, whereas MPT employs ALiBi~\citep{alibi} — two of the most influential position encoding techniques in recent research. Our diverse model selection ensures the validity and robustness of our findings. We benchmark \method against established baselines such as dense attention, window attention, and the sliding window approach with re-computation. In all subsequent experiments with \method, we default to using four initial tokens as attention sinks unless stated otherwise.
+\subsection{Language Modeling on Long Texts Across LLM Families and Scales}
+We firstly evaluate \method's language modeling perplexity using the concatenated PG19~\citep{Rae2020Compressive} test set, which contains 100 long books. For Llama-2 models, the cache size is set at 2048, while for Falcon, Pythia, and MPT models, it's set at 1024. This is half the pre-training window size chosen to enhance visualization clarity.
+
+Figure~\ref{fig:nll_curve} illustrates that \method can match the oracle baseline (sliding window with re-computation) in terms of perplexity on texts spanning 20K tokens. Meanwhile, the dense attention technique fails when the input length exceeds its pre-training window, and the window attention technique struggles when the input length surpasses the cache size, leading to the eviction of the initial tokens.
+In Figure~\ref{fig:long_lm}, we further substantiate that \method can reliably handle exceptionally extended texts, encompassing more than 4 million tokens, across a spectrum of model families and scales. This includes Llama-2-[7,13,70]B, Falcon-[7,40]B, Pythia-[2.8,6.9,12]B, and MPT-[7,30]B.
+\input{figtab/long_lm}
+
+\subsection{Results of Pre-Training with a Sink Token}
+To validate our suggestion that introducing a sink token to all pre-training samples improves streaming LLMs, we trained two language models, each with 160 million parameters, under identical conditions. While one model adhered to the original training settings, the other incorporated a sink token at the start of every training sample. Our experiments employed the Pythia-160M~\citep{biderman2023pythia} codebase and followed its training recipe. We train the models on an 8xA6000 NVIDIA GPU server using the deduplicated Pile~\citep{pile} dataset. Apart from reducing the training batch size to 256, we retained all Pythia training configurations, including learning rate schedules, model initialization, and dataset permutations. Both models were trained for 143,000 steps.
+\input{figtab/pretrain_results}
+\myparagraph{Convergence and Normal Model Performance.}
+Including a sink token during pre-training has no negative impact on model convergence and subsequent performance on a range of NLP benchmarks.
+As depicted in Figure~\ref{fig:curve}, models trained with a sink token exhibit similar convergence dynamics compared to their vanilla counterparts. We evaluate the two models on seven diverse NLP benchmarks, including ARC-[Challenge, Easy]~\citep{arc}, HellaSwag~\citep{hellaswag}, LAMBADA~\citep{paperno-etal-2016-lambada}, OpenbookQA~\citep{OpenBookQA2018}, PIQA~\citep{piqa}, and Winogrande~\citep{sakaguchi2019winogrande}. As shown in Table~\ref{tab:pretrain_eval}, the model pre-trained with a sink token performs similarly to that trained using the vanilla approach.
+
+\myparagraph{Streaming Performance.} As illustrated in Table~\ref{tab:pretrain_fix}, the streaming perplexities differ between models trained using traditional methods and those augmented with a sink token. Remarkably, the vanilla model requires the addition of multiple tokens as attention sinks to maintain stable streaming perplexity. In contrast, the model trained with a sink token achieves satisfactory streaming performance using just the sink token.
+
+\input{figtab/attn_vis_pretrain}
+\input{figtab/streameval}
+
+\myparagraph{Attention Visualization.} 
+Figure~\ref{fig:attn_vis_pretrain} contrasts attention maps for models pre-trained with and without a sink token. The model without the sink token, similar to Llama-2-7B (Figure~\ref{fig:attention_visualization}), shows early-layer local attention and deeper-layer focus on initial tokens. In contrast, models trained with a sink token consistently concentrate on the sink across layers and heads, indicating an effective attention offloading mechanism. This strong focus on the sink, with reduced attention to other initial tokens, explains the sink token's efficacy in enhancing model's streaming performance.
+
+\input{figtab/instruct_qa}
+\subsection{Results on Streaming Question Answering with Instruction-tuned Models}
+To show \method's real-world applicability, we emulate multi-round question-answering using instruction-tuned LLMs, commonly used in real-world scenarios.
+
+We first concatenate all question-answer pairs from the ARC-[Challenge, Easy] datasets, feed the continuous stream to Llama-2-[7,13,70]B-Chat models, and assess model completions at each answer position using an exact match criterion. As table~\ref{tab:instruct_qa} indicates, dense attention results in Out-of-Memory (OOM) errors, showing it unsuitable for this setting. While the window attention method works efficiently, it exhibits low accuracy due to random outputs when the input length exceeds the cache size. Conversely, \method excels by efficiently handling the streaming format, aligning with the one-shot, sample-by-sample baseline accuracy.
+
+Highlighting a more fitting scenario for \method, we introduce a dataset, StreamEval, inspired by the LongEval~\citep{longchat2023} benchmark. As depicted in Figure~\ref{fig:streameval}, diverging from LongEval's single query over a long-span setup, we query the model every 10 lines of new information. Each query's answer is consistently 20 lines prior, reflecting real-world instances where questions typically pertain to recent information. As illustrated in Figure~\ref{fig:kv_bench}, LLMs employing \method maintain reasonable accuracy even as input lengths approach 120K tokens. In contrast, both dense and window attention fail at the pre-training text length and the KV cache size, respectively. Additionally, we utilize two context-extended models, LongChat-7b-v1.5-32k~\citep{longchat2023} and Llama-2-7B-32K-Instruct~\citep{togetherlong}, to show that \method can complement context extension techniques. Within \method, context extension means broadening the maximum cache size of streaming LLMs, enabling the capture of broader local information.
+\input{figtab/kv_bench}
+
+\subsection{Ablation Studies}
+
+\myparagraph{Numbers of Initial Tokens.} In Table~\ref{tab:start_size}, we ablate the effect of adding varying numbers of initial tokens with recent tokens on the streaming perplexity. The results show the insufficiency of introducing merely one or two initial tokens, whereas a threshold of four initial tokens appears enough, with subsequent additions contributing marginal effects. This result justifies our choice of introducing 4 initial tokens as attention sinks in \method.
+
+\myparagraph{Cache Sizes.} In Table \ref{tab:cache_size}, we evaluate cache size's impact on \method's perplexity. Contrary to intuition, increasing the cache size doesn't consistently lower the language modeling perplexity. This inconsistency shows a potential limitation where these models might not maximize the utility of the entire context they receive. Future research efforts should target enhancing these models' capabilities to utilize extensive contexts better.
+\input{figtab/cache_size}
+
+\subsection{Efficency Results}
+\input{figtab/efficiency}
+We benchmark \method's decoding latency and memory usage against the sliding window with re-computation, which is the only baseline with acceptable quality. Both methods are implemented using the Huggingface Transformers library~\citep{wolf2020huggingfaces} and tested on a single NVIDIA A6000 GPU using the Llama-2-7B and Llama-2-13B models.
+As shown in Figure~\ref{fig:efficiency}, as the cache size increases, \method's decoding speed has a linear growth. The sliding window with re-computation baseline has a quadratic rise in decoding latency. Thus, \method achieves an impressive speedup, reaching up to 22.2$\times$ per token. Despite its reduced latency, \method sustains a memory footprint consistent with the re-computation baseline.
+

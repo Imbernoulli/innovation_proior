@@ -1,0 +1,134 @@
+\documentclass{article}
+
+% use Times
+\usepackage{times}
+% For figures
+\usepackage{graphicx} % more modern
+%\usepackage{epsfig} % less modern
+\usepackage{subfigure} 
+\usepackage{bm}
+% For citations
+\usepackage{natbib}
+
+% For algorithms
+\usepackage{algorithm}
+\usepackage{algorithmic}
+
+\usepackage{amsmath}
+
+\usepackage{tabularx,booktabs}
+
+% As of 2011, we use the hyperref package to produce hyperlinks in the
+% resulting PDF.  If this breaks your system, please commend out the
+% following usepackage line and replace \usepackage{icml2016} with
+% \usepackage[nohyperref]{icml2016} above.
+\usepackage{hyperref}
+
+% Packages hyperref and algorithmic misbehave sometimes.  We can fix
+% this with the following command.
+\newcommand{\theHalgorithm}{\arabic{algorithm}}
+
+% Employ the following version of the ``usepackage'' statement for
+% submitting the draft version of the paper for review.  This will set
+% the note in the first column to ``Under review.  Do not distribute.''
+\usepackage{iclr2017_conference} 
+
+% For strike-through.
+\usepackage{soul}
+
+% Employ this version of the ``usepackage'' statement after the paper has
+% been accepted, when creating the final version.  This will set the
+% note in the first column to ``Proceedings of the...''
+%\usepackage[accepted]{icml2016}
+
+\newcommand{\ksnote}[1]{\textcolor{magenta}{\textbf{Karen:} #1}}
+\newcommand{\hznote}[1]{\textcolor{magenta}{\textbf{Heiga:} #1}}
+\newcommand{\avdonote}[1]{\textcolor{blue}{\textbf{Aaron:} #1}}
+\newcommand{\onote}[1]{\textcolor{magenta}{\textbf{Oriol:} #1}}
+\newcommand{\sdnote}[1]{\textcolor{magenta}{\textbf{Sander:} #1}}
+\newcommand{\kknote}[1]{\textcolor{violet}{\textbf{Koray:} #1}}
+\newcommand{\agnote}[1]{\textcolor{green}{\textbf{Alex:} #1}}
+\newcommand{\todo}[1]{\textcolor{red}{\textbf{TODO: #1}}}
+\renewcommand{\vec}{\mathbf}
+
+\newcommand{\figref}[1]{Fig.~\ref{#1}}
+\newcommand{\tblref}[1]{Table~\ref{#1}}
+\newcommand{\sref}[1]{Sect.~\ref{#1}}
+\newcommand{\eqnref}[1]{Eq.~\eqref{#1}}
+
+\usepackage{xspace}
+\newcommand*{\etal}{et~al.\@\xspace}
+\newcommand*{\eg}{e.g.\@\xspace}
+\newcommand*{\etc}{etc.\@\xspace}
+\newcommand*{\ie}{i.e.\@\xspace}
+\newcommand*{\vs}{\emph{vs}.\@\xspace}
+
+\input{mymacro}
+
+\title{
+WaveNet: A Generative Model for Raw Audio
+}
+
+\author{A\"{a}ron~van~den~Oord \And
+\hspace{-0.5cm}Sander~Dieleman \And
+Heiga~Zen$^\dagger$ \AND
+Karen~Simonyan \And
+Oriol~Vinyals \And
+Alex~Graves \AND
+Nal~Kalchbrenner \And
+\hspace{1cm}Andrew~Senior \And
+Koray~Kavukcuoglu \AND \\
+\{avdnoord, sedielem, heigazen, simonyan, vinyals, gravesa, nalk, andrewsenior, korayk\}@google.com\\
+Google DeepMind, London, UK \\ 
+$^\dagger$\,Google, London, UK
+}
+% \keywords{keywords}
+
+
+
+\begin{document} 
+
+
+\maketitle
+
+
+\vskip 0.3in
+% ]
+
+\begin{abstract}
+This paper introduces WaveNet, a deep neural network for generating raw audio waveforms. The model is fully probabilistic and autoregressive, with the predictive distribution for each audio sample conditioned on all previous ones; nonetheless we show that it can be efficiently trained on data with tens of thousands of samples per second of audio. 
+When applied to text-to-speech, it yields state-of-the-art performance, with human listeners rating it as significantly more natural sounding than the best parametric and concatenative systems for both English and Mandarin. A single WaveNet can capture the characteristics of many different speakers with equal fidelity, and can switch between them by conditioning on the speaker identity. When trained to model music, we find that it generates novel and often highly realistic musical fragments. We also show that it can be employed as a discriminative model, returning promising results for phoneme recognition.
+\end{abstract} 
+
+
+\section{Introduction}
+
+\input{introduction}
+
+\section{WaveNet}
+\label{sec:wavenet}
+\input{model}
+
+\section{Experiments}
+
+\input{experiments}
+
+\section{Conclusion}
+\input{conclusion}
+
+\section*{Acknowledgements} 
+The authors would like to thank Lasse Espeholt, Jeffrey De Fauw and Grzegorz Swirszcz for their inputs, Adam Cain, Max Cant and Adrian Bolton for their help with artwork, Helen King, Steven Gaffney and Steve Crossan for helping to manage the project, Faith Mackinder for help  with preparing the blogpost, James Besley for legal support and Demis Hassabis for managing the project and his inputs.
+\bibliography{main,references-short}
+\bibliographystyle{icml2016}
+
+\appendix 
+
+\section{Text-to-Speech Background}
+\input{background}
+
+\section{Details of TTS Experiment}
+\label{appendix:tts_experiment}
+\input{tts_experiment}
+
+\end{document} 
+

@@ -1,0 +1,25 @@
+\begin{tikzpicture}
+\begin{axis}[
+%   inner sep=1.5,
+%   outer sep=0,
+  xlabel={\small $p$},
+  ylabel={\small WER (\%)},
+%   ymin=21,
+%   ymax=30,
+  ymin=16,
+  ymax=24,
+  xtick=data,
+  width=\linewidth,
+  height=2.5cm,
+  ymajorgrids=true,
+  grid style=dashed,
+  ylabel near ticks,
+  xlabel near ticks,
+  ticklabel style={font=\scriptsize},
+%   tick style = {draw=none},
+%   nodes near coords,
+]
+\addplot table [y=km100_100k, x=maskp]{figures/maskp.tex};
+% \addlegendentry{C=100}
+\end{axis}
+\end{tikzpicture}

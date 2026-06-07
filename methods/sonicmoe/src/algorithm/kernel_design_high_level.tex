@@ -1,0 +1,566 @@
+% % \begin{algorithm}[!ht]
+% % \caption{\Algname's MoE kernel design with SwiGLU architecture. We color the cached variables in \textcolor{red}{red} and learnable parameters in \textcolor{blue}{blue}. Notice that this design is applicable to \textit{any routing method}.}
+% % \DontPrintSemicolon
+% % \label{alg:our-moe}
+% %  \fontsize{8pt}{10pt}\selectfont
+
+% % \SetKwInOut{Input}{Input}\SetKwInOut{Output}{Output}
+% % \Input{$X$, $S$, $\pi^{-1}$, $\W{1}$, $\W{2}$ same as Algorithm~\ref{alg:moe-swiglu-grouped-gemm}. $\pi(e)$ as routed token index for expert $e$. $dO$ is given for BWD.
+% % }
+
+% % \Output{FWD: $O$.\quad BWD: $d\W{1}, \ d\W{2}, \ dX,\ dS$.}
+
+% % \textbf{Forward.}\;
+
+% % \Indp
+% % \For{$e \in [E]$ in parallel}{
+% % \underline{$Y_1$ kernel $(\textcolor{red}{X}, \W{1}, \textcolor{red}{\pi} ) \rightarrow (\textcolor{red}{Z_e}, Y_1)$:} \tcp*[f]{up-proj fwd} \; %  (input $\textcolor{red}{X}$, $\textcolor{red}{\pi}$, \& $\W{1}$, output $Y_1$)
+
+% % \phantom{On Chip: } $X_{\pi(e)} \gets \mathrm{Gather}(\textcolor{red}{X}, \, \textcolor{red}{\pi(e)})$; \quad $\textcolor{red}{Z_e} \gets X_{\pi(e)}\, \W{1,e}$ \tcp*[f]{grouped GEMM, $Z_e\in\mathbb{R}^{T_e\times 2n}$}\;
+
+% % \phantom{On Chip: } $Y_{1,e} \gets \mathrm{SwiGLU}(\textcolor{red}{Z_e})$ \tcp*[f]{epilogue, $Y_{1,e}\in\mathbb{R}^{T_e\times n}$}\;
+
+
+% % \underline{$Y_2$ kernel $(Y_1, \W{2} ) \rightarrow Y_2$:}  \tcp*[f]{down-proj fwd} \; % (input $Y_1$ \& $\W{2}$, output $Y_2$)
+
+% % \phantom{On Chip: } $Y_{2,e} \gets Y_{1,e}\, \W{2,e}$ \tcp*[f]{grouped GEMM, $Y_{2,e}\in\mathbb{R}^{T_e\times d}$}\;
+% % }
+
+
+
+% % \For{$t \in [T]$ in parallel}{
+% % \underline{$O$ kernel $(Y_2, \textcolor{red}{\vs}, \textcolor{red}{\pi^{-1}}) \rightarrow O$:} \; % (input $Y_2$, $\textcolor{red}{\pi^{-1}}$ \& $\textcolor{red}{s^{-1}}$, output $O$)
+
+% % \phantom{On Chip: } $\vs_t = \mathrm{Gather}(\textcolor{red}{S}, \, \textcolor{red}{\pi^{-1}(t)})$; \quad $O_t = \sum_{e \in \pi^{-1}(t)} \mathrm{Broadcast}(\vs_t) \, Y_{2,e,t}$\; 
+% % }
+
+% % $\mathrm{cache\_activation}(\textcolor{red}{X}, \textcolor{red}{Z}, \textcolor{red}{S}, \textcolor{red}{\pi}, \textcolor{red}{\pi^{-1}})$ \;
+
+% % % {$O \gets \{ O_t \}_{t \in [T]} $}\; 
+
+% % \Indm
+
+
+
+
+% % \BlankLine
+% % \textbf{Backward.} 
+
+% % \Indp
+% % \For{$e \in [E]$ in parallel}{
+% % \underline{$dZ$ kernel $(dO, \W{2}, \textcolor{red}{\vs}, \textcolor{red}{\pi}) \rightarrow (d Z_e, d\vs, Y_4)$:} \tcp*[f]{down-proj activation grad} \;
+
+% % \phantom{On Chip: } $dO_{\pi(e)} \gets \mathrm{Gather}(dO, \, \textcolor{red}{\pi(e)})$; \quad $Y_{3,e} \gets dO_{\pi(e)} \, \W{2,e}^\top$ \tcp*[f]{grouped GEMM, $Y_{3,e}\in\mathbb{R}^{T_e\times n}$}\;
+
+% % \phantom{On Chip: }  $dY_{1,e} \gets \mathrm{Broadcast}(\vs_e) \, Y_{3,e}$ \tcp*[f]{epilogue}\;
+
+% % \phantom{On Chip: }  $Y_{1,e}, \, dZ_{e} \gets \mathrm{dSwiGLU}(dY_{1,e}, \, \textcolor{red}{Z_e})$ \tcp*[f]{epilogue}\;
+
+% % \phantom{On Chip: }  $d \vs_{e,t} \gets \langle Y_{3,e,t}, \; Y_{1,e,t}\rangle$ \tcp*[f]{epilogue}\;
+
+% % \phantom{On Chip: }  $\vs_e \gets \mathrm{Gather}(\textcolor{red}{S}, \, \textcolor{red}{\pi(e)})$; \quad $Y_{4,e} \gets \mathrm{Broadcast}(\textcolor{red}{\vs_e}) Y_{1,e}$ \tcp*[f]{epilogue, $Y_{4} \in \mathbb{R}^{T_e \times n}$}\; 
+
+
+% % \underline{$d\W{2}$ kernel $(dO, Y_4, \textcolor{red}{\pi}) \rightarrow d\W{2}$:} \tcp*[f]{down-proj weight grad} \;
+
+
+% % \phantom{On Chip: }  $d\W{2,e} \gets Y_{4,e}^{\top} \, dO_{\pi(e)}^\top$ \tcp*[f]{grouped GEMM; Gather $dO_{\pi(e)}$} \;
+
+
+
+% % \underline{$d\tilde{X}$ kernel $(dZ_e, \W{1}) \rightarrow d\tilde{X}$:} \tcp*[f]{up-proj activation grad} \;
+
+% % \phantom{On Chip: }  $d\tilde{X}_e \gets dZ_{e}\, \W{1,e}^\top$ \tcp*[f]{grouped GEMM}\;
+
+
+% % \underline{$d\W{1}$ kernel $(\textcolor{red}{X}, dZ_e, \textcolor{red}{\pi}) \rightarrow d\W{1}$:} \tcp*[f]{up-proj weight grad} \;
+% % % \phantom{On Chip: } $X_{\pi(e)} \gets \mathrm{Gather}(\textcolor{red}{X}, \textcolor{red}{\pi(e)})$ \;
+
+% % \phantom{On Chip: }  $d\W{1,e} \gets X_{\pi(e)}^{\top} dZ_e$ \tcp*[f]{grouped GEMM; Gather $X_{\pi(e)}$} \;
+
+% % }
+
+
+% % \For{$t \in [T]$ in parallel}{
+% % {\underline{$dX$ kernel $(d\tilde{X}, \textcolor{red}{\pi^{-1}}) \rightarrow dX$:} \;
+
+% % \phantom{On Chip: }  $dX_t \gets \sum_{e \in \pi^{-1}(t)} dX_{e,t}$}\; 
+% % }
+
+% % % {$d\W{1} \gets \{ d\W{1,e} \}_{e \in [E]}; \ d\W{2} \gets \{ d\W{2,e} \}_{e \in [E]}$}\; 
+% % % {$dX \gets \{ dX_t \}_{t \in [T]}; \ dS \gets \{ d\vs_{e} \}_{e \in [E]}$}\; 
+
+
+
+% % \Indm
+
+% % \end{algorithm}
+
+
+% \begin{algorithm}[!ht]
+% \caption{\Algname's MoE kernel design with SwiGLU architecture. We color the cached variables in \textcolor{red}{red} and learnable parameters in \textcolor{blue}{blue}. This design is applicable to \textit{any routing method}.}
+% \DontPrintSemicolon
+% \label{alg:our-moe}
+%  \fontsize{8pt}{10pt}\selectfont
+
+% \SetKwInOut{Input}{Input}\SetKwInOut{Output}{Output}
+% \Input{$X$, $S$, $\pi^{-1}$, $\W{1}$, $\W{2}$ same as Algorithm~\ref{alg:moe-swiglu-grouped-gemm}. $\pi(e)$ as routed token index for expert $e$. $dO$ is given for BWD.
+% }
+
+% \Output{FWD: $O$.\quad BWD: $d\W{1}, \ d\W{2}, \ dX,\ dS$.}
+
+% \textbf{Forward.}\;
+
+% \Indp
+% \For{$e \in [E]$ in parallel}{
+% % \underline{$\textcolor{red}{Z_e}, Y_1 \gets kernel (\textcolor{red}{X}, \W{1}, \textcolor{red}{\pi} )$} \tcp*[f]{up-proj fwd} \;
+% \underline{$Y_1$ kernel $(\textcolor{red}{X}, \W{1}, \textcolor{red}{\pi} ) \rightarrow (Z_e, Y_1)$} \tcp*[f]{up-proj fwd} \;
+
+% \phantom{On Chip: } $X_{\pi(e)} \gets \mathrm{Gather}(\textcolor{red}{X}, \, \textcolor{red}{\pi(e)})$; \quad $\textcolor{red}{Z_e} \gets X_{\pi(e)}\, \W{1,e}$ \tcp*[f]{grouped GEMM, $Z_e\in\mathbb{R}^{T_e\times 2n}$}\;
+
+% \phantom{On Chip: } $Y_{1,e} \gets \mathrm{SwiGLU}(\textcolor{red}{Z_e})$ \tcp*[f]{epilogue, $Y_{1,e}\in\mathbb{R}^{T_e\times n}$}\;
+
+
+% \underline{$Y_2$ kernel $(Y_1, \W{2} ) \rightarrow Y_2$:}  \tcp*[f]{down-proj fwd} \; % (input $Y_1$ \& $\W{2}$, output $Y_2$)
+
+% \phantom{On Chip: } $Y_{2,e} \gets Y_{1,e}\, \W{2,e}$ \tcp*[f]{grouped GEMM, $Y_{2,e}\in\mathbb{R}^{T_e\times d}$}\;
+% }
+
+
+
+% \For{$t \in [T]$ in parallel}{
+% \underline{$O$ kernel $(Y_2, \textcolor{red}{\vs}, \textcolor{red}{\pi^{-1}}) \rightarrow O$:} \; % (input $Y_2$, $\textcolor{red}{\pi^{-1}}$ \& $\textcolor{red}{s^{-1}}$, output $O$)
+
+% \phantom{On Chip: } $\vs_t = \mathrm{Gather}(\textcolor{red}{S}, \, \textcolor{red}{\pi^{-1}(t)})$; \quad $O_t = \sum_{e \in \pi^{-1}(t)} \mathrm{Broadcast}(\vs_t) \, Y_{2,e,t}$\; 
+% }
+
+% % {$O \gets \{ O_t \}_{t \in [T]} $}\; 
+
+% \Indm
+
+
+
+
+% \BlankLine
+% \textbf{Backward.} 
+
+% \Indp
+% \For{$e \in [E]$ in parallel}{
+% \underline{$dZ$ and $d\vs$ kernel $(dO, \W{2}, \textcolor{red}{\vs}, \textcolor{red}{\pi}) \rightarrow (d Z_e, d\vs, Y_4)$:} \tcp*[f]{down-proj activation grad} \;
+
+% \phantom{On Chip: } $dO_{\pi(e)} \gets \mathrm{Gather}(dO, \, \textcolor{red}{\pi(e)})$; \quad $Y_{3,e} \gets dO_{\pi(e)} \, \W{2,e}^\top$ \tcp*[f]{grouped GEMM, $Y_{3,e}\in\mathbb{R}^{T_e\times n}$}\;
+
+% \phantom{On Chip: }  $dY_{1,e} \gets \mathrm{Broadcast}(\vs_e) \, Y_{3,e}$ \tcp*[f]{epilogue}\;
+
+% \phantom{On Chip: }  $Y_{1,e}, \, dZ_{e} \gets \mathrm{dSwiGLU}(dY_{1,e}, \, \textcolor{red}{Z_e})$ \tcp*[f]{epilogue}\;
+
+% \phantom{On Chip: }  $d \vs_{e,t} \gets \langle Y_{3,e,t}, \; Y_{1,e,t}\rangle$ \tcp*[f]{epilogue}\;
+
+% \phantom{On Chip: }  $\vs_e \gets \mathrm{Gather}(\textcolor{red}{S}, \, \textcolor{red}{\pi(e)})$; \quad $Y_{4,e} \gets \mathrm{Broadcast}(\textcolor{red}{\vs_e}) Y_{1,e}$ \tcp*[f]{epilogue, $Y_{4} \in \mathbb{R}^{T_e \times n}$}\; 
+
+
+% \underline{$d\W{2}$ kernel $(dO, Y_4, \textcolor{red}{\pi}) \rightarrow d\W{2}$:} \tcp*[f]{down-proj weight grad} \;
+
+
+% \phantom{On Chip: }  $d\W{2,e} \gets Y_{4,e}^{\top} \, dO_{\pi(e)}^\top$ \tcp*[f]{grouped GEMM; Gather $dO_{\pi(e)}$} \;
+
+
+
+% \underline{$d\tilde{X}$ kernel $(dZ_e, \W{1}) \rightarrow d\tilde{X}$:} \tcp*[f]{up-proj activation grad} \;
+
+% \phantom{On Chip: }  $d\tilde{X}_e \gets dZ_{e}\, \W{1,e}^\top$ \tcp*[f]{grouped GEMM}\;
+
+
+% \underline{$d\W{1}$ kernel $(\textcolor{red}{X}, dZ_e, \textcolor{red}{\pi}) \rightarrow d\W{1}$:} \tcp*[f]{up-proj weight grad} \;
+% % \phantom{On Chip: } $X_{\pi(e)} \gets \mathrm{Gather}(\textcolor{red}{X}, \textcolor{red}{\pi(e)})$ \;
+
+% \phantom{On Chip: }  $d\W{1,e} \gets X_{\pi(e)}^{\top} dZ_e$ \tcp*[f]{grouped GEMM; Gather $X_{\pi(e)}$} \;
+
+% }
+
+
+% \For{$t \in [T]$ in parallel}{
+% {\underline{$dX$ kernel $(d\tilde{X}, \textcolor{red}{\pi^{-1}}) \rightarrow dX$:} \;
+
+% \phantom{On Chip: }  $dX_t \gets \sum_{e \in \pi^{-1}(t)} dX_{e,t}$}\; 
+% }
+
+% % {$d\W{1} \gets \{ d\W{1,e} \}_{e \in [E]}; \ d\W{2} \gets \{ d\W{2,e} \}_{e \in [E]}$}\; 
+% % {$dX \gets \{ dX_t \}_{t \in [T]}; \ dS \gets \{ d\vs_{e} \}_{e \in [E]}$}\; 
+
+
+
+% \Indm
+
+% \end{algorithm}
+% \begin{algorithm}[!ht]
+% \caption{\Algname's MoE kernel design with SwiGLU architecture. We color the cached variables in \textcolor{red}{red} and learnable parameters in \textcolor{blue}{blue}. Notice that this design is applicable to \textit{any routing method}.}
+% \DontPrintSemicolon
+% \label{alg:our-moe}
+%  \fontsize{8pt}{10pt}\selectfont
+
+% \SetKwInOut{Input}{Input}\SetKwInOut{Output}{Output}
+% \Input{$X$, $S$, $\pi^{-1}$, $\W{1}$, $\W{2}$ same as Algorithm~\ref{alg:moe-swiglu-grouped-gemm}. $\pi(e)$ as routed token index for expert $e$. $dO$ is given for BWD.
+% }
+
+% \Output{FWD: $O$.\quad BWD: $d\W{1}, \ d\W{2}, \ dX,\ dS$.}
+
+% \textbf{Forward.}\;
+
+% \Indp
+% \For{$e \in [E]$ in parallel}{
+% \underline{$Y_1$ kernel $(\textcolor{red}{X}, \W{1}, \textcolor{red}{\pi} ) \rightarrow (\textcolor{red}{Z_e}, Y_1)$:} \tcp*[f]{up-proj fwd} \; %  (input $\textcolor{red}{X}$, $\textcolor{red}{\pi}$, \& $\W{1}$, output $Y_1$)
+
+% \phantom{On Chip: } $X_{\pi(e)} \gets \mathrm{Gather}(\textcolor{red}{X}, \, \textcolor{red}{\pi(e)})$; \quad $\textcolor{red}{Z_e} \gets X_{\pi(e)}\, \W{1,e}$ \tcp*[f]{grouped GEMM, $Z_e\in\mathbb{R}^{T_e\times 2n}$}\;
+
+% \phantom{On Chip: } $Y_{1,e} \gets \mathrm{SwiGLU}(\textcolor{red}{Z_e})$ \tcp*[f]{epilogue, $Y_{1,e}\in\mathbb{R}^{T_e\times n}$}\;
+
+
+% \underline{$Y_2$ kernel $(Y_1, \W{2} ) \rightarrow Y_2$:}  \tcp*[f]{down-proj fwd} \; % (input $Y_1$ \& $\W{2}$, output $Y_2$)
+
+% \phantom{On Chip: } $Y_{2,e} \gets Y_{1,e}\, \W{2,e}$ \tcp*[f]{grouped GEMM, $Y_{2,e}\in\mathbb{R}^{T_e\times d}$}\;
+% }
+
+
+
+% \For{$t \in [T]$ in parallel}{
+% \underline{$O$ kernel $(Y_2, \textcolor{red}{\vs}, \textcolor{red}{\pi^{-1}}) \rightarrow O$:} \; % (input $Y_2$, $\textcolor{red}{\pi^{-1}}$ \& $\textcolor{red}{s^{-1}}$, output $O$)
+
+% \phantom{On Chip: } $\vs_t = \mathrm{Gather}(\textcolor{red}{S}, \, \textcolor{red}{\pi^{-1}(t)})$; \quad $O_t = \sum_{e \in \pi^{-1}(t)} \mathrm{Broadcast}(\vs_t) \, Y_{2,e,t}$\; 
+% }
+
+% $\mathrm{cache\_activation}(\textcolor{red}{X}, \textcolor{red}{Z}, \textcolor{red}{S}, \textcolor{red}{\pi}, \textcolor{red}{\pi^{-1}})$ \;
+
+% % {$O \gets \{ O_t \}_{t \in [T]} $}\; 
+
+% \Indm
+
+
+
+
+% \BlankLine
+% \textbf{Backward.} 
+
+% \Indp
+% \For{$e \in [E]$ in parallel}{
+% \underline{$dZ$ kernel $(dO, \W{2}, \textcolor{red}{\vs}, \textcolor{red}{\pi}) \rightarrow (d Z_e, d\vs, Y_4)$:} \tcp*[f]{down-proj activation grad} \;
+
+% \phantom{On Chip: } $dO_{\pi(e)} \gets \mathrm{Gather}(dO, \, \textcolor{red}{\pi(e)})$; \quad $Y_{3,e} \gets dO_{\pi(e)} \, \W{2,e}^\top$ \tcp*[f]{grouped GEMM, $Y_{3,e}\in\mathbb{R}^{T_e\times n}$}\;
+
+% \phantom{On Chip: }  $dY_{1,e} \gets \mathrm{Broadcast}(\vs_e) \, Y_{3,e}$ \tcp*[f]{epilogue}\;
+
+% \phantom{On Chip: }  $Y_{1,e}, \, dZ_{e} \gets \mathrm{dSwiGLU}(dY_{1,e}, \, \textcolor{red}{Z_e})$ \tcp*[f]{epilogue}\;
+
+% \phantom{On Chip: }  $d \vs_{e,t} \gets \langle Y_{3,e,t}, \; Y_{1,e,t}\rangle$ \tcp*[f]{epilogue}\;
+
+% \phantom{On Chip: }  $\vs_e \gets \mathrm{Gather}(\textcolor{red}{S}, \, \textcolor{red}{\pi(e)})$; \quad $Y_{4,e} \gets \mathrm{Broadcast}(\textcolor{red}{\vs_e}) Y_{1,e}$ \tcp*[f]{epilogue, $Y_{4} \in \mathbb{R}^{T_e \times n}$}\; 
+
+
+% \underline{$d\W{2}$ kernel $(dO, Y_4, \textcolor{red}{\pi}) \rightarrow d\W{2}$:} \tcp*[f]{down-proj weight grad} \;
+
+
+% \phantom{On Chip: }  $d\W{2,e} \gets Y_{4,e}^{\top} \, dO_{\pi(e)}^\top$ \tcp*[f]{grouped GEMM; Gather $dO_{\pi(e)}$} \;
+
+
+
+% \underline{$d\tilde{X}$ kernel $(dZ_e, \W{1}) \rightarrow d\tilde{X}$:} \tcp*[f]{up-proj activation grad} \;
+
+% \phantom{On Chip: }  $d\tilde{X}_e \gets dZ_{e}\, \W{1,e}^\top$ \tcp*[f]{grouped GEMM}\;
+
+
+% \underline{$d\W{1}$ kernel $(\textcolor{red}{X}, dZ_e, \textcolor{red}{\pi}) \rightarrow d\W{1}$:} \tcp*[f]{up-proj weight grad} \;
+% % \phantom{On Chip: } $X_{\pi(e)} \gets \mathrm{Gather}(\textcolor{red}{X}, \textcolor{red}{\pi(e)})$ \;
+
+% \phantom{On Chip: }  $d\W{1,e} \gets X_{\pi(e)}^{\top} dZ_e$ \tcp*[f]{grouped GEMM; Gather $X_{\pi(e)}$} \;
+
+% }
+
+
+% \For{$t \in [T]$ in parallel}{
+% {\underline{$dX$ kernel $(d\tilde{X}, \textcolor{red}{\pi^{-1}}) \rightarrow dX$:} \;
+
+% \phantom{On Chip: }  $dX_t \gets \sum_{e \in \pi^{-1}(t)} dX_{e,t}$}\; 
+% }
+
+% % {$d\W{1} \gets \{ d\W{1,e} \}_{e \in [E]}; \ d\W{2} \gets \{ d\W{2,e} \}_{e \in [E]}$}\; 
+% % {$dX \gets \{ dX_t \}_{t \in [T]}; \ dS \gets \{ d\vs_{e} \}_{e \in [E]}$}\; 
+
+
+
+% \Indm
+
+% \end{algorithm}
+
+\begin{figure}[t]
+\begin{minipage}{0.46\textwidth}
+\begin{algorithm}[H]
+\caption{\Algname's MoE kernel forward pass. Variables stored in HBM are colored \textcolor{blue}{blue}. $\mathrm{load}$ and $\mathrm{store}$ means load from / store into HBM respectively.}
+\DontPrintSemicolon
+\label{alg:our-forward-moe}
+ \fontsize{8pt}{10pt}\selectfont
+
+\SetKwInOut{Input}{Input}\SetKwInOut{Output}{Output}
+\Input{$\rX, \ \rS, \ \rpi, \ \rW_{1}, \ \rW_{2}$ same as Algorithm~\ref{alg:moe-swiglu-grouped-gemm}. 
+}
+
+\Output{MoE layer output $\rO$}
+
+\underline{\textcolor{red}{Up-proj $A$ kernel} $(\textcolor{blue}{X, \ \W{1}, \ \pi} ) \rightarrow (\textcolor{blue}{H, \ A})$}:  
+
+\note{// Gather + varlen-$\mathbf{M}$ Grouped GEMM + SwiGLU}\;
+
+
+\Indp \textbf{Parallel} \For{$e \in [E]$}{
+
+ $\bX_e, \ \bW_{1, e},\ \bpi_{:, e} \gets \mathrm{load}(\textcolor{blue}{\bX_e, \ \rW_{1, e}, \ \bpi_{:, e}})$\;
+
+$\bX_e \gets \mathrm{Gather}(\rX, \ \bpi_{:, e})$\;
+
+% $\bW_{1, e} \gets \mathrm{load}(\rW_{1, e})$
+
+$\bH_e \gets \bX_e \bW_{1, e}$
+
+\note{// apply activation function, e.g. $\mathrm{SwiGLU}$}
+
+$\bA_{e} \gets \mathrm{act\_func}(\bH_e)$ \; 
+
+$ \textcolor{blue}{\rH_e, \ \rA_{e}} \gets \mathrm{store}(\bH_e, \ \bA_{e})$
+
+% $\rY_{1, e} \gets \mathrm{store}(\bY_{1, e})$
+}
+
+\Indm
+\underline{\textcolor{red}{Down-proj $Y$ kernel} $(\textcolor{blue}{A, \ \W{2}}) \rightarrow \textcolor{blue}{Y}$}: \;
+
+\note{// varlen-$\mathbf{M}$ Grouped GEMM}
+
+\Indp
+\textbf{Parallel} \For{$e \in [E]$}{
+% $\bY_{1, e}, \bW_{2, e} \gets \mathrm{load}(\rY_{1, e}, \rW_{2, e})$\;
+
+ $\bA_{e},\bW_{2, e} \gets \mathrm{load}(\textcolor{blue}{\bA_{e},\ \rW_{2, e}})$
+
+$\bY_{e} \gets \bA_{e} \bW_{2, e}$
+
+ $\textcolor{blue}{\rY_{e}} \gets \mathrm{store}(\bY_{e})$
+}
+
+\Indm
+\underline{\textcolor{red}{Expert aggregation $O$ Kernel} $(\textcolor{blue}{Y, \ S, \ \pi}) \rightarrow \textcolor{blue}{O}$}: \;
+
+\note{// Gather and sum}\;
+
+\Indp
+\textbf{Parallel} \For{$t \in [T]$}{
+ $  \bY_{e,t},\ \bS_{t, e},\ \bpi_{t, e}\gets \mathrm{load}(\textcolor{blue}{  \bY_{e,t},\ \bS_{t, e},\ \bpi_{t, e}})$\;
+
+$\bO_t \gets \sum_{e \in [E]} \bpi_{t, e} \bS_{t, e} \bY_{e,t}$\;
+
+ $\textcolor{blue}{\rO_t} \gets \mathrm{store}(\bO_t)$
+}
+
+% \Indm
+% \Return{\rO}
+
+\end{algorithm}
+% \vspace{-5em}
+\end{minipage}
+\hfill\begin{minipage}{0.51\textwidth}
+    \begin{algorithm}[H]
+    \caption{\Algname's MoE kernel backward pass of down projection.}
+    \DontPrintSemicolon
+    \label{alg:our-down-bwd-moe}
+     \fontsize{8pt}{10pt}\selectfont
+    
+    \SetKwInOut{Input}{Input}\SetKwInOut{Output}{Output}
+    \Input{$\rS, \ \rpi, \ \rW_{2}, \ \rdO$.}
+    
+    \Output{$dH, \ d\W{2}, \ dS$.}
+
+
+    \underline{\textcolor{red}{Down-proj act $dH$ kernel} $(\textcolor{blue}{dO, \ \W{2}, \ S, \ \pi}) \rightarrow (\textcolor{blue}{d H, \ dS, \ A'})$}: \;
+
+    \note{// Gather + varlen-$\mathbf{M}$ Grouped GEMM + dSwiGLU + $dS$}\;
+
+    \note{// Appendix~\ref{sec:appendix:proof} elaborates this algorithm in more detail} \;
+    
+    \Indp
+
+    \textbf{Parallel} \For{$e \in [E]$}{
+    $dO_{e}, \ \W{2,e}, \ S, \ \pi_{:,e}, \ H_e \gets \mathrm{load}(\textcolor{blue}{dO_{e}, \ \W{2,e}, \ S, \ \pi_{:,e}}, \ H_e)$ \;
+    
+    $dO_{e} \gets \mathrm{Gather}(dO, \ \pi_{:,e})$ \; 
+
+    \note{// $dA'$ is a temp variable for computing $dA$, $dS$, and $A'$} \;
+
+    $dA_{e}' \gets dO_{e} \ \W{2,e}^\top$ \tcp*[f]{\scriptsize $dA_{e}'\in\mathbb{R}^{T_e\times n}$}\;
+
+
+    $\vs_e \gets \mathrm{Gather}(S, \ \pi_{:,e})$ \;
+
+    $dA_{e} \gets \mathrm{Broadcast}(\vs_e) \ dA_{e}'$ \;
+
+    \note{// compute fwd act and bwd act grad simultaneously in $\mathrm{dAct}$ call} \;
+
+    % \note{// $\mathrm{dSwiGLU}$ in Algorithm~\ref{alg:swiglu-derivative} gives an example of $\mathrm{dAct\_func}$ call}
+
+    $A_{e}, \ dH_{e} \gets \mathrm{dAct\_func}(dA_{e}, \ H_e)$ \; 
+
+    % \note{// $A'$ is a temp variable as input for $d\W{2}$ kernel } \;
+
+    $A_{e}' \gets \mathrm{Broadcast}(\vs_e)\ A_{e}$ \tcp*[f]{\scriptsize $A' \in \mathbb{R}^{T_e \times n}$, input for $d\W{2}$}\;
+
+    % \note{// $dS$ as per token inner-prod between $dA'$ and $A$ (reduce over $n$ dim) } \;
+
+    $d S_{e,t} \gets \langle dA_{e,t}', \ A_{e,t}\rangle$  \tcp*[f]{\scriptsize reduce over $n$ dim}\;
+            
+    $\textcolor{blue}{d H_e, \ dS, \ A_{e}' }\gets \mathrm{store}(d H_e, \ dS, \ A_{e}')$
+ 
+    }
+    
+
+    
+
+    \Indm
+    
+    \underline{\textcolor{red}{Down-proj weight $d\W{2}$ kernel} $(\textcolor{blue}{dO, \ A', \ \pi}) \rightarrow \textcolor{blue}{d\W{2}}$}:  \;
+
+    \note{// Gather + varlen-$\mathbf{K}$ Grouped GEMM}\;
+
+    \Indp
+
+    \textbf{Parallel} \For{$e \in [E]$}{
+    % \tcp*[f]{down-proj weight grad}
+    $dO_{e},\ A_{e}',\ \pi_{:,e} \gets \mathrm{load}(\textcolor{blue}{dO_{e},\ A_{e}',\ \pi_{:,e}})$\;
+    
+    $dO_{e} \gets \mathrm{Gather}(dO, \ \pi_{:,e})$ \; 
+
+   $d\W{2,e} \gets A_{e}'^{\top} \, dO_{e}$  \;
+
+   $\textcolor{blue}{d\W{2,e}}\gets \mathrm{store}(d\W{2,e})$
+    % \tcp*[f]{grouped GEMM; Gather $dO_{\pi(e)}$}
+    }
+
+   %  \textbf{Parallel} \For{$e \in [E]$}{
+   %  \underline{$d\tilde{X}$ kernel $(dZ_e, \W{1}) \rightarrow d\tilde{X}$:}  \;
+   %  % \tcp*[f]{up-proj activation grad}
+    
+   % $d\tilde{X}_e \gets dZ_{e}\, \W{1,e}^\top$ \;
+   %  % \tcp*[f]{grouped GEMM}
+   %  }
+
+   %  \textbf{Parallel} \For{$e \in [E]$}{
+   %  \underline{$d\W{1}$ kernel $(\textcolor{red}{X}, dZ_e, \textcolor{red}{\pi}) \rightarrow d\W{1}$:}  \;
+   %  % \phantom{On Chip: } $X_{\pi(e)} \gets \mathrm{Gather}(\textcolor{red}{X}, \textcolor{red}{\pi(e)})$ \;
+   %  % \tcp*[f]{up-proj weight grad}
+    
+   %  $d\W{1,e} \gets X_{\pi(e)}^{\top} dZ_e$ \; 
+   %  }
+    
+   %  % \tcp*[f]{grouped GEMM; Gather $X_{\pi(e)}$} 
+    
+    
+    
+   %  \textbf{Parallel} \For{$t \in [T]$}{
+   %  {\underline{$dX$ kernel $(d\tilde{X}, \textcolor{red}{\pi^{-1}}) \rightarrow dX$:} \;
+    
+   %  $dX_t \gets \sum_{e \in \pi^{-1}(t)} dX_{e,t}$}\; 
+   %  }
+    
+   %  % {$d\W{1} \gets \{ d\W{1,e} \}_{e \in [E]}; \ d\W{2} \gets \{ d\W{2,e} \}_{e \in [E]}$}\; 
+   %  % {$dX \gets \{ dX_t \}_{t \in [T]}; \ dS \gets \{ d\vs_{e} \}_{e \in [E]}$}\; 
+    
+    
+    
+    \Indm
+
+
+
+
+    \end{algorithm}
+
+
+\end{minipage}
+% \vspace{-1.5em}
+\end{figure}
+
+
+
+
+
+
+% \begin{wrapfigure}{r}{0.42\textwidth}
+% \vspace{-5em}
+% \begin{minipage}{0.42\textwidth}
+%     \begin{algorithm}[H]
+%     \caption{\Algname's MoE kernel backward pass of up projection with SwiGLU architecture.}
+%     \DontPrintSemicolon
+%     \label{alg:our-moe}
+%      \fontsize{8pt}{10pt}\selectfont
+    
+%     \SetKwInOut{Input}{Input}\SetKwInOut{Output}{Output}
+%     \Input{$\rX, \ \rpi, \ \rW_{1}, \ dZ$}
+    
+%     \Output{$dX, \ d\W{1}$.}
+
+
+
+%     \underline{Up-proj act $d\tilde{X}$ kernel $\textcolor{blue}{(dZ_e, \W{1}) \rightarrow d\tilde{X}}$:}  \;
+
+%     \note{// Grouped GEMM}\;
+
+%     \Indp
+
+%     \textbf{Parallel} \For{$e \in [E]$}{
+    
+%     $d\tilde{X}_e \gets dZ_{e}\, \W{1,e}^\top$ \;
+%     }
+    
+
+
+%    %  \note{// Gather + Grouped GEMM}\;
+
+%    %  \Indp
+
+%    %  \underline{:}  \;
+%    %  % \tcp*[f]{up-proj activation grad}
+    
+%    % $d\tilde{X}_e \gets dZ_{e}\, \W{1,e}^\top$ \;
+%    %  % \tcp*[f]{grouped GEMM}
+
+%     \Indm
+%     \underline{Up-proj weight $d\W{1}$ kernel \textcolor{blue}{$(X, dZ, \pi) \rightarrow d\W{1}$}:}\;
+
+%     \note{// Gather + Grouped GEMM}\;
+
+%     \Indp
+
+
+
+    
+%     \textbf{Parallel} \For{$e \in [E]$}{
+
+%     $\bX_e \gets \mathrm{Gather}(\rX, \bpi_{:, e})$\;
+    
+%     $d\W{1,e} \gets X_{e}^{\top} dZ_e$ \; 
+%     }
+    
+
+%     \Indm
+%     \underline{Expert aggregation $dX$ kernel $\textcolor{blue}{(d\tilde{X}, \pi) \rightarrow dX}$:} \;
+    
+%     \note{// reduce over each expert results}\;
+
+%     \Indp
+    
+%     \textbf{Parallel} \For{$t \in [T]$}{
+%     { 
+
+%     $dX_t \gets \sum_{e \in [E]} \pi_{t, e} d\tilde{X}_{e,t}$}\; 
+%     }    
+    
+%     \end{algorithm}
+    
+% \end{minipage}
+% \vspace{-5em}
+% \end{wrapfigure}

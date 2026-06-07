@@ -1,0 +1,130 @@
+\begin{tabular}[t]{l l r| r r}
+    \toprule
+         Method & Architecture & Param. &  Top-$1$ & Top-$5$ \\
+         \midrule \hline
+         Local Agg. & ResNet-$50$ & $24$M & $60.2$ & -\\
+         \moco \cite{MOCO} & ResNet-$50$ & $24$M & $60.6$ & -\\
+         \PIRL \cite{PIRL} & ResNet-$50$ & $24$M & $63.6$ & -\\
+         \CPCC \cite{CPCv2}  & ResNet-$50$ & $24$M & $63.8$ & $85.3$\\
+         \simclr \cite{SimCLR} & ResNet-$50$ & $24$M & $69.8$ & $89.0$\\
+         \moco v2 \cite{MOCOv2} & ResNet-$50$ & $24$M & $71.1$ & -\\
+         InfoMin Aug. \cite{Tian2020WhatMF} & ResNet-$50$ & $24$M & $73.0$ & $91.1$\\
+         \algo (ours) & ResNet-$50$ & $24$M & $\cellcolor{pearDark!20}\bf{74.3}$ & $\cellcolor{pearDark!20}\bf{91.9}$\\
+\end{tabular}
+
+\begin{tabular}[t]{l l r| r r}
+\midrule \hline 
+Method & Architecture & Param. &  Top-$1$ & Top-$5$ \\
+         Rotation \cite{gidaris2018unsupervised} & RevNet-$50$ ($4\times$) & $86$M & $55.4$ & -\\
+         BigBiGAN \cite{BigBiGAN} & RevNet-$50$ ($4\times$) & $86$M & $61.3$ & $81.9$\\
+         AMDIM \cite{AMDIM} & Custom-ResNet & $626$M & $68.1$ & -\\
+         \CMC \cite{CMC} & ResNet-$50$ ($2\times$) & $188$M & $68.4$ & $88.2$\\
+         \moco \cite{MOCO} & ResNet-$50$ ($4\times$) & $375$M & $68.6$ & -\\
+         \CPCC \cite{CPCv2}  & ResNet-$161$ & $305$M & $71.5$ & $90.1$\\
+         \simclr \cite{SimCLR}  & ResNet-$50$ ($2\times$) & $94$M & $74.4$ & $92.0$\\
+         \algo (ours) & ResNet-$50$ ($2\times$) & $94$M & \cellcolor{pearDark!20} $77.4$ & \cellcolor{pearDark!20} $93.7$\\
+         \simclr \cite{SimCLR}  & ResNet-$50$ ($4\times$) & $375$M & $76.8$ & $93.2$\\
+         \algo (ours) & ResNet-$50$ ($4\times$) & $375$M & $\cellcolor{pearDark!20}78.8$ &\cellcolor{pearDark!20} $94.4$\\
+         \algo (ours) & ResNet-$152$ ($3\times$) & $522$M & $\cellcolor{pearDark!20}\bf{79.5}$ &\cellcolor{pearDark!20} $\bf{94.7}$\\
+         \bottomrule
+    \end{tabular}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+%\begin{table}[h!]
+%\hspace{-3em}
+%\begin{subtable}{.4\linewidth}
+%\scriptsize
+%\begin{center}
+%    \input{tables/linear_classif_table.tex}
+%     \caption{Linear evaluation on ImageNet.}
+%    \label{table:linear_classif}
+%    \end{center}
+%    \end{subtable}
+%    \phantom{aaaaa}
+%    \begin{subtable}{.4\linewidth}
+%   \scriptsize
+%    \begin{center}
+%     \input{tables/finetune_imagenet_table.tex}
+%     \caption{Training with few labels.}
+%     \label{table:few_lables}
+%     \end{center}
+%\end{subtable}
+%\caption{ImageNet results}
+%\end{table}
+
+
+
+\begin{tabular}[t]{l l r| r r}
+    \toprule
+         Method & Architecture & Param. &  Top-$1$ & Top-$5$ \\
+         \midrule \hline
+%         \multicolumn{5}{l}{\emph{Using ResNet-$50$ architecture:}}\\
+         Local Agg. & ResNet-$50$ & $24$M & $60.2$ & -\\
+         \moco \cite{MOCO} & ResNet-$50$ & $24$M & $60.6$ & -\\
+         \PIRL \cite{PIRL} & ResNet-$50$ & $24$M & $63.6$ & -\\
+         \CPCC \cite{CPCv2}  & ResNet-$50$ & $24$M & $63.8$ & $85.3$\\
+         \simclr \cite{SimCLR} & ResNet-$50$ & $24$M & $69.8$ & $89.0$\\
+         \moco v2 \cite{MOCOv2} & ResNet-$50$ & $24$M & $71.1$ & -\\
+         InfoMin Aug. \cite{Tian2020WhatMF} & ResNet-$50$ & $24$M & $73.0$ & $91.1$\\
+         \algo (ours) & ResNet-$50$ & $24$M & $\cellcolor{pearDark!20}\bf{74.5}$ & $\cellcolor{pearDark!20}\bf{91.9}$\\
+         \hline
+%         \multicolumn{5}{l}{\emph{Using other architectures:}}\\
+             \hline
+         Rotation \cite{gidaris2018unsupervised} & RevNet-$50$ ($4\times$) & $86$M & $55.4$ & -\\
+         BigBiGAN \cite{BigBiGAN} & RevNet-$50$ ($4\times$) & $86$M & $61.3$ & $81.9$\\
+         AMDIM \cite{AMDIM} & Custom-ResNet & $626$M & $68.1$ & -\\
+         \CMC \cite{CMC} & ResNet-$50$ ($2\times$) & $188$M & $68.4$ & $88.2$\\
+         \moco \cite{MOCO} & ResNet-$50$ ($4\times$) & $375$M & $68.6$ & -\\
+         \CPCC \cite{CPCv2}  & ResNet-$161$ & $305$M & $71.5$ & $90.1$\\
+         \simclr \cite{SimCLR}  & ResNet-$50$ ($2\times$) & $94$M & $74.4$ & $92.0$\\
+         \algo (ours) & ResNet-$50$ ($2\times$) & $94$M & \cellcolor{pearDark!20} $77.4$ & \cellcolor{pearDark!20} $93.7$\\
+         \simclr \cite{SimCLR}  & ResNet-$50$ ($4\times$) & $375$M & $76.8$ & $93.2$\\
+         \algo (ours) & ResNet-$50$ ($4\times$) & $375$M & $\cellcolor{pearDark!20}78.8$ &\cellcolor{pearDark!20} $94.4$\\
+         \algo (ours) & ResNet-$152$ ($3\times$) & $522$M & $\cellcolor{pearDark!20}\bf{79.5}$ &\cellcolor{pearDark!20} $\bf{94.7}$\\
+         \bottomrule
+    \end{tabular}
+
+\begin{tabular}[t]{l l r| r r}
+    \toprule
+         Method & Architecture & Param. &  Top-$1$ & Top-$5$ \\
+         \midrule \hline
+%         \multicolumn{5}{l}{\emph{Using ResNet-$50$ architecture:}}\\
+         Local Agg. & ResNet-$50$ & $24$M & $60.2$ & -\\
+         \moco \cite{MOCO} & ResNet-$50$ & $24$M & $60.6$ & -\\
+         \PIRL \cite{PIRL} & ResNet-$50$ & $24$M & $63.6$ & -\\
+         \CPCC \cite{CPCv2}  & ResNet-$50$ & $24$M & $63.8$ & $85.3$\\
+         \simclr \cite{SimCLR} & ResNet-$50$ & $24$M & $69.8$ & $89.0$\\
+         \moco v2 \cite{MOCOv2} & ResNet-$50$ & $24$M & $71.1$ & -\\
+         InfoMin Aug. \cite{Tian2020WhatMF} & ResNet-$50$ & $24$M & $73.0$ & $91.1$\\
+         \algo (ours) & ResNet-$50$ & $24$M & $\cellcolor{pearDark!20}\bf{74.5}$ & $\cellcolor{pearDark!20}\bf{91.9}$\\
+         \hline
+%         \multicolumn{5}{l}{\emph{Using other architectures:}}\\
+             \hline
+         Rotation \cite{gidaris2018unsupervised} & RevNet-$50$ ($4\times$) & $86$M & $55.4$ & -\\
+         BigBiGAN \cite{BigBiGAN} & RevNet-$50$ ($4\times$) & $86$M & $61.3$ & $81.9$\\
+         AMDIM \cite{AMDIM} & Custom-ResNet & $626$M & $68.1$ & -\\
+         \CMC \cite{CMC} & ResNet-$50$ ($2\times$) & $188$M & $68.4$ & $88.2$\\
+         \moco \cite{MOCO} & ResNet-$50$ ($4\times$) & $375$M & $68.6$ & -\\
+         \CPCC \cite{CPCv2}  & ResNet-$161$ & $305$M & $71.5$ & $90.1$\\
+         \simclr \cite{SimCLR}  & ResNet-$50$ ($2\times$) & $94$M & $74.4$ & $92.0$\\
+         \algo (ours) & ResNet-$50$ ($2\times$) & $94$M & \cellcolor{pearDark!20} $77.4$ & \cellcolor{pearDark!20} $93.7$\\
+         \simclr \cite{SimCLR}  & ResNet-$50$ ($4\times$) & $375$M & $76.8$ & $93.2$\\
+         \algo (ours) & ResNet-$50$ ($4\times$) & $375$M & $\cellcolor{pearDark!20}78.8$ &\cellcolor{pearDark!20} $94.4$\\
+         \algo (ours) & ResNet-$152$ ($3\times$) & $522$M & $\cellcolor{pearDark!20}\bf{79.5}$ &\cellcolor{pearDark!20} $\bf{94.7}$\\
+         \bottomrule
+    \end{tabular}

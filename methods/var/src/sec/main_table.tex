@@ -1,0 +1,61 @@
+\begin{table}[!th]
+\renewcommand\arraystretch{1.05}
+% \setlength{\abovecaptionskip}{4pt}
+% \setlength{\belowcaptionskip}{0pt}
+\centering
+\setlength{\tabcolsep}{2.5mm}{}
+\small
+{
+% \vspace{-5pt}
+\caption{\smallcaption
+\textbf{Generative model family comparison on class-conditional ImageNet 256$\times$256}.
+``$\downarrow$'' or ``$\uparrow$'' indicate lower or higher values are better.
+Metrics include Fréchet inception distance (FID), inception score (IS), precision (Pre) and recall (rec).
+``\#Step'': the number of model runs needed to generate an image.
+Wall-clock inference time relative to VAR is reported.
+Models with the suffix ``-re'' used rejection sampling.
+$\dag$: taken from MaskGIT~\cite{maskgit}.
+}\label{tab:main}
+\vspace{-2pt}
+\scalebox{0.98}
+{
+\begin{tabular}{c|l|cc|cc|cc|c}
+\toprule
+Type & Model          & FID$\downarrow$ & IS$\uparrow$ & Pre$\uparrow$ & Rec$\uparrow$ & \#Para & \#Step & Time \\
+\midrule
+GAN   & BigGAN~\cite{biggan}  & 6.95  & 224.5       & \textbf{0.89} & 0.38 & 112M & 1    & $-$    \\
+GAN   & GigaGAN~\cite{gigagan}     & 3.45  & 225.5       & 0.84 & \textbf{0.61} & 569M & 1    & $-$ \\
+GAN   & StyleGan-XL~\cite{stylegan-xl}  & 2.30  & 265.1       & 0.78 & 0.53 & 166M & 1    & 0.3~\cite{stylegan-xl}   \\
+\midrule
+Diff. & ADM~\cite{adm}         & 10.94 & 101.0        & 0.69 & 0.63 & 554M & 250  & 168~\cite{stylegan-xl}   \\
+Diff. & CDM~\cite{cdm}         & 4.88  & 158.7       & $-$  & $-$  & $-$  & 8100 & $-$    \\
+Diff. & LDM-4-G~\cite{ldm}     & 3.60  & 247.7       & $-$  & $-$  & 400M & 250  & $-$    \\
+Diff. & DiT-L/2~\cite{dit}     & 5.02  & 167.2       & 0.75 & 0.57 & 458M & 250  & 31     \\
+Diff. & DiT-XL/2~\cite{dit}    & 2.27  & 278.2       & 0.83 & 0.57 & 675M & 250  & 45     \\
+Diff. & L-DiT-3B~\cite{dit-github}    & 2.10  & 304.4       & 0.82 & 0.60 & 3.0B & 250  & $>$45     \\
+Diff. & L-DiT-7B~\cite{dit-github}    & 2.28  & 316.2       & 0.83 & 0.58 & 7.0B & 250  & $>$45     \\
+\midrule
+Mask. & MaskGIT~\cite{maskgit}     & 6.18  & 182.1        & 0.80 & 0.51 & 227M & 8    & 0.5~\cite{maskgit}  \\
+Mask. & RCG (cond.)~\cite{rcg}  & 3.49  & 215.5        & $-$  & $-$  & 502M & 20  & 1.9~\cite{rcg}     \\
+\midrule
+AR   & VQVAE-2$^\dag$~\cite{vqvae2} & 31.11           & $\sim$45     & 0.36           & 0.57          & 13.5B    & 5120    & $-$  \\
+AR    & VQGAN$^\dag$~\cite{vqgan} & 18.65 & 80.4         & 0.78 & 0.26 & 227M & 256  & 19~\cite{maskgit}   \\
+AR    & VQGAN~\cite{vqgan}       & 15.78 & 74.3   & $-$  & $-$  & 1.4B & 256  & 24     \\
+AR    & VQGAN-re~\cite{vqgan}    & 5.20  & 280.3  & $-$  & $-$  & 1.4B & 256  & 24     \\
+AR    & ViTVQ~\cite{vit-vqgan}& 4.17  & 175.1  & $-$  & $-$  & 1.7B & 1024  & $>$24     \\
+AR    & ViTVQ-re~\cite{vit-vqgan}& 3.04  & 227.4  & $-$  & $-$  & 1.7B & 1024  & $>$24     \\
+AR    & RQTran.~\cite{rq}        & 7.55  & 134.0  & $-$  & $-$  & 3.8B & 68  & 21    \\
+AR    & RQTran.-re~\cite{rq}     & 3.80  & 323.7  & $-$  & $-$  & 3.8B & 68  & 21    \\
+\midrule
+VAR   & VAR-$d16$       & 3.30  & 274.4 & 0.84 & 0.51 & 310M & 10   & 0.4      \\
+VAR   & VAR-$d20$       & 2.57  & 302.6 & 0.83 & 0.56 & 600M & 10   & 0.5      \\
+VAR   & VAR-$d24$       & 2.09  & 312.9 & 0.82 & 0.59 & 1.0B & 10   & 0.6      \\
+VAR   & VAR-$d30$       & 1.92  & 323.1 & 0.82 & 0.59 & 2.0B & 10   & 1      \\
+VAR   & VAR-$d30$-re    & \textbf{1.73}  & \textbf{350.2} & 0.82 & 0.60 & 2.0B & 10   & 1      \\
+		& \graycell{(validation data)}   & \graycell{1.78}  & \graycell{236.9} & \graycell{0.75} & \graycell{0.67} &      &      &  \\
+\bottomrule
+\end{tabular}
+}
+\vspace{-4pt}
+}
+\end{table}

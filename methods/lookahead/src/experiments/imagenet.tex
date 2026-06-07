@@ -1,0 +1,90 @@
+\subsection{ImageNet} 
+
+The 1000-way ImageNet task \citep{deng2009imagenet} is a classification task that contains roughly 1.28 million training images and 50,000 validation images. We use the official PyTorch implementation\footnote{Implementation available at \url{https://github.com/pytorch/examples/tree/master/imagenet}.} and the ResNet-50 and ResNet-152  \citep{he2016deep} architectures. Our baseline algorithm is SGD with an initial learning rate of 0.1 and momentum value of 0.9. We train for 90 epochs and decay our learning rate by a factor of 10 at the 30th and 60th epochs. For Lookahead, we set $k=5$ and slow weights step size $\alpha = 0.5$.
+
+Motivated by the improved convergence we observed in our initial experiment, we tried a more aggressive learning rate decay schedule where we decay the learning rate by a factor of 10 at the 30th, 48th, and 58th epochs. Using such a schedule, we reach $75\%$ single crop top-1 accuracy on ImageNet in just 50 epochs and reach $75.5\%$ top-1 accuracy in 60 epochs. The results are shown in Figure \ref{fig:imagenet-visual}.
+
+% \begin{figure}
+%     \centering
+%     \begin{minipage}{0.48 \linewidth}
+%     \includegraphics[width=\linewidth]{images/imagenet_train.png}
+%     \end{minipage} \hfill
+%     \begin{minipage}{0.48 \linewidth}
+%     \includegraphics[width=\linewidth]{images/imagenet_train_loss.png}
+%     \end{minipage}
+%     %\includegraphics[width=\linewidth]{images/imagenet_val.png}
+%     \caption{ImageNet training accuracies and losses. The asterisk denotes the aggressive learning rate decay schedule, where learning rate is decayed at iteration 30, 48, and 58.}
+%     \vskip -0.1in
+%     \label{fig:imagenet-visual}
+% \end{figure}
+% \begin{wrapfigure}{r}{0.5 \textwidth}
+% \vspace{-0.1in}
+%     \includegraphics[width=0.45 \textwidth]{images/imagenet_train_loss.png}
+%     \caption{ImageNet training accuracies and losses. The asterisk denotes the aggressive learning rate decay schedule, where learning rate is decayed at iteration 30, 48, and 58.}
+%     \vskip -0.1in
+%     \label{fig:imagenet-visual}
+% \end{wrapfigure}
+
+\begin{figure}[t]
+    \centering
+    \begin{minipage}{0.48 \linewidth}
+    \includegraphics[width=\linewidth]{images/imagenet_train_loss.png}
+    \end{minipage} \hfill
+    \begin{minipage}{0.48 \linewidth}
+% may be epoch 51 -- check indicing
+\begin{table}[H]
+\label{tabel:imagenet-compare}
+% \vskip 0.1in
+\begin{center}
+\begin{small}
+\begin{sc}
+\begin{tabular}{l c c }
+\toprule
+Optimizer & LA & SGD   \\
+\midrule
+Epoch 50 - Top 1 & 75.13 & 74.43  \\
+Epoch 50 - Top 5 & 92.22 & 92.15  \\ 
+Epoch 60 - Top 1 & 75.49 & 75.15  \\
+Epoch 60 - Top 5 & 92.53 & 92.56  \\ 
+\bottomrule
+\end{tabular}
+\end{sc}
+\end{small}
+\end{center}
+\caption{Top-1 and Top-5 single crop validation accuracies on ImageNet.}
+\vskip -0.1in
+\end{table}
+\end{minipage}
+\caption{ImageNet training loss. The asterisk denotes the aggressive learning rate decay schedule, where LR is decayed at iteration 30, 48, and 58. We report validation accuracies for this schedule.}
+\vskip -0.1in
+\label{fig:imagenet-visual}
+    %\includegraphics[width=\linewidth]{images/imagenet_val.png}
+\end{figure}
+
+
+
+% % may be epoch 51 -- check indicing
+% \begin{table}
+% \label{tabel:imagenet-compare}
+% % \vskip 0.1in
+% \begin{center}
+% \begin{small}
+% \begin{sc}
+% \begin{tabular}{l c c c }
+% \toprule
+% Optimizer & LA & SGD & LA (ResNet-152)  \\
+% \midrule
+% Epoch 50 - Top 1 & 75.13 & 74.43 & 77.32 \\
+% Epoch 50 - Top 5 & 92.22 & 92.15 & 93.66 \\ 
+% Epoch 60 - Top 1 & 75.49 & 75.15 & 77.96 \\
+% Epoch 60 - Top 5 & 92.53 & 92.56 & 93.89 \\ 
+% \bottomrule
+% \end{tabular}
+% \end{sc}
+% \end{small}
+% \end{center}
+% \caption{Top-1 and Top-5 single crop validation accuracies on ImageNet}
+% \vskip -0.1in
+% \end{table}
+
+To test the scalability of our method, we ran Lookahead with the aggressive learning rate decay on ResNet-152. We reach $77\%$ single crop top-1 accuracy in 49 epochs (matching what is reported in \citet{he2016deep}) and $77.96\%$ top-1 accuracy in 60 epochs. Other approaches for improving convergence on ImageNet can require hundreds of GPUs, or tricks such as ramping up the learning rate and adaptive batch-sizes \citep{goyal2017accurate, jia2018highly}. The fastest convergence we are aware of uses an approximate second-order method to train a ResNet-50 to $75\%$ top-1 accuracy in 35 epochs with 1,024 GPUs \citep{1811.12019}. In contrast, Lookahead requires changing one single line of code and can easily scale to ResNet-152. 

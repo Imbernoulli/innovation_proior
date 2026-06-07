@@ -1,0 +1,79 @@
+\section[Proof of Lemma 8.6]{Proof of Lemma~\ref{lem-summation}}\label{app-d}
+
+\begin{lemma}\label{lem-calculus}
+  \begin{enumerate}\alphalabels
+  \item\label{lem-calculus-b} $\sqrt x\geq\ln x$ for all $x>0$.
+  \item\label{lem-calculus-c} $3\sqrt x\geq(\ln x)^2$ for all $x\geq 1$.
+  \item\label{lem-calculus-d} $(1-\frac{a}{x})^x \leq e^{-a}$, for all
+    $x\geq a>0$.
+  \end{enumerate}
+\end{lemma}
+
+\begin{proof}
+  By elementary calculus. For (a) and (b), note that the functions
+  $f(x)={\ln x}/{\sqrt x}$ and $g(x)={(\ln x)^2}/{3\sqrt x}$, on the
+  given domains, take their maxima at $x=e^2$ and $x=e^4$,
+  respectively, and in both cases, the maximum is less than 1. 
+  For (c), first note that for all $z\in\R$, $z+1\leq e^z$; the claim
+  follows by letting $z=-\frac{a}{x}$.
+\end{proof}
+
+We can now prove Lemma~\ref{lem-summation}, whose statement we reproduce 
+here.
+
+\begin{un-lemma}
+  Let $b>0$ be an arbitrary fixed constant. Then for $a\geq 1$,
+  \[ \sum_{x=1}^{\infty} \bigparen{1-\frac{1}{a+b\ln x}}^x = O(a).
+  \]
+\end{un-lemma}
+
+\begin{proof}
+  Let
+  \begin{equation}
+    x_0 = 16a^2 + 144b^2.\label{eqn-x0}
+  \end{equation}
+  We claim that for all $x \geq x_0$, 
+  \begin{equation}
+    \bigparen{1-\frac{1}{a+b\ln x}}^x \leq \frac{1}{x^2}. \label{eqn-1x2}
+  \end{equation}
+  Indeed, from $x\geq 16a^2$, we get
+  \begin{equation}\label{eqn-rx22a}
+    \frac{\sqrt{x}}{2} \geq 2a.
+  \end{equation}
+  From $x\geq 144b^2$, we get 
+  \begin{equation}\label{eqn-rx62b}
+    \frac{\sqrt{x}}{6} \geq 2b.
+  \end{equation}
+  Combining {\eqref{eqn-rx22a}} and {\eqref{eqn-rx62b}} with
+  Lemma~\ref{lem-calculus}(\ref{lem-calculus-b}) and
+  (\ref{lem-calculus-c}), we have
+  \[
+    x = \frac{\sqrt x}{2}\cdot \sqrt x + \frac{\sqrt
+      x}{6}\cdot 3\sqrt x
+    \geq 2a\ln x + 2b(\ln x)^2 = 2\ln x(a+b\ln x),
+  \]
+  hence
+  \[
+  \frac{1}{a + b \ln x} \geq \frac{2\ln x}{x},
+  \]
+  hence
+  \[ 
+  \bigparen{1-\frac{1}{a + b \ln x}}^x \leq \bigparen{1-\frac{2\ln x}{x}}^x
+  \leq e^{-2\ln x} = \frac{1}{x^2}
+  \]
+  where the final inequality uses
+  Lemma~\ref{lem-calculus}(\ref{lem-calculus-d}). This finishes the
+  proof of {\eqref{eqn-1x2}}. The lemma now immediately follows,
+  because we have 
+  \begin{eqnarray}
+    \sum_{x=1}^{\infty} \bigparen{1-\frac{1}{a+b\ln x}}^x
+    &=& \sum_{x=1}^{\floor{x_0}} \bigparen{1-\frac{1}{a+b\ln x}}^x +
+    \sum_{x=\floor{x_0}+1}^{\infty} \bigparen{1-\frac{1}{a+b\ln x}}^x\nonumber\\
+    &\leq& \sum_{x=1}^{\floor{x_0}} \bigparen{1-\frac{1}{a+b\ln x_0}}^x +
+    \sum_{x=\floor{x_0}+1}^{\infty} \frac{1}{x^2}\nonumber\\
+    &\leq& \sum_{x=0}^{\infty} \bigparen{1-\frac{1}{a+b\ln x_0}}^x +
+    \sum_{x=1}^{\infty} \frac{1}{x^2}\nonumber \\
+    &=& a+b\ln x_0 + \frac{\pi^2}{6}
+    ~=~  a+b\ln (16a^2 + 144b^2) + \frac{\pi^2}{6} ~=~ O(a).\nonumber
+  \end{eqnarray}
+\end{proof}

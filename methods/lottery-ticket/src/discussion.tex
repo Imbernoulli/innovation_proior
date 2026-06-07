@@ -1,0 +1,85 @@
+\section{Discussion}
+
+Existing work on neural network pruning (e.g., \citet{han-pruning}) demonstrates that the function
+learned by a neural network can often be represented with fewer parameters. Pruning typically proceeds by training the original network, removing connections, and further fine-tuning. 
+In effect, the initial training initializes the weights of the
+pruned network so that it can learn in isolation during fine-tuning.  
+We seek to determine if similarly sparse networks can learn from the
+start.
+We find that the architectures studied in this paper reliably contain such trainable subnetworks, and the lottery ticket hypothesis proposes that this property applies in general.
+Our empirical study of the existence and nature of winning tickets invites a number of follow-up questions.
+
+
+\textbf{The importance of winning ticket initialization.}
+When randomly reinitialized, a winning ticket learns more slowly and achieves lower test accuracy, suggesting
+that initialization is important to its success. One
+possible explanation for this behavior is these initial weights are close to their
+final values after training---that in the most extreme case, they are already trained. However,
+experiments in Appendix \ref{app:examining} show the opposite---that
+the winning ticket weights move further
+ than
+other weights.  This suggests that the benefit of the initialization is connected
+to the optimization algorithm, dataset, and model. For example,
+the winning ticket initialization might land in a region of the loss landscape
+that is particularly amenable to optimization by the chosen optimization algorithm.
+%TODO\todo{cite landscape papers here, including entropy-sgd, smooth minima (hinton), landscape visualization}
+
+\citet{rethinking-pruning} find that pruned networks are indeed trainable when randomly reinitialized,
+seemingly contradicting conventional wisdom and our random reinitialization experiments.
+For example, on VGG-19 (for which we share the same setup),
+they find that networks pruned by up to 80\% and randomly reinitialized match the accuracy of the original network.
+Our experiments in Figure \ref{fig:vgg} confirm these findings at this level of sparsity  (below which \citeauthor{rethinking-pruning} do not present data). However, after further pruning, initialization matters:
+we find winning tickets when VGG-19 is pruned by up to 98.5\%; when reinitialized, these tickets reach much lower accuracy.
+We hypothesize that---up to a certain level of sparsity---highly overparameterized networks can be pruned, reinitialized, and retrained successfully; however, beyond this point, extremely pruned, less severely overparamterized networks only maintain
+accuracy with fortuitous initialization.
+
+%\NA{\citet{xavier} and \citet{he} propose random initialization schemes for dense neural networks designed to ``maintain magnitudes...of
+%gradients.'' However, we are not aware of any
+%work studying good initializations for sparse networks. Furthermore, although we initialize our unpruned networks using the
+%Glorot scheme, we do not rescale the weights of winning tickets after pruning (as do \citet{rethinking-pruning}) to maintain
+%the gradient propagation properties of the original initialization.}
+
+\textbf{The importance of winning ticket structure.}
+The initialization that gives rise to a winning ticket is arranged in a particular sparse architecture.
+Since we uncover winning tickets through heavy use of training data, we hypothesize that the structure of
+our winning tickets encodes an inductive bias customized to the learning task at hand.  \citet{inductive-bias} show that
+the inductive bias embedded in the structure of a deep network determines the kinds of data that it can
+separate more parameter-efficiently than can a shallow network; although \citet{inductive-bias} focus on the
+pooling geometry of convolutional networks, a similar effect may be at play with the structure of winning tickets, allowing them
+to learn even when heavily pruned.
+
+\textbf{The improved generalization of winning tickets.}
+We reliably find winning tickets that generalize better, exceeding the test accuracy of the original
+network while matching its training accuracy.
+Test accuracy increases and then decreases as we prune, forming an {\em Occam's Hill}
+~\citep{occam} where the original, overparameterized model has too much
+complexity (perhaps overfitting) and the
+extremely pruned model has too little.
+%
+The conventional view of the relationship between compression and generalization is that compact hypotheses
+can better generalize \citep{mdl}. Recent theoretical work shows a similar link for neural networks,
+proving tighter generalization bounds for networks that can be compressed further
+(\citet{comp} for pruning/quantization and \citet{arora} for noise robustness). The lottery ticket hypothesis offers a
+complementary perspective on this relationship---that larger networks might explicitly contain simpler representations.
+% TODO: Flesh this point out for camera ready.
+%In addition, these bounds do not yet consider initialization or optimization algorithms, which
+%impact the generalization of the compressed networks that we find.
+
+\textbf{Implications for neural network optimization.}
+%\footnote{Not all dense neural networks can contain winning tickets. For example, a minimal relu network with two hidden
+%units for the two-way xor function is dense, but removing any one parameter makes it impossible to match the accuracy of the
+%original network.}
+Winning tickets can reach accuracy equivalent to that of the
+original, unpruned network, but with significantly fewer parameters.
+This observation connects to recent work on the role of
+overparameterization in neural network training.
+For example,
+\NA{\citet{provably} prove that sufficiently overparameterized two-layer relu
+networks (with fixed-size second layers) trained with SGD converge to
+global optima.} A key question, then,  is whether the presence of a winning ticket is
+necessary or sufficient for SGD to optimize a neural network to a
+particular test accuracy. We conjecture (but do not empirically show) that
+SGD seeks out and trains a well-initialized subnetwork. By this
+logic, overparameterized networks are easier to train because they have more
+combinations of subnetworks that are potential
+winning tickets.

@@ -1,0 +1,32 @@
+\section{Introduction}
+For the task of semantic segmentation \cite{everingham2014pascal,mottaghi2014role,Cordts2016Cityscapes,zhou2017scene, caesar2016cocostuff}, we consider two challenges in applying Deep Convolutional Neural Networks (DCNNs) \cite{lecun1989backpropagation}. The first one is the reduced feature resolution caused by consecutive pooling operations or convolution striding, which allows DCNNs to learn increasingly abstract feature representations. However, this invariance to local image transformation may impede dense prediction tasks, where detailed spatial information is desired. To overcome this problem, we advocate the use of atrous convolution \cite{holschneider1989real, giusti2013fast, sermanet2013overfeat, papandreou2014untangling}, which has been shown to be effective for semantic image segmentation \cite{chen2014semantic, yu2015multi, chen2016deeplab}. Atrous convolution, also known as dilated convolution, allows us to repurpose ImageNet \cite{ILSVRC15} pretrained networks to extract denser feature maps by removing the downsampling operations from the last few layers and upsampling the corresponding filter kernels, equivalent to inserting holes (`trous' in French) between filter weights. With atrous convolution, one is able to control the resolution at which feature responses are computed within DCNNs without requiring learning extra parameters. 
+
+\begin{figure}[!t]
+  \centering
+  \begin{tabular}{c}
+    \includegraphics[width=0.95\linewidth]{fig/atrous_conv} \\
+  \end{tabular}
+  \caption{Atrous convolution with kernel size $3 \times 3$ and different rates. Standard convolution corresponds to atrous convolution with $rate=1$. Employing large value of atrous rate enlarges the model's field-of-view, enabling object encoding at multiple scales.}
+  \label{fig:atrous}
+\end{figure}
+
+
+Another difficulty comes from the existence of objects at multiple scales. Several methods have been proposed to handle the problem and we mainly consider four categories in this work, as illustrated in \figref{fig:arch}. First, the DCNN is applied to an image pyramid to extract features for each scale input \cite{farabet2013learning, eigen2014predicting, pinheiro2014recurrent, lin2015efficient,chen2015attention,chen2016deeplab} where objects at different scales become prominent at different feature maps. Second, the encoder-decoder structure \cite{badrinarayanan2015segnet,ronneberger2015u,ghiasi2016laplacian,lin2016refinenet,pohlen2016full, peng2017large, islamgated} exploits multi-scale features from the encoder part and recovers the spatial resolution from the decoder part. Third, extra modules are cascaded on top of the original network for capturing long range information. In particular, DenseCRF \cite{krahenbuhl2011efficient} is employed to encode pixel-level pairwise similarities \cite{chen2014semantic, zheng2015conditional, lin2015efficient, schwing2015fully}, while \cite{liu2015semantic, yu2015multi} develop several extra convolutional layers in cascade to gradually capture long range context. Fourth, spatial pyramid pooling \cite{chen2016deeplab, zhao2016pyramid} probes an incoming feature map with filters or pooling operations at multiple rates and multiple effective field-of-views, thus capturing objects at multiple scales.
+
+\begin{figure*}[!t]
+  \centering
+  \begin{tabular}{c c c c}
+    \includegraphics[height=0.22\linewidth]{fig/image_pyramid.pdf} &
+    \includegraphics[height=0.22\linewidth]{fig/encoder_decoder.pdf} &
+    \includegraphics[height=0.22\linewidth]{fig/deeper_atrous.pdf} &
+    \includegraphics[height=0.22\linewidth]{fig/spatial_pooling.pdf} \\
+    \small{(a) Image Pyramid} &
+    \small{(b) Encoder-Decoder} &
+    \small{(c) Deeper w. Atrous Convolution} &
+    \small{(d) Spatial Pyramid Pooling} \\
+  \end{tabular}
+  \caption{Alternative architectures to capture multi-scale context.}
+  \label{fig:arch}
+\end{figure*}
+
+In this work, we revisit applying atrous convolution, which allows us to effectively enlarge the field of view of filters to incorporate multi-scale context, in the framework of both cascaded modules and spatial pyramid pooling. In particular, our proposed module consists of atrous convolution with various rates and batch normalization layers which we found important to be trained as well. We experiment with laying out the modules in cascade or in parallel (specifically, Atrous Spatial Pyramid Pooling (ASPP) method \cite{chen2016deeplab}). We discuss an important practical issue when applying a $3\times3$ atrous convolution with an extremely large rate, which fails to capture long range information due to image boundary effects, effectively simply degenerating to $1\times1$ convolution, and propose to incorporate image-level features into the ASPP module. Furthermore, we elaborate on implementation details and share experience on training the proposed models, including a simple yet effective bootstrapping method for handling rare and finely annotated objects. In the end, our proposed model, `DeepLabv3' improves over our previous works \cite{chen2014semantic, chen2016deeplab} and attains performance of 85.7\% on the PASCAL VOC 2012 \textit{test} set without DenseCRF post-processing. 

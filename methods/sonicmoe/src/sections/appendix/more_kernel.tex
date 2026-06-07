@@ -1,0 +1,87 @@
+% In this section, we present the referenced diagrams and algorithms in the main paper. %Algorithm~\ref{alg:swiglu-call} and~\ref{alg:swiglu-derivative} present a fast implementation of SwiGLU and SwiGLU derivative, while Algorithm~\ref{alg:up-bwd-moe} describes the backward pass of the up-projection.
+% We further describe the index prefetching strategies incorporated in our group GEMM kernel on Hopper GPUs, as illustrated in Figure~\ref{fig:index-prefetch}. 
+
+\input{algorithm/swiglu_derivative}
+
+In Table~\ref{tab:moe-scaling}, we provide a trending overview for open-source frontier MoE models. We present \Algname's expert aggregation strategy in Figure~\ref{fig:expert-agg}. Figure~\ref{fig:expert-agg-why-slow} illustrates that on Hopper GPUs, asynchronous TMA store (top) has higher memory bandwidth and can naturally overlap with TensorCore MMA whereas synchronous $\mathrm{st.global}$ (bottom) PTX instruction, necessary for scatter fusion on Hopper GPUs, blocks the execution of next Tensor Core MMA tile and leads to longer kernel runtime.
+
+% Figure~\ref{fig:tail-effects} illustrates the rationale of adopting Longest-Processing-Time first (LPT) when we have variable GEMM duration for each SM.  
+
+\input{Table/moe_scaling}
+
+% \begin{figure}
+%     \centering
+%     \includegraphics[width=0.4\textwidth]{figures/varlen-M.pdf}
+%     \includegraphics[width=0.25\textwidth]{figures/varlen-K.png}
+%     \caption{\small Index prefetching strategies for gathering on $\mathbf{M}$ dim of varlen-$\mathbf{M}$ Grouped GEMM (left) and $\mathbf{K}$ dim of varlen-$\mathbf{K}$ Grouped GEMM (right) on H100 GPU. For gather on $\mathbf{M}$ dim (left), we let each thread independently prefetch indices to their own registers before the mainloop. For gather on $\mathbf{K}$ dim (right), we create a buffer on SMEM and let 4 producer warps cooperatively prefetch indices to SMEM and each producer thread read from this SMEM buffer to their registers. \label{fig:index-prefetch}}
+% \end{figure}
+
+
+\begin{figure}
+    \vspace{0.5em}
+    \centering
+    \includegraphics[width=0.7\textwidth]{figures/varlen_expert_agg.pdf}     
+    \caption{\small Illustration to show asynchronous TMA store (top) has higher memory bandwidth and can naturally overlap with TensorCore MMA while synchronous $\mathrm{st.global}$ (bottom) PTX instruction, necessary for scatter fusion on Hopper GPUs, blocks the execution of next Tensor Core MMA tile and leads to longer kernel runtime. This figure is supported by the 20.1\% speedup on average of "\Algname~(gemm + gth w. sum)" (TMA store) over "\Algname~(gemm w. sct + sum)" ($\mathrm{st.global}$) in Figure~\ref{fig:scatter-and-add-speed}'s transparent bars. As a result, \Algname~does not fuse scatter with HBM store and instead, lets each token gather the expert results in the expert aggregation kernel. Both ScatterMoE and MoMoE do not adopt such design and \Algname~can achieve 1.75x and 3.11x speedup respectively on average during forward down-proj kernel in Figure~\ref{fig:moe_breakdown}.}
+    \label{fig:expert-agg-why-slow}  
+\end{figure}
+
+
+\begin{figure}[!ht]
+    \centering
+    \includegraphics[width=\textwidth]{figures/expert-agg.pdf}     
+    \caption{\small Possible strategies for storing the results and aggregating the results for each token. \Algname~chooses the first strategy (left) in which each expert directly stores contiguously-packed outputs via TMA in the GEMM epilogue. In the expert aggregation kernel, each token gathers and sums over activated expert outputs. ScatterMoE and MoMoE (middle) choose to fuse HBM store with scatter in epilogue and launch a summation kernel afterwards. We note that each token gathering (left) the Grouped GEMM result is equivalent to each expert scattering (middle) the Grouped GEMM outputs. In Figure~\ref{fig:scatter-and-add-speed}, we implement both strategies on \Algname~and observe the left strategy can have 17\% speedup over the middle strategy. It is also possible to fuse atomic add in the epilogue to circumvent the requirement of an expert aggregation kernel as the right subfigure illustrated. However, this atomic add operation creates new issues like non-determinism \citep{determinism} and numerical accuracy (for BF16 atomic add). This figure is adapted from \citet{tan2024scattered}'s Figure 2.}
+    \label{fig:expert-agg}  
+\end{figure}
+
+% However, Triton does not provide full control of register-level and warp-level primitives and we 
+
+
+
+
+
+% \subsection{Relevant algorithms \& diagrams for \Algname} \label{sec:appendix:diagrams_and_algos}
+
+
+
+
+
+
+    % In Figure~\ref{fig:gather-speed}, the maximum relative TFLOPs difference of \Algname~with and without gather on $\mathbf{M}$ dim across all configs is 11.8\% (639 vs. 714 TFLOPs on 120B forward with $I=1024$). 
+    
+    
+    % This strategy applies in general to the case when (1) each thread can reuse the same fetched index over time (2) the number of fetched indices per thread is small are both satisfied.
+
+    % \vspace{0.5em}
+    
+    % 10.9\% (667 vs. 740 TFLOPs on 30B backward with $I=1024$). \uline{The average TFLOPs relative difference across all configs is 8.5\%.}
+
+    % This strategy applies in general to the case either (1) each thread cannot reuse the same index (2) the number of fetched indices per thread are fairly large so we want cooperation among threads or warps. 
+
+
+
+
+
+% \begin{figure}
+%     \centering
+%     \includegraphics[width=\linewidth]{figures/pingpong.pdf}
+%     \caption{Ping-Pong warpgroup scheduling in Hopper GPU. The green arrows mean a consumer warpgroup signals the start of epilogue and the other consumer warpgroup can proceed with MMA. Once this step is complete, the roles of 2 consumer warpgroup will be switched. \textbf{We mainly use Ping-Pong for $Y$ \& $dH$ kernel as they both have heavy epilogue compared to the mainloop.} Notice that in $dH$ kernel, \Algname~has asynchronous TMA load during epilogue, and producer warps might need to issue $\mathrm{cp.async}$ for gathering inputs $X$ or $dO$ besides loading weights with TMA. This figure is adapted from PyTorch Blog on CUTLASS Ping-Pong scheduling \citep{torch_cutlass_pingpong}.}
+%     \label{fig:pingpong}
+% \end{figure}
+
+
+
+
+
+
+
+% \begin{figure}[!ht]
+% \begin{minipage}{0.38\textwidth}
+% \includegraphics[width=\textwidth]{figures/tail-effect-1.pdf}
+% \end{minipage}
+% ~~~~~~~~~~~~~~~\begin{minipage}{0.51\textwidth}
+% \includegraphics[width=\textwidth]{figures/tail-effect-2.pdf}
+% \end{minipage}
+% \caption{\small \algname's tile scheduler for weight gradient $d\W{1}$ and $d\W{2}$ schedule the expert with the highest token count first (Longest-Processing-Time first) to alleviate the tail effect as shown in the left compared to a fixed static order (e.g. order by expert ID) as shown in the right. } \label{fig:tail-effects}
+% \end{figure}
+
+

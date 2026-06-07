@@ -1,0 +1,765 @@
+\documentclass{article}
+
+% if you need to pass options to natbib, use, e.g.:
+\PassOptionsToPackage{numbers,compress}{natbib}
+% before loading nips_2016
+%
+% to avoid loading the natbib package, add option nonatbib:
+% \usepackage[nonatbib]{nips_2016}
+
+\usepackage[final,suppressnips]{nips_2016}
+
+
+% to compile a camera-ready version, add \textwidthhe [final] option, e.g.:
+% \usepackage[final]{nips_2016}
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{hyperref}       % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{color}
+\usepackage{subcaption}
+\usepackage{float}
+\usepackage{wrapfig}
+\usepackage{afterpage}
+\usepackage{adjustbox}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+
+\newcommand\inlineeqno{\stepcounter{equation}\ (\theequation)}
+
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage[capitalize]{cleveref} % must go after other package loads
+\newtheorem{example}{Example}[section]
+\newtheorem{definition}{Definition}[section]
+\newtheorem{lemma}{Lemma}[section]
+\newtheorem{proposition}{Proposition}[section]
+\newtheorem{corollary}{Corollary}[proposition]
+
+\newcommand\bbP{\ensuremath{\mathbb{P}}} % Real numbers
+\newcommand\bbR{\ensuremath{\mathbb{R}}} % Real numbers
+\newcommand\bbZ{\ensuremath{\mathbb{Z}}} % Integers
+\newcommand\bbE{\ensuremath{\mathbb{E}}} % Expectation
+\newcommand\calS{\ensuremath{\mathcal{S}}}
+\newcommand\calA{\ensuremath{\mathcal{A}}}
+\newcommand\extR{\ensuremath{\overline{\mathbb{R}}}}
+\newcommand\allC{\ensuremath{\mathbb{R}^{\mathcal{S}\times\mathcal{A}}}}
+\newcommand\psiga{\ensuremath{\psi_\text{GA}}}
+\DeclareMathOperator*{\tr}{tr} % Trace
+\DeclareMathOperator*{\diag}{diag} % Diagonal matrix
+\DeclareMathOperator*{\sign}{sign} % Sign
+\DeclareMathOperator*{\var}{Var} % Variance
+\DeclareMathOperator*{\cov}{Cov} % Covariance
+\DeclareMathOperator*{\minimize}{minimize}
+\DeclareMathOperator*{\maximize}{maximize}
+\DeclareMathOperator*{\argmax}{arg\,max}
+\DeclareMathOperator*{\argmin}{arg\,min}
+\DeclareMathOperator{\dom}{dom}
+\newcommand{\1}{\mathbb{I}} % Indicator
+\newcommand{\suchthat}{\;\ifnum\currentgrouptype=16 \middle\fi|\;}
+
+\newcommand\bbA{\ensuremath{\mathbb{A}}} % Advantage
+\newcommand{\pie}{{\pi_E}}
+\newcommand{\piold}{{\pi_0}} % {{\pi_{\text{old}}}}
+\newcommand{\thetaold}{{\theta_0}} %{{\theta_{\text{old}}}}
+\newcommand{\ctrue}{{c_{\text{true}}}}
+
+\DeclareMathOperator{\rl}{RL}
+\DeclareMathOperator{\irl}{IRL} %\newcommand{\irl}{\rl^{-1}}
+
+% http://tex.stackexchange.com/questions/151984/double-vertical-bar-notation
+\DeclarePairedDelimiterX{\infdivx}[2]{(}{)}{%
+  #1\;\delimsize\|\;#2%
+}
+\newcommand{\kl}{\text{KL}\infdivx}
+\newcommand{\klbar}{\overline{\text{KL}}\infdivx}
+\newcommand{\tvdist}{\text{TV}\infdivx}
+\DeclarePairedDelimiter{\norm}{\lVert}{\rVert}
+
+\newcommand{\stefano}[1]{{\color{green} [SE: {#1}]}}
+\newcommand{\todo}[1]{{\color{red} [TODO: {#1}]}}
+
+
+\title{Generative Adversarial Imitation Learning}
+
+% The \author macro works with any number of authors. There are two
+% commands used to separate the names and addresses of multiple
+% authors: \And and \AND.
+%
+% Using \And between authors leaves it to LaTeX to determine where to
+% break the lines. Using \AND forces a line break at that point. So,
+% if LaTeX puts 3 of 4 authors names on the first line, and the last
+% on the second line, try using \AND instead of \And before the third
+% author name.
+
+\author{
+  Jonathan Ho \\
+  Stanford University \\
+  \texttt{hoj@cs.stanford.edu} \\
+  \And
+  Stefano Ermon \\
+  Stanford University \\
+  \texttt{ermon@cs.stanford.edu}
+}
+
+\begin{document}
+\bibliographystyle{abbrvnat}
+% \nipsfinalcopy is no longer used
+
+\maketitle
+
+\begin{abstract}
+Consider learning a policy from example expert behavior, without interaction with the expert or access to reinforcement signal.
+One approach is to recover the expert's cost function with inverse reinforcement learning, then extract a policy from that cost function with reinforcement learning.
+This approach is indirect and can be slow.
+We propose a new general framework for directly extracting a policy from data, as if it were obtained by reinforcement learning following inverse reinforcement learning.
+We show that a certain instantiation of our framework draws an analogy between imitation learning and generative adversarial networks, from which we derive a model-free imitation learning algorithm that obtains significant performance gains over existing model-free  methods in imitating complex behaviors in large, high-dimensional environments.
+\end{abstract}
+
+\section{Introduction}
+We are interested in a specific setting of imitation learning---the problem of learning to perform a task from expert demonstrations---in which the learner is given only samples of trajectories from the expert, is not allowed to query the expert for more data while training, and is not provided reinforcement signal of any kind.
+There are two main approaches suitable for this setting: behavioral cloning~\citep{pomerleau1991efficient}, which learns a policy as a supervised learning problem over state-action pairs from expert trajectories; and inverse reinforcement learning~\citep{russell1998learning,ng2000algorithms}, which finds a cost function under which the expert is uniquely optimal.% and apprenticeship learning, which learns a policy that performs better than $\pi_E$ across a hand-crafted set of cost functions~\citep{abbeel2004apprenticeship,syed2007game,syed2008apprenticeship}.
+
+Behavioral cloning, while appealingly simple, only tends to succeed with large amounts of data, due to compounding error caused by covariate shift~\citep{ross2010efficient,ross2011reduction}.
+Inverse reinforcement learning (IRL), on the other hand, learns a cost function that prioritizes entire trajectories over others, so compounding error, a problem for methods that fit single-timestep decisions, is not an issue.
+Accordingly, IRL has succeeded in a wide range of problems, from predicting behaviors of taxi drivers~\citep{ziebart2008maximum} to planning footsteps for quadruped robots~\citep{ratliff2009learning}.
+
+Unfortunately, many IRL algorithms are extremely expensive to run, requiring reinforcement learning in an inner loop. Scaling IRL methods to large environments has thus been the focus of much recent work~\cite{finn2016guided,levine2012continuous}.
+Fundamentally, however, IRL learns a cost function, which explains expert behavior but does not directly tell the learner how to act.
+%Actions can only be obtained by planning or reinforcement learning on the learned cost.
+Given that learner's true goal often is to take actions imitating the expert---indeed, many IRL algorithms are evaluated on the quality of the optimal actions of the costs they learn---why, then, must we learn a cost function, if doing so possibly incurs significant computational expense yet fails to directly yield actions?% \stefano{one could argue interpretability..}
+
+We desire an algorithm that tells us explicitly how to act by directly learning a policy.
+To develop such an algorithm, we begin in \cref{sec:characterizing}, where we characterize the policy given by running reinforcement learning on a cost function learned by maximum causal entropy IRL~\citep{ziebart2008maximum,ziebart2010modeling}.
+Our characterization introduces a framework for directly learning policies from data, bypassing any intermediate IRL step.
+
+
+%Then, we instantiate our framework in Sections~\ref{sec:practical}~and~\ref{sec:gail}, leading to a practical imitation learning algorithm capable of imitating complex behavior in large environments in a model-free manner. Our resulting algorithm can be thought of as a logical development on recent advances in large-scale model-free imitation learning and reinforcement learning~\citep{ho2016model,schulman2015trust}. We show that our resulting algorithm is intimately connected to generative adversarial networks~\citep{goodfellow2014generative}, a technique from deep learning community that has led to recent successes in modeling complex distributions of natural images; our algorithm harnesses the capabilities of generative adversarial training to fit distributions of states and actions defining expert behavior.
+
+
+%Our resulting algorithm can be thought of as a logical development on recent advances in large-scale model-free imitation learning and reinforcement learning~\citep{ho2016model,schulman2015trust}.
+Then, we instantiate our framework in \cref{sec:practical,sec:gail} with a new model-free imitation learning algorithm.
+We show that our resulting algorithm is intimately connected to generative adversarial networks~\citep{goodfellow2014generative}, a technique from the deep learning community that has led to recent successes in modeling distributions of natural images: our algorithm harnesses generative adversarial training to fit distributions of states and actions defining expert behavior.
+We test our algorithm in \cref{sec:experiments}, where we find that it outperforms competing methods by a wide margin in training policies for complex, high-dimensional physics-based control tasks over various amounts of expert data.
+
+%ost IRL methods are evaluated on the quality of the optimal actions for learned cost functions, and some of the most prominent applications of IRL have been as an intermediate step in constructing planners\todo{cite}.
+%Taxi: turn prediction (Ziebart p 150)
+%Planning human motion
+%Quadruped locomotion (Kolter, Abbeel, Ng): actually get a robot to walk, i.e. for every state, come up with a good action. It is not the cost function inducing expert behavior that we are after; rather, we want to predict the immediate decisions that the expert agent makes in particular states, and we want such predictions to generalize to states not present in the dataset, so that ultimately the learner can act in the environment to reproduce expert behavior.
+
+
+
+\section{Background}
+\paragraph{Preliminaries}
+$\extR$ will denote the extended real numbers $\bbR \cup \{ \infty \}$.
+\Cref{sec:characterizing} will work with finite state and action spaces $\mathcal{S}$ and $\mathcal{A}$ to avoid technical machinery out of the scope of this paper (concerning compactness of certain sets of functions), but our algorithms and experiments later in the paper will run in high-dimensional continuous environments.
+$\Pi$ is the set of all stationary stochastic policies that take actions in $\mathcal{A}$ given states in $\mathcal{S}$; successor states are drawn from the dynamics model $P(s'|s,a)$.
+We work in the $\gamma$-discounted infinite horizon setting, and we will use an expectation with respect a policy $\pi\in\Pi$ to denote an expectation with respect to the trajectory it generates: $\bbE_{\pi}[c(s,a)] \triangleq \bbE\left[\sum_{t=0}^\infty \gamma^t c(s_t,a_t)\right]$, where $s_0 \sim p_0$, $a_t \sim \pi(\cdot|s_t)$, and $s_{t+1}\sim P(\cdot|s_t,a_t)$ for $t\geq 0$.
+We will use $\hat\bbE_\tau$ to denote empirical expectation with respect to trajectory samples $\tau$, and we will always refer to the expert policy as $\pi_E$.
+
+\paragraph{Inverse reinforcement learning}
+Suppose we are given an expert policy $\pi_E$ that we wish to rationalize with IRL. For the remainder of this paper, we will adopt maximum causal entropy IRL~\citep{ziebart2008maximum,ziebart2010modeling}, which fits a cost function from a family of functions $\mathcal{C}$ with the optimization problem
+\begin{align}
+\maximize_{c\in\mathcal{C}} \left(\min_{\pi\in\Pi} -H(\pi) + \bbE_{\pi} [c(s,a)]\right) - \bbE_{\pi_E} [c(s,a)] \label{eq:irl}
+\end{align}
+where $H(\pi) \triangleq \mathbb{E}_{\pi}[-\log \pi(a|s)]$ is the $\gamma$-discounted causal entropy~\citep{bloem2014infinite} of the policy $\pi$. In practice, $\pi_E$ will only be provided as a set of trajectories sampled by executing $\pi_E$ in the environment, so the expected cost of $\pi_E$ in \cref{eq:irl} is estimated using these samples. Maximum causal entropy IRL looks for a cost function $c\in\mathcal{C}$ that assigns low cost to the expert policy and high cost to other policies, thereby allowing the expert policy to be found via a certain reinforcement learning procedure:
+\begin{align}
+\rl(c) = \argmin_{\pi\in\Pi} -H(\pi) + \bbE_{\pi}[c(s,a)]
+\end{align}
+which maps a cost function to high-entropy policies that minimize the expected cumulative cost. 
+%These definitions are motivated by the fact that if $\mathcal{C}$ is chosen to be a space of functions spanned by ``feature'' functions, then the resulting trajectory distribution induced by the optimal policy will be the maximum causal entropy distribution that matches feature expectations with the expert, thus minimizing expected discounted log-loss against the worst-case true trajectory distribution that also agrees with the expert's feature expectations.
+
+%These equations appear much less mysterious when dynamics model is deterministic. In this case, MaxEnt IRL fits a cost-parameterized trajectory distribution of the form $p_c(s_0,a_0,\dotsc) \propto \exp\left(-\sum_{t=0}^\infty \gamma^t c(s_t,a_t)\right)$ to the expert samples with maximum likelihood (the parenthesized term in the Equation~\ref{eq:irl} is analogous to the log-partition function of this trajectory distribution), and entropy-regularized RL on the resulting cost yields a policy that realizes this trajectory distribution.
+
+
+
+%We argued one way of recovering a policy from data is RL after IRL, but this is too expensive, especially in large environments where RL is slow. In our quest for an efficient algorithm for this, we begin by studying the result of reinforcement learning after inverse reinforcement learning on the largest possible set of cost functions: all functions $\allC$ equipped with a convex regularizer $\psi : \allC \rightarrow \extR$.
+% equipped with a convex regularizer $\psi : \allC \rightarrow \extR$.
+
+\section{Characterizing the induced optimal policy}
+\label{sec:characterizing}
+To begin our search for an imitation learning algorithm that both bypasses an intermediate IRL step and is suitable for large environments, we will study policies found by reinforcement learning on costs learned by IRL on the largest possible set of cost functions $\mathcal{C}$ in \cref{eq:irl}: \emph{all} functions $\allC = \{c : \mathcal{S}\times\mathcal{A}\rightarrow\bbR \}$.
+Using expressive cost function classes, like Gaussian processes~\citep{levine2011nonlinear} and neural networks~\citep{finn2016guided}, is crucial to properly explain complex expert behavior without meticulously hand-crafted features.
+Here, we investigate the best IRL can do with respect to expressiveness, by examining its capabilities with  $\mathcal{C} = \allC$.
+
+Of course, with such a large $\mathcal{C}$, IRL can easily overfit when provided a finite dataset.
+Therefore, we will incorporate a (closed, proper) convex cost function regularizer $\psi : \allC \rightarrow \extR$ into our study.
+Note that convexity is a not particularly restrictive requirement: $\psi$ must be convex as a function defined on all of $\allC$, not as a function defined on a small parameter space; indeed, the cost regularizers of \citet{finn2016guided}, effective for a range of robotic manipulation tasks, satisfy this requirement.
+Interestingly, will in fact find that $\psi$ plays a central role in our discussion, not a nuisance in our analysis.
+
+Now, let us define an IRL primitive procedure, which finds a cost function such that the expert performs better than all other policies, with the cost regularized by $\psi$:
+\begin{align}
+\irl_\psi (\pi_E) = \argmax_{c\in\allC} -\psi(c) + \left(\min_{\pi\in\Pi} -H(\pi) + \bbE_{\pi} [c(s,a)]\right) - \bbE_{\pi_E} [c(s,a)]
+\end{align}
+Now let $\tilde c \in \irl_\psi(\pi_E)$. We are interested in a policy given by $\rl(\tilde c)$---this is the policy given by running reinforcement learning on the output of IRL.
+
+To characterize $\rl(\tilde c)$, it will be useful to transform optimization problems over policies into convex problems.
+For a policy $\pi\in\Pi$, define its occupancy measure $\rho_\pi : \mathcal{S}\times\mathcal{A}\rightarrow\bbR$ as $\rho_\pi(s,a) = \pi(a|s) \sum_{t=0}^\infty \gamma^t P(s_t=s|\pi)$.
+The occupancy measure can be interpreted as the distribution of state-action pairs that an agent encounters when navigating the environment with policy $\pi$, and it allows us to write $\mathbb{E}_\pi[c(s,a)] = \sum_{s,a}\rho_\pi(s,a)c(s,a)$ for any cost function $c$.
+A basic result~\citep{puterman2014markov} is that the set of valid occupancy measures $\mathcal{D} \triangleq \{\rho_\pi : \pi \in \Pi \}$ can be written as a feasible set of affine constraints: if $p_0(s)$ is the distribution of starting states and $P(s'|s,a)$ is the dynamics model, then
+$
+\mathcal{D} = \left\{\rho : \rho \geq 0\quad  \mathrm{and}\quad \sum_a \rho(s,a) = p_0(s) + \gamma \sum_{s', a}P(s|s',a)\rho(s',a)\ \ \forall \ s \in \mathcal{S}
+\right\}
+$. Furthermore, there is a one-to-one correspondence between $\Pi$ and $\mathcal{D}$:
+\begin{proposition}[Theorem 2 of~\citet{syed2008apprenticeship}]
+\label{syedthm2}
+If $\rho \in \mathcal{D}$, then $\rho$ is the occupancy measure for $\pi_\rho(a|s) \triangleq \rho(s,a)/\sum_{a'} \rho(s,a')$, and $\pi_\rho$ is the only policy whose occupancy measure is $\rho$.%. Furthermore, if $\rho_\pi \in \mathcal{D}$ is the occupancy measure of $\pi$, then $\pi(a|s) = \rho_\pi(s,a)/\sum_{a'} \rho_\pi(s,a')$.
+
+%Furthermore, if $\pi$ is any policy and $\rho$ is its occupancy measure, then $\pi(a|s) = \rho(s,a)/\sum_{a'} \rho(s,a')$, and $\rho$ satisfies the Bellman flow constraints.
+\end{proposition}
+We are therefore justified in writing $\pi_\rho$ to denote the unique policy for an occupancy measure $\rho$. 
+We will need one  more tool: for a function $f : \allC \rightarrow \extR$, its convex conjugate $f^* : \allC \rightarrow \extR$ is given by $f^*(x) = \sup_{y \in \allC} x^Ty - f(y)$.
+
+Now, we are ready to characterize $\rl(\tilde c)$, the policy learned by RL on the cost recovered by IRL:
+\begin{proposition}\label{conversion}
+$\rl \circ \irl_{\psi} (\pi_E) = \argmin_{\pi\in\Pi} -H(\pi) + \psi^*(\rho_\pi - \rho_{\pi_E}) \hfill \inlineeqno$
+\end{proposition}
+The proof of \cref{conversion} is in \cref{sec:proofs1}. The proof relies on the observation that the optimal cost function and policy form a saddle point of a certain function. IRL finds one coordinate of this saddle point, and running reinforcement learning on the output of IRL reveals the other coordinate.
+
+\Cref{conversion} tells us that $\psi$-regularized inverse reinforcement learning, implicitly, seeks a policy whose occupancy measure is close to the expert's, as measured by the convex function $\psi^*$.
+Enticingly, this suggests that various settings of $\psi$ lead to various imitation learning algorithms that directly solve the optimization problem given by \cref{conversion}.
+We explore such algorithms in \cref{sec:practical,sec:gail}, where we show that certain settings of $\psi$ lead to both existing algorithms and a novel one.
+
+The special case when $\psi$ is a constant function is particularly illuminating, so we state and show it directly using concepts from convex optimization.
+\begin{corollary}
+\label{exactmatching}
+If $\psi$ is a constant function, $\tilde c \in \irl_\psi(\pi_E)$, and $\tilde\pi \in \rl(\tilde c)$, then $\rho_{\tilde\pi} = \rho_{\pi_E}$.
+\end{corollary}
+In other words, if there were no cost regularization at all, then the recovered policy will exactly match the expert's occupancy measure. To show this, we will need a lemma that lets us speak about causal entropies of occupancy measures:
+\begin{lemma} \label{occmeascausalent}
+Let $\bar H(\rho) = -\sum_{s,a} \rho(s,a)\log ( \rho(s,a) / \sum_{a'}\rho(s,a') )$. Then, $\bar H$ is strictly concave, and for all $\pi \in \Pi$ and $\rho \in \mathcal{D}$, we have $H(\pi) = \bar H(\rho_\pi)$ and $\bar H(\rho) = H(\pi_\rho)$.
+\end{lemma}
+The proof of this lemma is in \cref{sec:proofs1}. \Cref{syedthm2} and \cref{occmeascausalent} together allow us to freely switch between policies and occupancy measures when considering functions involving causal entropy and expected costs, as in the following lemma:
+\begin{lemma}\label{exchange}
+If $L(\pi,c) = -H(\pi) + \bbE_{\pi}[c(s,a)]$ and $\bar L(\rho,c) = -\bar H(\rho) + \sum_{s,a}\rho(s,a)c(s,a)$, then, for all cost functions $c$, $L(\pi,c) = \bar L(\rho_\pi, c)$ for all policies $\pi \in \Pi$, and $\bar L(\rho, c)  = L(\pi_\rho, c)$ for all occupancy measures $\rho \in \mathcal{D}$.
+\end{lemma}
+
+Now, we are ready to give a direct proof of~\cref{exactmatching}.
+\begin{proof}[Proof of~\cref{exactmatching}]
+Define $\bar L(\rho,c) = -\bar H(\rho) + \sum_{s,a}c(s,a)(\rho(s,a) - \rho_E(s,a))$.
+Given that $\psi$ is a constant function, we have the following, due to \cref{exchange}:
+\begin{align}
+\tilde c &\in \irl_\psi(\pi_E) = \argmax_{c\in\allC} \min_{\pi \in \Pi} -H(\pi) + \bbE_\pi[c(s,a)] - \bbE_{\pi_E}[c(s,a)] + \mathrm{const.}\\
+&= \argmax_{c\in\allC} \min_{\rho \in \mathcal{D}} -\bar H(\rho) + \sum_{s,a}\rho(s,a)c(s,a) - \sum_{s,a}\rho_E(s,a)c(s,a) 
+= \argmax_{c\in\allC} \min_{\rho \in \mathcal{D}} \bar L(\rho,c).
+\end{align}
+This is the dual of the optimization problem
+\begin{align}
+\label{eq:primal}
+\minimize_{\rho \in \mathcal{D}} -\bar H(\rho) \quad \text{subject to }\quad \rho(s,a) = \rho_E(s,a) \quad \forall\ s\in\mathcal{S},a\in\mathcal{A}
+\end{align}
+with Lagrangian $\bar L$, for which the costs $c(s,a)$ serve as dual variables for equality constraints. Thus, $\tilde c$ is a dual optimum for~\labelcref{eq:primal}. Because $\mathcal{D}$ is a convex set and $-\bar H$ is convex, strong duality holds; moreover, \cref{occmeascausalent} guarantees that $-\bar H$ is in fact strictly convex, so the primal optimum can be uniquely recovered from the dual optimum~\citep[Section 5.5.5]{boyd2004convex} via $
+\tilde \rho = \argmin_{\rho\in\mathcal{D}} \bar L(\rho,\tilde c) = \argmin_{\rho\in\mathcal{D}} -\bar H(\rho) + \sum_{s,a} \tilde c(s,a) \rho(s,a) = \rho_E,$
+where the first equality indicates that $\tilde\rho$ is the unique minimizer of $\bar L(\cdot, \tilde c)$, and the third follows from the constraints in the primal problem~\labelcref{eq:primal}. But if $\tilde\pi \in \rl(\tilde c)$, then, by \cref{exchange}, its occupancy measure satisfies $\rho_{\tilde\pi} = \tilde\rho = \rho_E$.
+\end{proof}
+
+From this argument, we can deduce the following:
+
+\textbf{IRL is a dual of an occupancy measure matching problem}, and the recovered cost function is the dual optimum.
+Classic IRL algorithms that solve reinforcement learning repeatedly in an inner loop, such as the algorithm of \citet{ziebart2008maximum} that runs a variant of value iteration in an inner loop, can be interpreted as a form of dual ascent, in which one repeatedly solves the primal problem (reinforcement learning) with fixed dual values (costs).
+Dual ascent is effective if solving the unconstrained primal is efficient, but in the case of IRL, it amounts to reinforcement learning!
+
+\textbf{The induced optimal policy is the primal optimum.} The induced optimal policy is obtained by running RL after IRL, which is exactly the act of recovering the primal optimum from the dual optimum; that is,  optimizing the Lagrangian with the dual variables fixed at the dual optimum values.
+Strong duality implies that this induced optimal policy is indeed the primal optimum, and therefore matches occupancy measures with the expert.
+IRL is traditionally defined as the act of finding a cost function such that the expert policy is uniquely optimal, but now,
+we can alternatively view IRL as a procedure that tries to \emph{induce a policy that matches the expert's occupancy measure}.
+
+\section{Practical occupancy measure matching}
+\label{sec:practical}
+We saw in~\cref{exactmatching} that if $\psi$ is constant, the resulting primal problem \labelcref{eq:primal} simply matches occupancy measures with expert at all states and actions.
+Such an algorithm, however, is not practically useful.
+In reality, the expert trajectory distribution will be provided only as a finite set of samples, so in large environments, most of the expert's occupancy measure values will be exactly zero, and exact occupancy measure matching will force the learned policy to never visit these unseen state-action pairs simply due to lack of data.
+Furthermore, with large environments, we would like to use function approximation to learn a parameterized policy $\pi_\theta$.
+The resulting optimization problem of finding the appropriate $\theta$ would have as many constraints as points in $\calS\times\calA$, leading to an intractably large problem and defeating the very purpose of function approximation.
+
+Keeping in mind that we wish to eventually develop an imitation learning algorithm suitable for large environments, we would like to relax \cref{eq:primal} into the following form, motivated by~\cref{conversion}:
+\begin{align}
+\minimize_\pi\ d_\psi(\rho_\pi, \rho_E) - H(\pi) \label{eq:costobjective}
+\end{align}
+by modifying the IRL regularizer $\psi$ so that $d_\psi(\rho_\pi, \rho_E) \triangleq \psi^*(\rho_\pi - \rho_E)$ smoothly penalizes violations in difference between the occupancy measures.
+
+\paragraph{Entropy-regularized apprenticeship learning}
+It turns out that with certain settings of $\psi$, \cref{eq:costobjective} takes on the form of regularized variants of existing \emph{apprenticeship learning} algorithms, which indeed do scale to large environments with parameterized policies~\citep{ho2016model}.
+For a class of cost functions $\mathcal{C} \subset \allC$, an apprenticeship learning algorithm finds a policy that performs better than the expert across $\mathcal{C}$, by optimizing the objective
+\begin{align}
+\minimize_\pi\ \max_{c \in \mathcal{C}} \bbE_{\pi}[c(s,a)] - \bbE_{\pi_E}[c(s,a)] \label{eq:apprenticeship}
+\end{align}
+Classic apprenticeship learning algorithms restrict $\mathcal{C}$ to convex sets given by linear combinations of basis functions~$f_1, \dotsc, f_d$, which give rise a feature vector $f(s,a) = [f_1(s,a), \dotsc, f_d(s,a)]$ for each state-action pair.
+\citet{abbeel2004apprenticeship} and \citet{syed2008apprenticeship} use, respectively,
+\begin{align}
+\mathcal{C_\text{linear}} = \left\{ \textstyle{\sum}_i w_i f_i \ :\  \|w\|_2 \leq 1 \right\} \quad \text{and}\quad
+\mathcal{C_\text{convex}} = \left\{ \textstyle{\sum}_i w_i f_i \ :\  \textstyle{\sum}_i w_i = 1, w_i \geq 0 \ \forall i \right\}. \label{eq:linconvcosts}
+\end{align}
+$\mathcal{C_\text{linear}}$ leads to feature expectation matching~\citep{abbeel2004apprenticeship}, which minimizes $\ell_2$ distance between expected feature vectors: $\max_{c \in \mathcal{C_\text{linear}}} \bbE_{\pi}[c(s,a)] - \bbE_{\pi_E}[c(s,a)] = \|\bbE_{\pi}[f(s,a)] - \bbE_{\pi_E}[f(s,a)] \|_2$.
+Meanwhile, $\mathcal{C}_{\text{convex}}$ leads to  MWAL~\citep{syed2007game} and LPAL~\citep{syed2008apprenticeship}, which minimize worst-case excess cost among the individual basis functions, as $\max_{c \in \mathcal{C_\text{convex}}} \bbE_{\pi}[c(s,a)] - \bbE_{\pi_E}[c(s,a)] = \max_{i \in \{1, \dotsc, d\}} \bbE_{\pi}[f_i(s,a)] - \bbE_{\pi_E}[f_i(s,a)]$.
+
+We now show how \cref{eq:apprenticeship} is a special case of \cref{eq:costobjective} with a certain setting of $\psi$.
+With the indicator function $\delta_{\mathcal{C}} : \allC \rightarrow \extR$, defined by $\delta_{\mathcal{C}}(c) = 0$ if $c \in \mathcal{C}$ and $+\infty$ otherwise, we  can write the apprenticeship learning objective~\labelcref{eq:apprenticeship} as
+\begin{align*}
+\max_{c \in \mathcal{C}} \bbE_{\pi}[c(s,a)]\!-\!\bbE_{\pi_E}[c(s,a)] = \!\!\max_{c\in\allC} \!\!-\delta_{\mathcal{C}}(c)  + \sum_{s,a} (\rho_\pi(s,a)\!-\!\rho_{\pi_E}\!(s,a)) c(s,a) = \delta_{\mathcal{C}}^*(\rho_\pi\!-\!\rho_{\pi_E}\!)
+\end{align*}
+Therefore, we see that entropy-regularized apprenticeship learning
+\begin{align}
+\label{eq:erAL}
+\minimize_\pi -H(\pi) + \max_{c \in \mathcal{C}} \bbE_{\pi}[c(s,a)] - \bbE_{\pi_E}[c(s,a)]
+\end{align}
+is equivalent to performing RL following IRL with cost regularizer $\psi = \delta_{\mathcal{C}}$, which forces the implicit IRL procedure to recover a cost function lying in $\mathcal{C}$.
+Note that we can scale the policy's entropy regularization strength in \cref{eq:erAL} by scaling $\mathcal{C}$ by a constant $\alpha$ as $\{\alpha c : c \in \mathcal{C}\}$, recovering the original apprenticeship objective \labelcref{eq:apprenticeship} by taking $\alpha \rightarrow \infty$.
+
+\paragraph{Cons of apprenticeship learning} It is known that apprenticeship learning algorithms generally do not recover expert-like policies if $\mathcal{C}$ is too restrictive~\citep[Section 1]{syed2008apprenticeship}---which is often the case for the linear subspaces used by feature expectation matching, MWAL, and LPAL, unless the basis functions $f_1, \dotsc, f_d$ are very carefully designed.
+Intuitively, unless the true expert cost function (assuming it exists) lies in $\mathcal{C}$, there is no guarantee that if $\pi$ performs better than $\pi_E$ on all of $\mathcal{C}$, then $\pi$ equals $\pi_E$.
+With the aforementioned insight based on~\cref{conversion} that apprenticeship learning is equivalent to RL following IRL, we can understand exactly why apprenticeship learning may fail to imitate: it forces $\pi_E$ to be encoded as an element of $\mathcal{C}$.
+If $\mathcal{C}$ does not include a cost function that explains expert behavior well, then attempting to recover a policy from such an encoding will not succeed.
+
+\paragraph{Pros of apprenticeship learning} While restrictive cost classes $\mathcal{C}$ may not lead to exact imitation, apprenticeship learning with such $\mathcal{C}$ can scale to large state and action spaces with policy function approximation.
+\citet{ho2016model} rely on the following policy gradient formula for the apprenticeship  objective~\labelcref{eq:apprenticeship} for a parameterized policy $\pi_\theta$:
+\begin{align} \begin{split}
+&\nabla_\theta \max_{c \in \mathcal{C}} \bbE_{\pi_\theta}[c(s,a)] - \bbE_{\pi_E}[c(s,a)] = \nabla_\theta \bbE_{\pi_\theta}[c^*(s,a)] = \bbE_{\pi_\theta} \left[\nabla_\theta \log\pi_\theta(a|s) Q_{c^*}(s,a) \right] \label{eq:apprpolicygrad} \\
+&\text{where} \ c^* \!= \argmax_{c\in\mathcal{C}} \bbE_{\pi_\theta}[c(s,a)] - \bbE_{\pi_E}[c(s,a)],
+ \ Q_{c^*}(\bar s,\bar a) = \bbE_{\pi_\theta}[c^*(\bar s, \bar a) \,|\, s_0=\bar s,a_0=\bar a]
+\end{split} \end{align}
+Observing that \cref{eq:apprpolicygrad} is the policy gradient for a reinforcement learning objective with cost $c^*$, \citeauthor{ho2016model} propose an algorithm that alternates between two steps:
+\begin{enumerate}
+\item Sample trajectories of the current policy $\pi_{\theta_i}$ by simulating in the environment, and fit a cost function $c^*_i$, as defined in \cref{eq:apprpolicygrad}.
+For the cost classes $\mathcal{C}_\text{linear}$ and $\mathcal{C}_\text{convex}$~\labelcref{eq:linconvcosts}, this cost fitting amounts to evaluating simple analytical expressions~\citep{ho2016model}.
+\item Form a gradient estimate with \cref{eq:apprpolicygrad} with $c^*_i$ and the sampled trajectories, and take a trust region policy optimization (TRPO)~\citep{schulman2015trust} step to produce $\pi_{\theta_{i+1}}$.
+\end{enumerate}
+
+This algorithm relies crucially on the TRPO policy step, which is a natural gradient step constrained to ensure that $\pi_{\theta_{i+1}}$ does not stray too far $\pi_{\theta_i}$, as measured by KL divergence between the two policies averaged over the states in the sampled trajectories.
+This carefully constructed step scheme ensures that divergence does not occur due to high noise in estimating the gradient~\labelcref{eq:apprpolicygrad}.
+We refer the reader to~\citet{schulman2015trust} for more details on TRPO.
+
+With the TRPO step scheme, \citeauthor{ho2016model} were able train large neural network policies for apprenticeship learning with linear cost function classes~\labelcref{eq:linconvcosts} in environments with hundreds of observation dimensions. Their use of these linear cost function classes, however, limits their approach to settings in which expert behavior is well-described by such classes.
+We will draw upon their algorithm to develop an imitation learning method that both scales to large environments and imitates arbitrarily complex expert behavior.
+To do so, we first turn to proposing a new regularizer $\psi$ that wields more expressive power than the regularizers corresponding to $\mathcal{C}_\text{linear}$ and $\mathcal{C}_\text{convex}$~\labelcref{eq:linconvcosts}.
+
+%\subsection{A new family of cost regularizers}
+%
+%To ensure exact matching, we want $d$, induced by $\psi$, to be an actual metric between probability distributions. To do this, we will employ a correspondence between
+%optimal surrogate $\phi$-risks:
+%\begin{align}
+%d_f(\rho, \rho_E) &= -\min_\gamma\ \sum_{s,a}\left( \rho(s,a) \phi(\gamma(s,a)) + \rho_E(s,a)\phi(-\gamma(s,a)) \right) \\
+%&= -\sum_{s,a} \min_\gamma \left(\rho(s,a) \phi(\gamma) + \rho_E(s,a)\phi(-\gamma) \right) \\
+%&= -\sum_{s,a} \min_\gamma [(\rho(s,a)-\rho_E(s,a))\phi(\gamma) + \rho_E(s,a)(\phi(\gamma) + \phi(-\gamma))]
+%\end{align}
+%and symmetric $f$-divergences~\citep{nguyen2009surrogate}
+%\begin{align}
+%d_f(\rho, \rho_E) &= \sum_{s,a} \rho(s,a) f\left(\frac{\rho(s,a)}{\rho_E(s,a)}\right)
+%\end{align}
+%There is also a construction for the converse; see~\citep{nguyen2009surrogate}.
+
+
+\section{Generative adversarial imitation learning} \label{sec:gail}
+As discussed in \cref{sec:practical}, the constant regularizer leads to an imitation learning algorithm that exactly matches occupancy measures, but is intractable in large environments.
+The indicator regularizers for the linear cost function classes~\labelcref{eq:linconvcosts}, on the other hand, lead to algorithms incapable of exactly matching occupancy measures without careful tuning, but are tractable in large environments.
+We propose the following new cost regularizer that combines the best of both worlds, as we will show in the coming sections:
+% Recall that we wish to define a cost regularizer $\psi$ so that the resulting imitation algorithm, taking the form of \cref{eq:costobjective}, can exactly match occupancy measures while remaining tractable in large environments (unlike, for instance, the constant regularizer, which exactly matches occupancy measures but is intractable in large environments, as discussed at the beginning of \cref{sec:practical}). We propose the following: 
+\begin{align} \label{eq:psiga}
+\psiga(c) \triangleq \begin{dcases*} \bbE_{\pi_E}[g(c(s,a))] & if $c < 0$ \\ +\infty & otherwise \end{dcases*} \ \text{where}\ g(x) = \begin{dcases*}-x-\log(1-e^x) & if $x < 0$ \\ +\infty & otherwise\end{dcases*}
+\end{align}
+This regularizer places low penalty on cost functions $c$ that assign an amount of negative cost to expert state-action pairs; if $c$, however, assigns large costs (close to zero, which is the upper bound for costs feasible for $\psiga$) to the expert, then $\psiga$ will heavily penalize $c$.
+An interesting property of $\psiga$ is that it is an average over expert data, and therefore can adjust to arbitrary expert datasets.
+The indicator regularizers $\delta_\mathcal{C}$, used by the linear apprenticeship learning algorithms described in \cref{sec:practical}, are always fixed, and cannot adapt to data as $\psiga$ can.
+Perhaps the most important difference between $\psiga$ and $\delta_\mathcal{C}$, however, is that $\delta_\mathcal{C}$ forces costs to lie in a small subspace spanned by finitely many basis functions, whereas $\psiga$ allows for any cost function, as long as it is negative everywhere.
+
+Our choice of $\psiga$ is motivated by the following fact, shown in the appendix (\cref{cor:jsd}):
+\begin{align}
+\psiga^*(\rho_\pi - \rho_{\pi_E}) = \max_{D \in (0,1)^{\mathcal{S} \times \mathcal{A}}} \bbE_{\pi}[\log(D(s,a))] + \bbE_{\pi_E}[\log(1-D(s,a))] \label{eq:galoss}
+\end{align}
+where the maximum ranges over discriminative classifiers $D : \mathcal{S} \times \mathcal{A} \rightarrow (0,1)$. \Cref{eq:galoss} is the optimal negative log loss of the binary classification problem of distinguishing between state-action pairs of $\pi$ and $\pi_E$.
+It turns out that this optimal loss is (up to a constant shift) the Jensen-Shannon divergence
+$D_{\text{JS}}(\rho_\pi, \rho_{\pi_E}) \triangleq D_{\text{KL}}\left(\rho_\pi \middle\| (\rho_\pi+\rho_E)/2\right) + D_{\text{KL}}\left(\rho_E \middle\| (\rho_\pi+\rho_E)/2\right)$,
+which is a squared metric between distributions~\citep{goodfellow2014generative,nguyen2009surrogate}.
+Treating the causal entropy $H$ as a policy regularizer, controlled by $\lambda \geq 0$, we obtain a new imitation learning algorithm:
+\begin{align}
+\minimize_\pi \ \psiga^*(\rho_\pi - \rho_{\pi_E}) - \lambda H(\pi) = D_{\text{JS}}(\rho_\pi, \rho_{\pi_E}) - \lambda H(\pi), \label{eq:gail}
+\end{align}
+which finds a policy whose occupancy measure minimizes Jensen-Shannon divergence to the expert's.
+\Cref{eq:gail} minimizes a true metric between occupancy measures, so, unlike linear apprenticeship learning algorithms, it can imitate expert policies exactly.
+
+%We can get more intuition about the resulting Jensen-Shannon divergence cost by examining the regularizer $\psiga$ for which \eqref{eq:gail} is equivalent to $\rl\circ\irl_{\psiga}$. $\psiga$ is an expectation over state-action pairs drawn from the expert policy. Note that this regularizer depends on the expert policy, unlike the regularizers $\delta_{\mathcal{C}}$ corresponding to linear apprenticeship learning algorithms~\eqref{eq:linconvcosts}.\todo{diagram}
+%We can already seen an advantage over the $\delta$ regularizers: this regularizer in fact can absorb as much data as provided.
+
+
+\paragraph{Algorithm}
+\Cref{eq:gail} draws a connection between imitation learning and generative adversarial networks~\citep{goodfellow2014generative}, which train a generative model $G$ by having it confuse a discriminative classifier $D$.
+The job of $D$ is to distinguish between the distribution of data generated by $G$ and the true data distribution.
+When $D$ cannot distinguish data generated by $G$ from the true data, then $G$ has successfully matched the true data.
+In our setting, the learner's occupancy measure $\rho_\pi$ is analogous to the data distribution generated by $G$, and the expert's occupancy measure $\rho_{\pi_E}$ is analogous to the true data distribution.
+
+% So far, we have only addressed the capability of $\psiga$ of exactly matching occupancy measures.
+% A practical algorithm for doing so with $\psiga$ in large environments is the subject of the next section.
+
+% Our algorithm can thus be viewed as an adaptation of generative adversarial training principle to imitation learning---we call \labelcref{eq:gail} \emph{generative adversarial imitation learning}.
+
+Now, we present a practical algorithm, which we call \emph{generative adversarial imitation learning} (\cref{alg:gail}), for solving \cref{eq:gail} for model-free imitation in large environments.
+Explicitly, we wish to find a saddle point $(\pi, D)$ of the expression
+\begin{align}
+\bbE_{\pi}[\log(D(s,a))] + \bbE_{\pi_E}[\log(1-D(s,a))] - \lambda H(\pi) \label{eq:gailexplicit}
+\end{align}
+To do so, we first introduce function approximation for $\pi$ and $D$:
+we will fit a parameterized policy $\pi_\theta$, with weights $\theta$, and a discriminator network $D_w : \mathcal{S}\times\mathcal{A}\rightarrow (0,1)$, with weights $w$.
+Then, we alternate between an Adam~\citep{kingma2014adam} gradient step on $w$ to increase \cref{eq:gailexplicit} with respect to $D$,
+and a TRPO step on $\theta$ to decrease \cref{eq:gailexplicit} with respect to $\pi$.
+The TRPO step serves the same purpose as it does with the apprenticeship learning algorithm of~\citet{ho2016model}:
+it prevents the policy from changing too much due to noise in the policy gradient.
+The discriminator network can be interpreted as a local cost function providing learning signal to the policy---specifically,
+taking a policy step that decreases expected cost with respect to the cost function $c(s,a) = \log D(s,a)$
+will move toward expert-like regions of state-action space, as classified by the discriminator.
+(We derive an estimator for the causal entropy gradient $\nabla_\theta H(\pi_\theta)$ in \cref{sec:proofs2}.)
+
+% \setlength{\textfloatsep}{7pt}
+\begin{algorithm}[tb]
+    \caption{Generative adversarial imitation learning}
+    \label{alg:gail}
+    \begin{algorithmic}[1]
+       \STATE {\bfseries Input:} Expert trajectories $\tau_E \sim \pi_E$, initial policy and discriminator parameters $\theta_0, w_0$
+       \FOR{$i = 0, 1, 2, \dotsc$}
+           \STATE Sample trajectories $\tau_i \sim \pi_{\theta_i}$
+           \STATE Update the discriminator parameters from $w_i$ to $w_{i+1}$ with the gradient
+                  \begin{align} \hat\bbE_{\tau_i}[\nabla_w  \log(D_w(s,a))] + \hat\bbE_{\tau_E}[  \nabla_w  \log(1-D_w(s,a))] \end{align}
+           \STATE Take a policy step from $\theta_i$ to $\theta_{i+1}$, using the TRPO rule with cost function $\log(D_{w_{i+1}}(s,a))$.
+                Specifically, take a KL-constrained natural gradient step with
+                \begin{align} \begin{split}
+                &\hat\bbE_{\tau_i} \left[\nabla_\theta \log\pi_\theta(a|s) Q(s,a) \right] - \lambda \nabla_\theta H(\pi_\theta),  \label{eq:gailgrad} \\
+                &\text{where}\ Q(\bar s, \bar a) = \hat\bbE_{\tau_i}[\log(D_{w_{i+1}}(s,a)) \,|\, s_0=\bar s,a_0=\bar a]
+                \end{split}\end{align}
+       \ENDFOR
+    \end{algorithmic}
+\end{algorithm}
+
+%It presents no particular difficulty and is easily incorporated into the standard policy gradient step.
+
+%
+%
+%We train three neural networks, one for a policy, one for a discriminator, and one for variance reduction for the policy. We take steps for all three, as follows:
+%\begin{enumerate}
+%\item Sample trajectories $\tau \sim \pi_i$
+%\item Update the discriminator with $\tau$
+%\item Use the discriminator to get a cost function, and update $\pi$ with the policy gradient $\nabla_\pi \eta_{c}$ with a generalized advantage estimator
+%\item Update the value function
+%\end{enumerate}
+%
+\section{Experiments} \label{sec:experiments}
+We evaluated \cref{alg:gail} against baselines on 9 physics-based control tasks, ranging from  low-dimensional control tasks from the classic RL literature---the cartpole~\citep{barto1983neuronlike}, acrobot~\citep{geramifard2015rlpy}, and mountain car~\citep{moore1990efficient}---to difficult high-dimensional tasks such as a 3D humanoid locomotion, solved only recently by model-free reinforcement learning~\citep{schulman2015high,schulman2015trust}.
+All environments, other than the classic control tasks, were simulated with MuJoCo~\citep{todorov2012mujoco}.
+See \cref{sec:envs} for a complete description of all the tasks.
+
+Each task comes with a true cost function, defined in the OpenAI Gym~\citep{gym}.
+We first generated expert behavior for these tasks by running TRPO~\citep{schulman2015trust} on these true cost functions to create expert policies.
+Then, to evaluate imitation performance with respect to sample complexity of expert data, we sampled datasets of varying trajectory counts from the expert policies.
+The trajectories constituting each dataset each consisted of about 50 state-action pairs.
+We tested \cref{alg:gail} against three baselines:
+\begin{enumerate}
+\item Behavioral cloning: a given dataset of state-action pairs is split into 70\% training data and 30\% validation data.
+The policy is trained with supervised learning, using Adam~\citep{kingma2014adam} with minibatches of 128 examples, until validation error stops decreasing.
+\item Feature expectation matching (FEM): the algorithm of~\citet{ho2016model} using the cost function class $\mathcal{C}_\text{linear}$~\labelcref{eq:linconvcosts} of~\citet{abbeel2004apprenticeship}
+\item Game-theoretic apprenticeship learning (GTAL): the algorithm of~\citet{ho2016model} using the cost function class $\mathcal{C}_\text{convex}$~\labelcref{eq:linconvcosts} of~\citet{syed2007game}
+\end{enumerate}
+We used all algorithms to train policies of the same neural network architecture for all tasks: two hidden layers of 100 units each, with $\tanh$ nonlinearities in between.
+The discriminator networks for \cref{alg:gail} also used the same architecture.
+All networks were always initialized randomly at the start of each trial. For each task, we gave FEM, GTAL, and \cref{alg:gail} exactly the same amount of environment interaction for training.
+
+
+\Cref{fig:results} depicts the results, and the tables in \cref{sec:envs} provide exact performance numbers.
+We found that on the classic control tasks (cartpole, acrobot, and mountain car), behavioral cloning suffered in expert data efficiency compared to FEM and GTAL, which for the most part were able produce policies with near-expert performance with a wide range of dataset sizes.
+On these tasks, our generative adversarial algorithm always produced policies performing better than behavioral cloning, FEM, and GTAL.
+However, behavioral cloning performed excellently on the Reacher task, on which it was more sample efficient than our algorithm.
+We were able to slightly improve our algorithm's performance on Reacher using causal entropy regularization---in the 4-trajectory setting, the improvement from $\lambda=0$ to $\lambda=10^{-3}$ was statistically significant over training reruns, according to a one-sided Wilcoxon rank-sum test with $p=.05$.
+We used no causal entropy regularization for all other tasks.
+
+\setlength{\belowcaptionskip}{-5pt}
+\newsavebox{\largestimage}
+\begin{figure}
+  \centering
+  \savebox{\largestimage}{\includegraphics[width=.71\textwidth]{intermediate/plots.pdf}}%
+  \subcaptionbox[c]{}{ %[b]{0.75\textwidth}
+      \usebox{\largestimage}
+  }\hfill
+  \subcaptionbox[c]{}{ %[b]{0.2\textwidth}
+    \raisebox{\dimexpr.5\ht\largestimage-.5\height}{%
+      \includegraphics[width=.25\textwidth]{intermediate/reacher_plot.pdf}}
+    % \caption{
+  } %\end{subfigure}
+  \caption{(a) Performance of learned policies. The $y$-axis is negative cost, scaled so that the expert achieves 1 and a random policy achieves 0. (b) Causal entropy regularization $\lambda$ on Reacher.}
+  \label{fig:results}
+\end{figure}
+
+On the other MuJoCo environments, we saw a large performance boost for our algorithm over the baselines.
+Our algorithm almost always achieved at least 70\% of expert performance for all dataset sizes we tested, nearly always dominating all the baselines.
+FEM and GTAL performed poorly for Ant, producing policies consistently worse than a policy that chooses actions uniformly at random.
+Behavioral cloning was able to reach satisfactory performance with enough data on HalfCheetah, Hopper, Walker, and Ant;
+but was unable to achieve more than 60\% for Humanoid, on which our algorithm achieved exact expert performance for all tested dataset sizes.
+
+\section{Discussion and outlook}
+
+As we demonstrated, our method is generally quite sample efficient in terms of expert data.
+However, it is not particularly sample efficient in terms of environment interaction during training.
+The number of such samples required to estimate the imitation objective gradient~\labelcref{eq:gailgrad} was comparable to
+the number needed for TRPO to train the expert policies from reinforcement signals.
+We believe that we could significantly improve learning speed for our algorithm by initializing policy parameters with behavioral cloning, which requires no environment interaction at all.
+
+Fundamentally, our method is model free, so it will generally need more environment interaction than model-based methods.
+Guided cost learning~\citep{finn2016guided}, for instance, builds upon guided policy search~\citep{levine2014learning} and inherits its sample efficiency, but also inherits its requirement that the model is well-approximated by iteratively fitted time-varying linear dynamics.
+Interestingly, both our \cref{alg:gail} and guided cost learning alternate between policy optimization steps and cost fitting (which we called discriminator fitting), even though the two algorithms are derived completely differently.
+
+Our approach builds upon a vast line of work on IRL~\citep{ziebart2008maximum,abbeel2004apprenticeship,syed2008apprenticeship,syed2007game}, and hence, just like IRL, our approach does not interact with the expert during training.
+Our method explores randomly to determine which actions bring a policy's occupancy measure closer to the expert's, whereas methods that do interact with the expert, like DAgger~\citep{ross2011reduction}, can simply ask the expert for such actions.
+Ultimately, we believe that a method that combines well-chosen environment models with expert interaction  will win in terms of sample complexity of both expert data and environment interaction.
+
+%we proposed an imitation learning method that directly learns policies from data in a model-free setting without expert interaction. Our method estimates policy gradients of an imitation objective by sampling policy trajectories, just like other model-free policy search algorithms for RL. Our method therefore inherits the cons of model-free policy search: it is not particularly sample efficient, requiring 
+
+%, which has been used to explain routes of taxi drivers and pedestrians~\citep{ziebart2008maximum,ziebart2009planning,kitani2012activity}, migration patterns of African pastoralists~\citep{ermon2015learning}, and body movements of socially interacting human subjects~\citep{huang2015approximate}.
+%
+%\citep{ratliff2006maximum}
+
+
+%Remark: all the proofs and conversion techniques work for policy regularizers other than the causal entropy $H$; as long as the function is strictly convex in occupancy measure space, everything works; and in fact it doesn't have to be strict for the primal problem to make sense, but then we lose the interpretation as IRL->RL. This makes sense: $H$ was introduced to disambiguate the IRL problem, to force the produced cost to have the expert as its uniquely optimal policy; if we solve the primal directly, then we don't need it.
+
+
+\subsubsection*{Acknowledgments}
+We thank Jayesh K. Gupta and John Schulman for assistance and advice. This work was supported by the SAIL-Toyota Center for AI Research, and by a NSF Graduate Research Fellowship (grant no. DGE-114747).
+
+{
+\small
+\setlength{\bibsep}{0pt plus 0.3ex}
+\bibliography{imitation_nips2016}
+}
+
+
+\clearpage
+\appendix
+\section{Proofs} \label{sec:proofs}
+
+\subsection{\texorpdfstring{Proofs for \cref{sec:characterizing}}{Proofs for Section 3}} \label{sec:proofs1}
+\begin{proof}[Proof of \cref{occmeascausalent}]
+%Statement: Let $\bar H(\rho) = -\sum_{s,a} \rho(s,a)\log ( \rho(s,a) / \sum_{a'}\rho(s,a') )$. Then, $\bar H$ is strictly concave, and for all $\pi \in \Pi$ and $\rho \in \mathcal{D}$, we have $H(\pi) = \bar H(\rho_\pi)$ and $\bar H(\rho) = H(\pi_\rho)$.
+
+First, we show strict concavity of $\bar H$. Let $\rho$ and $\rho'$ be occupancy measures, and suppose $\lambda \in [0,1]$. For all $s$ and $a$, the log-sum inequality~\citep{cover2012elements} implies:
+\begin{align}
+  - &(\lambda \rho(s,a) + (1-\lambda)\rho'(s,a) )\log \frac{\lambda \rho(s,a) + (1-\lambda)\rho'(s,a) }{\sum_{a'}(\lambda \rho(s,a') + (1-\lambda)\rho'(s,a') )} \\
+ &= -(\lambda \rho(s,a) + (1-\lambda)\rho'(s,a) )\log \frac{\lambda \rho(s,a) + (1-\lambda)\rho'(s,a) }{\lambda \sum_{a'}\rho(s,a') + (1-\lambda)\sum_{a'}\rho'(s,a')} \\
+ &\geq -\lambda \rho(s,a)\log\frac{\lambda\rho(s,a)}{\lambda\sum_{a'}\rho(s,a')} - (1-\lambda)\rho'(s,a)\log\frac{(1-\lambda)\rho'(s,a)}{(1-\lambda)\sum_{a'}\rho'(s,a')} \\
+ &= \lambda \left(-\rho(s,a)\log\frac{\rho(s,a)}{\sum_{a'}\rho(s,a')}\right) + (1-\lambda)\left(-\rho'(s,a)\log\frac{\rho'(s,a)}{\sum_{a'}\rho'(s,a')}\right),
+ \end{align}
+ with equality if and only if $\pi_\rho \triangleq \rho(s,a)/\sum_{a'}\rho(s,a') = \rho'(s,a)/\sum_{a'}\rho'(s,a') \triangleq \pi_{\rho'}$.
+Summing both sides over all $s$ and $a$ shows that $\bar H(\lambda\rho + (1-\lambda)\rho') \geq \lambda \bar H(\rho) + (1-\lambda)\bar H(\rho')$ with equality if and only if $\pi_\rho = \pi_{\rho'}$. Applying \cref{syedthm2} shows that equality in fact holds if and only if $\rho = \rho'$, so $\bar H$ is strictly concave.
+
+Now, we turn to verifying the last two statements, which also follow from~\cref{syedthm2} and the definition of occupancy measures. First,
+\begin{align}
+H(\pi) &= \bbE_{\pi}[-\log \pi(a|s)] \\
+&= -\sum_{s,a}\rho_\pi(s,a) \log \pi(a|s) \\
+&= -\sum_{s,a}\rho_\pi(s,a) \log\frac{\rho_\pi(s,a)}{\sum_{a'}\rho_\pi(s,a')} \\
+&= \bar H(\rho_\pi), \\
+\intertext{and second,}
+\bar H(\rho) &= -\sum_{s,a}\rho(s,a)\log\frac{\rho(s,a)}{\sum_{a'}\rho(s,a')} \\
+&= -\sum_{s,a}\rho_{\pi_\rho}(s,a)\log \pi_\rho(a|s) \\
+&= \bbE_{\pi_\rho}[-\log \pi_\rho(a|s)] \\ &
+= H(\pi_\rho).
+\end{align}
+\end{proof}
+
+\begin{proof}[Proof of \cref{conversion}]
+%Let $\tilde \pi = \rl \circ \irl_{\psi} (\pi_E) = \argmax_\pi -H(\pi)$. Expanding the Fenchel conjugate gives:
+%\begin{align*}
+%\tilde\pi &= \argmin_\pi \max_c -H(\pi)  -\psi(c) + \sum_{s,a}(\rho_\pi(s,a) - \rho_{\pi_E}(s,a))c(s,a)
+%\end{align*}
+This proof relies on properties of saddle points. For a reference, we refer the reader to \citet[section VII.4]{hiriart1996convex}.
+
+Let $\tilde c \in \irl_{\psi}(\pi_E)$, $\tilde \pi \in \rl(\tilde c) = \rl\circ\irl_\psi(\pi_E)$, and
+\begin{align}
+\pi_A &\in \argmin_\pi -H(\pi) + \psi^*(\rho_\pi - \rho_{\pi_E}) \\
+&=\argmin_\pi \max_c -H(\pi)  -\psi(c) + \sum_{s,a}(\rho_\pi(s,a) - \rho_{\pi_E}(s,a))c(s,a)
+\end{align}
+We wish to show that $\pi_A = \tilde \pi$. To do this, let $\rho_A$ be the occupancy measure of $\pi_A$, let $\tilde \rho$ be the occupancy measure of $\tilde \pi$, and define $\bar L : \mathcal{D} \times \allC \rightarrow \bbR$ by
+\begin{align}
+\bar L(\rho,c) &= -\bar H(\rho) -\psi(c) + \sum_{s,a}\rho(s,a)c(s,a) - \sum_{s,a}\rho_{\pi_E}(s,a)c(s,a).
+\end{align}
+
+The following relationships then hold, due to~\cref{syedthm2}:
+\begin{align}
+\rho_A &\in \argmin_{\rho\in\mathcal{D}} \max_c \bar L(\rho, c), \label{eq:relationships1} \\
+\tilde c &\in \argmax_c \min_{\rho\in\mathcal{D}} \bar L(\rho, c), \label{eq:relationships2} \\
+\tilde \rho &\in \argmin_{\rho\in\mathcal{D}} \bar L(\rho, \tilde c). \label{eq:relationships3}
+\end{align}
+Now $\mathcal{D}$ is compact and convex and $\allC$ is convex; furthermore, due to convexity of $-\bar H$ and $\psi$, we also have that $\bar L(\cdot,c)$ is convex for all $c$, and that $\bar L(\rho, \cdot)$ is concave for all $\rho$. Therefore, we can use minimax duality~\citep{millar1983minimax}:
+\begin{align}
+\min_{\rho\in\mathcal{D}} \max_{c\in\mathcal{C}} \bar L(\rho, c) =  \max_{c\in\mathcal{C}}\min_{\rho\in\mathcal{D}} \bar L(\rho,c)
+\end{align}
+Hence, from \cref{eq:relationships1,eq:relationships2}, $(\rho_A, \tilde c)$ is a saddle point of $\bar L$, which implies that
+\begin{align}
+\rho_A \in \argmin_{\rho\in\mathcal{D}} \bar L(\rho, \tilde c). \label{eq:relationships4}
+\end{align}
+Because $\bar L(\cdot, c)$ is strictly convex for all $c$ (\cref{occmeascausalent}), \cref{eq:relationships4,eq:relationships3} imply $\rho_A = \tilde \rho$. Since policies corresponding to occupancy measures are unique (\cref{syedthm2}), we get~$\pi_A = \tilde \pi$.
+\end{proof}
+
+
+
+\subsection{\texorpdfstring{Proofs for \cref{sec:gail}}{{Proofs for Section 5}}} \label{sec:proofs2}
+
+In \cref{eq:psiga} of \cref{sec:gail}, we described a cost regularizer $\psiga$, which leads to an imitation learning algorithm \labelcref{eq:gail} that minimizes Jensen-Shannon divergence between occupancy measures.
+To justify our choice of $\psiga$, we show how to convert certain surrogate loss functions $\phi$,
+for binary classification of state-action pairs drawn from the occupancy measures $\rho_\pi$ and $\rho_{\pi_E}$,
+into cost function regularizers $\psi$, for which $\psi^*(\rho_\pi - \rho_{\pi_E})$
+is the minimum expected risk $R_\phi(\rho_\pi,\rho_{\pi_E})$ for $\phi$:
+\begin{align}
+R_\phi(\pi,\pi_E) &= \sum_{s,a}\min_{\gamma\in\bbR}\ \rho_\pi(s,a)\phi(\gamma) + \rho_{\pi_E}(s,a)\phi(-\gamma)
+\end{align}
+Specifically, we will restrict ourselves to strictly decreasing convex loss functions.
+\citet{nguyen2009surrogate} show a correspondence between minimum expected risks $R_\phi$ and $f$-divergences,
+of which Jensen-Shannon divergence is a special case.
+Our following construction, therefore, can generate any imitation learning algorithm that minimizes an $f$-divergence between occupancy measures,
+as long as that $f$-divergence is induced by a strictly decreasing convex surrogate $\phi$.
+
+
+\begin{proposition}\label{prop:riskconv}
+Suppose $\phi : \bbR \rightarrow \bbR$ is a strictly decreasing convex function.
+Let $T$ be the range of $-\phi$, and define $g_\phi : \bbR \rightarrow \extR$ and $\psi_\phi : \allC \rightarrow \extR$ by:
+\begin{align} \begin{split} \label{eq:genericconv} 
+g_\phi(x) &= \begin{dcases*} -x + \phi(-\phi^{-1}(-x)) & if $x \in T$ \\ +\infty & otherwise \end{dcases*} \\
+\psi_\phi(c) &= \begin{dcases*} \sum_{s,a}\rho_{\pi_E}(s,a)g_\phi(c(s,a)) & if $c(s,a) \in T$ for all $s,a$ \\  +\infty & otherwise \end{dcases*}
+\end{split} \end{align}
+Then, $\psi_\phi$ is closed, proper, and convex, and ${\rl\circ\irl_{\psi_\phi}(\pi_E) = \argmin_\pi -H(\pi) - R_\phi(\rho_\pi, \rho_{\pi_E})}$.
+\begin{proof}
+To verify the first claim, it suffices to check that $g_\phi(x) = -x + \phi(-\phi^{-1}(-x))$ is closed, proper, and convex.
+Convexity follows from the fact that $x \mapsto \phi(-\phi^{-1}(-x))$ is convex, because it is a concave function followed by a nonincreasing convex function. Furthermore, because $T$ is nonempty, $g_\phi$ is proper.
+To show that $g_\phi$ is closed, note that because $\phi$ is strictly decreasing and convex, the range of $\phi$ is either all of $\bbR$ or an open interval $(b, \infty)$ for some $b \in \bbR$.
+If the range of $\phi$ is $\bbR$, then $g_\phi$ is finite everywhere and is therefore closed.
+On the other hand, if the range of $\phi$ is $(b, \infty)$, then $\phi(x) \rightarrow b$ as $x \rightarrow \infty$, and $\phi(x) \rightarrow \infty$ as $x \rightarrow -\infty$.
+Thus, as $x \rightarrow b$, $\phi^{-1}(-x) \rightarrow \infty$, so $\phi(-\phi^{-1}(-x)) \rightarrow \infty$ too, implying that $g_\phi(x) \rightarrow \infty$ as $x \rightarrow b$, which means $g_\phi$ is closed.
+
+Now, we verify the second claim.
+By \cref{conversion}, all we need to check is that $-R_\phi(\rho_\pi, \rho_{\pi_E}) = \psi_\phi^*(\rho_\pi-\rho_{\pi_E})$:
+\begin{align}
+\psi_\phi^*(\rho_\pi-\rho_{\pi_E}) &= \max_{c\in\mathcal{C}} \sum_{s,a}(\rho_\pi(s,a)-\rho_{\pi_E}(s,a))c(s,a) - \sum_{s,a}\rho_{\pi_E}(s,a)g_\phi(c(s,a))  \\
+&=  \sum_{s,a} \max_{c \in T}\ (\rho_\pi(s,a)-\rho_{\pi_E}(s,a))c - \rho_{\pi_E}(s,a)[-c + \phi(-\phi^{-1}(-c))] \\
+&=  \sum_{s,a} \max_{c \in T}\ \rho_\pi(s,a)c - \rho_{\pi_E}(s,a)\phi(-\phi^{-1}(-c)) \\
+&=  \sum_{s,a} \max_{\gamma \in \bbR}\ \rho_\pi(s,a)(-\phi(\gamma)) - \rho_{\pi_E}(s,a)\phi(-\phi^{-1}(\phi(\gamma))) \\
+&=  \sum_{s,a} \max_{\gamma \in \bbR}\ \rho_\pi(s,a)(-\phi(\gamma)) - \rho_{\pi_E}(s,a)\phi(-\gamma) \\
+&= -R_\phi(\rho_\pi, \rho_{\pi_E})
+\end{align}
+where we made the change of variables $c \rightarrow -\phi(\gamma)$, justified because $T$ is the range of $-\phi$.
+\end{proof}
+\end{proposition}
+
+Having showed how to construct a cost function regularizer $\psi_\phi$ from $\phi$, we obtain, as a corollary, a cost function regularizer for the logistic loss, whose optimal expected risk is, up to a constant, the Jensen-Shannon divergence.
+\begin{corollary}
+\label{cor:jsd}
+The cost regularizer~\labelcref{eq:psiga}
+\begin{align*}
+\psiga(c) \triangleq \begin{dcases*} \bbE_{\pi_E}[g(c(s,a))] & if $c < 0$ \\ +\infty & otherwise \end{dcases*} \quad\text{where}\quad g(x) = \begin{dcases*}-x-\log(1-e^x) & if $x < 0$ \\ +\infty & otherwise\end{dcases*}
+\end{align*}
+satisfies
+\begin{align}
+\psiga^*(\rho_\pi - \rho_{\pi_E}) = \max_{D \in (0,1)^{\mathcal{S} \times \mathcal{A}}} \bbE_{\pi}[\log(D(s,a))] + \bbE_{\pi_E}[\log(1-D(s,a))].
+\end{align}
+\begin{proof}
+Using the logistic loss $\phi(x) = \log(1+e^{-x})$, we see that \cref{eq:genericconv} reduces to the claimed $\psiga$.
+Applying \cref{prop:riskconv}, we get
+\begin{align}
+\psiga^*(\rho_\pi - \rho_{\pi_E}) &= -R_\phi(\rho_\pi, \rho_{\pi_E}) \\
+&= \sum_{s,a} \max_{\gamma\in\bbR}\ \rho_\pi(s,a)\log\left(\frac{1}{1+e^{-\gamma}}\right) + \rho_{\pi_E}(s,a)\log\left(\frac{1}{1+e^{\gamma}}\right) \\
+&= \sum_{s,a} \max_{\gamma\in\bbR}\ \rho_\pi(s,a)\log\left(\frac{1}{1+e^{-\gamma}}\right) + \rho_{\pi_E}(s,a)\log\left(1 - \frac{1}{1+e^{-\gamma}}\right) \\
+&= \sum_{s,a} \max_{\gamma\in\bbR}\ \rho_\pi(s,a)\log(\sigma(\gamma)) + \rho_{\pi_E}(s,a)\log(1 - \sigma(\gamma)), \\
+\intertext{where $\sigma(x) = 1/(1+e^{-x})$ is the sigmoid function. Because the range of $\sigma$ is $(0,1)$, we can write}
+\psiga^*(\rho_\pi - \rho_{\pi_E}) &= \sum_{s,a} \max_{d \in (0,1)}\ \rho_\pi(s,a)\log d + \rho_{\pi_E}(s,a)\log(1 - d) \\
+&= \max_{D \in (0,1)^{\mathcal{S} \times \mathcal{A}}}\ \sum_{s,a} \rho_\pi(s,a)\log(D(s,a)) + \rho_{\pi_E}(s,a)\log(1 - D(s,a)),
+\end{align}
+which is the desired expression.
+\end{proof}
+\end{corollary}
+
+We conclude with a policy gradient formula for causal entropy.
+\begin{lemma} \label{entgrad}
+The causal entropy gradient is given by
+\begin{align}\begin{split}
+\nabla_\theta \bbE_{\pi_\theta}[-\log \pi_\theta(a|s)] &= \bbE_{\pi_\theta} \left[\nabla_\theta \log\pi_\theta(a|s) Q_{\mathrm{log}}(s,a) \right], \\
+\text{where}\quad Q_{\mathrm{log}}(\bar s,\bar a) &= \bbE_{\pi_\theta}[-\log\pi_\theta(a|s) \,|\, s_0=\bar s, a_0 = \bar a].
+\end{split}\end{align}
+\begin{proof}
+For an occupancy measure $\rho(s,a)$, define $\rho(s) = \sum_a \rho(s,a)$. Next,
+\begin{align*}
+\nabla_\theta \bbE_{\pi_\theta}[-\log \pi_\theta(a|s)] &= -\nabla_\theta \sum_{s,a}\rho_{\pi_\theta}(s,a)\log \pi_\theta(a|s) \\
+&= -\sum_{s,a} (\nabla_\theta \rho_{\pi_\theta}(s,a))\log \pi_\theta(a|s) - \sum_{s} \rho_{\pi_\theta}(s)\sum_a\pi_\theta(a|s)\nabla_\theta\log \pi_\theta(a|s) \\
+&= -\sum_{s,a} (\nabla_\theta \rho_{\pi_\theta}(s,a))\log \pi_\theta(a|s) - \sum_{s} \rho_{\pi_\theta}(s)\sum_a\nabla_\theta \pi_\theta(a|s)
+\end{align*}
+The second term vanishes, because $\sum_a\nabla_\theta \pi_\theta(a|s) = \nabla_\theta \sum_a \pi_\theta(a|s) = \nabla_\theta 1 = 0$.
+We are left with
+\begin{align*}
+\nabla_\theta \bbE_{\pi_\theta}[-\log \pi_\theta(a|s)] &= \sum_{s,a} (\nabla_\theta \rho_{\pi_\theta}(s,a))(-\log \pi_\theta(a|s)),
+\end{align*}
+which is the policy gradient for RL with the fixed cost function $c_\mathrm{log}(s,a) \triangleq -\log\pi_\theta(a|s)$. The resulting formula is given by the standard policy gradient formula for $c_\mathrm{log}$.
+\end{proof}
+\end{lemma}
+
+\section{Environments and detailed results} \label{sec:envs}
+The environments we used for our experiments are from the OpenAI Gym~\citep{gym}. The names and version numbers of these environments are listed in \cref{table:envs}, which also lists dimension or cardinality of their observation and action spaces (numbers marked ``continuous'' indicate dimension for a continuous space, and numbers marked ``discrete'' indicate cardinality for a finite space).
+
+\begin{table}[h]
+  \centering
+  \scriptsize
+  \caption{Environments}
+  \label{table:envs}
+
+  \begin{adjustbox}{center}
+    \begin{tabular}{lcccc}
+      \toprule
+      \input{intermediate/env_table.tex}
+      \bottomrule
+    \end{tabular}
+  \end{adjustbox}
+\end{table}
+
+The amount of environment interaction used for FEM, GTAL, and our algorithm is shown in \cref{table:params}.
+To reduce gradient variance for these three algorithms, we also fit value functions, with the same neural network architecture as the policies, and employed generalized advantage estimation~\citep{schulman2015high} (with $\gamma=.995$ and $\lambda=.97$).
+The exact experimental results are listed in \cref{table:results}. Means and standard deviations are computed over 50 trajectories.
+For the cartpole, mountain car, acrobot, and reacher, these statistics are further computed over 7 policies learned from random initializations.
+
+\begin{table}[h]
+  \centering
+  \scriptsize
+  \caption{Parameters for FEM, GTAL, and \cref{alg:gail}}
+  \label{table:params}
+
+  \begin{adjustbox}{center}
+    \begin{tabular}{lcc}
+      \toprule
+        Task & Training iterations & State-action pairs per iteration \\
+        \midrule
+        Cartpole & 300 & 5000 \\
+        Mountain Car & 300 & 5000 \\
+        Acrobot & 300 & 5000 \\
+        Reacher & 200 & 50000 \\
+        HalfCheetah & 500 & 50000 \\
+        Hopper & 500 & 50000 \\
+        Walker & 500 & 50000 \\
+        Ant & 500 & 50000 \\
+        Humanoid & 1500 & 50000 \\
+      \bottomrule
+    \end{tabular}
+  \end{adjustbox}
+\end{table}
+
+\begin{table}[b]
+  \centering
+  \scriptsize
+  \caption{Learned policy performance}
+  \label{table:results}
+
+  \begin{adjustbox}{center}
+    \begin{tabular}{lccccc}
+      \toprule
+      \input{intermediate/main_table.tex}
+      \midrule
+      \input{intermediate/reacher_table.tex}
+      \bottomrule
+    \end{tabular}
+  \end{adjustbox}
+\end{table}
+
+
+\end{document}

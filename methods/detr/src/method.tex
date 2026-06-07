@@ -1,0 +1,126 @@
+\section{The \detr model}
+
+Two ingredients are essential for direct set predictions in detection: (1) a set prediction loss that %
+forces unique matching between predicted and ground truth boxes; (2) an architecture that predicts (in a single pass) a set of objects and models their relation. We describe our architecture in detail in Figure~\ref{fig:architecture}.
+
+
+
+\subsection{Object detection set prediction loss}
+\label{sec:set_loss}
+
+
+
+\detr infers a fixed-size set of $N$ predictions, in a single pass through the decoder, where $N$ is set to be significantly larger than the typical number of objects in an image. One of the main difficulties of training is to score predicted objects (class, position, size) with respect to the ground truth. Our loss produces an optimal bipartite matching between predicted and ground truth objects, and then optimize object-specific (bounding box) losses.
+
+Let us denote by $y$ the ground truth set of objects, and $\hy = \{\hy_i\}_{i=1}^{N}$ the set of $N$ predictions.
+Assuming $N$ is larger than the number of objects in the image,
+we consider $y$ also as a set of size $N$ padded with $\noobject$ (no object).
+To find a bipartite matching between these two sets we search for a permutation of $N$ elements $\sigma \in \Sigma_N$ with the lowest cost:
+\begin{equation}
+\label{eq:matching}
+    \hat{\sigma} = \argmin_{\sigma\in\Sigma_N} \sum_{i}^{N} \lmatch{y_i, \hy_{\sigma(i)}},
+\end{equation}
+where $\lmatch{y_i, \hy_{\sigma(i)}}$ is a pair-wise \emph{matching cost} between ground truth $y_i$ and a prediction with index $\sigma(i)$. This optimal assignment is computed efficiently with the Hungarian algorithm, following prior work (\eg ~\cite{Stewart2015EndtoEndPD}).
+
+The matching cost takes into account both the class prediction and the similarity of predicted and ground truth boxes. Each element $i$ of the ground truth set can be seen as a $y_i = (c_i, b_i)$ where $c_i$ is the target class label (which may be $\noobject$) and $b_i \in [0, 1]^4$ is a vector that defines ground truth box center coordinates and its height and width relative to the image size. For the prediction with index $\sigma(i)$ we define probability of class $c_i$ as $\hp_{\sigma(i)}(c_i)$ and the predicted box as $\hb_{\sigma(i)}$. With these notations we define
+$\lmatch{y_i, \hy_{\sigma(i)}}$ as $-\indic{c_i\neq\noobject}\hp_{\sigma(i)}(c_i) + \indic{c_i\neq\noobject} \bloss{b_{i}, \hb_{\sigma(i)}}$.
+
+
+This procedure of finding matching plays the same role as the heuristic assignment rules used to match proposal~\cite{Ren2015FasterRT} or anchors~\cite{lin2017feature} to ground truth objects in modern detectors. The main difference is that we need to find one-to-one matching for direct set prediction without duplicates.
+
+The second step is to compute the loss function, the \emph{Hungarian loss} for all pairs matched in the previous step. We define the loss similarly to the losses of common object detectors, \ie a linear combination of a negative log-likelihood for class prediction and a box loss defined later:
+\begin{equation}
+\hloss{y, \hy} = \sum_{i=1}^N \left[-\log  \hp_{\hat{\sigma}(i)}(c_{i}) + \indic{c_i\neq\noobject} \bloss{b_{i}, \hb_{\hat{\sigma}}(i)}\right]\,,
+\end{equation}
+where $\hat{\sigma}$ is the optimal assignment computed in the first step (\ref{eq:matching}). In practice, we down-weight the log-probability term when $c_i=\noobject$ by a factor $10$ to account for class imbalance. This is analogous to how Faster R-CNN training procedure balances positive/negative proposals by subsampling \cite{Ren2015FasterRT}.
+Notice that the matching cost between an object and $\noobject$ doesn't depend
+on the prediction, which means that in that case the cost is a constant.
+\oldnew{
+There are subtle differences between $\lmatch{\cdot, \cdot}$ and $\hloss{\cdot,
+  \cdot}$. Firstly, in}{In} the matching cost we use probabilities
+$\hp_{\hat{\sigma}(i)}(c_{i})$ instead of log-probabilities. This makes the
+class prediction term commensurable to $\bloss{\cdot, \cdot}$ (described below),
+and we observed better empirical performances. \oldnew{The second difference is that in
+the $\bloss{\cdot, \cdot}$ described below, we replace the L1 norm by a L2 norm.}{}
+
+
+
+
+
+
+\subsubsection{Bounding box loss.} The second part of the matching cost and the Hungarian loss is $\bloss{\cdot}$ that scores the bounding boxes. Unlike many detectors that do box predictions as a $\Delta$ \wrt some initial guesses, we make box predictions directly.
+While such approach simplify the implementation it poses an issue  with relative scaling of the loss.
+The most commonly-used $\ell_1$ loss will have different scales for small and large boxes even if their relative errors are similar.
+To mitigate this issue we use a linear combination of the $\ell_1$ loss and the generalized IoU loss~\cite{Rezatofighi_2018_CVPR} $\iouloss{\cdot, \cdot}$ that is scale-invariant.
+Overall, our box loss is $\bloss{b_{i}, \hb_{\sigma(i)}}$ defined as $\lambda_{\rm iou}\iouloss{b_{i}, \hb_{\sigma(i)}} + \lambda_{\rm L1}||b_{i}- \hb_{\sigma(i)}||_1$ where $\lambda_{\rm iou}, \lambda_{\rm L1}\in\Re$ are hyperparameters. 
+These two losses are normalized by the number of objects inside the batch.
+
+
+
+\subsection{\detr architecture}
+\label{sec:architecture}
+
+The overall \detr architecture is surprisingly simple and depicted in  Figure~\ref{fig:architecture}. It contains three main components, which we describe below: a CNN backbone to extract a compact feature representation, an encoder-decoder transformer, and a simple feed forward network~(FFN) that makes the final detection prediction.
+
+Unlike many modern detectors, \detr can be implemented in any deep learning framework that provides a common CNN backbone and a transformer architecture implementation with just a few hundred lines. Inference code for \detr can be implemented in less than 50 lines in PyTorch~\cite{Pytorch}. We hope that the simplicity of our method will attract new researchers to the detection community.
+
+
+
+
+\begin{figure}[t]
+    \centering\small
+    \includegraphics[width=1.0\columnwidth]{./figures/DETR_detail_seagulls}
+    \caption{
+    \detr uses a conventional CNN backbone to learn a 2D representation of an input image.
+    The model flattens it and supplements it with a positional encoding before
+    passing it into a transformer encoder.
+    A transformer decoder then takes as input a small fixed number of learned positional embeddings,
+    which we call \emph{object queries},  and additionally attends to the encoder output.
+    We pass each output embedding of the decoder to a shared feed forward
+    network (FFN) that predicts either a detection (class and bounding box) or a ``{\tt no object}'' class.
+    \label{fig:architecture}
+    }
+\end{figure}
+
+
+\subsubsection{Backbone.} Starting from the initial image $x_{\rm img} \in\Re^{3\times H_0\times W_0}$ (with $3$ color channels\footnote{The input images are batched together, applying 0-padding adequately to ensure they all have the same dimensions $(H_0,W_0)$ as the largest image of the batch.}), a conventional CNN backbone generates a lower-resolution activation map $f \in\Re^{C\times H\times W}$. Typical values we use are $C=2048$ and $H, W = \frac{H_0}{32}, \frac{W_0}{32}$. 
+
+\subsubsection{Transformer encoder.} First, a 1x1 convolution reduces the channel dimension of the high-level activation map $f$ from $C$ to a smaller dimension $\dmodel$. creating a new feature map $z_0 \in \Re^{\dmodel \times H\times W}$. The encoder expects a sequence as input, hence we collapse the spatial dimensions of $z_0$ into one dimension, resulting in a $\dmodel\times HW$ feature map.
+Each encoder layer has a standard architecture and consists of a multi-head self-attention module and a feed forward network (FFN). 
+Since the transformer architecture is permutation-invariant, we supplement it %
+with fixed positional encodings~\cite{Parmar2018ImageT,Bello2019AttentionAC}
+that are added to the input of each attention layer.  We defer to the supplementary material the detailed definition of the architecture, which follows the one described in~\cite{Vaswani2017AttentionIA}. 
+
+
+
+\subsubsection{Transformer decoder.} 
+
+The decoder follows the standard architecture of the transformer, transforming $N$ embeddings of size $d$ using multi-headed self- and encoder-decoder attention mechanisms. The difference with the original transformer is that our model decodes the $N$ objects in parallel at each decoder layer, while Vaswani et al. \cite{Vaswani2017AttentionIA} use an autoregressive model that predicts the output sequence one element at a time. We refer the reader unfamiliar with the concepts to the supplementary material. %
+Since the decoder is also permutation-invariant, the $N$ input embeddings must be different to produce different results. These input embeddings are learnt positional encodings that we refer to as \emph{object queries}, and similarly to the encoder, we add them to the input of each attention layer.
+The $N$ object queries are transformed into an output embedding by the decoder. They are then
+\emph{independently} decoded into box coordinates and class labels by a %
+feed forward network (described in the next subsection), resulting $N$ final predictions. Using self- and encoder-decoder attention over these embeddings, the model globally reasons about all objects %
+together using pair-wise relations between them, while being able to use the whole image as context. 
+
+
+\subsubsection{Prediction feed-forward networks (FFNs).}
+The final prediction is
+computed by \oldnew{two 3-layers}{a 3-layer} perceptron with ReLU activation function and hidden
+dimension $d$, \oldnew{}{and a linear projection layer.}
+The \oldnew{first}{} FFN predicts the normalized center coordinates, height and width of the box \wrt the input image, and the \oldnew{second one}{linear layer} predicts the class label using a softmax function. Since we predict a fixed-size set of $N$ bounding boxes, where $N$ is usually much larger than the actual number of objects of interest in an image, an additional special class label $\noobject$ is used to represent that no object is detected within a slot. This class plays a similar role to the ``background'' class in the standard object detection approaches.
+
+\subsubsection{Auxiliary decoding losses.}
+\label{sec:deep_supervision}
+We found helpful to use auxiliary losses~\cite{al2019character} in decoder
+during training, especially to help the model output the correct number of
+objects of each class.
+We add prediction FFNs and Hungarian loss after each decoder layer. \oldnew{The parameters of the prediction FFNs are shared across layers}{All predictions FFNs share their parameters}. We use an additional shared layer-norm to normalize the input to the prediction FFNs from different decoder layers.
+
+\oldnew{\subsection{Extending \detr to higher resolution feature maps}
+\label{sec:fpn}
+
+Modern detectors~\cite{tian2019fcos,Zhou2019objects,Du2019SpineNetLS,tan2019efficientdet} adopt feature pyramids~\cite{lin2017feature} with up to stride 8 or 4 features maps and use different levels to detect objects at different scales. Such an approach significantly improves detection performance for small objects. 
+We explore an approach to increase the feature resolution popularized by FCIS~\cite{li2017fully}. 
+We add a dilation to the last stage of our CNN backbone and remove stride from the first convolution in the stage. This yields a stride 16 feature map instead of the original stride 32. Similarly to previous works we name this design \detr-DC5 (dilated C5 stage). It improves performance for small objects, but increases the computation cost of the self-attentions in encoder by a factor 16. Since encoder self-attentions are only a fraction of the total computation cost, the overall computational cost increases by a factor 2. A full comparison of FLOPs for \detr, \detr-DC5, and Faster R-CNN is given in Table~\ref{table:frcnn}.
+}{}
+

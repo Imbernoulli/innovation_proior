@@ -1,0 +1,54 @@
+%\noindent
+% \begin{wrapfigure}{r}{0.3\textwidth}
+% \vspace{-1cm}
+% \begin{minipage}{0.99\textwidth}
+\begin{algorithm}[H]
+  	\caption{Advantage Weighted Actor Critic (AWAC)}
+  	\label{alg:method}
+  	\begin{algorithmic}[1]
+  	\STATE Dataset $\mathcal{D} = \{(\st, \at, \st', r)_j\}$
+  	\STATE Initialize buffer $\beta=\mathcal{D}$
+  	\STATE Initialize $\pi_\theta$, $Q_\phi$
+  	\FOR{iteration $i=1, 2, ...$}
+  	    \STATE Sample batch $(\st, \at, \st', r) \sim \beta$
+        % \STATE Update $\phi$ according to Eqn. \ref{eqn:phi_obj}
+        \STATE $y = r(\st, \at) + \gamma \E_{\st',\at'}[Q_{\phi_{k-1}}(\st', \at')]$
+        \STATE $\phi \gets \arg\min_\phi \; \E_\mathcal{D}[(Q_\phi(\st, \at) - y)^2]$
+        % \STATE Update $\theta$ according to Eqn. \ref{eqn:theta_obj}
+        \STATE $\theta \gets \argmax_\theta \; \Ex_{\st, \at \sim \buffer}
+    \left[\log \pi_\theta(\at|\st) \exp \left(\frac{1}{\lagrangeawr}A^{\pi_k}(\st, \at) \right)\right]$
+        \IF {$i >$ num\_offline\_steps}
+            \STATE $\tau_1, \dots, \tau_K \sim p_{\pi_\theta}(\tau)$
+            \STATE $\beta \gets \beta \cup \{\tau_1, \dots, \tau_K\}$
+        \ENDIF
+  	\ENDFOR
+  	\end{algorithmic}
+\end{algorithm}
+% \end{minipage}
+% \vspace{-0.5cm}
+% \end{wrapfigure}
+% \hfill
+
+% \begin{wrapfigure}
+% \begin{minipage}{0.61\textwidth}
+%     \footnotesize
+%     % \tiny
+%     % \raisebox{2.5cm}{
+%     \begin{tabular}{ p{0.15\textwidth}||p{0.08\textwidth}|p{0.2\textwidth}|p{0.06\textwidth}|p{0.24\textwidth}  }
+%         Name & $\hat{Q}$ & $\pi$ Objective & $\hat{\pi}_\beta$? & Constraint \\
+%         \hline
+%         SAC    & $Q^\pi$   & $\KL(\pi_\theta||\bar{Q})$   & No   &  None            \\
+%         SAC+BC & $Q^\pi$   & Mixed   & No   &  None            \\
+%         BCQ    & $Q^\pi$   & $\KL(\pi_\theta||\bar{Q})$   & Yes   &  Support ($\ell^\infty$)  \\
+%         BEAR   & $Q^\pi$   & $\KL(\pi_\theta||\bar{Q})$   & Yes   &  Support (MMD)   \\
+%         AWR    & $Q^\beta$ & $\KL(\bar{Q}||\pi_\theta)$   & No   &  Implicit        \\
+%         MPO    & $Q^\pi$   & $\KL(\bar{Q}||\pi_\theta)$   & Yes$^*$  &  Prior   \\
+%         ABM    & $Q^\pi$   & $\KL(\bar{Q}||\pi_\theta)$   & Yes   &  Learned Prior   \\
+%         DAPG   & -         & $J(\pi_\theta)$   & No   &  None            \\
+%         \textbf{AWAC}   & $Q^\pi$   & $\KL(\bar{Q}||\pi_\theta)$  & No    &  Implicit
+%     \end{tabular}
+%     % }
+% \end{minipage}
+% \end{wrapfigure}
+%%SL.5.29: Is this figure referenced anywhere?
+%%SL.5.29: In general, this needs a bit of work. The diagram on the left has a good idea, but it could really use better aesthetics (see e.g. the diagram I made in the offline RL tutorial for some potential inspiration). The claim that no prior method is able to learn in these domains is false (your experiments don't support it). For the table, we need to work on this. There are a number of issues here: (1) it's not clear why your choices are good; (2) call "Ours" -> "AWAC (Ours)"; (3) the policy objective column is weird -- NPG is not an objective, it's an algorithm, and why Dkl(A|\pi) is the same as Dkl(Q|\pi), because A is just normalized Q. The constraint column is rather cryptic, without more explanation it might not be clear what these words mean. If we can't figure out how to present this table, maybe it's better to just cover this in the text and group the methods accordingly there. But basically, the role of that table should be to make it clear why prior methods can't pretrain+finetune, whereas ours can. Right now the table doesn't really succeed at doing that.

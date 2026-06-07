@@ -1,0 +1,51 @@
+
+\input{tables/sewon-tab-qa.tex}
+
+
+\section{Experiments: Question Answering}
+\label{sec:exp-qa}
+
+In this section, we experiment with how different passage retrievers affect the final QA accuracy.
+
+\subsection{End-to-end QA System}
+
+We implement an end-to-end question answering system in which we can plug different retriever systems directly. 
+Besides the retriever, our QA system consists of a neural \textit{reader} that outputs the answer to the question.
+Given the top $k$ retrieved passages (up to $100$ in our experiments), the reader assigns a passage selection score to each passage.  
+In addition, it extracts an answer span from each passage and assigns a span score.
+The best span from the passage with the highest passage selection score is chosen as the final answer.
+The passage selection model serves as a reranker through cross-attention between the question and the passage. 
+Although cross-attention is not feasible for retrieving relevant passages in a large corpus due to its non-decomposable nature, it has more capacity than the dual-encoder model $\mathrm{sim}(q,p)$ as in Eq.~\eqref{eq:sim}. Applying it to selecting the passage from a small number of retrieved candidates has been shown to work well~\cite{wang2019multi, wang2018r, lin2018denoising}.
+
+Specifically, let $\mathbf{P}_{i} \in \mathbb{R}^{L \times h}$ ($1 \leq i \leq k$) be a BERT (base, uncased in our experiments) representation for the $i$-th passage, where $L$ is the maximum length of the passage and $h$ the hidden dimension.
+The probabilities of a token being the starting/ending positions of an answer span and a passage being selected are defined as:
+\begin{eqnarray}
+    P_{\textrm{start},i}(s)  &=& \mathrm{softmax} \big( \mathbf{P}_{i} \mf{w}_\textrm{start}\big)_s, \\
+    P_{\textrm{end},i}(t) &=& \mathrm{softmax} \big( \mathbf{P}_{i} \mf{w}_\textrm{end}\big)_t, \\
+    P_\textrm{selected}(i) &=& \mathrm{softmax} \big( \mathbf{\hat{P}}^{\intercal} \mf{w}_\mathrm{selected}  \big)_i,
+\end{eqnarray} where $\mathbf{\hat{P}} = [\mathbf{P}_1^{\mathrm{[CLS]}}, \ldots, \mathbf{P}_k^{\mathrm{[CLS]}}] \in \mathbb{R}^{h \times k}$ and $\mf{w}_\textrm{start}, \mf{w}_\textrm{end},\mf{w}_\mathrm{selected} \in \mathbb{R}^{h}$ are learnable vectors. 
+We compute a span score of the $s$-th to $t$-th words from the $i$-th passage as $P_{\textrm{start},i}(s) \times P_{\textrm{end},i}(t)$, and a passage selection score of the $i$-th passage as $P_\textrm{selected}(i)$.
+
+During training, we sample one positive and $\tilde{m}-1$ negative passages from the top 100 passages returned by the retrieval system (BM25 or DPR) for each question.  $\tilde{m}$ is a hyper-parameter and we use $\tilde{m}=24$ in all the experiments. The training objective is to maximize the marginal log-likelihood of all the correct answer spans in the positive passage (the answer string may appear multiple times in one passage), combined with the log-likelihood of the positive passage being selected. We use the batch size of 16 for large (NQ, TriviaQA, SQuAD) and 4 for small (TREC, WQ) datasets, and tune $k$ on the development set. For experiments on small datasets under the {\em Multi} setting, in which using other datasets is allowed, we fine-tune the reader trained on Natural Questions to the target dataset. All experiments were done on eight 32GB GPUs.
+
+
+
+
+\subsection{Results}
+
+Table~\ref{tab:qa_em} summarizes our final end-to-end QA results, measured by \emph{exact match} with the reference answer after minor normalization as  in~\cite{chen2017reading,lee2019latent}.  From the table, we can see that higher retriever accuracy typically leads to better final QA results: 
+in all cases except SQuAD, answers extracted from the passages retrieved by \model/ are more likely to be correct, compared to those from BM25.
+For large datasets like NQ and TriviaQA, models trained using multiple datasets (Multi) perform comparably to those trained using the individual training set (Single).  Conversely, on smaller datasets like WQ and TREC, the multi-dataset setting has a clear advantage. Overall, our \model/-based models outperform the previous state-of-the-art results on four out of the five datasets, with 1\% to 12\% absolute differences in exact match accuracy.
+It is interesting to contrast our results to those of ORQA~\cite{lee2019latent} and also the concurrently developed approach, REALM~\cite{guu2020realm}. While both methods include additional pretraining tasks and employ an expensive end-to-end training regime, \model/ manages to outperform them on both NQ and TriviaQA, simply by focusing on learning a strong passage retrieval model using pairs of questions and answers.
+The additional pretraining tasks are likely more useful only when the target training sets are small. Although the results of \model/ on WQ and TREC in the single-dataset setting are less competitive, adding more question--answer pairs helps boost the performance, achieving the new state of the art.
+
+To compare our pipeline training approach with joint learning, we run an ablation on Natural Questions where the retriever and reader are jointly trained, following \citet{lee2019latent}.
+This approach obtains a score of 39.8 EM, which suggests that our strategy of training a strong retriever and reader in isolation can leverage effectively available supervision, while outperforming a comparable joint training approach with a simpler design (Appendix~\ref{sec:joint}).
+
+One thing worth noticing is that our reader does consider more passages compared to ORQA, although it is not completely clear how much more time it takes for inference. 
+While \model/ processes up to 100 passages for each question, the reader is able to fit all of them into one batch on a single 32GB GPU, thus the latency remains almost identical to the single passage case (around 20ms).
+The exact impact on throughput is harder to measure: ORQA uses 2-3x longer passages compared to DPR (288 word pieces compared to our 100 tokens) and the computational complexity is super-linear in passage length. We also note that we found $k=50$ to be optimal for NQ, and $k=10$ leads to only marginal loss in exact match accuracy (40.8 vs. 41.5 EM on NQ), which should be roughly comparable to ORQA's 5-passage setup.
+
+
+
+

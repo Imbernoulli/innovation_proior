@@ -1,0 +1,54 @@
+%!TEX root = main.tex
+
+\subsection{Black-Rangarajan Duality}
+\label{sec:BRduality}
+
+This section revisits the Black-Rangarajan duality between robust estimation and outlier process~\cite{Black96ijcv-unification}. This theory is less known in robotics, and its applications have been mostly
+targeting early vision problems, with few notable exceptions. 
+
+% \marginpar{this  can be more formal}
+
+\begin{lemma}[Black-Rangarajan Duality~\cite{Black96ijcv-unification}]
+\label{lem:BRduality}
+Given a robust cost function $\rho(\cdot)$, define $\phi(z) \doteq \rho(\sqrt{z})$. 
+If $\phi(z)$ satisfies $\lim_{z\rightarrow 0} \phi'(z) = 1$, $\lim_{z\rightarrow \infty} \phi'(z) = 0$, and $\phi''(z) < 0$, then the robust estimation problem~\eqref{eq:generalEstimation}
+is equivalent to % the following optimization % with outlier process:
+%
+\bea \label{eq:optiOutlierProcess} 
+\min_{\vxx \in \calX, w_i \in [0,1]} \sumAllPointsi  \left[ w_i r^2(\vy_i,\vxx) + \Phi_\rho(w_i) \right],
+\eea
+%
+where $ w_i \in [0,1]$ ($i=1,\dots,N$) are slack variables (or \emph{weights}) associated to each measurement $\vy_i$, 
+and the 
+%the weight (confidence level) for each measurement $\vy_i$. The 
+  function $\Phi_\rho(w_i)$ (the so called \emph{outlier process}) defines a penalty on the weight $w_i$. 
+  The  expression of $\Phi_\rho(w_i)$ depends on the choice of robust cost function $\rho(\cdot)$. 
+\end{lemma}
+
+The conditions on $\rho(\cdot)$ are satisfied by all common choices of robust costs~\cite{Black96ijcv-unification}.  
+Besides presenting this fundamental result, asserting the equivalence between the outlier process~\eqref{eq:optiOutlierProcess}  and the robust estimation~\eqref{eq:generalEstimation}, 
+Black and Rangarajan provide a procedure (see Fig.~10 in~\cite{Black96ijcv-unification}) to compute $\Phi_\rho(w_i)$ 
+and show that common robust cost functions admit a simple analytical expression for $\Phi_\rho(w_i)$. 
+% derive the expression 
+% In addition, using the procedure in~\cite{Black96ijcv-unification}, $\Phi(w_i)$ can be derived in closed form for most robust functions $\rho(\cdot)$.
+Interestingly, the outlier process~\eqref{eq:optiOutlierProcess} has been often used in robotics and SLAM~\cite{Agarwal13icra,Sunderhauf12iros}, without acknowledging the connection with robust estimation, and 
+ with a heuristic design of the penalty terms $\Phi_\rho(w_i)$. 
+
+Despite the elegance of~\prettyref{lem:BRduality}, Problem~\eqref{eq:optiOutlierProcess} remains hard to solve, 
+due to its non-convexity. 
+Approaches in robotics (\eg~\cite{Agarwal13icra,Sunderhauf12iros}) apply local optimization from an initial guess, 
+resulting in brittle solutions (see~\cite{Carlone18ral-robustPGO2D} and Section~\ref{sec:applications}). 
+\isExtended{To date, the only provably optimal solvers for~\eqref{eq:optiOutlierProcess} (when $\rho(\cdot)$ is a truncated least square cost) are given in~\cite{Yang19rss-teaser,Yang19iccv-QUASAR,Lajoie19ral-DCGM}.}{}
+ %In the context of 3D perception,  
+% However, although recently developed global solvers based on SDP and SOS relaxations are able to handle the non-convexity arising from feasible set $\calX$, they rely on least squares formulations ($w_i=1$ for all measurements) and fail in the presence of non-convexity in the cost function $\rho(\cdot)$. Therefore, solving the equivalent optimization~\eqref{eq:optiOutlierProcess} still requires a good initialization on either the weights $w_i$'s or the unknown variable $\vxx$~\cite{Black96ijcv-unification}.
+ % allows compu
+ % helps us handle the non-convexity in the cost function.
+
+% Short section:
+% \LC{
+% \bit
+% \item every robust cost can be converted to an outlier process, and for popular robust cost functions, the conversion is in closed form
+% \item an intuitive idea is to alternate updates on variables
+% \item unfortunately, the cost is nonconvex so this strategy fails (while it would succeed in a convex function)
+% \eit
+% }

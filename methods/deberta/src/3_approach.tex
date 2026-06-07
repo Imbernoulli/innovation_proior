@@ -1,0 +1,358 @@
+\section{The DeBERTa Architecture}
+\subsection{Disentangled Attention: A Two-Vector Approach to Content and Position Embedding}
+%We will use $\left\{H_i \in R^d \right\}$ to denote the hidden state of an input sequence. 
+For a token at position $i$ in a sequence, we represent it using two vectors, $\{\bm{H_i}\}$ and $\{\bm{P_{i|j}}\}$, 
+%parts, filler, $\{H_i\}$, and role, $\{P_i\}$, 
+which represent its content and relative position with the token at position $j$, respectively.
+%where $H_i$ represents the content and $P_i$ represents the position in the sequence. 
+The calculation of the cross attention score between tokens $i$ and $j$ can be decomposed into four components as
+\begin{equation}\label{decomposition}
+\begin{split}
+A_{i,j} & = \{\bm{H_i},\bm{P_{i|j}}\} \times \{\bm{H_j}, \bm{P_{j|i}}\}^{\intercal} \\
+        & = \bm{H_i}\bm{H_j}^{\intercal} + \bm{H_i}\bm{P_{j|i}}^{\intercal} 
+        + \bm{P_{i|j}}\bm{H_j}^{\intercal} + \bm{P_{i|j}}\bm{P_{j|i}}^{\intercal}
+\end{split}
+\end{equation}
+%This implies the attention score between any two tokens in the sequence can be disentangled into four components, i.e.
+That is, the attention weight of a word pair can be computed as a sum of four attention scores using disentangled matrices on their contents and positions as  
+\textit{content-to-content}, \textit{content-to-position}, \textit{position-to-content}, and \textit{position-to-position}
+\footnote{In this sense, our model shares some similarity to Tensor Product Representation \citep{smolensky1990ptr,schlag2019enhancing,chen2019natural} where a word is represented using a tensor product of its filler (content) vector and its role (position) vector.}. 
+%which is similar to the TPR (Tensor Product Representation) work \cite{smolensky1990ptr}.
+
+
+Existing approaches to relative position encoding use a separate embedding matrix to compute the relative position bias in computing attention weights~\citep{shaw2018self, huang2018music}. 
+% This is similar to only represent the \textit{content-to-position} term, but ignore the other two terms in \eqref{decomposition}. 
+This is equivalent to computing the attention weights using only the  content-to-content and content-to-position terms in \eqref{decomposition}.
+We argue that the position-to-content term is also important since the attention weight of a word pair depends not only on their contents but on their relative positions, which can only be fully modeled using both the content-to-position and position-to-content terms.
+Since we use \emph{relative} position embedding, the position-to-position term does not provide much additional information and is removed from \eqref{decomposition} in our implementation.
+
+%We argue that this simplification is too partial to fully characterize the relative position dependency and can result in a sheer performance loss. Therefore, we propose to disentangle the position and content thoroughly as shown in \eqref{decomposition}. 
+%In other words, the new disentangled attention in \eqref{decomposition} extends existing relative attention bias to incorporate both the \textit{position-to-content} and the \textit{position-to-position} terms. Based on our empirical study, we observe the performance improvements from \textit{position-to-position} is marginal since it ignores the contents, thus we consider the first three terms in \eqref{decomposition}.
+
+%While absolute position bias can capture these four components by adding the position bias directly to the content embedding, relative position bias can't be added directly to the input embedding. Instead, as \cite{shaw2018self}, \cite{huang2018music}, they apply relative position bias to the attention score directly. However, existing methods only considered \textit{content-to-position} bias, while ignored the other two parts. We thought this can't fully capture the relative position dependency and thus we propose disentangled attention which extends existing relative attention bias to \textit{position-to-content} and \textit{position-to-position}. In our experiments, we found the signal from \textit{position-to-position} is very weak as it's unrelated to any contents, so we drop this part in following discussion.
+
+%For simplicity, we use single head self-attention to describe disentangled attention. 
+Taking single-head attention as an example, the standard self-attention operation~\citep{vaswani2017attention} can be formulated as:  
+\begin{align*}
+    \bm{Q} =  \bm{H} \bm{W_q} ,    \bm{K} &=  \bm{H} \bm{W_k}, \bm{V} =  \bm{H} \bm{W_v},    \bm{A} = \frac{\bm{Q}\bm{K^{\intercal}}}{\sqrt{d}} \\
+    \bm{H_o}&= \text{softmax}(\bm{A})\bm{V}
+\end{align*}  
+where $\bm{H} \in R^{N \times d}$ represents the input hidden vectors, $\bm{H_o} \in R^{N \times d}$ the output of self-attention, $\bm{W_q},\bm{W_k},\bm{W_v} \in R^{d \times d}$ the projection matrices, $\bm{A} \in R^{N \times N}$ the attention matrix, $N$ the length of the input sequence, and $d$ the dimension of hidden states.
+
+Denote $k$ as the maximum relative distance,
+$\delta(i,j) \in [0,2k)$ as the relative distance from token $i$ to token $j$, which is defined as:
+\begin{equation}
+\label{dist}
+\delta(i,j) = \left\{ \begin{array}{rcl}
+     0 & \mbox{for} & i-j \leq  -k\\
+     2k-1 & \mbox{for} & i-j \geq k \\
+     i-j+k & \mbox{others}.
+\end{array}\right. 
+\end{equation}
+
+%$\bm{Q_{c,i}} \in R^d$ as the query content vector of the %$i$-th token in the sequence, and
+%$\bm{K_{r,\delta(i,j)}} \in R^d$ as the key position vector with relative distance $\delta(i,j)$. 
+We can represent the disentangled self-attention with relative position bias as \eqref{dis-att}, 
+where $\bm{Q_c}, \bm{K_c}$ and $\bm{V_c}$  are the projected content vectors generated using projection matrices $\bm{W_{q,c}},\bm{W_{k,c}} ,\bm{W_{v,c}}\in R^{d \times d}$ respectively, 
+$\bm{P} \in R^{2k \times d}$ represents the relative position embedding vectors shared across all layers (i.e., staying fixed during forward propagation), 
+and $\bm{Q_r}$ and $\bm{K_r}$ are projected relative position vectors generated using projection matrices $\bm{W_{q,r}},\bm{W_{k,r}} \in R^{d \times d}$, respectively.   
+%Following \cite{shaw2018self,huang2018music}, the content-to-position term can be calculate as $\bm{Q_{c,i}}\bm{K_{r,\delta(i,j)}^{\intercal}}$. 
+%We now describe the calculation of the position-to-content term.
+%For a given position $i$, position-to-content computes the attentive importance of the key content at $j$ with respect to the query position at $i$, thus the relative distance is $\delta(j,i)$, not $\delta(i,j)$. So, the position-to-content term is calculated as $\bm{Q_{r,\delta(j,i)}}\bm{K_{c,j}^{\intercal}}$, where $\bm{Q_{r,\delta(j,i)}} \in R^d$ is the query vector of relative distance $\delta(j,i)$ and $\bm{K_{c,j}^{\intercal}} \in R^d$ is the key content vector of the $j$-th token in the sequence.
+
+%Putting all together, the disentangled self-attention is computed as \eqref{dis-att}.
+
+%Putting together, we disentangle the attention weight $\bm{A}$ into three components in \eqref{dis-att}. 
+\begin{equation} \label{dis-att}
+\begin{split}
+    \bm{Q_c} = \bm{H} \bm{W_{q,c}}, 
+    \bm{K_c} &= \bm{H} \bm{W_{k,c}}, 
+    \bm{V_c} = \bm{H} \bm{W_{v,c}}, 
+    \bm{Q_r} = \bm{P} \bm{W_{q,r}}, 
+    \bm{K_r} = \bm{P} \bm{W_{k,r}}\\
+    \tilde{A}_{i,j} &= \underbrace{\bm{Q^{c}_{i}}\bm{{K^{c}_{j}}^{\intercal}}}_{\text{(a) content-to-content}}  
+    + \underbrace{\bm{Q^{c}_{i}}\bm{{K^{r}_{\delta(i,j)}}^{\intercal}}}_{\text{(b) content-to-position}}
+    + \underbrace{\bm{K^{c}_{j}}\bm{{Q^{r}_{\delta(j,i)}}^{\intercal}}}_{\text{(c) position-to-content}} \\
+    \bm{H_o} &= \text{softmax}(\frac{\bm{\tilde{A}}}{\sqrt{3d}})\bm{V_c}
+\end{split}
+\end{equation}
+$\tilde{A}_{i,j}$ is the element of attention matrix $\bm{\tilde{A}}$, representing the attention score from token $i$ to token $j$. 
+%$\bm{P} \in R^{2k \times d}$ is the relative distance embedding shared across all layers;
+%$\bm{W_{q,c}},\bm{W_{k,c}} ,\bm{W_{v,c}}\in R^{d \times d}$ are the projection matrices corresponding to content; 
+%$\bm{W_{q,r}},\bm{W_{k,r}} \in R^{d \times d}$ are the projection matrices corresponding to \bm{P};  
+$\bm{Q^{c}_{i}}$ is the $i$-th row of $\bm{Q_c}$. %\textcolor{red}{Qci has been introduced above. we shall remove related information in line 97. same to Kr,delta}; 
+$\bm{K^{c}_{j}}$ is the $j$-th row of $\bm{K_c}$. 
+% $\bm{P} \in R^{2k \times d}$ is a learnable relative distance embedding shared across all layers;  
+% $k$ is the maximum relative distance;
+$\bm{K^{r}_{\delta(i,j)}}$ is the $\delta(i,j)$-th row of $\bm{K_r}$ with regarding to relative distance $\delta(i,j)$.
+$\bm{Q^{r}_{\delta(j,i)}}$ is the $\delta(j,i)$-th row of $\bm{Q_r}$ with regarding to relative distance $\delta(j,i)$. 
+Note that we use $\delta(j,i)$ rather than $\delta(i,j)$ here. This is because for a given position $i$, position-to-content computes the attention weight of the key content at $j$ with respect to the query position at $i$, thus the relative distance is $\delta(j,i)$. 
+The position-to-content term is calculated as $\bm{K^{c}_{j}}\bm{{Q^{r}_{\delta(j,i)}}^{\intercal}}$.
+%, where $\bm{Q_{r,\delta(j,i)}} \in R^d$ is the query vector of relative distance $\delta(j,i)$ and $\bm{K_{c,j}^{\intercal}} \in R^d$ is the key content vector of the $j$-th token in the sequence. 
+The content-to-position term is calculated in a similar way.
+
+Finally, we apply a scaling factor of $\frac{1}{\sqrt{3d}}$ on $\bm{\tilde{A}}$.
+The factor is important for stabilizing model training~\citep{vaswani2017attention}, especially for large-scale PLMs. 
+%Different from previous relative attention work, to keep the variance invariant, like the scale factor in self-attention, we apply a scale factor as:
+%Following the original Transformer model
+% Inspired by \cite{vaswani2017attention}, 
+%In \eqref{dis-att}, we also apply a scaling factor of $\frac{1}{\sqrt{3d}}$ on $\bm{\tilde{A}}$ which is important for stabilizing model training \cite{vaswani2017attention}, especially for large-scale PLMs.
+
+%, not $\delta(i,j)$. 
+%Thus, 
+
+\begin{algorithm}[H]
+\caption{Disentangled Attention}
+\label{DA}
+%\SetAlgoLined
+ \begin{algorithmic}[1]
+    \INPUT Hidden state $\bm{H}$, relative distance embedding $\bm{P}$, relative distance matrix $\bm{\delta}$.
+    Content projection matrix $\bm{W_{k,c}}$, $\bm{W_{q,c}}$, $\bm{W_{v,c}}$,
+    position projection matrix $\bm{W_{k,r}}$, $\bm{W_{q,r}}$. 
+
+    \State {$\bm{K_c} = \bm{H}\bm{W_{k,c}}$, $\bm{Q_c} = \bm{H}\bm{W_{q,c}}$, $\bm{V_c} = \bm{H}\bm{W_{v,c}}$,   $\bm{K_r} = \bm{P}\bm{W_{k,r}}$, $\bm{Q_r} = \bm{P}\bm{W_{q,r}}$}
+    \State {$\bm{A_{c\rightarrow c}} = \bm{Q_c K_c^{\intercal}}$} 
+    \For{$i=0,...,N-1$} 
+        \State {$\bm{\tilde{A}_{c\rightarrow p}}[i,:] = \bm{Q_{c}}[i,:] \bm{K_r^{\intercal}}$} 
+    \EndFor
+    \For {$i=0,...,N-1$}
+        \For {$j=0,...,N-1$}
+        \State {$\bm{A_{c\rightarrow p}}[i,j] = \bm{\tilde{A}_{c\rightarrow p}}[i,\bm{\delta}[i,j]]$} 
+        \EndFor
+    \EndFor
+    \For{$j=0,...,N-1$}
+        \State {$\bm{\tilde{A}_{p\rightarrow c}}[:,j] = \bm{K_{c}}[j,:] \bm{Q_r^{\intercal}}$} 
+    \EndFor
+    \For {$j=0,...,N-1$}
+        \For {$i=0,...,N-1$}
+        \State {$\bm{A_{p\rightarrow c}}[i,j] = \bm{\tilde{A}_{p\rightarrow c}}[\bm{\delta}[j,i],j]$} 
+        \EndFor
+    \EndFor
+    \State {$\bm{\tilde{A}}=\bm{A_{c\rightarrow c}} + \bm{A_{c\rightarrow p}} + \bm{A_{p\rightarrow c}}$}
+    \State {$\bm{H_o} = \text{softmax}(\frac{\bm{\tilde{A}}}{\sqrt{3d}})\bm{V_c}$}
+    \OUTPUT $\bm{H_o}$
+ \end{algorithmic}
+
+\end{algorithm}
+\subsubsection{Efficient implementation}
+For an input sequence of length $N$, it requires a space complexity of $O(N^2d)$ \citep{shaw2018self,huang2018music,dai2019transformer} to store the relative position embedding for each token. 
+%Since relative distance vectors vary from query to query, if we directly multiply a query vector by its corresponding relative position embedding, this will unavoidably let the $d$-dimension vector multiply a $N\times d$ matrix for $N$ times.
+%\textcolor{red}{could we map to an equation we are talking about here? the last term in Equation 3? i also don't understand what you mean of multiplied with a N * d matrix}. 
+%The memory cost of this multiplication will be $O(N^2d)$ since we need to allocate the memory to store the relative distance embedding which has a size of $N \times N \times d$  . 
+However, taking content-to-position as an example, we note that since $\delta(i,j) \in [0,2k)$ and the embeddings of all possible relative positions are always a subset of $\bm{K_r} \in R^{2k \times d}$, then we can reuse $\bm{K_r}$ in the attention calculation for all the queries.
+
+In our experiments, we set the maximum relative distance $k$ to 512 for pre-training.
+The disentangled attention weights can be computed efficiently using Algorithm~\ref{DA}.
+Let $\bm{\delta}$ be the relative position matrix according to \eqref{dist}, i.e., $\bm{\delta}[i,j]=\delta(i,j)$.
+Instead of allocating a different relative position embedding matrix for each query, we multiply each $query$ vector $\bm{Q_c}[i,:]$ by $\bm{K_r}^\intercal \in R^{d \times 2k}$, as in line $3-5$. 
+Then, we extract the attention weight using the relative position matrix $\bm{\delta}$ as the index, as in line $6-10$. 
+To compute the position-to-content attention score, we  calculate $\bm{\tilde{A}_{p\rightarrow c}}[:,j]$, i.e., the column vector of the attention matrix $\bm{\tilde{A}_{p\rightarrow c}}$, by multiplying each $key$ vector $\bm{K_c}[j,:]$ by $\bm{Q_r}^\intercal$, as in line $11-13$. 
+Finally, we extract the corresponding attention score via the relative position matrix $\bm{\delta}$ as the index, as in line $14-18$. 
+In this way, we do not need to allocate memory to store a relative position embedding for each query and thus reduce the space complexity to $O(kd)$ (for storing $\bm{K_r}$ and $\bm{Q_r}$). 
+%The full implementation of disentangled attention is shown in Algorithm \ref{DA}. 
+
+% \begin{algorithm}[H]
+% \caption{Disentangled Attention}
+% \label{DA}
+% %\SetAlgoLined
+%  \begin{algorithmic}[1]
+%     \INPUT Hidden state $\bm{H}$, relative distance embedding $\bm{P}$, relative distance matrix $\bm{\delta}$.
+%     Content projection matrix $\bm{W_{k,c}}$, $\bm{W_{q,c}}$, $\bm{W_{v,c}}$,
+%     position projection matrix $\bm{W_{k,r}}$, $\bm{W_{q,r}}$. 
+
+%     \State {$\bm{K_c} = \bm{H}\bm{W_{k,c}}$, $\bm{Q_c} = \bm{H}\bm{W_{q,c}}$, $\bm{V_c} = \bm{H}\bm{W_{v,c}}$,   $\bm{K_r} = \bm{P}\bm{W_{k,r}}$, $\bm{Q_r} = \bm{P}\bm{W_{q,r}}$}
+%     \State {$\bm{A_{c\rightarrow c}} = \bm{Q_c K_c^{\intercal}}$} 
+%     \For{$i=0,...,N-1$} 
+%         \State {$\bm{\tilde{A}_{c\rightarrow p}}[i,:] = \bm{Q_{c}}[i,:] \bm{K_r^{\intercal}}$} 
+%     \EndFor
+%     \For {$i=0,...,N-1$}
+%         \For {$j=0,...,N-1$}
+%         \State {$\bm{A_{c\rightarrow p}}[i,j] = \bm{\tilde{A}_{c\rightarrow p}}[i,\bm{\delta}[i,j]]$} 
+%         \EndFor
+%     \EndFor
+%     \For{$j=0,...,N-1$}
+%         \State {$\bm{\tilde{A}_{p\rightarrow c}}[:,j] = \bm{K_{c}}[j,:] \bm{Q_r^{\intercal}}$} 
+%     \EndFor
+%     \For {$j=0,...,N-1$}
+%         \For {$i=0,...,N-1$}
+%         \State {$\bm{A_{p\rightarrow c}}[i,j] = \bm{\tilde{A}_{p\rightarrow c}}[\bm{\delta}[j,i],j]$} 
+%         \EndFor
+%     \EndFor
+%     \State {$\bm{\tilde{A}}=\bm{A_{c\rightarrow c}} + \bm{A_{c\rightarrow p}} + \bm{A_{p\rightarrow c}}$}
+%     \State {$\bm{H_o} = \text{softmax}(\frac{\bm{\tilde{A}}}{\sqrt{3d}})\bm{V_c}$}
+%     \OUTPUT $\bm{H_o}$
+%  \end{algorithmic}
+
+% \end{algorithm}
+
+% Our work is different from Transformer-XL \cite{dai2019transformer} that, 
+% \begin{itemize}
+%     \item In addition of content-to-position bias, we also introduce a position-to-content.
+%     \item We applied learn-able relative position encoding instead of fixed sinusoid encoding [\cite{vaswani2017attention}, \cite{dai2019transformer}].
+%     \item The motivation is significantly different. Transformer-XL focus on capturing the position information between consecutive segments and thus stops at partial characteristics of the entire information. While our focus is a completely disentangled and fully capture the interaction between content and position.  
+% \end{itemize}
+
+
+
+%\subsection{Enhanced Mask Decoder}
+%\subsection{Two Extensions of the disentangled attention}
+\subsection{Enhanced Mask Decoder Accounts for Absolute Word Positions}
+\label{EMD}
+%The DeBERTa model has two additional extensions. One is to address a limitation of the relative positions which have been fully captured by the disentangled attentions. The other is to enable generation tasks and a multi-task learning objective.
+
+DeBERTa is pretrained using MLM, where a model is trained to use the words surrounding a mask token to predict what the masked word should be. 
+DeBERTa uses the content and position information of the context words for MLM. The disentangled attention mechanism already considers the contents and relative positions of the context words, but not the absolute positions of these words, which in many cases are crucial for the prediction.
+
+Given a sentence ``a new \textbf{store} opened beside the new \textbf{mall}'' with the words ``store'' and ``mall'' masked for prediction. Using only the local context (e.g., relative positions and surrounding words) is insufficient for the model to distinguish \textit{store} and \textit{mall} in this sentence, since both follow the word \textit{new} with the same relative positions. 
+To address this limitation, the model needs to take into account absolute positions, as complement information to the relative positions. 
+For example, the subject of the sentence is “store” not “mall”. These syntactical nuances depend, to a large degree, upon the words’ absolute positions in the sentence.
+
+There are two methods of incorporating absolute positions. The BERT model incorporates absolute positions in the input layer. 
+In DeBERTa, we %propose an alternative to consider it
+incorporate them right after all the Transformer layers but before the \emph{softmax} layer for masked token prediction, as shown in Figure \ref{fig:emd}. 
+In this way, DeBERTa captures the relative positions in all the Transformer layers and only uses absolute positions as complementary information when decoding the masked words. % \textit{softmax} decoding layer. 
+Thus, we call DeBERTa's decoding component an Enhanced Mask Decoder (EMD). 
+In the empirical study, we compare these two methods of incorporating absolute positions and observe that EMD works much better. 
+We conjecture that the early incorporation of absolute positions used by BERT might undesirably hamper the model from learning sufficient information of relative positions. In addition, EMD also enables us to introduce other useful information, in addition to positions, for pre-training. We leave it to future work.
+%which is out of the scope of this paper and will be explored in future. 
+%incorporating more information after  is also flexible to introduce other information during decoding stage.
+
+
+
+%Existing BERT model is generally designed for NLU. One distinct motivation of our DeBERTa model is to support both NLU and NLG simultaneously, so thus we can verify the impact of disentangled attention thoroughly in both settings. For this purpose, using a 12-layer BERT base model as an example, although we can treat the first 11 layer as the original encoder and the last layer as a decoder to predict the masked token,  DeBERTa introduce some different design in this decoder for both NLU and NLG.
+
+%For NLU, //pengcheng, we may need to pull the equation back here to share how we design the EMD here.  and then mention in this new design, we can also stack multiple layers in decoder. 
+
+% \begin{equation}\label{de-layer}
+%     \begin{split}
+%     \bm{Q^{s-1}} &= \bm{H^{s-1}_{de}} \\
+%     \bm{\bar{O}^s} &= \text{Attention}(\bm{Q^{s-1}W^{L-1}_q}, \bm{O^{En}W^{L-1}_k}, \bm{O^{En}W^{L-1}_v}) \\
+%     \bm{O^{s}} &= \text{LayerNorm}(\text{Linear}(\bm{\bar{O}^{s}})+\bm{Q^{s-1}}) \\
+%     \bm{H^{s}_{de}} &= \text{LayerNorm}(\text{PosFNN}(\bm{O^{s}})+\bm{O^{s}}) 
+%     \end{split}
+% \end{equation} 
+% Where $\bm{H^{s}_{de}}=\{h^{s}_{de}{_i}\}_{i\in K}$ is the output of decoding layer $s$, $\bm{O}^{En} = \{o_i^{En}\}$ is the output of $\mbox{E-Encoder}$. When $s=0$,
+% \begin{equation}
+%     H^0_{de}{_i}=\left\{ \begin{array}{rcl}
+%         o_i^{En}    & if  &x_i \neq \tilde{x}_i \\
+%         P_i    & if  &x_i=\tilde{x}_i \\
+%     \end{array}\right.
+% \end{equation}
+
+
+
+
+% ==============================================
+
+% During standard BERT pre-training, we feed the final hidden vectors corresponding to the masked tokens to an output softmax over the vocabulary. 
+% During fine-tuning, we feed the BERT output into a task-specific decoder, which has one or more task-specific decoding layers, plus a softmax layer if the output is probabilities.
+% To mitigate the mismatch between pre-training and fine-tuning, we treat MLM the same as other downstream tasks, and replace the output softmax of BERT with an Enhanced Mask Decoder (EMD) which contains one or more Transformer layers and a softmax output layer. 
+% This makes DeBERTa, which combines BERT and EMD for pre-training, an encoder-decoder model. 
+
+% The model architecture of the DeBERTa for pre-training  is designed to meet several requirements. 
+% First, the encoder should be much deeper than the decoder since the former 
+% % \textcolor{red}{i think you want to mean the latter, right? the former refers to the encoder, which we used for finetuning.} 
+% is used for fine-tuning.
+% Second, the number of parameters of the encoder-decoder model needs to be similar to that of BERT so that the pre-training cost is at the same level as BERT.
+% Third, the pre-trained encoder of DeBERTa should be similar to BERT such that their fine-tuning costs and performances on downstream tasks are comparable.
+
+% Take the 12-layer BERT base model as a baseline for comparison. 
+% The architecture of  DeBERTa for pre-training, used in our experiments, is composed of 
+%  an encoder that consists of 11 layers of Transformer,  
+% a decoder that consists of 2 Transformer layers whose parameters are shared and a softmax output layer.
+% So the model has a similar amount of free parameters as BERT base\footnote{The disentangled attention layer in DeBERTa has few more free parameters than the self-attention layer in BERT.}.
+% %\textcolor{red}{this is not exactly correct, we can only say this EMD side has the same number of parameters. we have more parameters in disentangled attention}.
+% After the DeBERTa model is pre-trained, we stack the 11-layer encoder and one decoder layer to recover the standard BERT base architecture for fine-tuning. 
+
+% For language model task including Masked LM and Auto-regressive LM the prediction of target tokens is not only conditioned on the content but also conditioned on the position. For example, \textit{A new \textbf{book store} opened in New \textbf{York}}. Even though the \textbf{book store} and \textbf{York} are near by the same word \textbf{new}, the content is different due to their different absolute positions. Thus we added the absolute position information back during decoding stage. 
+
+% ==============================================
+% %==============================================
+
+
+% %Take the 12-layer BERT base model as an example.
+% During standard BERT pre-training, we feed the final hidden vectors corresponding to the masked tokens to an output softmax over the vocabulary. 
+% During fine-tuning, we feed the BERT output into a task-specific decoder, which has one or more task-specific decoding layers, plus a softmax layer if the output is probabilities.
+% To mitigate the mismatch between pre-training and fine-tuning, we treat MLM the same as other downstream tasks, and replace the output softmax of BERT with an Enhanced Mask Decoder (EMD) which contains one or more Transformer layers and a softmax output layer. 
+% This makes DeBERTa, which combines BERT and EMD for pre-training, an encoder-decoder model. 
+
+% The model architecture of the DeBERTa for pre-training  is designed to meet several requirements. 
+% First, the encoder should be much deeper than the decoder since the former 
+% % \textcolor{red}{i think you want to mean the latter, right? the former refers to the encoder, which we used for finetuning.} 
+% is used for fine-tuning.
+% Second, the number of parameters of the encoder-decoder model needs to be similar to that of BERT so that the pre-training cost is at the same level as BERT.
+% Third, the pre-trained encoder of DeBERTa should be similar to BERT such that their fine-tuning costs and performances on downstream tasks are comparable.
+
+% Take the 12-layer BERT base model as a baseline for comparison. 
+% The architecture of  DeBERTa for pre-training, used in our experiments, is composed of 
+%  an encoder that consists of 11 layers of Transformer,  
+% a decoder that consists of 2 Transformer layers whose parameters are shared and a softmax output layer.
+% So the model has a similar amount of free parameters as BERT base\footnote{The disentangled attention layer in DeBERTa has few more free parameters than the self-attention layer in BERT.}.
+% %\textcolor{red}{this is not exactly correct, we can only say this EMD side has the same number of parameters. we have more parameters in disentangled attention}.
+% After the DeBERTa model is pre-trained, we stack the 11-layer encoder and one decoder layer to recover the standard BERT base architecture for fine-tuning. 
+
+% In addition, we make a small but important modification on the encoder output vectors before we feed them into the EMD for prediction during MLM pre-training. 
+% The authors of BERT \citep{devlin2018bert} propose to not replace all masked tokens with the \texttt{[MASK]} token, keeping 10\% of them unchanged. 
+% Although this is motivated by mitigating the mismatch between fine-tuning and pre-training since \texttt{[MASK]} never occurs in the input of downstream tasks, the method suffers from information leaking i.e., predicting a masked token conditioned on the token itself. 
+% To address the issue, we replace the encoder output vectors of those masked but unchanged tokens with their corresponding absolute position embedding vectors before we feed them into the decoder for prediction. 
+
+
+
+%The implementation detail of \DecoderName \ is described in \ref{imp-emd}.
+% similar to the self-exclusive pattern in XLNet \cite{yang2019xlnet}. 
+
+% BERT \cite{devlin2018bert} adopt transformer $encoder$ to learn bi-directional representation for natural language with Masked Language Model(MLM) objective. For a given sequence $\bm{X}=\left\{x_i \right\}$, with a portion of it randomly corrupted as $\left\{\tilde{x}_i \right\}$. We denote the corrupted sequence as $\bm{\tilde{X}}$. The MLM objective is to reconstruct corrupted tokens $\{\tilde{x}_i\}$ from $\bm{\tilde{X}}$,
+% \begin{equation}
+% \label{mlm}
+% \begin{split}
+%       \max_{\theta} \text{log} p_{\theta}(\bm{X}|\bm{\tilde{X}}) &= \sum_{i\in K}{\text{log}  p_{\theta}(\tilde{x}_i=x_i|\bm{\tilde{X}})} \\ 
+%       &=\sum_{i \in K}{\text{log}{\frac{e^{f_{MLM}(h^{o}_i)\cdot e_i }}{\sum_{j}{e^{f_{MLM}(h^{o}_i) \cdot e_j}}}}} \\
+%       f_{MLM}(h_i^o) &= LayerNorm(Linear(h_i^o))
+% \end{split}
+% \end{equation}
+% Where $K$ is the set of indices of masked tokens in the sequence. $e_i$ is the embedding of $i$th token in the sequence. $e_j$ is the embedding of $j$th token in the whole vocabulary. $h^{o}_i$ is the hidden state of the $i$th masked token in the output of last transformer layer. $f_{MLM}$ is an additional layer for MLM task only.
+
+%BERT \cite{devlin2018bert} proposed to keep a portion of the masked tokens unchanged, e.g. 10\%, to mitigate the discrepancy between training and fine-tuning. However, even this small portion will encourage the self-attention to peek at itself, as shown in figure \ref{fig:att-map} that the attention matrix is highlighted on the diagonal line . To alleviate this leaking issue, we propose to replace the content embedding of unchanged mask tokens with their positional embedding, so that there is no way to peek at the content itself directly. The prediction of this portion of tokens can be written as:
+%\begin{equation}
+%$\label{p-mlm}
+%     p_{\theta}(\tilde{x}_i=x_i|\bm{\tilde{X}}-x_i, P_i)$
+%\end{equation}
+%,in which $P_i$ is the absolute position of token $i$ in the sequence.
+
+%To make prediction of $p_{\theta}$ with the consideration of position $P_i$ but without the content itself, one feasible solution is to adopt a two-stream attention as XLNet\cite{yang2019xlnet}. However, this will increase memory consumption and computational complexity.  Instead, we use a different approach to solve this problem without introducing eligible cost.  
+%another $decoder$ component as the $encoder-decoder$ structure in \citep{vaswani2017attention} or adopt  However, that will . 
+
+
+%We start with a different view of a $L$-layer encoder in Transformer. We separate these $L$ layers into two separate roles. We still treat the first $L-1$ layers as encoding layers, denoted as $\mbox{E-Encoder}$. However, we first regard the last layer as a $1$-layer $decoder$, denoted as $\mbox{E-Decoder}$, whose focus is to decode the masked tokens based on $\mbox{E-Encoder}$. The vanilla $\mbox{E-Decoder}$ is a simple \textit{softmax} layer. This is similar to the $encoder-decoder$ structure in \citep{vaswani2017attention}. 
+%Inspired by the $encoder-decoder$ structure in \citep{vaswani2017attention}, the last layer of transformer $encoder$ in BERT can be viewed as a $1$-layer $decoder$, denoted as $\mbox{E-Decoder}$, to reconstruct the masked tokens based on the contextual representations from previous $L-1$-layer transformer $encoder$, denoted as $\mbox{E-Encoder}$.   
+%$\mbox{E-Decoder}$ follows the $decoder$ in the $encoder-decoder$ structure but without the self-attention block. Instead of using the target embedding as the input of the $decoder$ layer, $\mbox{E-Decoder}$ uses the output of $\mbox{E-Encoder}$ as the input as long as the token is contaminated, e.g. masked out or replaced with another token, otherwise it uses the position embedding as the input. Moreover, we can extend $\mbox{E-Decoder}$ from a single layer to multiple layers to improve the MASK decoding performance, in which the $\bm{K}$ and $\bm{V}$ are always taken from the last layer in $\mbox{E-Encoder}$ while the output of each $\mbox{E-Decoder}$ layer will be used as a new $\bm{Q}$ to calculate the self-attention in next layer or reconstruct the masked tokens. This is exactly the same as the $encoder-decoder$ structure in \citep{vaswani2017attention}. It is worth noting this is different from layer-wise parameter sharing proposed by \cite{lan2019albert}, since the $K$ and $V$ are staled in each decoding steps. The parameters of each $\mbox{E-Decoder}$ layer can be either shared or separated.  We empirically notice ineligible performance difference for the choice between these two options. In other words, we reuse the weight of the last transformer $encoder$ layer. Putting all together, we call this new masking decoder Enhanced Masking Decoder ($\DecoderName$) with more details of $\mbox{E-Decoder}$ shown in \eqref{de-layer}.
+%\begin{equation}\label{de-layer}
+%    \begin{split}
+%    \bm{Q^{s-1}} &= \bm{H^{s-1}_{de}} \\
+%    \bm{\bar{O}^s} &= \text{Attention}(\bm{Q^{s-1}W^{L-1}_q}, \bm{O^{En}W^{L-1}_k}, \bm{O^{En}W^{L-1}_v}) \\
+%    \bm{O^{s}} &= \text{LayerNorm}(\text{Linear}(\bm{\bar{O}^{s}})+\bm{Q^{s-1}}) \\
+%    \bm{H^{s}_{de}} &= \text{LayerNorm}(\text{PosFNN}(\bm{O^{s}})+\bm{O^{s}}) 
+%    \end{split}
+%\end{equation} 
+%Where $\bm{H^{s}_{de}}=\{h^{s}_{de}{_i}\}_{i\in K}$ is the output of decoding layer $s$, $\bm{O}^{En} = \{o_i^{En}\}$ is the output of $\mbox{E-Encoder}$. When $s=0$,
+%\begin{equation}
+%    H^0_{de}{_i}=\left\{ \begin{array}{rcl}
+%        o_i^{En}    & if  &x_i \neq \tilde{x}_i \\
+%        P_i    & if  &x_i=\tilde{x}_i \\
+%    \end{array}\right.
+%\end{equation}
+
+%During pre-training, we set the decoding layers to 2 with consideration of the trade off between performance and complexity. Given a 2-layer decoder, we can use either the first or the second layer for the fine-tuning of downstream tasks.  We observe there is no significant difference between this choice after we share the parameters between these two layers. Therefore, we choose to use the first layer and discard the second layer in the fine-tuning stage, which makes it  have the same number of layers as the BERT or RoBERTa models.
+
+\section{Scale Invariant Fine-Tuning}
+
+This section presents a new virtual adversarial training algorithm, Scale-invariant-Fine-Tuning (SiFT), a variant to the algorithm described in~\cite{miyato2018vat,jiang2019smart}, for fine-tuning. 
+
+Virtual adversarial training is a regularization method for improving models’ generalization. It does so by improving a model’s robustness to adversarial examples, which are created by making small perturbations to the input. The model is regularized so that when given a task-specific example, the model produces the same output distribution as it produces on an adversarial perturbation of that example. 
+
+For NLP tasks, the perturbation is applied to the word embedding instead of the original word sequence. However, the value ranges (norms) of the embedding vectors vary among different words and models. The variance gets larger for bigger models with billions of parameters, leading to some instability of adversarial training. 
+
+Inspired by layer normalization~\citep{ba2016layer}, we propose the SiFT algorithm that improves the training stability by applying the perturbations to the \emph{normalized} word embeddings. 
+Specifically, when fine-tuning DeBERTa to a downstream NLP task in our experiments, SiFT first normalizes the word embedding vectors into stochastic vectors, and then applies the perturbation to the normalized embedding vectors. We find that the normalization substantially improves the performance of the fine-tuned models. The improvement is more prominent for larger DeBERTa models. 
+Note that we \textbf{only} apply SiFT to  {\ModelName}$_{1.5B}$ on SuperGLUE tasks in our experiments and we will provide a more comprehensive study of SiFT in our future work.
+

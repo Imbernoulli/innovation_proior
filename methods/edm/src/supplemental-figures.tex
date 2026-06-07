@@ -1,0 +1,632 @@
+\input{data/OdeTable}
+\input{data/OdePlotExp}
+\input{data/SdePlotChurn}
+\input{data/SdeTable}
+
+\newcommand{\tabOdeTable}{%
+\forcenewcolumntype{x}{>{\centering\arraybackslash\hspace{0pt}}p{13mm}}%
+\renewcommand{\cs}{\hspace{0.5mm}}%
+\tabulinesep=0.7mm%
+\tabulinestyle{0.17mm}%
+\begin{table}[t]%
+\centering%
+\footnotesize%
+\caption{\label{tab:OdeTable}%
+Evaluation of our improvements to deterministic sampling.
+The values correspond to the curves shown in Figure~\refpaper{fig:OdePlotNfe}.
+We summarize each curve with two key values: the lowest observed FID for any NFE (``FID''), and the lowest NFE whose FID is within 3\% of the lowest FID (``NFE'').
+The values marked with ``--'' are identical to the ones above them, because our sampler uses the same $\sigma(t)$ and $s(t)$ as DDIM.
+}
+\vspace{1.5mm}%
+\begin{tabu}{|@{\ \ }l@{\ \ }|x@{\cs}x|x@{\cs}x|x@{\cs}x|}
+\tabucline{2-}
+\genOdeTable
+\tabucline{-}
+\end{tabu}%
+\end{table}%
+}
+
+\newcommand{\figOdePlotExp}{%
+\renewcommand{\hh}{85mm}\renewcommand{\vv}{75mm}\renewcommand{\hhh}{-3mm}%
+\begin{figure}[t]
+\centering%
+\resizebox{\textwidth}{!}{%
+\hspace*{-.5mm}%
+\begin{tikzpicture}%
+\begin{axis}[
+  width=\hh, height=\vv,
+  xmin={0.02}, xmax={50}, xmode={log}, xtick={0.02, 0.1, 0.5, 1, 2, 5, 10, 20, 50}, xticklabels={\tickSigma{0.02}, $0.1$, $0.5$, $1$, $2$, $5$, $10$, $20$, $50$},
+  ymin={5e-5}, ymax={500}, ymode={log}, ytick={1e-4, 1e-3, 1e-2, 1e-1, 1e+0, 1e+1, 1e+2, 500}, yticklabels={$10^{\text{-}4}$, $10^{\text{-}3}$, $10^{\text{-}2}$, $10^{\text{-}1}$, $10^0$, $10^1$, $10^2$, \tickTau},
+  grid={major}, legend pos={north east}, legend cell align={left}, legend columns={-1}, legend style={font=\normalsize, /tikz/every even column/.append style={column sep=1.35mm}},
+]
+\fillbetween[C0, opacity=0.2, forget plot]{coordinates {\genOdePlotExpCifaruNcsnppErrEulerALo}}{coordinates {\genOdePlotExpCifaruNcsnppErrEulerAHi}};
+\fillbetween[C1, opacity=0.2, forget plot]{coordinates {\genOdePlotExpCifaruNcsnppErrEulerBLo}}{coordinates {\genOdePlotExpCifaruNcsnppErrEulerBHi}};
+\fillbetween[C2, opacity=0.2, forget plot]{coordinates {\genOdePlotExpCifaruNcsnppErrEulerCLo}}{coordinates {\genOdePlotExpCifaruNcsnppErrEulerCHi}};
+\fillbetween[C3, opacity=0.2, forget plot]{coordinates {\genOdePlotExpCifaruNcsnppErrEulerDLo}}{coordinates {\genOdePlotExpCifaruNcsnppErrEulerDHi}};
+\fillbetween[C4, opacity=0.2, forget plot]{coordinates {\genOdePlotExpCifaruNcsnppErrEulerELo}}{coordinates {\genOdePlotExpCifaruNcsnppErrEulerEHi}};
+\addplot[C0] coordinates {\genOdePlotExpCifaruNcsnppErrEulerA};
+\addplot[C1] coordinates {\genOdePlotExpCifaruNcsnppErrEulerB};
+\addplot[C2] coordinates {\genOdePlotExpCifaruNcsnppErrEulerC};
+\addplot[C3] coordinates {\genOdePlotExpCifaruNcsnppErrEulerD};
+\addplot[C4] coordinates {\genOdePlotExpCifaruNcsnppErrEulerE};
+\legend{
+  {$\rho=1.0$},
+  {$1.5$},
+  {$2.0$},
+  {$3.0$},
+  {$7.0$},
+}
+\end{axis}
+\end{tikzpicture}
+\hspace*{\hhh}
+\begin{tikzpicture}
+\begin{axis}[
+  width=\hh, height=\vv,
+  xmin={0.02}, xmax={50}, xmode={log}, xtick={0.02, 0.1, 0.5, 1, 2, 5, 10, 20, 50}, xticklabels={\tickSigma{0.02\hspace*{-1em}}, $0.1$, $0.5$, $1$, $2$, $5$, $10$, $20$, $50$},
+  ymin={5e-5}, ymax={500}, ymode={log}, ytick={1e-4, 1e-3, 1e-2, 1e-1, 1e+0, 1e+1, 1e+2, 500}, yticklabels={$10^{\text{-}4}$, $10^{\text{-}3}$, $10^{\text{-}2}$, $10^{\text{-}1}$, $10^0$, $10^1$, $10^2$, \tickTau},
+  grid={major}, legend pos={north east}, legend cell align={left}, legend columns={-1}, legend style={font=\normalsize, /tikz/every even column/.append style={column sep=1.35mm}},
+]
+\fillbetween[C0, opacity=0.2, forget plot]{coordinates {\genOdePlotExpCifaruNcsnppErrHeunALo}}{coordinates {\genOdePlotExpCifaruNcsnppErrHeunAHi}};
+\fillbetween[C1, opacity=0.2, forget plot]{coordinates {\genOdePlotExpCifaruNcsnppErrHeunBLo}}{coordinates {\genOdePlotExpCifaruNcsnppErrHeunBHi}};
+\fillbetween[C2, opacity=0.2, forget plot]{coordinates {\genOdePlotExpCifaruNcsnppErrHeunCLo}}{coordinates {\genOdePlotExpCifaruNcsnppErrHeunCHi}};
+\fillbetween[C3, opacity=0.2, forget plot]{coordinates {\genOdePlotExpCifaruNcsnppErrHeunDLo}}{coordinates {\genOdePlotExpCifaruNcsnppErrHeunDHi}};
+\fillbetween[C4, opacity=0.2, forget plot]{coordinates {\genOdePlotExpCifaruNcsnppErrHeunELo}}{coordinates {\genOdePlotExpCifaruNcsnppErrHeunEHi}};
+\addplot[C0] coordinates {\genOdePlotExpCifaruNcsnppErrHeunA};
+\addplot[C1] coordinates {\genOdePlotExpCifaruNcsnppErrHeunB};
+\addplot[C2] coordinates {\genOdePlotExpCifaruNcsnppErrHeunC};
+\addplot[C3] coordinates {\genOdePlotExpCifaruNcsnppErrHeunD};
+\addplot[C4] coordinates {\genOdePlotExpCifaruNcsnppErrHeunE};
+\legend{
+  {$\rho=1.0$},
+  {$1.5$},
+  {$2.0$},
+  {$3.0$},
+  {$7.0$},
+}
+\end{axis}
+\end{tikzpicture}
+\hspace*{\hhh}
+\begin{tikzpicture}
+\begin{axis}[
+  width=\hh, height=\vv,
+  xmin={1}, xmax={10}, xmode={linear}, xtick={1, 2, 3, 4, 5, 6, 7, 8, 9, 10}, xticklabels={\tickRho{1}, $2$, $3$, $4$, $5$, $6$, $7$, $8$, $9$, $10$},
+  ymin={2.5}, ymax={11.5}, ymode={log}, ytick={2, 3, 4, 5, 6, 7, 8, 9, 10, 11.5}, yticklabels={$2$, $3$, $4$, $5$, $6$, $7$, $8$, $9$, $10$, \tickFID},
+  grid={major}, legend pos={north east}, legend cell align={left}, legend style={font=\normalsize},
+]
+\fillbetween[C0, opacity=0.2, forget plot]{coordinates {\genOdePlotExpCifaruDdpmppFidHeunLo}}{coordinates {\genOdePlotExpCifaruDdpmppFidHeunHi}};
+\fillbetween[C1, opacity=0.2, forget plot]{coordinates {\genOdePlotExpCifaruNcsnppFidHeunLo}}{coordinates {\genOdePlotExpCifaruNcsnppFidHeunHi}};
+\fillbetween[C2, opacity=0.2, forget plot]{coordinates {\genOdePlotExpImgcDhariwalFidHeunLo}}{coordinates {\genOdePlotExpImgcDhariwalFidHeunHi}};
+\addplot[C0] coordinates {\genOdePlotExpCifaruDdpmppFidHeun};
+\addplot[C1] coordinates {\genOdePlotExpCifaruNcsnppFidHeun};
+\addplot[C2] coordinates {\genOdePlotExpImgcDhariwalFidHeun};
+\addplot[C0, only marks, forget plot] coordinates {\genOdePlotExpCifaruDdpmppFidHeunMarks};
+\addplot[C1, only marks, forget plot] coordinates {\genOdePlotExpCifaruNcsnppFidHeunMarks};
+\addplot[C2, only marks, forget plot] coordinates {\genOdePlotExpImgcDhariwalFidHeunMarks};
+\legend{
+  {CIFAR-10, VP, $N=32$},
+  {CIFAR-10, VE, $N=64$},
+  {ImageNet-64, $N=12$},
+}
+\end{axis}
+\end{tikzpicture}
+}\\\hfill%
+\makebox[0.33\linewidth]{\footnotesize (a) Truncation error, VE + Euler}\hfill%
+\makebox[0.33\linewidth]{\footnotesize (b) Truncation error, VE + Heun}\hfill%
+\makebox[0.33\linewidth]{\footnotesize (c) FID as a function of $\rho$}\hfill%
+\caption{\label{fig:OdePlotExp}%
+\textbf{(a)}
+Local truncation error ($y$-axis) at different noise levels ($x$-axis) using Euler's method with the VE-based CIFAR-10 model.
+Each curve corresponds to a different time step discretization, defined for $N=64$ and a specific choice for the polynomial exponent $\rho$.
+The values represent the root mean square error (RMSE) between one Euler iteration and a sequence of multiple smaller Euler iterations, representing the ground truth.
+The shaded regions, barely visible at low $\sigma$, represent standard deviation over different latents $\xx_0$.
+\textbf{(b)}
+Corresponding error curves for Heun's 2\textsuperscript{nd} order method (Algorithm~\refpaper{alg:heun}).
+\textbf{(c)}
+FID ($y$-axis) as a function of the polynomial exponent ($x$-axis) for different models, measured using Heun's 2\textsuperscript{nd} order method.
+The shaded regions indicate the range of variation between the lowest and highest observed FID, and the dots indicate the value of $\rho$ that we use in all other experiments.
+}
+\end{figure}
+}
+
+\newcommand{\figSdePlotChurn}{%
+\renewcommand{\hh}{85mm}\renewcommand{\vv}{70mm}\renewcommand{\hhh}{-3mm}%
+\begin{figure}[t]
+\centering%
+\resizebox{\textwidth}{!}{%
+\hspace*{-1mm}%
+\begin{tikzpicture}%
+\begin{axis}[
+  width=\hh, height=\vv,
+  xmin={0}, xmax={100}, xmode={linear}, xtick={0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100}, xticklabels={\tickSchurnB{0}, $10$, $20$, $30$, $40$, $50$, $60$, $70$, $80$, $90$, $100$},
+  ymin={1.9}, ymax={5.4}, ymode={linear}, ytick={1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.4}, yticklabels={$1.0$, $1.5$, $2.0$, $2.5$, $3.0$, $3.5$, $4.0$, $4.5$, $5.0$, \tickFID},
+  grid={major}, legend pos={north west}, legend cell align={left}, legend style={font=\small},
+]
+\fillbetween[C2, opacity=0.15, forget plot]{coordinates {\genSdePlotChurnCifaruDdpmppPlainLo}}{coordinates {\genSdePlotChurnCifaruDdpmppPlainHi}};
+\fillbetween[C1, opacity=0.15, forget plot]{coordinates {\genSdePlotChurnCifaruDdpmppLambdaLo}}{coordinates {\genSdePlotChurnCifaruDdpmppLambdaHi}};
+\fillbetween[C0, opacity=0.15, forget plot]{coordinates {\genSdePlotChurnCifaruDdpmppRangeLo}}{coordinates {\genSdePlotChurnCifaruDdpmppRangeHi}};
+\fillbetween[C4, opacity=0.15, forget plot]{coordinates {\genSdePlotChurnCifaruDdpmppOursLo}}{coordinates {\genSdePlotChurnCifaruDdpmppOursHi}};
+\addplot[C3, dashed]                  coordinates {\genSdePlotChurnCifaruDdpmppOde};
+\addplot[C2]                          coordinates {\genSdePlotChurnCifaruDdpmppPlain};
+\addplot[C1]                          coordinates {\genSdePlotChurnCifaruDdpmppLambda};
+\addplot[C0]                          coordinates {\genSdePlotChurnCifaruDdpmppRange};
+\addplot[C4]                          coordinates {\genSdePlotChurnCifaruDdpmppOurs};
+\legend{
+  {Deterministic},
+  {$\StminStmax$ + $\Snoise = 1$},
+  {$\StminStmax = [0, \infty]$},
+  {$\Snoise = 1$},
+  {Optimal settings},
+}
+\end{axis}
+\end{tikzpicture}
+\hspace*{\hhh}
+\begin{tikzpicture}
+\begin{axis}[
+  width=\hh, height=\vv,
+  xmin={0}, xmax={100}, xmode={linear}, xtick={0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100}, xticklabels={$0$, $10$, $20$, $30$, $40$, $50$, $60$, $70$, $80$, $90$, $100$},
+  ymin={1.9}, ymax={4.3}, ymode={linear}, ytick={1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.3}, yticklabels={$1.0$, $1.5$, $2.0$, $2.5$, $3.0$, $3.5$, $4.0$, \tickFID},
+  grid={major}, legend pos={north west}, legend cell align={left}, legend style={font=\small},
+]
+\fillbetween[C2, opacity=0.15, forget plot]{coordinates {\genSdePlotChurnCifaruNcsnppPlainLo}}{coordinates {\genSdePlotChurnCifaruNcsnppPlainHi}};
+\fillbetween[C1, opacity=0.15, forget plot]{coordinates {\genSdePlotChurnCifaruNcsnppLambdaLo}}{coordinates {\genSdePlotChurnCifaruNcsnppLambdaHi}};
+\fillbetween[C0, opacity=0.15, forget plot]{coordinates {\genSdePlotChurnCifaruNcsnppRangeLo}}{coordinates {\genSdePlotChurnCifaruNcsnppRangeHi}};
+\fillbetween[C4, opacity=0.15, forget plot]{coordinates {\genSdePlotChurnCifaruNcsnppOursLo}}{coordinates {\genSdePlotChurnCifaruNcsnppOursHi}};
+\addplot[C3, dashed]                  coordinates {\genSdePlotChurnCifaruNcsnppOde};
+\addplot[C2]                          coordinates {\genSdePlotChurnCifaruNcsnppPlain};
+\addplot[C1]                          coordinates {\genSdePlotChurnCifaruNcsnppLambda};
+\addplot[C0]                          coordinates {\genSdePlotChurnCifaruNcsnppRange};
+\addplot[C4]                          coordinates {\genSdePlotChurnCifaruNcsnppOurs};
+\end{axis}
+\end{tikzpicture}
+\hspace*{\hhh}
+\begin{tikzpicture}
+\begin{axis}[
+  width=\hh, height=\vv,
+  xmin={0}, xmax={100}, xmode={linear}, xtick={0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100}, xticklabels={$0$, $10$, $20$, $30$, $40$, $50$, $60$, $70$, $80$, $90$, $100$},
+  ymin={1.3}, ymax={3.0}, ymode={linear}, ytick={1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4, 2.6, 2.8, 3.0}, yticklabels={$1.0$, $1.2$, $1.4$, $1.6$, $1.8$, $2.0$, $2.2$, $2.4$, $2.6$, $2.8$, \tickFID},
+  grid={major}, legend pos={north west}, legend cell align={left}, legend style={font=\small},
+]
+\fillbetween[C2, opacity=0.15, forget plot]{coordinates {\genSdePlotChurnImgcDhariwalPlainLo}}{coordinates {\genSdePlotChurnImgcDhariwalPlainHi}};
+\fillbetween[C1, opacity=0.15, forget plot]{coordinates {\genSdePlotChurnImgcDhariwalLambdaLo}}{coordinates {\genSdePlotChurnImgcDhariwalLambdaHi}};
+\fillbetween[C0, opacity=0.15, forget plot]{coordinates {\genSdePlotChurnImgcDhariwalRangeLo}}{coordinates {\genSdePlotChurnImgcDhariwalRangeHi}};
+\fillbetween[C4, opacity=0.15, forget plot]{coordinates {\genSdePlotChurnImgcDhariwalOursLo}}{coordinates {\genSdePlotChurnImgcDhariwalOursHi}};
+\addplot[C3, dashed]                  coordinates {\genSdePlotChurnImgcDhariwalOde};
+\addplot[C2]                          coordinates {\genSdePlotChurnImgcDhariwalPlain};
+\addplot[C1]                          coordinates {\genSdePlotChurnImgcDhariwalLambda};
+\addplot[C0]                          coordinates {\genSdePlotChurnImgcDhariwalRange};
+\addplot[C4]                          coordinates {\genSdePlotChurnImgcDhariwalOurs};
+\end{axis}
+\end{tikzpicture}
+}\\\hfill%
+\makebox[0.33\linewidth]{\footnotesize (a) Uncond. CIFAR-10, VP}\hfill%
+\makebox[0.33\linewidth]{\footnotesize (b) Uncond. CIFAR-10, VE}\hfill%
+\makebox[0.33\linewidth]{\footnotesize (c) Class-cond. ImageNet-64}\hfill%
+\caption{\label{fig:SdePlotChurn}%
+Ablations of our stochastic sampler (Algorithm~\refpaper{alg:stochastic}) parameters using pre-trained networks of Song~et~al.~\cite{Song2021sde} and Dhariwal and Nichol~\cite{Dhariwal2021}.
+Each curve shows FID ($y$-axis) as a function of $\Schurn$ ($x$-axis) for $N = 256$ steps (NFE = 511).
+The dashed red lines correspond to our deterministic sampler (Algorithm~\refpaper{alg:heun}), equivalent to setting $\Schurn = 0$.
+The purple curves correspond to optimal choices for $\{\Stmin, \Stmax, \Snoise\}$, found separately for each case using grid search.
+Orange, blue, and green correspond to disabling the effects of $\StminStmax$ and/or $\Snoise$.
+The shaded regions indicate the range of variation between the lowest and highest observed FID.
+}
+\end{figure}
+}
+
+\newcommand{\tabSdeTable}{%
+\forcenewcolumntype{x}{>{\centering\arraybackslash\hspace{0pt}}p{12mm}}%
+\renewcommand{\cs}{\hspace{0.5mm}}%
+\tabulinesep=0.7mm%
+\tabulinestyle{0.17mm}%
+\begin{table}[t]%
+\centering%
+\footnotesize%
+\caption{\label{tab:SdeTable}%
+Evaluation and ablations of our improvements to stochastic sampling.
+The values correspond to the curves shown in Figure~\refpaper{fig:SdePlotNfe}.
+}
+\vspace{1.5mm}%
+\begin{tabu}{|@{\ \ }l@{\ \ }|x@{\cs}x|x@{\cs}x|x@{\cs}x|}
+\tabucline{2-}
+\genSdeTable
+\tabucline{-}
+\end{tabu}%
+\end{table}%
+}
+
+\newcommand{\imgclasses}{\vlabel{\hhh}{\vv}{\makebox[\vv]{\scriptsize\hrlabel{Agaric}\hrlabel{Daisy}\hrlabel{Valley}\hrlabel{Pizza}\hrlabel{Balloon}\hrlabel{Beagle}\hrlabel{Ostrich}}}}
+
+\newcommand{\figGridsImgcSampling}{%
+\renewcommand{\hh}{0.478\linewidth}
+\renewcommand{\vv}{\hh/\real{5}*\real{7}}%
+\renewcommand{\hhh}{2.5mm}
+\begin{figure}[p]%
+\centering%
+\hspace{\hhh}\makebox[\hh]{Deterministic, Original sampler (DDIM)}\hfill%
+\hspace{\hhh}\makebox[\hh]{Deterministic, Our sampler (Alg.~\refpaper{alg:heun})}\\%
+\imgclasses\includegraphics[width=\hh]{grids-img64c-sampling/ode-repro-seed0.jpg}\hfill%
+\imgclasses\includegraphics[width=\hh]{grids-img64c-sampling/ode-ours-seed8.jpg}\\[-0.9mm]%
+\hspace{\hhh}\makebox[\hh]{\footnotesize FID 2.91~~~~NFE 250}\hfill%
+\hspace{\hhh}\makebox[\hh]{\footnotesize FID 2.66~~~~NFE {\bf 79}}\\[3mm]%
+\hspace{\hhh}\makebox[\hh]{Stochastic, Original sampler (iDDPM)}\hfill%
+\hspace{\hhh}\makebox[\hh]{Stochastic, Our sampler (Alg.~\refpaper{alg:stochastic})}\\%
+\imgclasses\includegraphics[width=\hh]{grids-img64c-sampling/sde-repro-seed1.jpg}\hfill%
+\imgclasses\includegraphics[width=\hh]{grids-img64c-sampling/sde-ours-seed6.jpg}\\[-0.9mm]%
+\hspace{\hhh}\makebox[\hh]{\footnotesize FID 2.01~~~~NFE 512}\hfill%
+\hspace{\hhh}\makebox[\hh]{\footnotesize FID {\bf 1.55}~~~~NFE 1023}\\[3mm]%
+\caption{\label{fig:GridsImgcSampling}%
+Results for different samplers on class-conditional ImageNet~\cite{Deng2009imagenet} at 64$\times$64 resolution, using the pre-trained model by Dhariwal~and~Nichol~\cite{Dhariwal2021}.
+The cases correspond to dots in Figures~\refpaper{fig:OdePlotNfe}c and~\refpaper{fig:SdePlotNfe}c.
+}%
+\end{figure}
+}
+
+\newcommand{\figGridsImgcTraining}{%
+\renewcommand{\hh}{0.956\linewidth}
+\renewcommand{\vv}{\hh/\real{10}*\real{7}}%
+\renewcommand{\hhh}{2.5mm}
+\begin{figure}[p]%
+\centering%
+\hspace{\hhh}\makebox[\hh]{{Deterministic, Our sampler \& training configuration}}\\%
+\imgclasses\includegraphics[width=\hh]{grids-img64c-training/ode-ours-seed9.jpg}\\[-0.9mm]%
+\hspace{\hhh}\makebox[\hh]{\footnotesize{FID 2.23~~~~NFE {\bf 79}}}\\[3mm]%
+\hspace{\hhh}\makebox[\hh]{{Stochastic, Our sampler \& training configuration}}\\%
+\imgclasses\includegraphics[width=\hh]{grids-img64c-training/sde-ours-seed2.jpg}\\[-0.9mm]%
+\hspace{\hhh}\makebox[\hh]{\footnotesize{FID {\bf 1.36}~~~~NFE 511}}\\[3mm]%
+\caption{\label{fig:GridsImgcTraining}%
+{Results for our training configuration on class-conditional ImageNet~\cite{Deng2009imagenet} at 64$\times$64 resolution, using our deterministic and stochastic samplers.}
+}%
+\end{figure}
+}
+
+\newcommand{\figGridsCifaruSampling}{%
+\renewcommand{\hh}{0.478\linewidth}
+\renewcommand{\hhh}{2.5mm}
+\begin{figure}[p]%
+\centering%
+\hspace{\hhh}\makebox[\hh]{Deterministic, Original sampler (p.flow), VP}\hfill%
+\hspace{\hhh}\makebox[\hh]{Deterministic, Original sampler (p.flow), VE}\\%
+\hspace{\hhh}\includegraphics[width=\hh]{grids-cifar10u-sampling/ddpmpp-orig-ode-repro-seed2.jpg}\hfill%
+\hspace{\hhh}\includegraphics[width=\hh]{grids-cifar10u-sampling/ncsnpp-orig-ode-repro-seed2.jpg}\\[-0.9mm]%
+\hspace{\hhh}\makebox[\hh]{\footnotesize FID 2.94~~~~NFE 256}\hfill%
+\hspace{\hhh}\makebox[\hh]{\footnotesize FID 5.45~~~~NFE 8192}\\[3mm]%
+\hspace{\hhh}\makebox[\hh]{Deterministic, Our sampler (Alg.~\refpaper{alg:heun}), VP}\hfill%
+\hspace{\hhh}\makebox[\hh]{Deterministic, Our sampler (Alg.~\refpaper{alg:heun}), VE}\\%
+\hspace{\hhh}\includegraphics[width=\hh]{grids-cifar10u-sampling/ddpmpp-orig-ode-ours-seed2.jpg}\hfill%
+\hspace{\hhh}\includegraphics[width=\hh]{grids-cifar10u-sampling/ncsnpp-orig-ode-ours-seed2.jpg}\\[-0.9mm]%
+\hspace{\hhh}\makebox[\hh]{\footnotesize FID 3.01~~~~NFE 35}\hfill%
+\hspace{\hhh}\makebox[\hh]{\footnotesize FID 3.82~~~~NFE {\bf 27}}\\[3mm]%
+\hspace{\hhh}\makebox[\hh]{Stochastic, Original sampler (E--M), VP}\hfill%
+\hspace{\hhh}\makebox[\hh]{Stochastic, Original sampler (P--C), VE}\\%
+\hspace{\hhh}\includegraphics[width=\hh]{grids-cifar10u-sampling/ddpmpp-orig-sde-repro-seed0.jpg}\hfill%
+\hspace{\hhh}\includegraphics[width=\hh]{grids-cifar10u-sampling/ncsnpp-orig-sde-repro-seed1.jpg}\\[-0.9mm]%
+\hspace{\hhh}\makebox[\hh]{\footnotesize FID 2.55~~~~NFE 1024}\hfill%
+\hspace{\hhh}\makebox[\hh]{\footnotesize FID 2.46~~~~NFE 2048}\\[3mm]%
+\hspace{\hhh}\makebox[\hh]{Stochastic, Our sampler (Alg.~\refpaper{alg:stochastic}), VP}\hfill%
+\hspace{\hhh}\makebox[\hh]{Stochastic, Our sampler (Alg.~\refpaper{alg:stochastic}), VE}\\%
+\hspace{\hhh}\includegraphics[width=\hh]{grids-cifar10u-sampling/ddpmpp-orig-sde-ours-seed4.jpg}\hfill%
+\hspace{\hhh}\includegraphics[width=\hh]{grids-cifar10u-sampling/ncsnpp-orig-sde-ours-seed8.jpg}\\[-0.9mm]%
+\hspace{\hhh}\makebox[\hh]{\footnotesize FID 2.27~~~~NFE 511}\hfill%
+\hspace{\hhh}\makebox[\hh]{\footnotesize FID {\bf 2.23}~~~~NFE 2047}\\[3mm]%
+\caption{\label{fig:GridsCifaruSampling}%
+Results for different samplers on unconditional CIFAR-10~\cite{Krizhevsky2009cifar} at 32$\times$32 resolution, using the pre-trained models by Song~et~al.~\cite{Song2021sde}.
+The cases correspond to dots in Figures~\refpaper{fig:OdePlotNfe}a,b and~\refpaper{fig:SdePlotNfe}a,b.
+}%
+\end{figure}
+}
+
+\newcommand{\figGridsCifaruTraining}{%
+\renewcommand{\hh}{0.478\linewidth}
+\renewcommand{\hhh}{2.5mm}
+\begin{figure}[p]%
+\centering%
+\hspace{\hhh}\makebox[\hh]{Original training (config \textsc{a}), VP}\hfill%
+\hspace{\hhh}\makebox[\hh]{Original training (config \textsc{a}), VE}\\%
+\hspace{\hhh}\includegraphics[width=\hh]{grids-cifar10u-training/ddpmpp-orig-ode-ours-seed7.jpg}\hfill%
+\hspace{\hhh}\includegraphics[width=\hh]{grids-cifar10u-training/ncsnpp-orig-ode-ours-seed7.jpg}\\[-0.9mm]%
+\hspace{\hhh}\makebox[\hh]{\footnotesize FID 3.01~~~~NFE 35}\hfill%
+\hspace{\hhh}\makebox[\hh]{\footnotesize FID 3.77~~~~NFE 35}\\[3mm]%
+\hspace{\hhh}\makebox[\hh]{Our training (config \textsc{f}), VP}\hfill%
+\hspace{\hhh}\makebox[\hh]{Our training (config \textsc{f}), VE}\\%
+\hspace{\hhh}\includegraphics[width=\hh]{grids-cifar10u-training/ddpmpp-augm-ode-ours-seed7.jpg}\hfill%
+\hspace{\hhh}\includegraphics[width=\hh]{grids-cifar10u-training/ncsnpp-augm-ode-ours-seed7.jpg}\\[-0.9mm]%
+\hspace{\hhh}\makebox[\hh]{\footnotesize FID {\bf 1.97}~~~~NFE 35}\hfill%
+\hspace{\hhh}\makebox[\hh]{\footnotesize FID 1.98~~~~NFE 35}\\[3mm]%
+\caption{\label{fig:GridsCifaruTraining}%
+Results for different training configurations on unconditional CIFAR-10~\cite{Krizhevsky2009cifar} at 32$\times$32 resolution, using our deterministic sampler with the same set of latent codes ($\xx_0$) in each case.
+}%
+\end{figure}
+}
+
+\newcommand{\cifarclasses}{\vlabel{\hhh}{\vv}{\makebox[\vv]{\scriptsize\hrlabel{Truck}\hrlabel{Ship}\hrlabel{Horse}\hrlabel{Frog}\hrlabel{Dog}\hrlabel{Deer}\hrlabel{Cat}\hrlabel{Bird}\hrlabel{Car}\hrlabel{Plane}}}}
+
+\newcommand{\figGridsCifarcTraining}{%
+\renewcommand{\hh}{0.478\linewidth}
+\renewcommand{\vv}{\hh/\real{8}*\real{10}}%
+\renewcommand{\hhh}{2.5mm}
+\begin{figure}[p]%
+\centering%
+\hspace{\hhh}\makebox[\hh]{Original training (config \textsc{a}), VP}\hfill%
+\hspace{\hhh}\makebox[\hh]{Original training (config \textsc{a}), VE}\\%
+\cifarclasses\includegraphics[width=\hh]{grids-cifar10c-training/ddpmpp-orig-ode-ours-seed8.jpg}\hfill%
+\cifarclasses\includegraphics[width=\hh]{grids-cifar10c-training/ncsnpp-orig-ode-ours-seed8.jpg}\\[-0.9mm]%
+\hspace{\hhh}\makebox[\hh]{\footnotesize FID 2.48~~~~NFE 35}\hfill%
+\hspace{\hhh}\makebox[\hh]{\footnotesize FID 3.11~~~~NFE 35}\\[3mm]%
+\hspace{\hhh}\makebox[\hh]{Our training (config \textsc{f}), VP}\hfill%
+\hspace{\hhh}\makebox[\hh]{Our training (config \textsc{f}), VE}\\%
+\cifarclasses\includegraphics[width=\hh]{grids-cifar10c-training/ddpmpp-augm-ode-ours-seed8.jpg}\hfill%
+\cifarclasses\includegraphics[width=\hh]{grids-cifar10c-training/ncsnpp-augm-ode-ours-seed8.jpg}\\[-0.9mm]%
+\hspace{\hhh}\makebox[\hh]{\footnotesize FID {\bf 1.79}~~~~NFE 35}\hfill%
+\hspace{\hhh}\makebox[\hh]{\footnotesize FID {\bf 1.79}~~~~NFE 35}\\[3mm]%
+\caption{\label{fig:GridsCifarcTraining}%
+Results for different training configurations on class-conditional CIFAR-10~\cite{Krizhevsky2009cifar} at 32$\times$32 resolution, using our deterministic sampler with the same set of latent codes ($\xx_0$) in each case.
+}%
+\end{figure}
+}
+
+\newcommand{\figGridsFfhqAfhqTraining}{%
+\renewcommand{\hh}{0.478\linewidth}
+\renewcommand{\hhh}{2.5mm}
+\begin{figure}[p]%
+\centering%
+\hspace{\hhh}\makebox[\hh]{FFHQ, Original training (config \textsc{a}), VP}\hfill%
+\hspace{\hhh}\makebox[\hh]{FFHQ, Original training (config \textsc{a}), VE}\\%
+\hspace{\hhh}\includegraphics[width=\hh]{grids-ffhq64-training/ddpmpp-orig-ode-ours-seed2.jpg}\hfill%
+\hspace{\hhh}\includegraphics[width=\hh]{grids-ffhq64-training/ncsnpp-orig-ode-ours-seed2.jpg}\\[-0.9mm]%
+\hspace{\hhh}\makebox[\hh]{\footnotesize FID 3.39~~~~NFE 79}\hfill%
+\hspace{\hhh}\makebox[\hh]{\footnotesize FID 25.95~~~~NFE 79}\\[3mm]%
+\hspace{\hhh}\makebox[\hh]{FFHQ, Our training (config \textsc{f}), VP}\hfill%
+\hspace{\hhh}\makebox[\hh]{FFHQ, Our training (config \textsc{f}), VE}\\%
+\hspace{\hhh}\includegraphics[width=\hh]{grids-ffhq64-training/ddpmpp-augm-ode-ours-seed2.jpg}\hfill%
+\hspace{\hhh}\includegraphics[width=\hh]{grids-ffhq64-training/ncsnpp-augm-ode-ours-seed2.jpg}\\[-0.9mm]%
+\hspace{\hhh}\makebox[\hh]{\footnotesize FID {\bf 2.39}~~~~NFE 79}\hfill%
+\hspace{\hhh}\makebox[\hh]{\footnotesize FID 2.53~~~~NFE 79}\\[3mm]%
+\hspace{\hhh}\makebox[\hh]{AFHQv2, Original training (config \textsc{a}), VP}\hfill%
+\hspace{\hhh}\makebox[\hh]{AFHQv2, Original training (config \textsc{a}), VE}\\%
+\hspace{\hhh}\includegraphics[width=\hh]{grids-afhq64-training/ddpmpp-orig-ode-ours-seed2.jpg}\hfill%
+\hspace{\hhh}\includegraphics[width=\hh]{grids-afhq64-training/ncsnpp-orig-ode-ours-seed2.jpg}\\[-0.9mm]%
+\hspace{\hhh}\makebox[\hh]{\footnotesize FID 2.58~~~~NFE 79}\hfill%
+\hspace{\hhh}\makebox[\hh]{\footnotesize FID 18.52~~~~NFE 79}\\[3mm]%
+\hspace{\hhh}\makebox[\hh]{AFHQv2, Our training (config \textsc{f}), VP}\hfill%
+\hspace{\hhh}\makebox[\hh]{AFHQv2, Our training (config \textsc{f}), VE}\\%
+\hspace{\hhh}\includegraphics[width=\hh]{grids-afhq64-training/ddpmpp-augm-ode-ours-seed2.jpg}\hfill%
+\hspace{\hhh}\includegraphics[width=\hh]{grids-afhq64-training/ncsnpp-augm-ode-ours-seed2.jpg}\\[-0.9mm]%
+\hspace{\hhh}\makebox[\hh]{\footnotesize FID {\bf 1.96}~~~~NFE 79}\hfill%
+\hspace{\hhh}\makebox[\hh]{\footnotesize FID 2.16~~~~NFE 79}\\[3mm]%
+\caption{\label{fig:GridsFfhqAfhqTraining}%
+Results for different training configurations on FFHQ~\cite{Karras2018stylegan} and AFHQv2~\cite{Choi2020afhq} at 64$\times$64 resolution, using our deterministic sampler with the same set of latent codes ($\xx_0$) in each case.
+}%
+\end{figure}
+}
+
+\newcommand{\figNfeSweep}{%
+\renewcommand{\hh}{0.49\linewidth}
+\begin{figure}[p]%
+\centering%
+\makebox[\hh]{Class-conditional ImageNet-64, Pre-trained}\hfill%
+\makebox[\hh]{Class-conditional CIFAR-10, Our training, VP}\\%
+\includegraphics[width=\hh]{nfe-sweep/img64c-dhariwal-orig-ode-ours-seed46.jpg}\hfill%
+\includegraphics[width=\hh]{nfe-sweep/cifar10c-ddpmpp-augm-ode-ours-seed53.jpg}\\[-1.4mm]%
+\makebox[\hh]{\scriptsize\makebox[0mm][l]{FID}\hrlabel{87.16}\hrlabel{12.39}\hrlabel{3.56}\hrlabel{\bf 2.66}}\hfill%
+\makebox[\hh]{\scriptsize\hrlabel{85.46}\hrlabel{35.47}\hrlabel{14.32}\hrlabel{6.72}\hrlabel{4.22}\hrlabel{2.48}\hrlabel{1.86}\hrlabel{\bf 1.79}}\\[-1.2mm]%
+\makebox[\hh]{\scriptsize\makebox[0mm][l]{NFE}\hrlabel{7}\hrlabel{11}\hrlabel{19}\hrlabel{79}}\hfill%
+\makebox[\hh]{\scriptsize\hrlabel{7}\hrlabel{9}\hrlabel{11}\hrlabel{13}\hrlabel{15}\hrlabel{19}\hrlabel{27}\hrlabel{35}}\\[3mm]%
+\makebox[\hh]{Unconditional FFHQ, Our training, VP}\hfill%
+\makebox[\hh]{Unconditional AFHQv2, Our Training, VP}\\%
+\includegraphics[width=\hh]{nfe-sweep/ffhq64-ddpmpp-augm-ode-ours-seed12.jpg}\hfill%
+\includegraphics[width=\hh]{nfe-sweep/afhq64-ddpmpp-augm-ode-ours-seed32.jpg}\\[-1.4mm]%
+\makebox[\hh]{\scriptsize\makebox[0mm][l]{FID}\hrlabel{142.34}\hrlabel{29.22}\hrlabel{5.13}\hrlabel{\bf 2.39}}\hfill%
+\makebox[\hh]{\scriptsize\hrlabel{61.57}\hrlabel{13.68}\hrlabel{3.00}\hrlabel{\bf 1.96}}\\[-1.2mm]%
+\makebox[\hh]{\scriptsize\makebox[0mm][l]{NFE}\hrlabel{7}\hrlabel{11}\hrlabel{19}\hrlabel{79}}\hfill%
+\makebox[\hh]{\scriptsize\hrlabel{7}\hrlabel{11}\hrlabel{19}\hrlabel{79}}\\[3mm]%
+\caption{\label{fig:NfeSweep}%
+Image quality and FID as a function of NFE using our deterministic sampler.
+At 32$\times$32 resolution, reasonable image quality is reached around NFE $=$ 13, but FID keeps improving until NFE $=$ 35.
+At 64$\times$64 resolution, reasonable image quality is reached around NFE $=$ 19, but FID keeps improving until NFE $=$ 79.
+}%
+\end{figure}
+}
+
+\newcommand{\figDegradation}{%
+\renewcommand{\hh}{0.475\linewidth}
+\begin{figure}[p]%
+\centering%
+\footnotesize%
+\makebox[\hh]{Uncond. CIFAR-10, Pre-trained, VP, $\Snoise = 1.000$}\hfill%
+\makebox[\hh]{Uncond. CIFAR-10, Pre-trained, VP, $\Snoise = 1.007$}\\%
+\includegraphics[width=\hh]{degradation/cifar10u-ddpmpp-orig-seed08-nadj1.000.jpg}\hfill
+\parbox[b][\hh/\real{8}*\real{10}]{0mm}{\scriptsize\vrlabel{0.02}\vrlabel{0.05}\vrlabel{0.10}\vrlabel{0.20}\vrlabel{0.30}\vrlabel{0.40}\vrlabel{0.50}\vrlabel{0.60}\vrlabel{0.70}\vrlabel{0.80}}\hfill%
+\includegraphics[width=\hh]{degradation/cifar10u-ddpmpp-orig-seed08-nadj1.007.jpg}\\[-1mm]%
+\makebox[\hh]{\scriptsize\hrlabel{Step 0\hspace{2.4mm}}\hrlabel{100}\hrlabel{200}\hrlabel{500}\hrlabel{1,000}\hrlabel{2,000}\hrlabel{5,000}\hrlabel{10,000}}\hfill%
+\makebox[0mm]{$\sigma$}\hfill%
+\makebox[\hh]{\scriptsize\hrlabel{Step 0\hspace{2.4mm}}\hrlabel{100}\hrlabel{200}\hrlabel{500}\hrlabel{1,000}\hrlabel{2,000}\hrlabel{5,000}\hrlabel{10,000}}\\[3mm]%
+\makebox[\hh]{Cond. ImageNet-64, Pre-trained, $\Snoise = 1.000$}\hfill%
+\makebox[\hh]{Cond. ImageNet-64, Pre-trained, $\Snoise = 1.003$}\\%
+\includegraphics[width=\hh]{degradation/img64c-dhariwal-orig-seed00-nadj1.000.jpg}\hfill
+\parbox[b][\hh/\real{6}*\real{8}]{0mm}{\scriptsize\vrlabel{0.05}\vrlabel{0.10}\vrlabel{0.20}\vrlabel{0.30}\vrlabel{0.40}\vrlabel{0.50}\vrlabel{0.60}\vrlabel{0.70}}\hfill%
+\includegraphics[width=\hh]{degradation/img64c-dhariwal-orig-seed00-nadj1.003.jpg}\\[-1mm]%
+\makebox[\hh]{\scriptsize\hrlabel{Step 0\hspace{3.5mm}}\hrlabel{500}\hrlabel{1,000}\hrlabel{2,000}\hrlabel{5,000}\hrlabel{10,000}}\hfill%
+\makebox[0mm]{$\sigma$}\hfill%
+\makebox[\hh]{\scriptsize\hrlabel{Step 0\hspace{3.5mm}}\hrlabel{500}\hrlabel{1,000}\hrlabel{2,000}\hrlabel{5,000}\hrlabel{10,000}}\\[3mm]%
+\caption{\label{fig:Degradation}%
+Gradual image degradation with repeated addition and removal of noise.
+We start with a random image drawn from $p(\xx; \sigma)$ (first column) and run Algorithm~\refpaper{alg:stochastic} for a certain number of steps (remaining columns) with fixed \smash{$\gamma_i = \sqrt{2}-1$}.
+Each row corresponds to a specific choice of $\sigma$ (indicated in the middle) that we keep fixed throughout the entire process.
+We visualize the results after running them through the denoiser, i.e., $D_\theta(\xx_i; \sigma)$.
+}%
+\end{figure}
+}
+
+\newcommand{\tabStochasticParams}{%
+\forcenewcolumntype{x}{>{\centering\arraybackslash\hspace{0pt}}p{14mm}}%
+\forcenewcolumntype{y}{>{\centering\arraybackslash\hspace{0pt}}p{19mm}}%
+\forcenewcolumntype{z}{>{\centering\arraybackslash\hspace{0pt}}p{50mm}}%
+\tabulinesep=0.7mm%
+\tabulinestyle{0.17mm}%
+\begin{table}[t]%
+\centering%
+\footnotesize%
+\caption{\label{tab:StochasticParams}%
+Parameters used for the stochastic sampling experiments in Section~\refpaper{sec:stochasticity}.
+}
+\vspace{1.5mm}%
+\begin{tabu}{|c|@{}x@{}x@{}|@{}y@{}y@{}|z|}
+\tabucline{-}
+\multirow{2}{*}{Parameter}    & \multicolumn{2}{c|}{CIFAR-10} & \multicolumn{2}{c|}{ImageNet}     & \multirow{2}{*}{Grid search} \\
+                              & VP      & VE                  & Pre-trained & {Our model}   & \\
+\tabucline{-}
+\makebox[7mm][l]{$\Schurn$}   & 30      & 80                  & 80          & {40}          & 0,\hfill 10,\hfill 20,\hfill 30,\hfill $\dots$,\hfill 70,\hfill 80,\hfill 90,\hfill 100 \\
+\makebox[7mm][l]{$\Stmin$}    & 0.01    & 0.05                & 0.05        & {0.05}        & 0,\hfill 0.005,\hfill 0.01,\hfill 0.02,\hfill $\dots$,\hfill 1,\hfill 2,\hfill 5,\hfill 10 \\
+\makebox[7mm][l]{$\Stmax$}    & 1       & 1                   & 50          & {50}          & 0.2,\hfill 0.5,\hfill 1,\hfill 2,\hfill $\dots$,\hfill 10,\hfill 20,\hfill 50,\hfill 80 \\
+\makebox[7mm][l]{$\Snoise$}   & 1.007   & 1.007               & 1.003       & {1.003}       & 1.000,\hfill 1.001,\hfill $\dots$,\hfill 1.009,\hfill 1.010 \\
+\tabucline{-}
+\end{tabu}%
+\end{table}%
+}
+
+\newcommand{\Translate}{\raisebox{0.1mm}{\scalebox{0.8}{\textsc{Translate2D}}}}
+\newcommand{\Rotate}{\raisebox{0.1mm}{\scalebox{0.8}{\textsc{Rotate2D}}}}
+\newcommand{\Scale}{\raisebox{0.1mm}{\scalebox{0.8}{\textsc{Scale2D}}}}
+
+\newcommand{\tabAugmentPipe}{%
+\tabulinesep=0.7mm%
+\tabulinestyle{0.17mm}%
+\begin{table}[t]%
+\centering%
+\footnotesize%
+\caption{\label{tab:AugmentPipe}%
+Our augmentation pipeline.
+Each training image undergoes a combined geometric transformation based on 8 random parameters that receive non-zero values with a certain probability.
+The model is conditioned with an additional 9-dimensional input vector derived from these parameters.
+}
+\vspace{1.5mm}%
+\begin{tabu}{|l|l|l|c|l|l|}
+\tabucline{-}
+Augmentation  & Transformation                                & Parameters                          & Prob.             & Conditioning    & Constants                                     \\
+\tabucline{-}
+$x$-flip      & $\Scale\big(1 - 2 a_0, ~1\big)$               & $a_0 \sim \mathcal{U}\{0, 1\}$      & 100\%             & $a_0$           & \makebox[7mm]{$A_\text{prob}$}  $= 12$\%      \\
+$y$-flip      & $\Scale\big(1, ~1 - 2 a_1\big)$               & $a_1 \sim \mathcal{U}\{0, 1\}$      & $A_\text{prob}$   & $a_1$           & \hspace{7mm}                    or $15$\%     \\
+\tabucline{-}
+Scaling       & $\Scale\big(  (A_\text{scale})^{a_2},$        & $a_2 \sim \mathcal{N}(0, 1)$        & $A_\text{prob}$   & $a_2$           & \makebox[7mm]{$A_\text{scale}$} $= 2^{0.2}$   \\
+              & \hspace{12mm}$(A_\text{scale})^{a_2}\big)$    &                                     &                   &                 &                                               \\
+\tabucline{-}
+Rotation      & $\Rotate\big({-}a_3\big)$                     & $a_3 \sim \mathcal{U}(-\pi, \pi)$   & $A_\text{prob}$   & $\cos a_3 - 1$  &                                               \\
+              &                                               &                                     &                   & $\sin a_3$      &                                               \\
+\tabucline{-}
+Anisotropy    & $\Rotate\big(a_4\big)$                        & $a_4 \sim \mathcal{U}(-\pi, \pi)$   & $A_\text{prob}$   & $a_5 ~\cos a_4$ & \makebox[7mm]{$A_\text{aniso}$} $= 2^{0.2}$   \\
+              & $\Scale\big(  (A_\text{aniso})^{a_5},$        & $a_5 \sim \mathcal{N}(0, 1)$        &                   & $a_5 ~\sin a_4$ &                                               \\
+              & \hspace{12mm}$1/(A_\text{aniso})^{a_5}\big)$  &                                     &                   &                 &                                               \\
+              & $\Rotate\big({-}a_4\big)$                     &                                     &                   &                 &                                               \\
+\tabucline{-}
+Translation   & $\Translate\big((A_\text{trans}) a_6,$        & $a_6 \sim \mathcal{N}(0, 1)$        & $A_\text{prob}$   & $a_6$           & \makebox[7mm]{$A_\text{trans}$} $= 1/8$       \\
+              & \hspace{17mm}  $(A_\text{trans}) a_7\big)$    & $a_7 \sim \mathcal{N}(0, 1)$        &                   & $a_7$           &                                               \\
+\tabucline{-}
+\end{tabu}%
+\end{table}%
+}
+
+\newcommand{\SB}[1]{\scalebox{0.88}{#1}}
+\newcommand{\YES}{\checkmark}
+\newcommand{\NO}{--}
+
+\newcommand{\tabTrainingParams}{%
+\forcenewcolumntype{x}{>{\centering\arraybackslash\hspace{0pt}}p{20.9mm}}%
+\tabulinesep=0.7mm%
+\tabulinestyle{0.17mm}%
+\begin{table}[t]%
+\centering%
+\footnotesize%
+\caption{\label{tab:TrainingParams}%
+Hyperparameters used for the training runs in Section~\refpaper{sec:training}.
+}
+\vspace{1.5mm}%
+\begin{tabu}{|l|@{}x@{}x@{}|@{}x@{}x@{}|@{}x@{}|}
+\tabucline{-}
+\multirow{2}{*}{Hyperparameter}     & \multicolumn{2}{c|}{CIFAR-10} & \multicolumn{2}{c|}{FFHQ \& AFHQv2}   & {ImagetNet}   \\
+                                    & \SB{Baseline}   & \SB{Ours}   & \SB{Baseline}   & \SB{Ours}           & {\SB{Ours}}   \\
+\tabucline{-}
+Number of GPUs                      & 4               & 8           & 4               & 8                   & {32}          \\
+Duration \SB{(Mimg)}                & 200             & 200         & 200             & 200                 & {2500}        \\
+Minibatch size                      & 128             & 512         & 128             & 256                 & {4096}        \\
+Gradient clipping                   & \YES            & \NO         & \YES            & \NO                 & {\NO}         \\
+{Mixed-precision \SB{(FP16)}} & {\NO}     & {\NO} & {\NO}     & {\NO}         & {\YES}        \\
+\tabucline{-}
+Learning rate \SB{${\times}10^4$}   & 2               & 10          & 2               & 2                   & {1}           \\
+LR ramp-up \SB{(Mimg)}              & 0.64            & 10          & 0.64            & 10                  & {10}          \\
+EMA half-life \SB{(Mimg)}           & 0.89 / 0.9      & 0.5         & 0.89 / 0.9      & 0.5                 & {50}          \\
+                                    & \SB{(VP / VE)}  &             & \SB{(VP / VE)}  &                     &                     \\
+Dropout probability                 & 10\%            & 13\%        & 10\%            & 5\% / 25\%          & {10\%}        \\
+                                    &                 &             &                 & \SB{(FFHQ / AFHQ)}  &                     \\
+\tabucline{-}
+Channel multiplier                  & 128             & 128         & 128             & 128                 & {192}         \\
+Channels per resolution             & 1-2-2-2         & 2-2-2       & 1-1-2-2-2       & 1-2-2-2             & {1-2-3-4}     \\
+Dataset $x$-flips                   & \YES            & \NO         & \YES            & \NO                 & {\NO}         \\
+Augment probability                 & \NO             & 12\%        & \NO             & 15\%                & {\NO}         \\
+\tabucline{-}
+\end{tabu}%
+\end{table}%
+}
+
+\newcommand{\tabNetworkDetails}{%
+\forcenewcolumntype{x}{>{\centering\arraybackslash\hspace{0pt}}p{23mm}}%
+\tabulinesep=0.7mm%
+\tabulinestyle{0.17mm}%
+\begin{table}[t]%
+\centering%
+\footnotesize%
+\caption{\label{tab:NetworkDetails}%
+{Details of the network architectures used in this paper.}
+}
+\vspace{1.5mm}%
+\begin{tabu}{|l|@{}x@{}x@{}x@{}|}
+\tabucline{-}
+\multirow{2}{*}{Parameter}              & \ddpmpp{}       & \ncsnpp{}       & {ADM}               \\
+                                        & \SB{(VP)}       & \SB{(VE)}       & {\SB{(ImageNet)}}   \\
+\tabucline{-}
+Resampling filter                       & Box             & Bilinear        & {Box}               \\
+Noise embedding                         & Positional      & Fourier         & {Positional}        \\
+Skip connections in encoder             & \NO             & Residual        & {\NO}               \\
+Skip connections in decoder             & \NO             & \NO             & {\NO}               \\
+\tabucline{-}
+{Residual blocks per resolution}  & {4}       & {4}       & {3}                 \\
+{Attention resolutions}           & {\{16\}}  & {\{16\}}  & {\{32, 16, 8\}}     \\
+{Attention heads}                 & {1}       & {1}       & {6-9-12}            \\
+{Attention blocks in encoder}     & {4}       & {4}       & {9}                 \\
+{Attention blocks in decoder}     & {2}       & {2}       & {13}                \\
+\tabucline{-}
+\end{tabu}%
+\end{table}%
+}
+
+\newcommand{\algAlpha}{%
+\begin{algorithm}[t]
+\footnotesize
+\captionof{algorithm}[alpha]{\atphantom\ \ Deterministic sampling using general 2\textsuperscript{nd} order Runge--Kutta, $\sigma(t)=t$ and $s(t)=1$.}
+\begin{spacing}{1.1}
+\begin{algorithmic}[1]
+  \AProcedure{AlphaSampler}{$D_\theta(\xx;\sigma), ~t_{i \in \{0, \dots, N\}}, ~\alpha$}
+    \AState{{\bf sample} $\xx_0 \sim \mathcal{N} \big( \boldzero, ~\odetime_0^2 ~\boldi \big)$}
+    \AFor{$i \in \{0, \dots, N-1\}$}
+      \AState{$h_i \gets \odetime_{i+1} - \odetime_i$}
+        \AComment{Step length}
+      \AState{$\dd_i \gets \big(\xx_i - D_\theta(\xx_i; \odetime_i)\big) / \odetime_i$}
+        \AComment{Evaluate $\diff\xx / \diff\odetime$ at $(\xx,\,\odetime_i)$}
+      \AState{$(\xx'_i,\,\odetime'_i) \gets (\xx_i + \alpha h \dd_i,\,\odetime_i + \alpha h)$}
+        \AComment{Additional evaluation point}
+      \AIf{$\odetime'_i \ne 0$}
+        \AState{$\ddp_i \gets \big(\xx'_i - D_\theta(\xx'_i; \odetime'_i)\big) / \odetime'_i$}
+          \AComment{Evaluate $\diff\xx / \diff\odetime$ at $(\xx'_i,\,\odetime'_i)$}
+        \DState{$\displaystyle\xx_{i+1} \gets \xx_i + h\Big[\Big(1-\tfrac{1}{2\alpha}\Big)\dd_i + \tfrac{1}{2\alpha}\ddp_i\Big]$}
+          \AComment{Second order step from $\odetime_i$ to $\odetime_{i+1}$}
+      \Else
+        \AState{$\xx_{i+1} \gets \xx_i + h \dd_i$}
+          \AComment{Euler step from $\odetime_i$ to $\odetime_{i+1}$}
+      \EndIf
+    \EndFor
+    \AState{\textbf{return} $\xx_N$}
+  \EndProcedure
+\end{algorithmic}
+\end{spacing}
+\label{alg:alpha}
+\end{algorithm}
+}
+

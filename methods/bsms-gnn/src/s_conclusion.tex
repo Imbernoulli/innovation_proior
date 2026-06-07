@@ -1,0 +1,11 @@
+\section{Conclusion, Limitations, and Future Work}
+The Bi-Stride Multi-Scale Graph Neural Network (BSMS-GNN) utilizes a novel pooling strategy that allows for the creation of an arbitrary-depth, multi-level graph neural network using the original mesh as the sole input. This approach eliminates the need for manually drawing coarser meshes and reduces the potential for wrong edges introduced by spatial proximity. Additionally, Bi-stride pooling enables a one-MP scheme and a non-parametric transition, resulting in a significant reduction in computational costs. Overall, BSMS-GNN improves the capability and generality of applying GNNs to large-scale physical simulations with complex geometries.
+
+
+\revision{
+Further research following our path may include handling huge graphs through the combination of multi-level GNNs with batched and distributed training~\cite{stronisch2023multi}.
+Combining the neural operators~\cite{li2020neural,li2020multipole}, i.e. the ability to handle a wide range of PDE parameters, is also appealing.
+It would be interesting to combine BSMS-GNNs with Transformer~\cite{han2022predicting,geneva2022transformers,li2022transformer} for stable roll-outs.
+Regarding more precise contact modeling, the point-point approach can be improved by face pairs~\cite{allen2023learning}.
+Finally, it is worth investigating strategies to score and prunes edges~\cite{ding2006transitive,yu2014transitive} at coarser levels.
+}

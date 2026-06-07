@@ -1,0 +1,86 @@
+\documentclass{article}
+
+% if you need to pass options to natbib, use, e.g.:
+% \PassOptionsToPackage{numbers, compress}{natbib}
+% before loading nips_2018
+
+% ready for submission
+% \usepackage[nonatbib]{nips_2018}
+
+% to compile a preprint version, e.g., for submission to arXiv, add
+% add the [preprint] option:
+\usepackage[preprint, nonatbib]{nips_2018}
+
+% to compile a camera-ready version, add the [final] option, e.g.:
+% \usepackage[final]{nips_2018}
+
+% to avoid loading the natbib package, add option nonatbib:
+% \usepackage[nonatbib]{nips_2018}
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+% \usepackage{hyperref}       % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{color}
+\usepackage[]{graphicx}
+\usepackage{amsmath}
+\usepackage{xcolor}
+\usepackage{paralist}
+\usepackage{enumerate}
+\usepackage[]{subcaption}
+\usepackage{siunitx}
+\usepackage{makecell}
+\usepackage{threeparttable}
+\usepackage{tikz}
+\usepackage{multirow}
+\usepackage{tabularx} % for professional tables
+\usepackage{soul}
+
+\title{Representation Learning with \\Contrastive Predictive Coding}
+
+
+\author{
+  Aaron van den Oord \\
+  DeepMind \\
+  \texttt{avdnoord@google.com} \\
+  \And
+  Yazhe Li \\
+  DeepMind \\
+  \texttt{yazhe@google.com} \\
+  \And
+  Oriol Vinyals \\
+  DeepMind \\
+  \texttt{vinyals@google.com} \\
+}
+
+
+\begin{document}
+
+
+\maketitle
+
+
+\begin{abstract}
+
+While supervised learning has enabled great progress in many applications, unsupervised learning has not seen such widespread adoption, and remains an important and challenging endeavor for artificial intelligence.
+In this work, we propose a universal unsupervised learning approach to extract useful representations from high-dimensional data, which we call Contrastive Predictive Coding.
+The key insight of our model is to learn such representations by predicting the future in \emph{latent} space by using powerful autoregressive models. We use a probabilistic contrastive loss which induces the latent space to capture information that is maximally useful to predict future samples. It also makes the model tractable by using negative sampling.
+While most prior work has focused on evaluating representations for a particular modality, we demonstrate that our approach is able to learn useful representations achieving strong performance on four distinct domains: speech, images, text and reinforcement learning in 3D environments.
+\end{abstract}
+
+\input{introduction}
+\input{method}
+\input{experiments}
+\input{conclusion}
+
+\bibliographystyle{unsrt}
+\bibliography{main}
+
+\input{appendix}
+
+\end{document}
+

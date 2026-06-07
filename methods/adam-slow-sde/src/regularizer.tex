@@ -1,0 +1,41 @@
+\section{Regularizers under label noise for AGMs in \Cref{tab:agms}}
+\label{app:regularizer}
+In this section, we provide additional discussions on the regularizer for the AGM optimizers in \Cref{tab:agms} besides Adam, AdamE (refer to \Aref{proof:diag}), and Shampoo (refer to \Aref{app:shampoo}).
+
+\paragraph{SGD.} Under label noise, the implicit bias of SGD has been extensively studied by previous works; As discussed in \cref{sec:related}, approaches such as fixed point analysis \citep{blanc2020implicit}, slow SDE \citep{li2021happens} and implicit gradient regularization \citep{barrett2020implicit} all agree on the result that SGD implicitly regularizes $\mathrm{tr}(\mH)$ on the minimizer manifold. Our work provides a new insight on the implicit bias of SGD by comparing with that of Adam. Specifically, SGD treats each direction equally which results in a rotation invariant $\mathrm{tr}(\mH)$ as the implicit regularizer, while Adam has the second-order momentum as a denominator, so Adam regularizes the entries with small gradients relatively faster, as is indicated in its implicit bias $\mathrm{tr}((\Diag \mH)^{1/2})$.
+
+\paragraph{RMSProp.} The RMSProp optimizer \citet{hinton2012neural} can be seen as a special case of Adam, where $\beta_1 = 0$. One can observe that $\beta_1$ does not appear in the slow SDE system, which implies that as long as $1 - \beta_1$ is of constant order, the choice of $\beta_1$ has nothing to do with the dynamics of Adam on the minimizer manifold. The intuition is that, after the iteration approaches the manifold, the gradient $\nabla \cL(\vtheta_k)$ moves very slowly as $k$ proceeds. Since the momentum only captures $\O(\log 1/\eta)$ past steps, the different between momentum and the gradient at that step becomes negligible.
+Therefore, RMSProp possesses an implicit bias identical to Adam: $\mathrm{tr}((\Diag \mH)^{1/2})$.
+
+\paragraph{Adam-mini and Adalayer.} Adam-mini \citep{zhang2025adamminiusefewerlearning} and Adalayer \citep{zhao2025deconstructingmakesgoodoptimizer} belong to the same kind of variant of Adam that partitions the parameters. In Adam-mini the partitions are blocks, and in Adalayer the partitions are layers. In the sequel, we provide a brief derivation of the implicit bias of ``Partitioned Adam'', which is applicable to any kind of optimizer whose functions $V$ and $S$ can be expressed in the form of
+\begin{align*}
+    V(\mM)_i &:=\frac{1}{|B_{\pi(i)}|}\sum_{j\in B_{\pi(i)}} M_{jj} \\ S(\vv) &:= \Diag\bigl(1/(\sqrt{\vv}+\epsilon)\bigr)
+\end{align*}
+where $\cB = \left\{B_1, B_2, \cdots, B_N\right\}$ is a partition of $[d]$, and for each $i \in [d]$, $\pi(i)$ denotes the index of the set containing $i$, i.e. $i \in B_{\pi(i)}$.
+We derive the case for $\epsilon = 0$.
+
+Recall from the proof of \Cref{thm:formal-adam-implicit-bias-label-noise-eps-0} that the gradient of the implicit regularizer being minimized on manifold can be expressed as
+\begin{align}
+    \partial^2 \left(\nabla\cL\right) \left[\mS\right] &= \nabla\left[\langle \mS, \mH\rangle\right] - \nabla \left(\mS\right)\left[\mH\right].\label{equ:partitioned-adam-decomposition}
+\end{align}
+In our case $\mS$ is diagonal, so we can calculate the contribution of each set in the partition, and add them up. Next we focus on a single set, and re-index it as $\{1, 2, \cdots, G\}$ without loss of generality. In this set $\tr \mH / G$ is used as a shared second-order momentum, so we have \begin{align*}
+    \mS = \left[ \frac{\tr \mH}{G} \mI_{G}\right]^{1/2}.
+\end{align*}
+Combining with $\mP = \mS^{1/2}$ gives us
+\begin{align*}
+    \langle \mS, \mH\rangle = \tr\left(\mP\mH\mP\right) = \sqrt{G \cdot \tr \mH}.
+\end{align*}
+For the second term, we again denote $h_j:= \mH_{jj}$, and we further denote $t:= \tr \mH / G = \frac{1}{G}\sum_{j = 1}^{G} h_j$. \begin{align*}
+    \nabla \left(\mS\right)\left[\mH\right] 
+    &= \sum_j\nabla\left(t^{-1/2}\right) \cdot h_j \\
+    &= \sum_j \nabla\left(t\right)\cdot h_j \cdot -\frac{1}{2} t^{-3/2} \\
+    &= G \cdot \nabla\left(t\right) \cdot -\frac{1}{2} t^{-1/2}\\
+    &= -G \nabla\left(t^{1/2}\right) = -\nabla \sqrt{G \cdot \tr \mH}.
+\end{align*}
+Plugging into \eqref{equ:partitioned-adam-decomposition} gives the implicit bias contributed by this set as $\sqrt{G \cdot \tr \mH}$. Finally, summing up all the sets, we conclude the overall implicit bias as \begin{align*}
+    \sum_{i \in [N]} \sqrt{|B_i| \cdot \tr \mH_{B_i}}.
+\end{align*} 
+Here, $\mH_{B_i}$ means the submatrix of $\mH$ if we restrict the rows and columns to $B_i$.
+
+% \paragraph{Adaptive Gradient Methods.}
+% As a test-of-time optimizer that has revolutionized the field of deep learning~\citep{kingma2014adam}, Adam innovatively combined the moving average of the first and second moments of gradients to determine an adaptive learning rate. Adam has also spawned a family of derivative optimizers such as AdamW \citep{loshchilov2017decoupled}, AdaFactor \citep{shazeer2018adafactor}, Adam-mini \citep{zhang2025adamminiusefewerlearning}, Adalayer \citep{zhao2025deconstructingmakesgoodoptimizer} and AdaSGD \citep{wang2020adasgd}, maintaining significant advantages over SGD in terms of empirical use. Under a more general framework of adaptive gradient methods, many optimizers also get huge success as adaptive gradient methods, such as RMSprop~\citep{hinton2012neural}, Adafactor~\citep{shazeer2018adafactor}.

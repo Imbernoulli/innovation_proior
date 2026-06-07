@@ -1,0 +1,46 @@
+\begin{table}[h]
+\begin{subtable}{.4\linewidth}
+    \tiny
+    \centering
+    \begin{tabular}{l l | r}
+     \toprule 
+          Method & Architecture & {Top-5 $10\%$}\\
+          \midrule \hline
+          Supervised baseline & ResNet-$50$ & $80.4$ \\
+          \midrule
+          Pseudo-label & ResNet-$50$ & $82.4$\\
+         VAT+Entropy Min. & ResNet-$50$ & $83.4$\\
+         UDA (w. RandAug) & ResNet-$50$ & $88.5$\\
+         FixMatch (w. RandAug) & ResNet-$50$ 4& $89.1$\\
+         S4L (Rot+VAT+En. M.) & ResNet-$50$ ($4\times$) & $\bf{91.2}$\\
+         \bottomrule
+    \end{tabular}
+    \caption{\label{table:few_labels_1}Methods using other label propagation}
+\end{subtable}
+\phantom{aaaaa}
+\begin{subtable}{.45\linewidth}
+    \tiny
+    \centering
+    \begin{tabular}{l l |r r r r}
+    \toprule
+         Method & Architecture & \multicolumn{2}{c}{Top-1} & \multicolumn{2}{c}{Top-5} \\
+          & & $1\%$ & $10\%$ & $1\%$ & $10\%$ \\
+         \midrule \hline
+         InstDisc & ResNet-$50$ & - & - & $39.2$ & $77.4$\\
+         BigBiGAN \cite{BigBiGAN} & RevNet-$50$ ($4\times$) & - & - & $55.2$ & $78.8$ \\
+         PIRL \cite{PIRL}  & ResNet-$50$ & - & - & $57.2$ & $83.8$\\
+         \CPCC \cite{CPCv2}  & ResNet-$161$ & - & - & $77.9$ & $91.2$\\
+         
+         \simclr \cite{SimCLR}  & ResNet-$50$ & $48.3$ & $65.6$ & $75.5$ & $87.8$\\
+         \algo (ours) & ResNet-$50$ & \cellcolor{pearDark!20} $\bf{53.3}$ & \cellcolor{pearDark!20} $\bf{67.6}$ &\cellcolor{pearDark!20} $\bf{78.4}$ & \cellcolor{pearDark!20} $\bf{88.7}$\\
+         \simclr \cite{SimCLR}   & ResNet-$50$ ($2\times$) & $58.5$ & $71.7$ & $83.0$ & $91.2$\\
+          \algo (ours) & ResNet-$50$ ($2\times$) &\cellcolor{pearDark!20} $\bf{62.2}$ & \cellcolor{pearDark!20} $\bf{(72.4)}$ &\cellcolor{pearDark!20} $\bf{84.1}$ & \cellcolor{pearDark!20} $(90.9)$\\
+         \simclr \cite{SimCLR}  & ResNet-$50$ ($4\times$) & $63.0$ & $74.4$ & $85.8$ & $92.6$\\
+         \algo (ours) & ResNet-$50$ ($4\times$) &\cellcolor{pearDark!20} $69.1$& \cellcolor{pearDark!20} $74.6$ &\cellcolor{pearDark!20} $87.9$ &\cellcolor{pearDark!20} $91.5$\\
+         \algo (ours) & ResNet-$152$ ($3\times$) & $\bf{68.4}$ & $\bf{(74.7)}$ & $\bf{86.4}$ & $(91.5)$\\
+         \bottomrule
+    \end{tabular}
+\caption{\label{table:few_labels_2}Representation methods only}
+\end{subtable}
+    \caption{\label{table:few_labels}Semi-supervised training (with few labels) on ImageNet.}
+\end{table}

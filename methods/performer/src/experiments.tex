@@ -1,0 +1,77 @@
+\vspace{-2.5mm}
+\section{Experiments}
+\label{sec:experiments}
+We implemented our setup on top of pre-existing Transformer training code in Jax \citep{jax} optimized with just-in-time (\texttt{jax.jit}) compilation, and complement our theory with empirical evidence to demonstrate the practicality of FAVOR+ in multiple settings. Unless explicitly stated, a Performer replaces only the attention component with our method, while all other components are exactly the same as for the regular Transformer. For shorthand notation, we denote unidirectional/causal modelling as \textbf{(U)} and bidirectional/masked language modelling as \textbf{(B)}. 
+
+In terms of baselines, we use other Transformer models for comparison, although some of them are restricted to only one case - e.g. Reformer \citep{reformer} is only (U), and Linformer \citep{linformer} is only (B). Furthermore, we use PG-19 \citep{compr} as an alternative (B) pretraining benchmark, as it is made for long-length sequence training compared to the (now publicly unavailable) BookCorpus \citep{bookcorpus} + Wikipedia dataset used in BERT \citep{bert} and Linformer. All model and tokenization hyperparameters are shown in Appendix \ref{appendix:hyperparameters}.
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=1.0\textwidth]{img/model_regular_opt.png}
+  \caption{\small{Comparison of Transformer and Performer in terms of forward and backward pass speed and maximum $L$ allowed. "X" (OPT) denotes the maximum possible speedup achievable, when attention simply returns the $\mathbf{V}$-matrix. Plots shown up to when a model produces an out of memory error on a V100 GPU with 16GB. Vocabulary size used was 256. Best in color.}}
+  \label{fig:backward_pass}
+\end{figure}
+
+\subsection{Computational costs}
+We compared speed-wise the backward pass of the Transformer and the Performer in (B) setting, as it is one of the main computational bottlenecks during training, when using the regular default size $(n_{heads}, n_{layers}, d_{ff}, d) = (8,6,2048,512)$, where $d_{ff}$ denotes the width of the MLP layers. We observed (Fig. \ref{fig:backward_pass}) that in terms of $L$, the Performer reaches nearly linear time and sub-quadratic memory consumption (since the explicit $O(L^{2})$ attention matrix is not stored). In fact, the Performer achieves nearly optimal speedup and memory efficiency possible, depicted by the "X"-line when attention is replaced with the "identity function" simply returning the $\mathbf{V}$-matrix. The combination of both memory and backward pass efficiencies for large $L$ allows respectively, large batch training and lower wall clock time per gradient step. Extensive additional results are demonstrated in Appendix \ref{appendix:computation_costs_bidirectional} by varying layers, raw attention, and architecture sizes.
+
+\subsection{Softmax attention approximation error}
+\label{subsec:approx_error_compatibility}
+
+We further examined the approximation error via FAVOR+ in Fig. \ref{fig:approx}.
+%As already established in Sec. \ref{sec:theory} that convergence is independent of $L$, 
+We demonstrate that \textbf{1.} Orthogonal features produce lower error than unstructured (IID) features, \textbf{2.} Positive features produce lower error than trigonometric $\sin$/$\cos$ features. These two empirically validate the PORF mechanism.
+%\vspace{0.5mm}
+\begin{figure}[H]
+  \includegraphics[width=0.498\textwidth]{img/attention_output_ortho_iid.png}
+  \includegraphics[width=0.498\textwidth]{img/attention_output_sin_exp.png}
+  \caption{\small{MSE of the approximation output when comparing Orthogonal vs IID features and trigonometric $\sin$/$\cos$ vs positive features. We took $L = 4096, d = 16$, and varied the number of random samples $m$. Standard deviations shown across 15 samples of appropriately normalized random matrix input data.}}
+  \label{fig:approx}
+\end{figure}
+
+To further improve overall approximation of attention blocks across multiple iterations which further improves training, random samples should be periodically redrawn (Fig. \ref{fig:backward_compatibility}, right). This is a cheap procedure, but can be further optimized (Appendix \ref{subsec:extensions}).
+
+\subsection{Softmax approximation on Transformers}
+\label{subsec:softmax_approx_transformer}
+
+Even if the approximation of the attention mechanism is tight, small errors can easily propagate throughout multiple Transformer layers (e.g. MLPs, multiple heads), as we show in Fig. \ref{fig:appendix_approx} (Appendix). In other words, the model's \textit{Lipschitz constant} can easily scale up small attention approximation error, which means that very tight approximations may sometimes be needed. Thus, when applying FAVOR(+)'s softmax approximations on a Transformer model (i.e. "Performer-X-SOFTMAX"), we demonstrate that: 
+
+\textbf{1.} Backwards compatibility with pretrained models is available as a benefit from softmax approximation, via small finetuning (required due to error propagation) even for trigonometric features (Fig. \ref{fig:backward_compatibility}, left) on the LM1B dataset \citep{lm1b}.
+However, when on larger dataset PG-19, \textbf{2.} Positive (POS) softmax features (with redrawing) become crucial for achieving performance matching regular Transformers (Fig. \ref{fig:backward_compatibility}, right). 
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.99\textwidth]{img/softmax_plot.png}
+  \caption{\small We transferred the original pretrained Transformer's weights into the Performer, which produces an initial non-zero 0.07 accuracy (dotted orange line), but quickly recovers accuracy in a small fraction of the original number of gradient steps. However on PG-19, Trigonometric (TRIG) softmax approximation becomes highly unstable (full curve in Appendix \ref{subsec:unstable_trig}), while positive features (POS) (without redrawing) and Linformer (which also approximates softmax) \textit{even with redrawn projections}, plateau at the same perplexity. Positive softmax with feature redrawing is necessary to match the Transformer, with SMREG (regularization from Sec. \ref{ort-theorem}) allowing faster convergence. Additional ablation studies over many attention kernels, showing also that trigonometric random features lead even to NaN values in training are given in Appendix \ref{subsec:appendix_generalized_attention}.}
+  \label{fig:backward_compatibility}
+\end{figure}
+
+\subsection{Multiple layer training for proteins}
+We further benchmark the Performer on both (U) and (B) cases by training a 36-layer model using protein sequences from the Jan. 2019 release of TrEMBL \citep{uniprot2019uniprot}, similar to \citep{progen}. In Fig. \ref{fig:big_benchmarking}, the Reformer and Linformer \textit{significantly drop in accuracy} on the protein dataset. Furthermore, the usefulness of generalized attention is evidenced by Performer-RELU (taking $f=\mathrm{ReLU}$ in Equation \ref{eq:feature}) achieving the highest accuracy in both (U) and (B) cases. Our proposed softmax approximation is also shown to be tight, achieving the same accuracy as the exact-softmax Transformer and confirming our theoretical claims from Section \ref{sec:theory}. 
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=1.0\textwidth]{img/protein_both.png}
+  \caption{\small Train = Dashed, Validation = Solid. For TrEMBL, we used the exact same model parameters $(n_{heads}, n_{layers}, d_{ff}, d)  = (8, 36, 1024, 512)$ from \protect\citep{progen} for all runs. For fairness, all TrEMBL experiments used 16x16 TPU-v2's. Batch sizes were maximized for each separate run given the compute constraints. Hyperparameters can be found in Appendix \ref{appendix:hyperparameters}. Extended results including dataset statistics, out of distribution evaluations, and visualizations, can be found in Appendix \ref{appendix:protein_extended}.}
+  \label{fig:big_benchmarking}
+\end{figure}
+\vspace{-2mm}
+\subsection{Large length training - Common datasets}
+On the standard (U) ImageNet64 benchmark from \citep{parmar} with $L = 12288$ which is unfeasible for regular Transformers, we set all models to use the same $(n_{heads}, d_{ff}, d)$ but varying $n_{layers}$. Performer/6-layers matches the Reformer/12-layers, while the Performer/12-layers matches the Reformer/24-layers (Fig. \ref{fig:im64_protein_8192}: left). Depending on hardware (TPU or GPU), we also found that the Performer can be 2x faster than the Reformer via Jax optimizations for the (U) setting. 
+
+For a proof of principle study, we also create an initial protein benchmark for predicting interactions among groups of proteins by concatenating protein sequences to length $L = 8192$ from TrEMBL, long enough to model protein interaction networks without the large sequence alignments required by existing methods \citep{cong2019protein}. In this setting, a regular Transformer overloads memory even at a batch size of $1$ per chip, by a wide margin. Thus as a baseline, we were forced to use a significantly smaller variant, reducing to $(n_{heads}, n_{layers}, d_{ff}, d) = (8, \{1,2,3\}, 256, 256)$. Meanwhile, the Performer trains efficiently at a batch size of 8 per chip using the standard $(8, 6, 2048, 512)$ architecture. We see in Fig. \ref{fig:im64_protein_8192} (right subfigure) that the smaller Transformer ($n_{layer} = 3$) is quickly bounded at $\approx 19\%$, while the Performer is able to train continuously to $\approx 24\%$.
+%ImageNet64 results are also presented in Fig. \ref{fig:im64_protein_8192}.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=1.0\textwidth]{img/im64_concat_protein.png}
+  \caption{\small Train = Dashed, Validation = Solid. For ImageNet64, all models used the standard $(n_{heads}, d_{ff}, d) = (8, 2048, 512)$. We further show that our positive softmax approximation achieves the same performance as ReLU in Appendix \ref{subsec:softmax_unidirectional}. For concatenated TrEMBL, we varied $n_{layers} \in \{1,2,3\}$ for the smaller Transformer. Hyperparameters can be found in Appendix \ref{appendix:hyperparameters}.}
+  \label{fig:im64_protein_8192}
+\end{figure}
+
+
+
+
+
+
+

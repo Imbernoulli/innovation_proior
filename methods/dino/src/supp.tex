@@ -1,0 +1,105 @@
+\documentclass[10pt,twocolumn,letterpaper]{article}
+\usepackage{iccv}
+\usepackage{times}
+\usepackage{epsfig}
+\usepackage{url}            % simple URL typesetting
+\usepackage{graphbox}
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{comment}
+\usepackage{amsmath,amssymb} % define this before the line numbering.
+\usepackage{caption}
+\usepackage{mathtools}
+\usepackage{graphicx}
+\usepackage{soul}
+\usepackage[subrefformat=parens]{subfig}
+\usepackage{enumitem}
+%\usepackage[square,numbers,sort&compress]{natbib}
+
+\usepackage{xspace}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{layouts}
+\usepackage{algorithm}
+\usepackage{bbding}
+\usepackage{listings}
+\usepackage{pifont}
+\usepackage{wasysym}
+\usepackage{float}
+\usepackage{soul}
+\usepackage{dblfloatfix}
+\usepackage{footnote}
+\makesavenoteenv{tabular}
+\makesavenoteenv{table}
+\makesavenoteenv{figure}
+\usepackage[dvipsnames]{xcolor}
+
+\usepackage{xcolor,colortbl}
+\definecolor{Gray}{gray}{0.85}
+\newcolumntype{g}{>{\columncolor{Gray}}c}
+
+\usepackage[pagebackref=true,breaklinks=true,letterpaper=true,colorlinks,bookmarks=false]{hyperref}
+\usepackage{cleveref}
+
+\newcommand{\theHalgorithm}{\arabic{algorithm}}
+\newcommand{\norm}[1]{\left\lVert#1\right\rVert}
+
+% \iccvfinalcopy % *** Uncomment this line for the final submission
+
+\def\iccvPaperID{7530} % *** Enter the ICCV Paper ID here
+\def\httilde{\mbox{\tt\raisebox{-.5ex}{\symbol{126}}}}
+
+\ificcvfinal\pagestyle{empty}\fi
+
+
+\newcommand{\appendixName}{supplementary material}
+% \newcommand{\appendix}{Appendix}
+\newcommand{\aj}[1]{{\color{red}[\textbf{Armand}:#1]}}
+\newcommand{\mc}[1]{{\color{green}[\textbf{Mathilde}:#1]}}
+\newcommand{\pb}[1]{{\color{orange}[\textbf{Piotr}:#1]}}
+\def\OURS{DINO\xspace}
+
+\usepackage{xcolor,colortbl}
+\definecolor{Gray}{gray}{0.85}
+\definecolor{ffe1da}{RGB}{255,225,218}
+\definecolor{F7E0D5}{RGB}{247,224,213}
+\colorlet{Light}{White!0!F7E0D5}
+\newcolumntype{g}{>{\columncolor{Light}}c}
+\usepackage{pythonhighlight}
+
+\begin{document}
+
+\title{Supplementary Material for \\
+Self-Supervised Learning of Visual Transformers with a Momentum Teacher}
+\author{First Author\\
+Institution1\\
+Institution1 address\\
+{\tt\small firstauthor@i1.org}
+\and
+Second Author\\
+Institution2\\
+First line of institution2 address\\
+{\tt\small secondauthor@i2.org}
+}
+
+\maketitle
+% Remove page # from the first page of camera-ready.
+\ificcvfinal\thispagestyle{empty}\fi
+
+% textwidth: \printinunitsof{in}\prntlen{\textwidth}
+% linewidth: \printinunitsof{in}\prntlen{\linewidth}
+
+\input{appendix.tex}
+
+\clearpage
+
+{\small
+\bibliographystyle{ieee_fullname}
+\bibliography{egbib}
+}
+
+
+\end{document}
+

@@ -1,0 +1,203 @@
+\appendix
+\section*{Supplementary}
+
+\section{Overview}
+This supplementary material provides more details on experiments in the main paper and includes more experiments to validate and analyze our proposed method.
+
+In Sec~\ref{supp_details} we provide specific network architectures used for experiments in the main paper and also describe details in data preparation and training. In Sec~\ref{supp_exp} we show more experimental results including benchmark performance on part segmentation and analysis on neighborhood query, sensitivity to sampling randomness and time space complexity.
+
+\section{Details in Experiments}
+\label{supp_details}
+\paragraph{Architecture protocol.}
+%\todo{introduce notations to represent network architecture like PN(r=0.2,n=256,[64,64,128])-PN(r=0.4,n=64,[128,128,256])-PN(r=inf,n=1,[256,512,1024])-FC(512,dp=0.5)-FC(256,dp=0.5)-FC(40,logit). FC(512)-UP(k=3,[128,128])-UP(k=3,[256,256,128,40])}
+We use following notations to describe our network architecture.
+
+SA($K$,$r$,[$l_1,...,l_d$]) is a set abstraction (SA) level with $K$ local regions of ball radius $r$ using PointNet of $d$ fully connected layers with width $l_i$ ($i=1,...,d$). SA([$l_1,...l_d$]) is a global set abstraction level that converts set to a single vector. In multi-scale setting (as in MSG), we use SA($K$, [$r^{(1)},...,r^{(m)}$], [[$l_{1}^{(1)},...,l_{d}^{(1)}$],...,[$l_{1}^{(m)},...,l_{d}^{(m)}$]]) to represent MSG with $m$ scales.
+
+FC($l$,$dp$) represents a fully connected layer with width $l$ and dropout ratio $dp$. FP($l_1,...,l_d$) is a feature propagation (FP) level with $d$ fully connected layers. It is used for updating features concatenated from interpolation and skip link. All fully connected layers are followed by batch normalization and ReLU except for the last score prediction layer.
+
+\subsection{Network Architectures}
+For all classification experiments we use the following architecture (Ours SSG) with different $K$ (number of categories):
+\begin{equation*}
+\begin{split}
+    & SA(512,0.2,[64,64,128]) \rightarrow SA(128,0.4,[128,128,256]) \rightarrow SA([256,512,1024]) \rightarrow  \\
+    & FC(512,0.5) \rightarrow FC(256,0.5) \rightarrow FC(K)
+    \end{split}
+\end{equation*}
+
+The multi-scale grouping (MSG) network (PointNet++) architecture is as follows:
+\begin{equation*}
+\begin{split}
+    & SA(512,[0.1,0.2,0.4],[[32,32,64],[64,64,128],[64,96,128]]) \rightarrow \\
+    & SA(128,[0.2,0.4,0.8],[[64,64,128],[128,128,256],[128,128,256]]) \rightarrow \\
+    & SA([256,512,1024]) \rightarrow  FC(512,0.5) \rightarrow FC(256,0.5) \rightarrow FC(K)
+    \end{split}
+\end{equation*}
+
+The cross level multi-resolution grouping (MRG) network's architecture uses three branches:
+
+~~~~~~~~~~~~~~~~Branch 1: $SA(512,0.2,[64,64,128]) \rightarrow SA(64,0.4,[128,128,256])$
+
+~~~~~~~~~~~~~~~~Branch 2: $SA(512,0.4,[64,128,256])$ using $r=0.4$ regions of original points
+
+~~~~~~~~~~~~~~~~Branch 3: $SA(64,128,256,512)$ using all original points.
+
+~~~~~~~~~~~~~~~~Branch 4: $SA(256,512,1024)$. 
+
+Branch 1 and branch 2 are concatenated and fed to branch 4. Output of branch 3 and branch4 are then concatenated and fed to $ FC(512,0.5) \rightarrow FC(256,0.5) \rightarrow FC(K)$ for classification. 
+
+
+Network for semantic scene labeling (last two fully connected layers in FP are followed by dropout layers with drop ratio 0.5):
+\begin{equation*}
+\begin{split}
+    & SA(1024,0.1,[32,32,64]) \rightarrow SA(256,0.2,[64,64,128]) \rightarrow \\
+    & SA(64,0.4,[128,128,256]) \rightarrow  SA(16,0.8,[256,256,512]) \rightarrow\\
+    & FP(256,256) \rightarrow FP(256,256) \rightarrow FP(256,128) \rightarrow FP(128,128,128,128,K)
+    \end{split}
+\end{equation*}
+
+
+Network for semantic and part segmentation (last two fully connected layers in FP are followed by dropout layers with drop ratio 0.5):
+\begin{equation*}
+\begin{split}
+    & SA(512,0.2,[64,64,128]) \rightarrow SA(128,0.4,[128,128,256]) \rightarrow SA([256,512,1024]) \rightarrow  \\
+    & FP(256,256) \rightarrow FP(256,128) \rightarrow FP(128,128,128,128,K)
+    \end{split}
+\end{equation*}
+
+\subsection{Virtual Scan Generation}
+In this section, we describe how we generate labeled virtual scan with non-uniform sampling density from ScanNet scenes. For each scene in ScanNet, we set camera location $1.5m$ above the centroid of the floor plane and rotate the camera orientation in the horizontal plane evenly in $8$ directions. In each direction, we use a image plane with size $100px$ by $75px$ and cast rays from camera through each pixel to the scene. This gives a way to select visible points in the scene. We could then generate $8$ virtual scans for each test scene similar and an example is shown in Fig.~\ref{fig:virtual_scan}. Notice point samples are denser in regions closer to the camera.
+
+\begin{figure}[h!]
+  \begin{center}
+    \includegraphics[width=0.5\linewidth]{./fig/virtual_scan.pdf}
+  \end{center}
+  \caption{Virtual scan generated from ScanNet}
+  \label{fig:virtual_scan}
+\end{figure}
+
+\subsection{MNIST and ModelNet40 Experiment Details}
+For MNIST images, we firstly normalize all pixel intensities to range $[0,1]$ and then select all pixels with intensities larger than 0.5 as valid digit pixels. Then we convert digit pixels in an image into a 2D point cloud with coordinates within $[-1,1]$, where the image center is the origin point. Augmented points are created to add the point set up to a fixed cardinality (512 in our case). We jitter the initial point cloud (with random translation of Gaussian distribution $\mathcal{N}(0,0.01)$ and clipped to 0.03) to generate the augmented points. For ModelNet40, we uniformly sample $N$ points from CAD models surfaces based on face area.
+
+For all experiments, we use Adam~\cite{adam} optimizer with learning rate 0.001 for training. For data augmentation, we randomly scale object, perturb the object location as well as point sample locations. We also follow~\cite{qi2016volumetric} to randomly rotate objects for ModelNet40 data augmentation. We use TensorFlow and GTX 1080, Titan X for training. All layers are implemented in CUDA to run GPU. It takes around 20 hours to train our model to convergence.
+%To prepare the dataset, we first oversample on the mesh and then conduct farthest point sampling for a set of $N$ points. These $N$ points will be used for training and testing.
+
+\subsection{ScanNet Experiment Details}
+To generate training data from ScanNet scenes, we sample 1.5m by 1.5m by 3m cubes from the initial scene and then keep the cubes where $\ge 2\%$ of the voxels are occupied and $\ge 70\%$ of the surface voxels have valid annotations (this is the same set up in \cite{dai2017scannet}). We sample such training cubes on the fly and random rotate it along the up-right axis. Augmented points are added to the point set to make a fixed cardinality (8192 in our case). During test time, we similarly split the test scene into smaller cubes and get label prediction for every point in the cubes first, then merge label prediction in all the cubes from a same scene. If a point get different labels from different cubes, we will just conduct a majority voting to get the final point label prediction.
+
+\subsection{SHREC15 Experiment Details}
+We randomly sample 1024 points on each shape both for training and testing. To generate the input intrinsic features, we 
+%use the implementation from \cite{ganapathi2016stable}
+to extract 100 dimensional WKS, HKS and multiscale Gaussian curvature respectively, leading to a 300 dimensional feature vector for each point. Then we conduct PCA to reduce the feature dimension to 64. We use a 8 dimensional embedding following \cite{rustamov2009interior} to mimic the geodesic distance, which is used to describe our non-Euclidean metric space while choosing the point neighborhood.
+
+\section{More Experiments}
+\label{supp_exp}
+In this section we provide more experiment results to validate and analyze our proposed network architecture. 
+
+\subsection{Semantic Part Segmentation}
+Following the setting in \cite{Yi16}, we evaluate our approach on part segmentation task assuming category label for each shape is already known. Taken shapes represented by point clouds as input, the task is to predict a part label for each point. The dataset contains 16,881 shapes from 16 classes, annotated with 50 parts in total. We use the official train test split following~\cite{shapenet2015}.
+
+We equip each point with its normal direction to better depict the underlying shape. This way we could get rid of hand-crafted geometric features as is used in \cite{Yi16,yi2016syncspeccnn}. 
+We compare our framework with traditional learning based techniques \cite{Yi16}, as well as state-of-the-art deep learning approaches \cite{qi2016pointnet,yi2016syncspeccnn} in Table~\ref{tab:partseg}. Point intersection over union (IoU) is used as the evaluation metric, averaged across all part classes. Cross-entropy loss is minimized during training. On average, our approach achieves the best performance. In comparison with \cite{qi2016pointnet}, our approach performs better on most of the categories, which proves the importance of hierarchical feature learning for detailed semantic understanding. Notice our approach could be viewed as implicitly building proximity graphs at different scales and operating on these graphs, thus is related to graph CNN approaches such as \cite{yi2016syncspeccnn}. Thanks to the flexibility of our multi-scale neighborhood selection as well as the power of set operation units, we could achieve better performance compared with \cite{yi2016syncspeccnn}. Notice our set operation unit is much simpler compared with graph convolution kernels, and we do not need to conduct expensive eigen decomposition as opposed to \cite{yi2016syncspeccnn}. These make our approach more suitable for large scale point cloud analysis.
+\begin{table}[th!]
+    \scriptsize
+    \centering
+    \begin{tabular}[width=\linewidth]{l|c|p{0.3cm}p{0.25cm}p{0.25cm}p{0.25cm}p{0.25cm}p{0.3cm}p{0.3cm}p{0.3cm}p{0.3cm}p{0.4cm}p{0.4cm}p{0.25cm}p{0.3cm}p{0.3cm}p{0.35cm}p{0.3cm}}
+    \toprule
+    ~        & mean & aero & bag & cap & car & chair & ear phone & guitar & knife & lamp & laptop & motor & mug & pistol & rocket & skate board& table \\ 
+    \midrule
+    %\# shapes & & 2690 & 76 & 55 & 898 & 3758 & 69 & 787 & 392 & 1547 & 451 & 202 & 184 & 283 & 66 & 152 & 5271 \\ \hline
+    %Wu~\cite{Wu2014248} &  -  & 63.2  & - &      -    & -   & 73.5 & - &    - &    - &     74.4  & -    & - &   -   &   -   &   - & -  &  74.8 \\
+    Yi~\cite{Yi16} & 81.4 & 81.0 & 78.4 & 77.7 & 75.7 & 87.6 & 61.9 & 92.0 & 85.4 & 82.5 & 95.7 & 70.6 & 91.9 & 85.9 & 53.1 & 69.8 & 75.3 \\
+    %3d[c] & 79.4 & 75.1 & 72.8 & 73.3 & 70.0 & 87.2 & 63.5 & 88.4 & 79.6 & 74.4 & 93.9 & 58.7 & 91.8 & 76.4 & 51.2 & 65.3 & 77.1 \\ 
+    PN~\cite{qi2016pointnet} & 83.7 & 83.4 & 78.7 & 82.5 & 74.9 & 89.6 & 73.0 & 91.5 & 85.9 & 80.8 & 95.3 & 65.2 & 93.0 & 81.2 & 57.9 & 72.8 & 80.6 \\
+    SSCNN~\cite{yi2016syncspeccnn} & 84.7 & 81.6 & 81.7 & 81.9 & 75.2 & 90.2 & 74.9 & 93.0 & 86.1 & 84.7 & 95.6 & 66.7 & 92.7 & 81.6 & 60.6 & 82.9 & 82.1 \\
+    \midrule
+    Ours & 85.1 & 82.4 & 79.0 & 87.7 & 77.3 & 90.8 & 71.8 & 91.0 & 85.9 & 83.7 & 95.3 & 71.6 & 94.1 & 81.3 & 58.7 & 76.4 & 82.6 \\
+    \bottomrule
+    \end{tabular}
+    \caption{Segmentation results on ShapeNet part dataset.}
+    \label{tab:partseg}
+\end{table}
+
+\subsection{Neighborhood Query: kNN v.s. Ball Query.}
+Here we compare two options to select a local neighborhood. We used radius based ball query in our main paper. Here we also experiment with kNN based neighborhood search and also play with different search radius and $k$. In this experiment all training and testing are on ModelNet40 shapes with uniform sampling density. 1024 points are used. As seen in Table~\ref{tab:neighborhood}, radius based ball query is slightly better than kNN based method. However, we speculate in very non-uniform point set, kNN based query will results in worse generalization ability. Also we observe that a slightly large radius is helpful for performance probably because it captures richer local patterns.
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{cccc}
+\toprule
+kNN (k=16) & kNN (k=64) & radius (r=0.1) & radius (r=0.2) \\ \midrule
+89.3 & 90.3 & 89.1 & 90.7 \\ \bottomrule
+\end{tabular}
+\caption{Effects of neighborhood choices. Evaluation metric is classification accuracy (\%) on ModelNet 40 test set.}
+\label{tab:neighborhood}
+\end{table}
+
+% \paragraph{Effect of network depth.}
+% \todo{Set default model setting for all analysis experiments.}
+% \begin{table}[h!]
+% \centering
+% \begin{tabular}{cccc}
+% \toprule
+% 1-layer (PointNet) & 2-layer & 3-layer & 4-layer \\ \midrule
+% & & & \\ \bottomrule
+% \end{tabular}
+% \caption{\todo{Effects of number of layers (using ModelNet40).}}
+% \end{table}
+
+\begin{comment}
+% Model hasn't been tuned for 2048 and 4096 points...
+\paragraph{Effect of Input Set Density (number of points).}
+\begin{table}[h!]
+\centering
+\begin{tabular}{cccc}
+\toprule
+512 & 1024 & 2048 & 4096 \\ \midrule
+89.83 & 90.7 & 90.44 & 89.5 \\ \bottomrule
+\end{tabular}
+\caption{\todo{Effects of number of points/set sampling density (using ModelNet40).}}
+\end{table}
+\end{comment}
+
+\subsection{Effect of Randomness in Farthest Point Sampling.}
+For the \emph{Sampling layer} in our set abstraction level, we use farthest point sampling (FPS) for point set sub sampling. However FPS algorithm is random and the subsampling depends on which point is selected first. Here we evaluate the sensitivity of our model to this randomness. In Table~\ref{tab:fps}, we test our model trained on ModelNet40 for feature stability and classification stability.
+
+To evaluate feature stability we extract global features of all test samples for 10 times with different random seed. Then we compute mean features for each shape across the 10 sampling. Then we compute standard deviation of the norms of feature's difference from the mean feature. At last we average all std. in all feature dimensions as reported in the table. Since features are normalized into 0 to 1 before processing, the 0.021 difference means a 2.1\% deviation of feature norm.
+
+For classification, we observe only a 0.17\% standard deviation in test accuracy on all ModelNet40 test shapes, which is robust to sampling randomness.
+\begin{table}[h!]
+\centering
+\begin{tabular}{cc}
+\toprule
+Feature difference std. & Accuracy std. \\ \midrule
+ 0.021 & 0.0017\\ \bottomrule
+\end{tabular}
+\caption{Effects of randomness in FPS (using ModelNet40). %Normalized feature diff norm is the mean of std. of norm of feature deviations from the mean feature.
+}
+\label{tab:fps}
+\end{table}
+
+%TODO
+%\paragraph{On selection of radius and number of local regions.}
+
+
+\subsection{Time and Space Complexity.}
+
+Table~\ref{tab:timespace} summarizes comparisons of time and space cost between a few point set based deep learning method. We record forward time with a batch size 8 using TensorFlow 1.1 with a single GTX 1080. The first batch is neglected since there is some preparation for GPU. While PointNet (vanilla)~\cite{qi2016pointnet} has the best time efficiency, our model without density adaptive layers achieved smallest model size with fair speed.
+
+It's worth noting that ours MSG, while it has good performance in non-uniformly sampled data, it's 2x expensive than SSG version due the multi-scale region feature extraction. Compared with MSG, MRG is more efficient since it uses regions across layers.
+
+\begin{table}[h]
+    \centering
+    \small
+    \begin{tabular}{lccccc}
+        \toprule
+        & PointNet (vanilla)~\ref{eq:pointnet} & PointNet~\ref{eq:pointnet} & Ours (SSG) & Ours (MSG) & Ours (MRG) \\ \midrule
+        Model size (MB) & 9.4 & 40 & 8.7 & 12 & 24 \\
+        Forward time (ms) & 11.6 & 25.3 & 82.4& 163.2& 87.0\\
+        \bottomrule
+    \end{tabular}
+    \caption{Model size and inference time (forward pass) of several networks.}
+    \label{tab:timespace}
+\end{table}

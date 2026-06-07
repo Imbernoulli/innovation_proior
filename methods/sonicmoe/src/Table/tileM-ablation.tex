@@ -1,0 +1,43 @@
+\begin{table}[!ht]
+    \setlength{\tabcolsep}{2pt}
+    \renewcommand{\arraystretch}{1.1}
+    \fontsize{7pt}{8pt}\selectfont
+    \centering
+    \vspace{-0.6em}
+    \caption{\small Evaluation of token rounding algorithms when we vary the size of tile $\tileM$ for token rounding. ``PPL'' refers to the validation perplexity at the end of training. ``Avg'' is the mean accuracy across the 11 downstream tasks. }
+    \label{tab:exp-tileM-ablation}
+    
+    \begin{subtable}[!ht]{\textwidth}
+   \caption{\textbf{0.5B params, 40B tokens, 2/64 activated ($\bar{T}_e = 512$)}}
+    \vspace{-0.5em}
+    \begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}l!{\vrule width 0.4pt}c!{\vrule width 0.4pt}ccccccccccc!{\vrule width 0.4pt}c}
+    \toprule
+    \textbf{Method} & \textbf{PPL} & \textbf{Wino} & \textbf{SIQA} & \textbf{SciQ} & \textbf{PIQA} & \textbf{OBQA} & \textbf{HS} & \textbf{COPA} & \textbf{CSQA} & \textbf{BoolQ} & \textbf{ArcE} & \textbf{ArcC} & \textbf{Avg} \\
+    \midrule \midrule
+    TR ($\tileM=64$) & \textbf{15.90} & 51.3 & \textbf{41.7} & 78.1 & \textbf{65.6} & 31.4 & 37.9 & \textbf{67.0} & \textbf{32.4} & 59.8 & 57.2 & 28.8 & 50.1 \\
+    \textbf{TR ($\tileM=128$)} & 15.92 & 51.4 & 41.6 & 78.4 & 65.4 & 31.6 & \textbf{38.1} & 65.0 & 31.0 & \textbf{61.1} & 57.4 & 29.1 &  50.0 \\
+    TR ($\tileM=256$) & 16.00 & 51.7 & 41.4 & 78.7 & 66.3 & \textbf{32.4} & 37.7 & \textbf{67.0} & 31.3 & 60.1 & \textbf{58.2} & 29.1 & \textbf{50.4}  \\
+    TR ($\tileM=512$) & 16.17 & \textbf{52.5} & 41.2 & \textbf{80.2} & 65.2 & 32.0 & 37.9 & 62.0 & 31.0 & 59.4 & 57.2 & \textbf{30.4} & 49.9  \\\midrule\midrule
+    TC top-$K$ & 15.94 & 51.0 & 41.9 & 78.5 & 64.8 & 33.0 & 38.1 & 67.0 & 30.8 & 54.7 & 55.8 & 30.1 & 49.6 \\\grayline
+    EC (ft TC router) & 16.98 & 50.0 & 41.7 & 79.7 & 64.9 & 31.6 & 36.8 & 63.0 & 32.1 & 60.7 & 54.6 & 27.4 & 49.3 \\
+    \bottomrule
+    \end{tabular*}
+    \end{subtable}
+
+    \vspace{0.5em}
+    \begin{subtable}[!ht]{\textwidth}
+   \caption{\textbf{1.8B params, 40B tokens, 8/256 activated ($\bar{T}_e = 512$)}}
+    \vspace{-0.5em}
+    \begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}l!{\vrule width 0.4pt}c!{\vrule width 0.4pt}ccccccccccc!{\vrule width 0.4pt}c}
+    \toprule
+    TR ($\tileM=64$) & \textbf{13.07} & 52.3 & \textbf{42.9} & \textbf{82.7} & 69.4 & \textbf{35.4} & \textbf{45.6} & \textbf{70.0} & 32.4 & 56.6 & 64.4 & 31.4 & 53.0 \\
+    \textbf{TR ($\tileM=128$)} & 13.10 & \textbf{53.4} & 42.1 & 81.7 & \textbf{69.6} & 35.2 & 45.3 & \textbf{70.0} & 33.2 & \textbf{61.4} & 63.0 & \textbf{33.4} & \textbf{53.5} \\
+    TR ($\tileM=256$) & 13.13 & 52.0 & 41.6 & 82.1 & 69.2 & \textbf{35.4} & 45.3 & 69.0 & \textbf{34.2} & 58.0 & \textbf{65.6} & 32.1  & 53.1  \\
+    TR ($\tileM=512$) & 13.56 &  53.0 & 41.8 & 81.2 & 68.4 & 34.0 & 44.2 & 68.0 & 33.3 & 58.1 & 59.5 & 30.1 & 52.0  \\\midrule\midrule
+    TC top-$K$ & 13.12 & 50.1 & 42.9 & 81.3 & 69.8 & 33.8 & 45.2 & 71.0 & 34.1 & 56.7 & 64.6 & 31.1 & 52.8 \\\grayline
+    EC (ft TC router) & 15.01 & 52.7 & 41.1 & 79.6 & 66.9 & 30.6 & 40.2 & 66.0 & 31.9 & 60.5 & 57.2 & 30.8 & 50.7 \\
+    \bottomrule
+    \end{tabular*}
+    \end{subtable}
+\end{table}
+\raggedbottom

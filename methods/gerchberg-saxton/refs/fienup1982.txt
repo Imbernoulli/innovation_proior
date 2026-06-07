@@ -1,0 +1,1739 @@
+Phase retrieval algorithms: a comparison
+J. R. Fienup
+
+Iterative algorithms for phase retrieval from intensity data are compared to gradient search methods. Both
+the problem of phase retrieval from two intensity measurements (in electron microscopy or wave front sensing) and the problem of phase retrieval from a single intensity measurement plus a non-negativity constraint
+(in astronomy) are considered, with emphasis on the latter. It is shown that both the error-reduction algorithm for the problem of a single intensity measurement and the Gerchberg-Saxton algorithm for the problem of two intensity measurements converge. The error-reduction algorithm is also shown to be closely related to the steepest-descent method. Other algorithms, including the input-output algorithm and the conjugate-gradient method, are shown to converge in practice much faster than the error-reduction algorithm.
+Examples are shown.
+
+1. Introduction
+
+In electron microscopy, wave front sensing, astronomy, crystallography, and in other fields one often wishes
+to recover phase, although only intensity measurements
+are made. One is usually interested in determining an
+object, f(x), which is related to its Fourier transform,
+F(u), by
+F(u) = JF(u)I exp[i4'(u)] = S[f(x)]
+
+=
+
+f(x) exp(-i27ru - x)dx,
+
+f(x)
+
+(1)
+
+where x is an M-dimensional spatial coordinate, and u
+is an M-dimensional spatial frequency coordinate. For
+the majority of interesting problems M = 2. In practice
+one deals with sampled data in the computer, where for
+the 2-D case, assuming square arrays, u = (l,u 2 ) and
+
+x = (,,x 2), where u, u 2, x, and x2 = 0,1,2, .. ,N- 1.
+Then one uses the discrete Fourier transform (DFT)
+F(u) =
+
+N-1
+
+E f(x) exp(-i2ru x/N)
+
+(2)
+
+x=0
+
+and its inverse
+N-1
+
+f (x) = N-2 Ej F(u) exp(i27ru xIN),
+
+(3)
+
+U=0
+
+which are, of course, computed using the fast Fourier
+transform (FFT) method.
+For the problem of recovering phase from two intensity measurements, as in electron microscopy and
+in wave front sensing,
+
+f(x) = f(x)I exp[iti(x)]
+
+(4)
+
+is complex valued, and one wishes to recover +f(u) or
+equivalently recover 1(x) from measurements of both
+
+The author is with Environmental Research Institute of Michigan,
+Radar & Optics Division, P.O. Box 8618, Ann Arbor, Michigan
+48107.
+Received 19 February 1982.
+0003-6935/82/152758-12$01.00/0.
+
+©1982 Optical Society of America.
+2758
+
+APPLIED OPTICS / Vol. 21, No. 15 / 1 August 1982
+
+IF(u) I and lf(x) . For the problem of recovering phase
+from a single intensity measurement, as in image recovery from speckle interferometry data in astronomy
+and from structure factors in crystallography, one
+wishes to recover (u) or equivalently recover f(x) given
+a measurement of IF(u) I and the constraint that f (x)
+be real and non-negative,
+0.
+
+(5)
+
+A particularly successful approach to solving these
+problems is the use of the Gerchberg-Saxton algorithm",2 and related algorithms. 3 -7 Reference 7 lists a
+large number of different problems which have been
+solved by these algorithms. These algorithms involve
+iterative Fourier transformation back and forth between
+the object and Fourier domains and application of the
+measured data or known constraints in each domain.
+In what follows a generalized Gerchberg-Saxton algorithm, referred to as the error-reduction algorithm,
+and its convergence properties are reviewed (Sec. II),
+and it is shown to be equivalent to the steepest-descent
+gradient search method (Sec. III). Alternative gradient
+search methods (Sec. IV) and iterative Fourier transform algorithms (Sec. V) are described and are shown
+to converge much faster than the error-reduction algorithm for the problem of a single intensity measurement (Sec. VI). Some practical considerations are
+discussed in Sec. VII. A typical reconstruction experiment is shown in Sec. VIII, and the major conclusions
+are summarized in Sec. IX.
+II. Error-Reduction Algorithm
+The Gerchberg-Saxton algorithm was originally invented in connection with the problem of reconstructing
+phase from two intensity measurements 1' 2 (and for
+synthesizing phase codes given intensity constraints in
+each of two domains 8 9). The algorithm consists of the
+following four simple steps: (1) Fourier transform an
+estimate of the object; (2) replace the modulus of the
+resulting computed Fourier transform with the measured Fourier modulus to form an estimate of the Fourier transform; (3) inverse Fourier transform the esti-
+
+9
+
+G
+
+SATISFY
+FUNCTION
+CONSTRAINTS
+
+=IGI eGI
+
+SATISFY
+FOURIER
+CONSTRAINTS
+
+9
+
+-
+
+G = IFe'0
+
+Fig. 1. Block diagram of the error-reduction (Gerchberg-Saxton)
+algorithm.
+
+mate of the Fourier transform; and (4) replace the
+modulus of the resulting computed image with the
+measured object modulus to form a new estimate of the
+object. In equations this is, for the kth iteration,
+Gk(u) = IGk(u)I exp[ikM(u)] = [gA(x)],
+
+(6)
+
+GQ(u) = IF(u)l exp[iok(u)],
+
+(7)
+
+g'(x) = lg'(x)l exp[i0'(x)] = 51-[GQ(u)],
+
+(8)
+
+gk+1(x) = f(x)I exp[ik+1(x)I
+
+= If(x)l exp[iO(x)],
+
+(9)
+
+where gk, ok, G', and kk are estimates of f, a, F, and Ak,
+respectively. Here and throughout this paper functions
+represented by uppercase letters are the Fourier
+transforms of the functions represented by the corresponding lowercase letters.
+As depicted in Fig. 1 the Gerchberg-Saxton algorithm
+is easily generalized to a large class of problems. 6' 7 The
+generalized Gerchberg-Saxton algorithm can be used
+for any problem in which partial constraints (in the form
+of measured data or information known a priori) are
+
+known in each of two domains, usually the object (or
+image) and Fourier domains. One simply transforms
+back and forth between the two domains, satisfying the
+constraints in one before returning to the other. This
+generalization of the Gerchberg-Saxton algorithm will
+be referred to as the error-reduction algorithm since, as
+will be shown below, the error decreases at each iteration.
+For the most general problem the error-reduction
+algorithm consists of the following four steps: (1)
+Fourier transform g (x), an estimate of f(x); (2) make
+the minimum changes in Gk (M),the resulting computed
+Fourier transform, which allow it to satisfy the Fourier-domain constraints to form G'k (u), an estimate of
+F(u); (3) inverse Fourier transform G (u); and (4) make
+the minimum changes in gk (x), the resulting computed
+image, which allow it to satisfy the object-domain constraints to form gk+1(x), a new estimate of the object.
+
+In particular, for the problem of a single intensity
+measurement (as in astronomy) the first three steps are
+identical to the first three steps of the Gerchberg-Saxton
+algorithm, Eqs. (6)-(8), and the fourth step is given
+by
+gk+:1(x) = {k(X).
+
+wOi
+
+x7,
+
+(10)
+
+Xc hv
+
+where -y is the set of points at which gk(x) violates the
+
+object-domain constraints, i.e., wherever gk(x) is negative or (optionally) where it exceeds the known diameter of the object. The diameter of the object can be
+computed since it is just half of the diameter of the autocorrelation function, which is the inverse Fourier
+transform of the squared Fourier modulus. (However,
+in two dimensions the exact support of the object cannot
+in general be determined uniquely from the support of
+its autocorrelation, 1 0 and so the diameter constraint
+cannot be applied very tightly.)
+The iterations continue until the computed Fourier
+transform satisfies the Fourier-domain constraints or
+the computed image satisfies the object-domain constraints; then one has found a solution, a Fourier
+transform pair that satisfies all the constraints in both
+domains. The convergence of the algorithm can be
+monitored by computing the squared error. In the
+Fourier domain the squared error is the sum of the
+squares of the amounts by which Gk (M), the computed
+Fourier transform, violates the Fourier-domain constraints. Since GQ(u) was formed from Gk(u) by
+making the minimum changes to satisfy the Fourierdomain constraints, the squared error can be expressed
+as
+2
+
+Bk = E2= N-
+
+E
+
+Gk(u) -u)2
+
+(11)
+
+which, for both problems being considered, can be expressed as
+Bk =
+
+= N-
+
+2
+
+E [JGk(u)J - IF(u)] 2 .
+
+(12)
+
+In this section the symbol E k is used to distinguish it
+from the object-domain error Ek described below. For
+economy of notation in the section of this paper dealing
+with the gradient methods, the symbol Bk is used instead of E k. The symbol B (with the subscript k deleted) is given by Eq. (11) with G and G' replacing Gk
+and G, respectively.
+Similarly, for the error-reduction algorithm the
+squared error in the object domain can be expressed
+as
+Ok = E
+
+gk+l(X) -gk(X)12,
+
+x
+
+(13)
+
+which for the problem of two intensity measurements
+can be expressed as
+E
+
+=
+
+E [If(X)| -
+
+gk(X)J]2
+
+(14)
+
+and for the problem of a single intensity measurement
+can be expressed as
+E~k =
+
+_ [gh(X)]2,
+Xey
+
+(15)
+
+where y is defined as in Eq. (10). The asymmetry in the
+use of the N- 2 factor above was chosen because of the
+similar asymmetry in the definition of the discrete
+Fourier transform in Eqs. (2) and (3). When the
+squared error is zero, a solution has been found.
+In the following the error-reduction algorithm is
+shown to converge, and this convergence property holds
+for all the applications of the error-reduction algorithm
+1 August 1982 / Vol. 21, No. 15 / APPLIED OPTICS
+
+2759
+
+(not just the problems of recovering phase from single
+or two intensity measurements).
+For the general problem, at the kth iteration the
+squared error in the Fourier domain is given by Eq. (11).
+By Parseval's theorem'1
+Gk(u)-Gk(u)12
+
+Ek =N - 2
+
+=E gk(x)-gk(x)12 .
+
+(16)
+
+Now compare this with Eq. (13), the error in the object
+domain. Both gk (x) and gk+l(x) by definition satisfy
+the object-domain constraints. Also at any point x, by
+definition gk+l(x) is the nearest value to gk(x) that
+satisfies the object-domain constraints. Therefore, at
+all points x
+lgk+l(X) -g(
+
+)| < 19k W - 9a(X) 1,
+
+(17)
+
+and, therefore, from Eqs. (13) and (16)
+EO < EFk-
+
+(18)
+
+Ill.
+
+Similarly, by Parseval's theorem
+E2
+
+= E
+
+lgk+1(X) -gk(X)
+
+= N- 2 E
+
+2
+
+Gk+1(u) - k(x)12 .
+
+(19)
+
+Since both G(u) and G'+J(u) satisfy the Four rierdomain constraints, and at any point u, by definiition
+Gk+1(u), is the nearest value to Gk+l(u) that satis;fies
+the Fourier-domain constraints, then
+IGk+1(u) - Gk+l(u)
+
+Gk+1(u) - k(u)1.
+
+error once again starts to decrease until it reaches a third
+plateau at the level of 0.003, at which point the decrease
+in the error is negligible.
+The occurrences of plateaus during which convergence is extremely slow seem to occur, more often than
+not, for both applications,' 9" 2 and in the past it has
+been observed that, with persistence, one can go beyond
+the plateau region and again make rapid progress
+toward a solution."1 2 However, as shown in the example of Fig. 2 for the problem of a single intensity
+measurement, the number of iterations required for
+convergence of the error-reduction algorithm can be
+extremely large, making that algorithm unsatisfactory
+for that application. Fortunately, as will be shown in
+later sections, other related algorithms converge much
+faster, reconstructing a recognizable image in twenty
+or thirty iterations and completing the reconstruction
+in under one-hundred iterations, which takes <2 min
+on a Floating Point System AP-120B array processor
+for array sizes of 128 X 128.
+
+(20)
+
+Therefore, from Eqs. (11) and (19),
+
+Steepest-Descent Method
+
+An alternative approach to solving the phase-retrieval
+problems is to employ one of the gradient search
+methods. In this section it is shown that one such
+method, the steepest-descent method, is closely related
+to the error-reduction algorithm for the problem of reconstructing phase from a single intensity measurement. The relationship between the steepest-descent
+method and the Gerchberg-Saxton algorithm is also
+discussed.
+An example of how a gradient search method would
+be used for this problem follows. One can define B =
+EF, the squared error in the Fourier domain given by
+Eq. (12), as the error metric which one seeks to minimize
+
+EF,k+l < Ek,
+
+and combining this with Eq. (18) gives the desiredI result
+EF'k+1 < E0k S< EFk.
+
+APPLIED OPTICS / Vol. 21, No. 15 / 1 August 1982
+
+ITERATION k
+102
+103
+
+(22)
+
+That is, the error can only decrease (or stay the same)
+at each iteration.
+In practice, the error-reduction algorithm usually
+decreases the error rapidly for the first few iterations
+but much more slowly for later iterations.1 2 9 12 The
+speed of convergence also depends on the type of constraints imposed. Convergence seems to be reasonably
+fast for the problem of two intensity measurements but
+painfully slow for the problem of a single intensity
+measurement. Figure 2 shows an example of the error
+as a function of the number of iterations of the errorreduction algorithm for the problem of a single intensity
+measurement. Shown is the normalized rms error, i.e.,
+the square root of EFk divided by 2; JF(u) 2. Both the
+error and the iteration number are shown on logarithmic
+scales. The error decreases rapidly during the first
+thirty iterations but then reaches a plateau at a level of
+0.16, decreasing very slowly. After seventy iterations
+the error again starts to decrease until it reaches a second plateau at the level of 0.02, at which point the error
+decreases extremely slowly. After 2000 iterations the
+2760
+
+10
+
+lo-I.
+cY
+
+0
+oc
+tY
+
+cY
+
+Fig. 2. RMS error vs the number of iterations for the problem of
+phase retrieval from a single intensity measurement using the errorreduction algorithm.
+
+by varying a set of parameters. Here the N 2 values of
+g(x), the estimate of f(x), are treated as N 2 independent
+parameters. Starting at a given point, gk (x), in the
+N 2-dimensional parameter space, one would reduce the
+error by computing the partial derivatives of B with
+respect to each of the points g(x) (N 2 partial derivatives) forming the gradient and then move from g (x)
+in a direction opposite that of the gradient to a new
+point gk(x). One would then form a new estimate,
+gk+,(x), from g^(x) by forcing the object-domain constraints to be satisfied. This would be done iteratively
+until a minimum (it is to be hoped a global minimum)
+is found. That is, one minimizes the error, B, as a
+function of the N 2 parameters, g(x), subject to the
+object-domain constraints.
+Ordinarily the computation of the N 2 partial derivatives would be a very lengthy task since each evaluation
+of B involves an N X N discrete Fourier transform.
+However, for the problems considered here the computation can be greatly reduced as described below.
+First, consider the problem of a single intensity
+measurement. The partial derivative of B with respect
+to a value at a given point, g(x), [if g(x) is assumed to be
+real since f(x) is real], using Eq. (12), is
+aB
+
+agBd
+
+=2N-2E [IG(u)I-F(u)II
+
+'ag(x)
+
+aIG(u)I
+
+U
+
+ag(x)
+
+l
+
+(23)
+
+Later the notation gBk will be used to denote
+evaluated atg(x) = gk(X). Since
+ag x
+
+=(9)
+
+g
+
+gB
+
+(24)
+
+Bk + Z agBk g(x) -g,,(x)].
+
+a[G(u)12]1/
+
+2
+
+1
+aIG(u)1
+d9g(x)
+21G(u)I g(x)
+G(u) exp[i27ru x/N] + G*(u) exp[-i27ru x/N ].
+
+(25)
+
+Therefore, Eq. (23) becomes
+dgB = N- 2 F [G(u) - F(u)IG(u)/IG(u)] exp[i27ru *x/N]
+
+~~U
+
++N- 2 y [G*(u) - F(u)IG*(u)/1G(u)J]
+U
+
+X exp[-i27ru x/N].
+
+(26)
+
+Using Eqs. (6) and (7) to define G'(u) as
+G'(u) = F(u)IG(u)/IG(u)J,
+
+(27)
+
+and noting that Eq. (26) is in the form of a discrete
+Fourier transform, it can be reduced to
+dgB = 2[g(x) - g'(x)],
+
+(28)
+
+where g'(x) is defined by Eq. (8), and the fact that g(x)
+and g'(x) are real valued has been used. [Note that
+since g'(y)/Og(x) 0, it is not true that Eq. (28) follows
+immediately from Eq. (16).] From Eq. (28) it is evident
+that the entire gradient, consisting of the N 2 partial
+derivatives, can be computed very simply by Fourier
+transforming g(x), applying Eq. (27), inverse Fourier
+transforming to arrive at g'(x), subtracting g'(x) from
+
+(29)
+
+This first-order expansion of B is equal to zero at g(x)
+= g (x) given by
+g(x) -gk(X) = -
+
+(30)
+
+BkodgBk
+F (gBk )2
+
+which can be easily verified by inserting Eq. (30) into
+Eq. (29). Since by Eqs. (28) and (16)
+Z£ (agBk )2 = 4 Z [gk (y) -g'
+Y
+
+(y)]2 = 4Bk,,
+
+(31)
+
+Y
+
+Eq. (30) becomes
+g(x)
+
+-g,(x
+
+= -('/ 4 )agB =
+
+'/2 )[g(x)
+
+-gk(x)J.
+
+(32)
+
+However, since B is quadratic in g(x), the linear approximation above can be expected to predict a step size
+half as large as the optimum. 2 Therefore, one should
+use the double-length step,
+-gk(x) = [(x)
+
+-gk(x)J
+
+or
+gk (X ) = gk X .
+
+2
+
+2IG(u)l
+
+,
+
+B
+
+g(x)
+
+= exp[-i2ru x/N],
+
+dg(x)
+
+putation of g'(x) is identical to the first three steps of
+the error-reduction algorithm.
+The optimum step size to take in the direction of the
+gradient can be determined by forming a first-order
+Taylor series expansion of B as a function of g(x) about
+the point gk (x),
+
+Z_g(y) exp[-i2iru y/N],
+E
+
+then
+IG(u)
+
+g(x), and multiplying by a constant. In fact, the com-
+
+(33)
+
+In fact, since G (u) I = IF(u) , moving to g(x) reduces
+the error, Eq. (12), to exactly zero. As a final step in one
+iteration the new estimate should be made to satisfy the
+object-domain constraints, which is accomplished by
+using Eq. (10).
+Comparing this new estimate with that of the errorreduction algorithm described in Sec. II, it is seen that
+they are identical. That is, the error-reduction iterative
+Fourier transform algorithm can be looked on as a rapid
+method of implementing a double-length step steepest-descent method.
+Although the steepest-descent method is identical to
+the error-reduction algorithm for the problem of a single
+intensity measurement, the connection is not so close
+for the problem of two intensity measurements as explored in the Appendix. In that case the error is minimized with respect to the phase estimate (x), and the
+derivative of the error does move one in a direction approximately toward the Gerchberg-Saxton phase, 0'(x),
+of Eq. (9). However, according to Eq. (A4), the direction is somewhat different from that of the
+Gerchberg-Saxton algorithm; and the step size, according to Eqs. (A12) and (A16), is considerably larger
+than that of the Gerchberg-Saxton algorithm. Experimental results using the steepest-descent method for
+the problem of two intensity measurements are shown
+in Ref. 2.
+1 August 1982 / Vol. 21, No. 15 / APPLIED OPTICS
+
+2761
+
+The relationship between a gradient search method
+and the error-reduction algorithm for a problem in
+digital filter design is discussed in Ref. 13.
+IV.
+
+Other Gradient Search Methods
+
+As shown in Sec. III for the phase problem of a single
+intensity measurement the steepest-descent method is
+equivalent to the error-reduction algorithm. And as
+described in Sec. II, although there is a convergence
+proof for the error-reduction algorithm, in practice it
+converges very slowly for the problem of a single intensity measurement. Slow convergence of the steepest-descent (also known as the optimum-gradient)
+method has also been observed for other applications
+as well. 1 4 In this section some other gradient search
+methods are briefly described, and in Sec. VI it will be
+shown that in practice they converge much faster than
+the steepest-descent method for this problem.
+Recall from Eq. (30) that the steepest-descent
+method moves from the point g (x) in parameter space
+to the point
+gk(x) = g(x) - hk,9gBk,
+
+(34)
+
+where hk, the step size, is a positive constant, and the
+gradient is given by Eq. (28). For many applications
+one would search along the direction of -agBk, evaluating B repeatedly until the value of hk that minimizes
+B is found; then from that point one would recompute
+the gradient and go off in a new direction. For this
+application, however, since an N X N Fourier transform
+is required to evaluate B and only one more Fourier
+transform is required to recompute the gradient, one
+may as well recompute the gradient at each step. After
+each step of this or the other gradient methods described later one must then satisfy the object-domain
+constraints to form the new estimate as was done in Eq.
+(10),
+gk+i(x) = {gk(x)
+lO
+
+x,
+Xey,
+
+(35)
+
+where set y is defined as in Eq. (10). In Sec. III the
+optimum double-length step value of hk was shown to
+be unity, for which the steepest-descent method is
+equivalent to the error-reduction algorithm. In fact,
+hk = 1 leads to a point g (x) = g'k(x) at which B = 0.
+This is not a solution, however, unless g (x) satisfies the
+object domain constraints. With this in mind, other
+values of hk are better in practice as will be shown in
+Sec. VI.
+A useful block diagram representation of this and
+other gradient methods is shown in Fig. 3, which emphasizes the similarity of gradient methods to the
+error-reduction algorithm. The first three steps of the
+error-reduction algorithm, resulting in the computation
+of g'(x), do most of the work of computing the gradient.
+The final step of satisfying the object-domain constraints is common to gradient methods and the errorreduction algorithm. Therefore, one can think of the
+error-reduction algorithm as a special case of a more
+general class of gradient methods. For the error-reduction algorithm (or the double-length step steepestdescent method) it just happens that g (x) = g (x).
+2762
+
+APPLIED OPTICS / Vol. 21, No. 15 / 1 August 1982
+
+WG
+
+* 1;l
+
+9
+
+SATISFY
+FOURIER
+CONSTRAINTS
+
+SATISFY
+FUNCTION
+CONSTRAINTS
+
+|
+
+GRADIENT
+STEP
+
+aG
+
+Fig. 3. Block diagram for the gradient-search methods using the
+method of Fourier transforms to compute the gradient.
+
+A gradient search method superior to the steepestdescent method is the conjugate-gradient method. For
+that method Eq. (34) is replaced by' 4
+gk(x) = gk(x) + hkD,(x),
+
+(36)
+
+where the direction Dk (x) is given by
+1
+Da(x) = - ( 12)agBk
+
++ [z (0gB)2/y (gB,,_)2]
+
+Dk_,(x),
+
+(37)
+
+which, using Eqs. (28) and (31), can be written as
+Dk(x) = gk(x) - g,,(x) + (Bk/Bk- 1)Dk-1 (x),
+
+(38)
+
+where one would start the first iteration with D 1 (x) =
+gi(x) - g1 (x). After using Eq. (36) one would employ
+Eq. (35) to form the new estimate as indicated in Fig.
+3.
+Numerous variations on these gradient methods are
+possible. For example, one could argue that from one
+iteration to the next the solution is going in the following
+direction:
+Dk W
+
+= 4
+
+-
+
+- I W-
+
+(39)
+
+Since the step in that direction may be too small, a
+better point to go to would be
+g;(x) =g*(x) +hk [4W -g4-1W]
+
+(40)
+
+where the parameter hk controls the step size. In Eq.
+(40) one jumps from the point gk(x) rather than from
+gk (X) since presumably g (x) is closer to the solution
+than g (x). After using Eq. (40) one would employ Eq.
+(35) to form the new estimate.
+A method that does not seem as practical for this
+problem is that of (damped) least squares (or NewtonRaphson). 1 6 Since each iteration of a least-squares
+method involves the inversion of an N 2 by N 2 matrix,
+a large number of iterations of one of the gradient
+methods or of one of the iterative Fourier transform
+methods described in Sec. V could be performed in the
+same time it takes to do a single iteration of least
+squares. Furthermore, as has been discussed above, one
+can readily find a point ga (x) = ga(x) at which the error
+B is equal to zero, and so a more sophisticated (and more
+difficult) method, such as least squares, of finding such
+a point is not warranted.
+The problem here is that one is constantly running
+into the object-domain constraints on g(x). An approach that would be superior to the ones considered
+
+here would be one that minimizes the Fourier-domain
+error while inherently satisfying the object-domain
+constraints, or one that minimizes an error metric that
+combines the Fourier- and object-domain constraints.
+An example of the former is the use of a gradient search
+method for the problem of two intensity measurements;
+by searching over 0(x) one automatically satisfies the
+object-domain constraints that they have a given
+modulus If(x) 1. Something along these lines would be
+very useful for the problem of a single intensity measurement; clearly, more could be done in this area.
+V.
+
+Input-Output Algorithm
+
+A solution to the problem of the slow convergence of
+the error-reduction algorithm has been the input-output algorithm, which has proved to converge faster for
+both the problem of two intensity measurements 6 17 and
+the problem of a single intensity measurement. 4 5 The
+input-output algorithm differs from the error-reduction
+algorithm only in the object-domain operation. The
+first three operations-Fourier transforming g(x),
+satisfying the Fourier-domain constraints, and inverse
+Fourier transforming the result-are the same for both
+algorithms. If grouped together as indicated in Fig. 4,
+those three operations can be thought of as a nonlinear
+system having an input g(x) and an output g'(x). The
+useful property of this system is that its output is always
+an image having a Fourier transform that satisfies the
+Fourier-domain constraints. Therefore, if the output
+also satisfies the object-domain constraints, it is a solution to the problem. Unlike the error-reduction algorithm and the gradient methods, the input g(x) no
+longer must be thought of as the current best estimate
+of the object; instead, it can be thought of as the driving
+function for the next output, g'(x). The inputg(x) does
+not necessarily satisfy the object-domain constraints.
+This viewpoint allows one a great deal of flexibility and
+inventiveness in selecting the next input, and allows for
+the invention of algorithms that converge more rapidly
+to a solution. The input-output algorithm, then, is
+actually a class of algorithms as will be described
+below.
+As described elsewhere, 6 7 17 it has been found that
+a small change of the input results in a change of the
+
+output in the same general direction as the change of the
+input. More precisely, for a small change of the input
+the expected value of the corresponding change of the
+output is a constant a times the change of the input.
+Since additional nonlinear terms also appear in the
+output, the change of the output due to a particular
+change of the input cannot be predicted exactly.
+Nevertheless, by appropriate changes of the input, the
+
+output can be pushed in the general direction desired.
+If a change Ag(x) is desired in the output, a logical
+
+choice of the change of the input to achieve that change
+of the output would be f3Ag(x), where : is a constant
+ideally equal to -1.
+For the problem of phase retrieval from a single intensity measurement the desired change of the output
+is
+Agk(x) =
+
+°,
+1k-4)>
+
+XS-Y,
+xC'y,
+
+(41)
+
+where y is the set of points at which g', (x) violates the
+object-domain constraints. That is, where the constraints are satisfied, one does not require a change of
+the output; but where the constraints are violated, the
+desired change of the output, in order to have it satisfy
+the object-domain constraints, is one that drives it to
+a value of zero (and, therefore, the desired change is the
+negative of the output at those points). Therefore, a
+logical choice for the next input is
+gk+1(X) = gk (x)
+
++
+
+A$gk (X)
+
+= gk(x),
+
+X,'
+
+gk (X) - 03g(x),
+
+(42)
+
+Xeno.
+
+We will refer to the use of Eq. (42) as the basic inputoutput algorithm.
+An interesting property of the nonlinear system
+(consisting of the set of three steps mentioned above)
+is that if an output g' is used as an input, its output will
+be itself. Since the Fourier transform of g' already
+satisfies the Fourier-domain constraints, g' is unaffected
+as it goes through the system. Therefore, irrespective
+of what input actually resulted in the output g', the
+output g' can be considered to have resulted from itself
+as an input. From this point of view another logical
+choice for the next input is
+gk+l(X) = g4(x) + 3Agk(x)
+
+Jgkx)-
+
+INPUT
+
+x4-,
+XeY.
+
+(43)
+
+We will refer to the use of Eq. (43) as the output-output
+
+algorithm.
+Note that if 13 = 1 in Eq. (43), the output-output al-
+
+OUTPUT 9-
+
+gorithm reduces to the error-reduction algorithm of Eq.
+(10). Since the optimum value of 1 is usually not unity,
+the error-reduction algorithm can be looked on as a
+suboptimal version of a more general approach.
+Still another method of choosing the next input which
+was investigated is a combination of the upper line of
+Eq. (43) with the lower line of Eq. (42):
+-
+
+Fig. 4. Block diagram of the system for the input-output concept.
+
+gk+l(X)
+
+=
+
+gk(x),
+gk(-X)g'
+
+(X),
+
+X7
+Xc',
+
+1 August 1982 / Vol. 21, No. 15 / APPLIED OPTICS
+
+(44)
+
+2763
+
+We will refer to the use of Eq. (44) as the hybrid
+input-output algorithm. The hybrid input-output
+algorithm is an attempt to avoid a stagnation problem
+that tends to occur with the output-output algorithm.
+The output-output algorithm often works itself into a
+situation in which the output on successive iterations
+does not change despite being far from a solution. For
+the hybrid input-output algorithm, on the other hand,
+if at a given value of x the output remains negative for
+more than one iteration, the corresponding point in the
+input continues to grow larger and larger until eventually that output value must go non-negative.
+For the input-output algorithms the error EF is
+usually meaningless since the input g (X) is no longer
+an estimate of the object. Then the meaningful error
+is the object-domain error E 0 given by Eq. (15).
+For the problem of phase retrieval from two intensity
+measurements the desired change of the output takes
+a different form, and it is described elsewhere6 7 1 7 in the
+context of a computer holography synthesis problem
+involving intensity constraints in each of the two domains.
+VI. Experimental Comparison of Phase-Retrieval
+Algorithms
+
+In this section the gradient search and input-output
+algorithms are compared for the problem of phase retrieval from a single intensity measurement by using
+them all on the same Fourier modulus data and with the
+same starting input. For each approach several different values of the algorithm parameter (h or 1) were
+tried. The principal problem with the error-reduction
+algorithm is that it tends to stagnate after a few iterations. For this reason the starting point for the iterations was chosen to be a partially reconstructed image
+on which the error-reduction algorithm was making slow
+progress. Figure 5 shows a plot of E 0, the rms error, vs
+the number of iterations beyond this starting point
+using the error-reduction algorithm. Starting at
+0.071275, Eo decreased slowly but steadily to 0.067470
+after ten iterations and to 0.063373 after nineteen iterations. In this paper, all values of E 0 are normalized
+by dividing by the square root of z [g'(x)]2 , the total
+image energy. The object for the experiment described
+in this section is a digitized photograph of a satellite in
+a field of view of 128 X 128 pixels, and its Fourier
+modulus is noise-free.
+The algorithms were compared by performing ten
+iterations of each algorithm, followed by nine iterations
+of the error-reduction algorithm (a total of nineteen
+iterations) using the same starting input for each.
+During the first ten iterations the value of the algorithm
+parameter 1 or h was held constant. The reason that
+each algorithm was followed by nine iterations of the
+error-reduction algorithm is as follows. In many cases
+it has been observed that definite progress (i.e., improved visual quality of the output image) is being made
+with an input-output algorithm even though E 0 decreases very little or even increases with each iteration.
+The relationship between E 0 and the visual image
+quality is not fully understood, although, of course, one
+would expect a high degree of correlation between the
+2764
+
+APPLIED OPTICS / Vol. 21, No. 15 / 1 August 1982
+
+.08
+
+.06
+
+u
+
+0
+
+W=
+.04
+
+Lu
+
+.02
+
+.................10
+15
+20
+5
+ITERATION NUMBER k
+RMS error vs the number of iterations using the errorreduction algorithm.
+0
+
+Fig. 5.
+
+two. For those cases for which the visual quality improves while E 0 does not it was found that, if one then
+performs a few (say five or ten) iterations of the errorreduction algorithm, the visual quality of the output
+image changes very little, but E 0 decreases rapidly until
+it becomes more consistent with the visual image
+quality. Therefore, to gauge the true progress of an
+input-output algorithm using the value of E 0, a few iterations of the error-reduction algorithm are performed
+after the iterations of the input-output algorithm. For
+this reason, for all cases the ten iterations of the algorithm being tested were followed by nine iterations of
+the error-reduction algorithm in order to make a fair
+comparison.
+
+Plots of E 0 after the set of nineteen iterations described above (ten iterations followed by nine iterations
+of the error-reduction algorithm) are shown in Fig. 6 as
+a function of the algorithm parameter for the various
+algorithms. Note that both the steepest-descent
+method with h = 1.0 and the output-output algorithm
+with 1 = 1.0 are equivalent to the error-reduction algorithm at E 0 = 0.063373, both circled in Fig. 6.
+Comparing these plots it is seen that the algorithm
+which most reduced the error after the set of nineteen
+iterations is the hybrid input-output algorithm with a
+value of 1 equal to about unity.
+For each algorithm the use of a small algorithm parameter (13 or h) leads to a steady but slow decline of E 0.
+Increasing the value of the parameter increases the
+speed at which E 0 decreases until one reaches a point
+where the parameter is too large and the algorithm becomes unstable. The instability of the algorithm for
+larger values of the algorithm parameter makes possible
+more than one local minimum in the plots of E 0 vs the
+algorithm parameter.
+For all the algorithms, keeping h or 1 fixed for all iterations is not the best possible strategy, particularly
+for the gradient methods. At the point at which the
+
+error-reduction algorithm is converging slowly the
+gradient is small, and one must then use a large value
+of h to make rapid progress. However, after using a
+large value of h for a few iterations, one moves to a point
+where the gradient is much larger. Then one should use
+a smaller value of h to avoid algorithm instability. If
+a method for adaptively choosing h at each iteration was
+devised, one would expect the gradient methods to
+perform considerably better than the results shown here
+using a fixed value of h.
+Examples of an alternative to using a fixed value of
+h and 13
+are shown in Fig. 7. For the first ten iterations
+of each algorithm the indicated value of h or 13 was used
+for iterations k = 1, 3, 5, 7, and 9, and the error-reduction algorithm (h = 1 for the steepest-descent and
+conjugate-gradient) was used for iterations k = 2, 4, 6,
+8, and 10. The iterations using the error-reduction algorithm help to stabilize the algorithm by moving
+toward a point where the gradient is smaller. Comparing Figs. 6 and 7, it is seen that with this alternative
+strategy the optimum value of each algorithm parameter is considerably larger than the optimum value when
+the parameter is kept constant. At the optimum value
+of the algorithm parameter the alternative strategy gave
+better results (a lower value of E 0 at the end of the sequence of nineteen iterations) than those shown in Fig.
+6 for the basic input-output and for the output-output
+algorithms; the two strategies were comparable for the
+steepest-descent method; and for the hybrid inputoutput algorithm the alternative strategy gave poorer
+results than those shown in Fig. 6.
+Curve E in Fig. 7 shows the result with the algorithm
+of Eq. (40) using the alternative strategy described
+.08
+
+C E
+
+D
+
+A
+
+.06
+B
+Lu
+
+0
+.04
+U,
+
+.02
+
+0
+
+1
+
+2
+
+3
+
+4
+
+5
+
+ALGORITHM PARAMETER , OR h
+
+Fig. 6. RMS error after a fixed number of iterations vs the algorithm
+parameter. Curve A: steepest-descent method (0); B: conjugate-gradient method (); C: basic input-output algorithm (A); D:
+output-output algorithm (A); E: hybrid input-output algorithm ().
+The result using the error-reduction algorithm is indicated by a large
+circle.
+
+04
+=.04 -
+
+.02
+
+0
+
+4
+
+8
+
+12
+
+16
+
+20
+
+24
+
+28
+
+ALGORITHM PARAMETER 6 OR h
+
+Fig. 7. RMS error after a fixed number of iterations (using the alternative strategy) vs the algorithm parameter. Curve A: steepest-descent method (0); B: basic input-output algorithm (); C:
+output-output algorithm (); D: hybrid input-output algorithm
+(A); E: the algorithm of Eq. (40) ().
+
+above. This and numerous other variations on these
+algorithms can be used with varying degrees of success.
+The results shown in Figs. 6 and 7 were for a particular set of Fourier modulus data for a particular stage
+of reconstruction and for a particular number of iterations, and the results in other circumstances could be
+significantly different. At the optimum values of the
+algorithm parameter in each case the algorithm parameter was large enough to make the algorithm
+somewhat unstable, and so substantially different results could be obtained if relatively small changes in
+starting point, algorithm parameter, or number of iterations were made. In general, slower but steadier
+progress is made if an algorithm parameter is used that
+is somewhat smaller than the optimum according to
+Figs. 6 and 7. These results do serve to show trends that
+can be expected to apply in a wider range of circumstances. Further development is needed to determine
+the best approach for the general case. As of this
+writing the most successful strategy has been to alternate between several (10-30) iterations of the hybrid
+input-output algorithm and a few (5-10) iterations of
+the error-reduction algorithm.
+Figure 8 shows E 0 vs the number of iterations past the
+starting point for the hybrid input-output algorithm
+with 1 = 1 (curve B) and for the error-reduction algorithm (curve A, repeated from Fig. 5). Curve BI shows
+the results for the set of nineteen iterations described
+above (ten iterations of the hybrid input-output algorithm followed by nine iterations of the error-reduction
+algorithm). Curve B2 shows the results of twenty iterations of the hybrid input-output algorithm followed
+by a few iterations of the error-reduction algorithm.
+The instability of the hybrid input-output algorithm
+is seen in curve B, in which E 0 increases from 0.071275
+to 0.137707 during the first four iterations. By the end
+1 August 1982 / Vol. 21, No. 15 / APPLIED OPTICS
+
+2765
+
+.14
+
+a: .08
+
+,..
+
+,.
+
+>06
+
+.
+
+A
+
+tet
+
+.04
+.02
+
+d
+.....................
+0 S
+
+s
+15
+10
+ITERATION k
+
+0
+
+t
+20
+
+25
+
+Fig. 8. RMS error vs the number of iterations for the error-reduction
+algorithm (curve A), and for the hybrid input-output algorithm (curve
+B-see text).
+
+of ten iterations E decreases to 0.091176, still worse
+than the starting point, although the appearance of the
+image is improved from the starting point. At the
+eleventh iteration of curve B 1, the first iteration of the
+error-reduction algorithm, E 0 drops sharply to a value
+of 0.047244, although the appearance of the output
+image changes little from that of the tenth iteration. If
+after the tenth iteration the hybrid input-output iterations are continued for ten more iterations (curve B2),
+E 0 continues to decrease to well below the level of E 0 for
+the error-reduction algorithm alone (curve A). Similar
+to the case of B1, after the twentieth iteration of the
+hybrid input-output algorithm (curve B2), when a few
+iterations of the error-reduction algorithm were performed, again E 0 fell rapidly to a level consistent with
+the improved image quality that was present. This is
+the characteristic of the input-output algorithms that
+mandated the use of a few iterations of the error-reduction algorithm to make a fair comparison. For the
+input-output algorithms the image quality is often
+better than what one would infer from the value of
+Eo.
+
+VIl.
+
+Diameter Constraint, Starting Input, and Stripes
+
+A side issue pertinent to all algorithms is how one
+defines the diameter of the object for the purpose of
+applying the diameter constraint in the object domain.
+For the problem of phase retrieval from a single intensity measurement the object is usually of finite extent
+and on a dark (zero value) background. Bounds on the
+support of the object (the set of points over which the
+object is nonzero) can then be determined from the
+support of the autocorrelation, which, being the inverse
+Fourier transform of the square of the Fourier modulus,
+can be computed from the given data. As shown in Ref.
+10, for extended objects the support of the autocorrelation usually does not uniquely define the support of
+the object. Nevertheless, reasonably tight bounds can
+be made on the support of the object. Locator sets' 0
+can be defined that contain all possible solutions. One
+can, therefore, define a region (a mask) outside of which
+2766
+
+APPLIED OPTICS / Vol. 21, No. 15 / 1 August 1982
+
+the output image is constrained to be zero. That is, the
+set y defined in Eq. (10) includes all points outside the
+mask for which ga(x) s 0. One need not use this information for the algorithm to converge, but it is desirable to do so since using this additional information
+speeds up the convergence of the algorithm.
+A problem often occurs with the diameter constraint
+even though the mask region is correctly defined. If the
+partially reconstructed image g(x) is not centered in
+the mask region, in applying the diameter constraint
+one might inadvertently be trying to chop off (truncate)
+one part of the object, which usually results in stagnation of the algorithm. For this reason it is usually advantageous to define the mask as being somewhat larger
+than the extent of the object.
+We have found a good strategy for choosing the mask:
+For the first several iterations, define a smaller mask
+which very tightly constrains the object. This helps to
+speed up the convergence of the algorithm initially, but
+slows it down for later iterations when the problem
+mentioned above becomes more significant. Then, for
+later iterations use a larger mask which ensures that
+none of the solution is being truncated by the mask.
+Logical choices for masks are any of the locator
+sets. 0
+Faster convergence can be expected if the starting
+input g,(x) is closer to the solution. A good starting
+input is formed as follows. Compute the autocorrelation function and then demagnify it by a factor of 2
+(save only every other pixel in both dimensions). Then
+threshold the demagnified autocorrelation at a value
+which is a small fraction of its peak, setting it equal to
+zero wherever it is below the threshold value. Finally,
+replace each value above the threshold with a sample
+of a random variable uniformly distributed between
+zero and unity. The result is a random (unbiased)
+starting input having approximately the same size and
+shape as the original object.
+A curious phenomenon often occurs for the problem
+of phase retrieval from a single-intensity measurement.
+The phase-retrieval algorithm often stagnates at a local
+minimum characterized by a pattern of stripes across
+the image. 1 8 19 In most cases the stripes are barely
+noticeable and are of low contrast, superimposed on an
+otherwise excellent reconstructed image. In some cases
+the stripes are of high enough contrast to be objectionable, although they still permit the object to be recognized. The cause of this phenomenon is not well understood, but it is thought that it is an algorithm convergence problem rather than a uniqueness problem' 9
+(it is at a local, not a global, minimum of Eo). A method
+of avoiding this phenomenon is presently being sought,
+although it fortunately is not much of a problem in most
+cases.
+Vill.
+
+Image Reconstruction Example
+
+An example of a computer experiment using the iterative reconstruction algorithm for the problem of
+phase retrieval from a single intensity measurement is
+shown in Fig. 9. In this example a realistic stimulation
+was performed to arrive at the kind of noisy Fourier
+
+modulus data that would be provided by stellar speckle
+interferometry, 2 0 including the effects of atmospheric
+turbulence and photon noise.18
+An undegraded object, a digitized photograph of a
+satellite shown in Fig. 9(a), was convolved with 156
+different point spread functions to produce 156 different blurred images. Each point spread function represented a different realization of the effects of the
+turbulent atmosphere. The blurred images were then
+subjected to a Poisson noise process to simulate the
+effects of photon noise. For this example there were
+-300,000 photons/degraded image (or of the order of
+100 photons/pixel over the extent of the object), which
+is realistic for objects of this type when imaged through
+a telescope of 1.2-m diam. Two of the resulting 156
+degraded images are shown in Figs. 9(b) and 9(c). The
+degraded images were then processed by Labeyrie's 2 0
+method as modified by Goodman and Belsher.2 ' The
+estimate of the modulus of the Fourier transform of the
+object is given by' 8
+M
+
+Ip(u)I = W(u)
+
+1/2
+
+=
+
+(45)
+E
+
+M=M+l
+
+ISm(U)12
+
+where Im (u) is the Fourier transform of the mth degraded image, Np is the total number of photons detected (it is subtracted to compensate for a certain noise
+bias term that arises in the power spectrum due to
+photon noise 2 l), S () is the Fourier transform of the
+mth point spread function (to provide compensation for
+the MTF of the speckle interferometry process), and the
+weighting factor W(u) is the MTF due to the telescope
+
+Fig. 9. Image reconstruction experiments. (a) Undegraded object;
+(b), (c) examples of degraded images simulated to include the effects
+of atmospheric turbulence and photon noise; (d) Fourier modulus
+estimate computed from the degraded images; (e)image reconstructed
+using the iterative algorithm.
+
+0.5
+0.4
+
+w
+
+0'
+
+0.3
+
+In 02
+0.1
+
+0
+
+Fig. 10.
+
+20
+40
+ITERATION k
+
+60
+
+RMS error vs the number of iterations.
+
+aperture. In practice the denominator of this expression would be obtained by making measurements on a
+reference star through an atmosphere having the same
+statistics as that which blurred the images or by using
+a model of the effects of atmospheric turbulence. W(u)
+was included to restore the natural MTF due to the
+telescope aperture which was removed by the denominator of the equation above. Figure 9(d) shows the
+resulting Fourier modulus estimate.
+The object was reconstructed (or equivalently, the
+Fourier phase was retrieved) using the hybrid inputoutput algorithm alternately with the error-reduction
+algorithm. The result, shown in Fig. 9(e), agrees very
+well with the original object shown in Fig. 9(a), despite
+the noise present in the Fourier modulus data. Good
+reconstructed images were also obtained when only
+one-tenth as many photons were assumed to be available.' 8
+Figure 10 shows E 0 vs the number of iterations for
+this reconstruction. The starting input used was the
+randomized demagnified autocorrelation described in
+Sec. VII, using a threshold value of 0.004 times the peak
+of the autocorrelation. For the first ten iterations the
+error-reduction algorithm was used, and the mask defining the diameter constraint was chosen to be the region over which the autocorrelation function, spatially
+demagnified by a factor of 2, exceeded 0.004 of its
+maximum value (providing a fairly tight diameter
+constraint). For iterations 11-20 the error-reduction
+algorithm was used, and the mask for these and the remaining iterations was chosen to be a square of length
+64 pixels, which is larger than the actual object extent
+of -60 X 40 pixels (imbedded in an array of 128 X 128
+pixels). The error decreased suddenly at the tenth iteration since some positive-valued points that were
+inside the second mask but outside the first mask were
+no longer counted as contributing to E. By the
+twentieth iteration the error-reduction algorithm was
+converging very slowly. For iterations 21-60 the hybrid
+input-output algorithm, with equal to one, was used.
+At first E 0 increased sharply (although the output image
+appeared no worse than at iteration 20) but then decreased fairly rapidly until stagnating at E 0 o 0.05 at
+about iteration 55. For iterations 61-70 the errorreduction algorithm was used, for which E0 dropped
+suddenly from 0.05 to 0.02, although the visual ap1 August 1982 / Vol. 21, No. 15 / APPLIED OPTICS
+
+2767
+
+pearance of the reconstructed image remained the same
+as for iteration number 60.
+This final value of Eo is comparable to 0.03, the normalized rms error of the Fourier modulus estimate itself. 18 It is impossible to reduce E 0 to zero since the
+noise in the Fourier modulus estimate results in an inconsistency of the non-negativity constraint and the
+Fourier modulus estimate. This inconsistency can be
+seen from the fact that the autocorrelation estimate
+computed from the Fourier modulus estimate has areas
+of negative value.
+Reconstruction experiments do not always proceed
+as smoothly as the one described above. When stagnation occurs before E 0 is reduced to a level consistent
+with the error in the Fourier modulus data, often the
+best strategy is to restart the algorithm using a different
+set of random numbers as the initial input. One must
+also be careful in the way one chooses the mask as discussed in Sec. VII. Finally, it is always advisable to
+reconstruct the image two or three times from the same
+Fourier modulus data using different starting inputs
+each time. If the same image is reconstructed each
+time, one would have confidence that the solution is
+unique.
+IX.
+
+Comments and Conclusions
+
+For the problem of phase retrieval from a single-intensity measurement it has been shown that the errorreduction algorithm (the Gerchberg-Saxton algorithm
+applied to this problem) is equivalent to the steepestdescent method with a double-length step. Furthermore, it was shown that the error-reduction algorithm
+converges in the sense that the error monotonically
+decreases. However, in practice the error-reduction
+algorithm converges very slowly; several other algorithms converge much faster, including other gradient
+search algorithms which utilize the method of Fourier
+transforms for rapidly computing the gradient of the
+error and the input-output family of iterative Fourier
+transform algorithms. Of the algorithms investigated
+so far, the hybrid input-output algorithm has converged
+the fastest. Nevertheless, the gradient-search algorithms also converge reasonably fast, and they deserve
+further development. The performance of any given
+algorithm can vary depending on the stage of reconstruction and on what is being reconstructed. Although
+a practical phase-retrieval algorithm is in hand, there
+is still an element of trial and error involved.
+For the problem of phase retrieval from two intensity
+measurements, the steepest-descent method and the
+Gerchberg-Saxton algorithm were compared and were
+found to share some similarities. When manipulating
+just the object's phase, the object-domain constraint,
+that the object's modulus equals the measured modulus,
+is automatically satisfied. Therefore, the gradientsearch methods seem inherently better suited to the
+problem of two intensity measurements than to the
+problem of a single intensity measurement.
+Not considered here has been the question of the
+uniqueness of solutions to either of the two phase-retrieval problems. There has been considerable con2768
+
+APPLIED OPTICS / Vol. 21, No. 15 / 1 August 1982
+
+troversy surrounding this question, both for the problem of two intensity measurements 22 2 ' 2 3 and for the
+problem of a single intensity measurement.24-2 8 For
+the latter problem, the experimental reconstruction
+results shown here and elsewhere 4 5 10 9 suggest that for
+complicated 2-D objects the solution is usually unique
+in practice, even when the Fourier modulus data are
+corrupted by a considerable amount of noise.1 9
+This research was supported by the Air Force Office
+of Scientific Research under contract F49620-80-C0006.
+Appendix
+
+In this Appendix the relationship between the
+steepest-descent method for the problem of two intensity measurements and the Gerchberg-Saxton algorithm is explored.
+For the problem of two intensity measurements, the
+error B is minimized with respect to the phase estimates
+0(x). The partial derivative of B with respect to the
+value of a given phase 0(x) is
+a0B=
+
+alG(u)I
+
+OB
+
+=2N-2 E [IG(u)l-IF(u)] 00(x)
+
+(Al)
+
+Since
+OG(u)
+0
+a E f(y)I exp[i0(y)] exp[-i27ru y/N]
+00(x) = 0()
+= ilf(x)l exp[i0(x)] exp[-i27ru *x/NJ
+= ig(x) exp[-i2iru *x/N],
+
+(A2)
+
+then
+G(u)(-i)g*(x) exp[i2ru *x/N] +c.c.
+21G(u)l
+
+a|G(u)l
+00(x)
+
+(A3)
+
+where c.c. indicates the complex conjugate of what
+precedes it. Using Eq. (27), Eq. (Al) becomes 2
+09B = ig*(x)[g'(x) -g(x)] + c.c.
+= ig*(x)g'(x) + c.c. = -2 Im[g*(x)g'(x)]
+= -21f(x)I Ig'(x)Isin[0'(x) - 0(x)],
+
+(A4)
+
+where 0'(x) is the phase of g'(x). Therefore, the gradient can be easily computed using two Fourier transforms (the first three steps of the Gerchberg-Saxton
+algorithm) plus evaluating Eq. (A4). Analogous to the
+linear approximation of Eq. (29) is
+B
+
+Bk + Y 3oBk[0(x) - Ok(X)I,
+
+(A5)
+
+where OoBk is 60B evaluated at 0(x) = Ok(X), the phase
+of gk (x). This linear expansion of B is equal to zero
+
+for
+O( )
+
+o ( )
+
+Bkl)OBk
+
+(A6)
+
+E ,ok)
+
+which can be easily verified by inserting Eq. (A6) into
+Eq. (AS). By Eq. (A4),
+Fi (aoBk) 2 = 4 Z If(y)121g(y) 2
+2
+
+X sin [0(y) -
+
+and so Eq. (A6) becomes
+
+k(Y)],
+
+(A7)
+
+(X) - Ok(x) =-
+
+2E
+
+kf(x)g(x)I sin0'(x) - Ok(x)I
+2
+2
+f(y)1 1g(y)12 sin [,(y) - k(Y)]
+
+(A8)
+
+Now consider the situation after several iterations have
+been performed and the error is decreasing slowly.
+Then for most values of x,
+sin[0
+
+x)-
+
+Ok(X)I
+
+(A9)
+
+0ok(X) - Ok(X)-
+
+Then from Eq. (A8) it is seen that 6(x) (x), which
+is the change of Ok (x) indicated by the steepest-descent
+method, is approximately proportional to 6'k(x) - Ok (x).
+
+Recall from Eq. (9) that 'k(x) is the new phase that
+would be given by the Gerchberg-Saxton algorithm.
+Thus, for the problem of two intensity measurements
+the steepest-descent method gives a new phase that is
+going in the same general direction as the GerchbergSaxton algorithm but uses a different step size. For the
+steepest-descent method the direction differs somewhat
+from 6'k(x) - k (x) due to the weighting factor
+If(x)gk(x) , which varies with x.
+To obtain some notion of the step size for the steepest-descent method, continue to consider the situation
+where the error is decreasing slowly and Eq. (A9)
+applies. Then, using Eq. (16) one can approximate
+Bk = E | If(x)l exp[iOk(x) - Ig'(x)l expliO,(x)1I 2
+x
+
+= E 11f(X)1 2 + g'(X)12 - 2f(x)g(x)l CoS[0k()
+
+Z [If(X)l - lgk(X)1]2 +
+x
+
+-
+
+Ok(X)]}
+
+f(x)g(x)l
+x
+
+X sin 2 [0'(x) - Ok(x)]. (A10)
+
+To further simplify things, consider the special case for
+which f (X)
+
+= fa,
+
+a constant independent of x. Fur-
+
+thermore, if B is small, for most values of x,
+I f(x)I - igk(x)iiI
+
+If(x)I.
+
+(All)
+
+Under these circumstances, inserting Eqs. (A9) and
+(A10) into (A8) yields
+0(x-^x
+W
+
+W
+
+2-k +
+
+[0(X)
+
+[lf(X) -
+
+gk(X)]2,
+
+(X)],
+
+(A12)
+
+where
+Bk=
+
+(A13)
+
+x
+k=
+
+j jg'(x)[0(x)-Ok(x)12
+
+(A14)
+
+are the respective radial and tangential components of
+the error Bk
+B + Bk. The radial component Br is
+the object-domain squared error of the modulus of
+lg (x) I and is equal to E2 according to Eq. (14). When
+the error is decreasing slowly,
+Bk
+
+Bk -Bk=
+
+-E
+
+<<E =B.
+
+(A15)
+
+Therefore, under these circumstances the coefficient
+of Eq. (A12),
++ Bk
+
+1
+
+That is, when the Gerchberg-Saxton algorithm is converging slowly, the steepest-descent method indicates
+that a much larger step size be used. Note that if one
+uses the double-length step steepest-descent method,
+the factor of 1/2 in Eqs. (A8), (A12), and (A16) is replaced
+by unity.
+
+References
+1. R. W. Gerchberg and W. 0. Saxton, Optik 35, 237 (1972).
+2. W. 0. Saxton, Computer Techniques for Image Processingin
+Electron Microscopy (Academic, New York, 1978).
+3. R. A. Gonsalves, J. Opt. Soc. Am. 66, 961 (1976).
+4. J. R. Fienup, Opt. Lett. 3, 27 (1978).
+5. J. R. Fienup, Opt. Eng. 18, 529 (1979).
+6. J. R. Fienup, Opt. Eng. 19, 297 (1980).
+7. J. R. Fienup, "Reconstruction and Synthesis Applications of an
+Iterative Algorithm," in Transformations in Optical Signal
+Processing, W. T. Rhodes, J. R. Fienup, and B. E. A. Saleh, Eds.
+(Society of Photo-Optical Instrumentation Engineers, Bellingham, Wash., 1982), to be published.
+8. P. M. Hirsch, J. A. Jordan, Jr., and L. B. Lesem, "Method of
+Making an Object-Dependent Diffuser," U.S. Patent 3,619,022
+(9 Nov., 1971).
+9. N. C. Gallagher and B. Liu, Appl. Opt. 12, 2328 (1973).
+10. J. R. Fienup, T. R. Crimmins, and W. Holsztynski, J. Opt. Soc.
+Am. 72, 610 (1982).
+11. R. N. Bracewell, The FourierTransform and Its Applications
+(McGraw-Hill, New York, 1965).
+12. R. H. Boucher, Proc. Soc. Photo-Opt. Instrum. Eng. 231, 130
+(1980).
+13. M. T. Manry and J. K. Aggarwal, IEEE Trans. Circuits Syst.
+CAS-23, 185 (1976).
+14. D. P. Feder, Appl. Opt. 2, 1209 (1963).
+15. D. R. Buchele, Appl. Opt. 7, 2433 (1968).
+16. B. R. Frieden and D. G. Currie, J. Opt. Soc. Am. 66, 1111 (1976)
+(Abstract).
+17. J. R. Fienup, "Improved Synthesis and Computational Methods
+for Computer-Generated Holograms," Ph.D. Thesis, Stanford
+University, May, 1975 (University Microfilms No. 75-25523),
+Chap. 5.
+18. G. B. Feldkamp and J. R. Fienup, Proc. Soc. Photo-Opt. Instrum.
+Eng. 231, 84 (1980).
+19. J. R. Fienup, "Fourier Modulus Image Construction," Report
+RADC-TR-81-63 (1981).
+20. A. Labeyrie, Astron. Astrophys. 6, 85 (1970); D. Y. Gezari, A.
+Labeyrie, and R. V. Stachnik, Astrophys. J. Lett. 173, Li
+(1972).
+21. J. W. Goodman and J. F. Belsher, Proc. Soc. Photo-Opt. Instrum.
+Eng. 75, 141 (1976).
+22. A.M. J. Huiser, A. J. J. Drenth, and H. A. Ferwerda, Optik 45,303
+(1976); A. M. J. Huiser and H. A. Ferwerda, Optik 46, 407
+(1976).
+23. A. J. Devaney and R. Chidlaw, J. Opt. Soc. Am. 68, 1352
+(1978).
+24. Yu. M. Bruck and L. G. Sodin, Opt. Commun. 30, 304 (1979).
+25. W. Lawton, Proc. Soc. Photo-Opt. Instrum. Eng. 231, 94
+(1980).
+26. A. M. J. Huiser and P. Van Toorn, Opt. Lett. 5, 499 (1980).
+27. T. R. Crimmins and J. R. Fienup, J. Opt. Soc. Am. 71, 1026
+(1981).
+28. J. R. Fienup, "Image Reconstruction for Stellar Interferometry,"
+in CurrentTrends in Optics, F. T. Arecchi and F. R. Aussenegg,
+Eds. (Taylor & Francis, London, 1981), pp. 95-102.
+1 August 1982 / Vol. 21, No. 15
+
+APPLIED OPTICS
+
+2769
+
+

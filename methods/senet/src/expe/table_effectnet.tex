@@ -1,0 +1,21 @@
+%------------------------------------- table --------------------------------------------
+\begin{table*}[t]
+\renewcommand\arraystretch{1.1} 
+\caption{Single-crop error rates (\%) on the ImageNet validation set and complexity comparisons. MobileNet refers to ``1.0 MobileNet-224" in \cite{howard_2017mobilenets} and ShuffleNet refers to ``ShuffleNet $1\times (g = 3)$'' 
+in \cite{zhang_cvpr2018shufflenet}. The numbers in brackets denote the performance improvement over the re-implementation.}
+\label{tab:smallnet-results}
+\vspace{-1.8em}
+\newcommand{\tabincell}[2]{\begin{tabular}{@{}#1@{}}#2\end{tabular}}
+\begin{center}{\scalebox{0.92}{
+  \begin{tabular}{l|p{1.2cm}<{\centering}|p{1.2cm}<{\centering}|p{1.2cm}<{\centering}|p{1.2cm}<{\centering}|p{1.2cm}<{\centering}|p{1.3cm}<{\centering}|p{1.3cm}<{\centering}|p{1.3cm}<{\centering}|p{1.2cm}<{\centering}|p{1.3cm}<{\centering}}
+  \hline
+  \multirow{2}{*}{} & \multicolumn{2}{c|}{original} & \multicolumn{4}{c|}{re-implementation} & \multicolumn{4}{c}{SENet} \\
+  \cline{2-11}
+  & top-1 err. & \tabincell{c}{top-5 err.} & \tabincell{c}{top-1 err.} & \tabincell{c}{top-5 err.} & MFLOPs & \tabincell{c}{Params} & \tabincell{c}{top-1 err.} & \tabincell{c}{top-5 err.} & MFLOPs & \tabincell{c}{Params} \\
+  \hline
+  MobileNet \cite{howard_2017mobilenets} & $29.4$ & - & $28.4$ & $9.4$ & $569$ & $4.2$M & $25.3_{(3.1)}$ & $7.7_{(1.7)}$  & $572$ & $4.7$M \\
+  ShuffleNet \cite{zhang_cvpr2018shufflenet} & $32.6$ & - & $32.6$ & $12.5$ & $140$ & $1.8$M & $31.0_{(1.6)}$ & $11.1_{(1.4)}$ & $142$ & $2.4$M \\ 
+  \hline
+    \end{tabular}}}
+  \end{center}
+\end{table*}

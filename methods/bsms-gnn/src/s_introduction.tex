@@ -1,0 +1,43 @@
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width = 0.9\linewidth]{figs/comparison_menglei.pdf}\\
+    \setlength{\tabcolsep}{0\linewidth}
+    \begin{tabular}{C{0.2191\linewidth}C{0.3154\linewidth}C{0.3154\linewidth}}
+        {\footnotesize(a) learnable pooling} & {\footnotesize(b) pooling by rasterization} & {\footnotesize(c) pooling by spatial proximity} \\
+    \end{tabular}\vspace{-5pt}
+    \caption{\textbf{Issues of existing multi-level GNNs.} (a) A learnable pooling \citep{gao2019graph} may lead to loss of connectivity even after $2^{\text{nd}}$-order enhancement. (b) A pooling by rasterization \citep{lino2021simulating,lino2022towards,lino2022multi} and (c) by spatial proximity \citep{liu2021multi,fortunato2022multiscale} can lead to wrong connections across the boundaries at the coarser level.}\vspace{-10pt}
+    \label{fig:compare}
+\end{figure*}
+\section{Introduction}
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=0.9\linewidth]{figs/example_bistride_anot.pdf}\vspace{2pt}\\
+    \setlength{\tabcolsep}{0\linewidth}
+    \begin{tabular}{C{0.05\linewidth}C{0.125\linewidth}C{0.275\linewidth}C{0.2\linewidth}C{0.15\linewidth}}
+         & {\scriptsize(a) \cylinder~} & {\scriptsize(b) \airfoil~} & {\scriptsize(c) \plate~} & {\scriptsize(d) \fonts~} \\
+    \end{tabular}\vspace{-5pt}
+    \caption{\textbf{Example multi-level graphs produced by bi-stride pooling.} Our datasets contain both Eulerian and Lagrangian systems. Many meshes are highly irregular and contain massive self-contact, challenging to build coarser-level connections by spatial proximity. Our bi-stride strategy only relies on topological information and is proven to be robust and reliable on arbitrary geometry.}
+    \vspace{-10pt}
+    \label{fig:example:bistride}
+\end{figure*}
+Simulating physical systems through numerically solving partial differential equations (PDEs) is a key area in science and engineering, with applications ranging from solid mechanics~\cite{jiang2016material,li2020incremental}, to fluid-~\cite{bridson2015fluid,cao2018liquid}, aerodynamics~\cite{cao2022efficient}, and heat transfer~\cite{cao2019heat}.
+However, traditional numerical solvers are often computationally expensive, particularly for time-sensitive applications such as iterative design optimization, where fast online inference is desired.
+In recent years, the machine learning community has shown great interest in improving efficiency or replacing traditional solvers with learned models. These works include both end-to-end frameworks~\cite{grzeszczuk1998neuroanimator,obiols2020cfdnet} and those utilizing physics-informed losses~\cite{raissi2019physics,karniadakis2021physics,sun2020surrogate}.
+Many existing works apply convolutional neural networks (CNNs)~\cite{fukushima1982neocognitron} to physical systems residing on two- or three-dimensional structured grids~\cite{guo2016convolutional,tompson2017accelerating,kim2019deep,fotiadis2020comparing}. However, the strict dependency on regular domain shapes makes it non-trivial to be applied on unstructured meshes. While it is possible to deform simple irregular domains into rectangular shapes to apply CNNs~\cite{gao2021phygeonet,li2022fourier}, the challenge remains for domains with complex topologies, which are common in practice.
+
+As a result, the use of graph neural networks (GNNs) in physics-based simulations on unstructured meshes has gained significant attention in recent years~\cite{battaglia2018relational,sanchez2018graph,belbute2020combining,pfaff2020learning,sanchez2020learning,harsch2021direct,gao2022physics}.
+The naive GNN approach stacks multiple MPs to model information propagation throughout space. However, as the graph size increases, this approach faces two major challenges:
+(1) \textbf{Complexity}: as both the number of nodes to be processed and the MP iterations increase linearly, a quadratic complexity becomes inevitable for both the running time and memory usage of the computational graph~\cite{fortunato2022multiscale}.
+(2) \textbf{Oversmoothing}: the graph convolution can be seen as a low-pass filter that suppresses the higher-frequency signals~\cite{chen2020measuring, li2020multipole}. Then the stacked MPs iteratively project the information onto the eigenspace of the graph while all higher-frequency signals are smoothed out, making the training more difficult.
+
+To address these limitations, researchers have begun introducing multi-scale GNNs (MS-GNNs) for physics-based simulation~\cite{li2020multipole,liu2021multi,lino2021simulating,fortunato2022multiscale,lino2022multi,lino2022towards}. The multi-scale approach mitigates over-smoothing by building sub-level graphs at coarser resolutions, resulting in longer-range interactions and fewer MP iterations.
+The existing approaches for constructing the multi-scale structure include: utilizing spatial proximity to generate sub-level graphs at coarser levels~\cite{lino2021simulating,liu2021multi,lino2022towards}; applying Guillard's coarsening algorithm~\cite{guillard1993node}~\cite{lino2022multi}; manually drawing coarser meshes for the original geometry~\cite{liu2021multi,fortunato2022multiscale}; or randomly pooling nodes and applying factorization to the adjacency matrix~\cite{li2020multipole}. However, these solutions all have their limitations.
+For example, learnable or random pooling can introduce artificial partitions in the sub-level graphs (Fig.~\ref{fig:compare}. (a)), even with adjacency enhancement, which impedes information exchange across partitions, spatial proximity can lead to wrong edges across the boundaries at coarser levels (Fig.~\ref{fig:compare}. (b) and (c)); Guillard's algorithm only applies to 2D triangle meshes; and manually drawing tens of thousands of meshes is too labor-intensive.
+We observe that all these limitations originate from the unmatured operations: \textit{pooling} and \textit{building graph connections at coarser levels}. We desire to design operations that: 1) conserve the correct connections at coarser levels, 2) do not introduce edges that blur the boundaries, 3) are general for any mesh type, and 4) are automatic.
+
+We tackle these challenges with two progressive contributions:
+\begin{itemize}
+    \item \textbf{First}, we introduce a novel yet simple pooling strategy, \textit{bi-stride}. Bi-stride is inspired by the bi-partition determination in DAG (directed acyclic graph). It pools all nodes on every other BFS (breadth-first-search) frontier, such that a $2^{\text{nd}}$-powered adjacency enhancement \revision{($\mA\leftarrow\mA^2$, where $\mA$ is the adjacency matrix of the graph)} conserves all the correct connectivity. Bi-stride solely uses the input mesh without the need for spatial proximity, is general for any mesh type, and is fully automatic.
+    \item \textbf{Second}, bi-stride pooling conserves direct connections between pooled/un-pooled nodes; Utilizing this advantage, one MP suffices to exchange the information between pooled and unpooled nodes before moving into the adjacent level; We also design a non-parameterized aggregating and returning method, resembling the interpolation in \revision{U-Net}, to handle the transition between adjacent levels. These simplifications significantly reduce the computational requirements compared to SOTAs.
+\end{itemize}
+Together, these two contributions give birth to our \textit{Bi-Stride Multi-Scale GNN} (\textit{BSMS-GNN}), a novel framework representing a significant advancement in the field of learned mesh-based simulations, particularly for the deployment in real industrial applications where meshes are often complex in geometry and large in size.

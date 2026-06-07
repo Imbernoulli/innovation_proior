@@ -1,0 +1,61 @@
+
+\setcounter{table}{4} %
+
+\section{Distant Supervision}
+\label{sec:distant}
+
+When training our final \model/ model using Natural Questions, we use the passages in our collection that best match the gold context as the positive passages.
+As some QA datasets contain only the question and answer pairs, it is thus interesting to see when using the passages that contain the answers as positives (i.e., the distant supervision setting), whether there is a significant performance degradation.
+Using the question and answer together as the query, we run Lucene-BM25 and pick the top passage that contains the answer as the positive passage.
+Table~\ref{tab:qa_ir_dist_sv} shows the performance of \model/ when trained using the original setting and the distant supervision setting. 
+
+
+
+\section{Alternative Similarity Functions \& Triplet Loss}
+\label{sec:alt-sim}
+\label{sec:triplet}
+
+In addition to dot product (DP) and negative log-likelihood based on softmax (NLL), we also experiment with Euclidean distance (L2) and the triplet loss.
+We negate L2 similarity scores before applying softmax and change signs of question-to-positive and question-to-negative similarities when applying the triplet loss on dot product scores. 
+The margin value of the triplet loss is set to 1.
+Table~\ref{tab:qa_ir_sim_and_loss} summarizes the results.
+All these additional experiments are conducted using the same hyper-parameters tuned for the baseline (DP, NLL).
+
+
+Note that the retrieval accuracy for our ``baseline" settings reported in Table~\ref{tab:qa_ir_dist_sv} (Gold) and Table~\ref{tab:qa_ir_sim_and_loss} (DP, NLL) is slightly better than those reported in Table 3.
+This is due to a better hyper-parameter setting used in these analysis experiments, which is documented in our code release.
+
+
+\section{Qualitative Analysis}
+\label{sec:qual_ana}
+
+
+
+Although \model/ performs better than BM25 in general, the retrieved passages of these two retrievers actually differ qualitatively. Methods like BM25 are sensitive to highly selective keywords and phrases, but cannot capture lexical variations or semantic relationships well.  In contrast, \model/ excels at semantic representation, but might lack sufficient capacity to represent salient phrases which appear rarely.  Table~\ref{tab:retrieved-examples} illustrates this phenomenon with two examples.  In the first example, the top scoring passage from BM25 is irrelevant, even though keywords such as \textit{England} and \textit{Ireland} appear multiple times.  In comparison, \model/ is able to return the correct answer, presumably by matching \textit{``body of water"} with semantic neighbors such as \textit{sea} and \textit{channel}, even though no lexical overlap exists.
+The second example is one where BM25 does better.  The salient phrase \textit{``Thoros of Myr"} is critical, and \model/ is unable to capture it.
+
+\input{tables/qa_ir_dist_sv}
+\input{tables/qa_ir_sim_and_loss}
+
+\input{tables/retrieved-examples.tex}
+
+
+\section{Joint Training of Retriever and Reader}
+\label{sec:joint}
+
+We fix the passage encoder in our joint-training scheme while allowing only the question encoder to receive backpropagation signal from the combined (retriever + reader) loss function.
+This allows us to leverage the HNSW-based FAISS index for efficient low-latency retrieving, without reindexing the passages during model updates.
+Our loss function largely follows ORQA's approach, which uses log probabilities of positive passages selected from the retriever model, and correct spans and passages selected from the reader model.
+Since the passage encoder is fixed, we could use larger amount of retrieved passages when calculating the retriever loss.
+Specifically, we get top 100 passages for each question in a mini-batch and use the method similar to in-batch negative training: all retrieved passages' vectors participate in the loss calculation for \emph{all} questions in a batch. 
+Our training batch size is set to 16, which effectively gives 1,600 passages per question to calculate retriever loss.
+The reader still uses 24 passages per question, which are selected from the top 5 positive and top 30 negative passages (from the set of top 100 passages retrieved from the same question).
+The question encoder's initial state is taken from a \model/ model previously trained on the NQ dataset.
+The reader's initial state is a BERT-base model.
+In terms of the end-to-end QA results, our joint-training scheme does not provide better results compared to the usual retriever/reader training pipeline, resulting in the same 39.8 exact match score on NQ dev as in our regular reader model training.
+
+
+
+
+
+

@@ -1,0 +1,135 @@
+\documentclass{article}
+
+
+% if you need to pass options to natbib, use, e.g.:
+%     \PassOptionsToPackage{numbers, compress}{natbib}
+% before loading neurips_2024
+
+
+% ready for submission
+% \usepackage{neurips_2024}
+% \usepackage[nonatbib]{neurips_2024}
+
+% to compile a preprint version, e.g., for submission to arXiv, add add the
+% [preprint] option:
+\usepackage[preprint,nonatbib]{neurips_2024}
+
+
+% to compile a camera-ready version, add the [final] option, e.g.:
+% \usepackage[final,nonatbib]{neurips_2024}
+
+
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+% \usepackage{hyperref}       % hyperlinks
+\usepackage[pagebackref, breaklinks=true, colorlinks,citecolor=citecolor, linkcolor=linkcolor, bookmarks=false]{hyperref}
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{xcolor}         % colors
+\usepackage{tablefootnote}
+
+
+\input{sec/math_commands.tex}
+
+\vspace{-2pt}
+\title{Visual Autoregressive Modeling:\, Scalable Image Generation via Next-Scale Prediction}
+
+
+\vspace{-5pt}
+\author{
+  \vspace{-25pt}\\
+  \textbf{Keyu Tian$^{1,2}$,\quad Yi Jiang$^{2,\dag}$,\quad Zehuan Yuan$^{2,*}$,\quad Bingyue Peng$^2$,\quad Liwei Wang$^{1,}$\thanks{Corresponding authors: \,\href{mailto:wanglw@pku.edu.cn}{\color{black}{wanglw@pku.edu.cn}}, \href{mailto:yuanzehuan@bytedance.com}{\color{black}{yuanzehuan@bytedance.com}};\, $\dag$: project lead }}\vspace{3pt} \\
+  $^1$Peking University ~~\quad\quad $^2$Bytedance Inc\vspace{3pt} \\
+  \texttt{\small keyutian@stu.pku.edu.cn, jiangyi.enjoy@bytedance.com,} \\ 
+  \texttt{\small yuanzehuan@bytedance.com, bingyue.peng@bytedance.com, wanglw@pku.edu.cn}\vspace{8pt}  \\
+  Try and explore our online demo at:~\, \url{https://var.vision}\vspace{5pt} \\
+  Codes and models:~\, \url{https://github.com/FoundationVision/VAR}
+  \vspace{-4pt} \\
+  % examples of more authors
+  % \And
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+  % \AND
+}
+% \vspace{-15pt}
+% \vspace{-15pt}
+
+
+\usepackage{amsthm}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{corollary}{Corollary}[theorem]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{definition}{Definition}[section]
+\begin{document}
+
+
+\maketitle
+
+
+
+%%%%%%%%%%%%%%%%%%%%% NO MORE THAN 14 PAGES %%%%%%%%%%%%%%%%%%%%%
+
+
+\input{sec/0.abs}
+
+\vspace{-2pt}
+\section{Introduction} \label{sec:intro}
+\vspace{-4pt}
+\input{sec/1.intro}
+
+
+\vspace{-2pt}
+\section{Related Work} \label{sec:related}
+\vspace{-2pt}
+\input{sec/2.related}
+
+
+\section{Method} \label{sec:method}
+\input{sec/3.1.method}
+
+
+\section{Empirical Results} \label{sec:exp}
+\vspace{-2pt}
+
+This section first compares VAR with other image generative model families in \secref{sec:sota}.
+Evaluations on the scalability and generalizability of VAR models are presented in \secref{sec:law} and \appref{sec:zero}.
+For implementation details and ablation study, please see \appref{sec:impl} and \appref{sec:abla}.
+% We do some ablations and visualizations at the end.
+
+
+\input{sec/main_table.tex}
+
+
+\input{sec/5.exp}
+
+
+\input{sec/6.conc}
+
+
+% %%%%%%%%%%%%%%%%%%%%% NO MORE THAN 14 PAGES %%%%%%%%%%%%%%%%%%%%%
+
+
+\appendix
+\input{sec/7.appendix}
+
+
+\clearpage
+\newpage
+
+
+\clearpage
+{
+\small
+\bibliographystyle{cite}
+\bibliography{cite}
+}
+
+
+
+\end{document}

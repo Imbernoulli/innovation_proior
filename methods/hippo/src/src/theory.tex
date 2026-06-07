@@ -1,0 +1,300 @@
+\documentclass[../hippo.tex]{subfiles}
+\begin{document}
+
+\section{HiPPO-LegS Theoretical Properties}
+\label{sec:hippo-theory}
+
+\subsection{Timescale equivariance}
+
+\begin{proof}[Proof of \cref{prop:timescale}]%
+    Let $\tilde{f}(t) = f(\alpha t)$.
+    Let $c = \proj f$ and $\tilde{c} = \proj \tilde{f}$.
+    By the HiPPO equation~\eqref{eq:coefficient} update and the basis
+    instantiation for LegS (equation \eqref{eq:scale-legendre-p}),
+    \begin{align*}%
+        \tilde{c}_n(t) &= \langle \tilde{f}, g_n^{(t)} \rangle_{\mu^{(t)}} \\
+        &= \int \tilde{f}(t) (2n+1)^{\frac{1}{2}} P_n\left( 2\frac{x}{t} - 1 \right) \frac{1}{t} \mathbb{I}_{[0, 1]}\left(\frac{x}{t}\right) \dd x
+        \\
+        &= \int f(\alpha t) (2n+1)^{\frac{1}{2}} P_n\left( 2\frac{x}{t} - 1 \right) \frac{1}{t} \mathbb{I}_{[0, 1]}\left(\frac{x}{t}\right) \dd x
+        \\
+        &= \int f(\alpha t) (2n+1)^{\frac{1}{2}} P_n\left( 2\frac{x}{\alpha t} - 1 \right) \frac{1}{\alpha t} \mathbb{I}_{[0, 1]}\left(\frac{x}{\alpha t}\right) \dd x
+        \\
+        &= c_n(\alpha t).
+    \end{align*}
+    The second-to-last equality uses the change of variables $x \mapsto \frac{x}{\alpha}$.
+\end{proof}
+
+\subsection{Speed}
+
+
+
+
+
+In this section we work out the fast update rules according to the forward
+Euler, backward Euler, bilinear, or generalized bilinear transform
+discretizations (cf.\ \cref{sec:discretization-full}).
+Recall that we must be able to perform matrix-vector multiplication by $I + \delta A$ and $(I - \delta A)^{-1}$
+where $\delta$ is some multiple of the step size $\Delta t$ (equation~\eqref{eq:gbt}).
+
+It is easily seen that the LegS update rule involves a matrix $A$ of the following form (\cref{thm:legs}):
+$A = D_1 (L + D_0) D_2$, where $L$ is the all $1$ lower triangular matrix and $D_0, D_1, D_2$ are diagonal.
+Clearly, $I + \delta A$ is efficient (only requiring $O(N)$ operations),
+as it only involves matrix-vector multiplication by diagonals $D_0, D_1, D_2$, or multiplication by $L$ which is the $\mathsf{cumsum}$ operation.
+
+Now we consider multiplication by the inverse $(I+\delta A)^{-1}$ (the minus sign can be absorbed into $\delta$).
+Write
+\begin{align*}
+  (I + \delta D_1 (L+D_0) D_2)^{-1}
+  &= \left( D_1 (D_1^{-1} D_2^{-1} + \delta (L+D_0)) D_2 \right)^{-1} \\
+  &= \delta^{-1} D_2^{-1} \left( \delta^{-1} D_1^{-1} D_2^{-1} + D_0 + L \right)^{-1} D_1^{-1}
+\end{align*}
+Since diagonal multiplication is efficient,
+the crucial operation is inversion multiplication by a matrix of the form $L + D$.
+
+Consider solving the equation $(L + D) x = y$.
+This implies $x_0 + \dots + x_{k-1} = y_k - (1+d_k) x_k$.
+The solution is
+\begin{align*}
+  x_0 &= \frac{y_0}{1+d_0} \\
+  x_k &= \frac{y_k - x_0 - \dots - x_{k-1}}{1+d_k} \\
+\end{align*}
+Define $s_k = x_0 + \dots + x_k$.
+Then
+\begin{align*}
+  s_k = s_{k-1} + x_k = s_{k-1} + \frac{y_k - s_{k-1}}{1 + d_k} = \frac{y_k + d_k s_{k-1}}{1 + d_k} = \frac{d_k}{1+d_k}s_{k-1} + \frac{y_k}{1+d_k}.
+\end{align*}
+
+Finally, consider how to calculate a recurrence of the following form efficiently.
+\begin{align*}
+  x_0 = \beta_0, x_k = \alpha_k x_{k-1} + \beta_{k}.
+\end{align*}
+This update rule can also be written
+\begin{align*}
+  \frac{x_k}{\alpha_k\dots\alpha_1} = \frac{x_{k-1}}{\alpha_{k-1}\dots\alpha_1} + \frac{\beta_k}{\alpha_k\dots\alpha_1}.
+\end{align*}
+Evidently $x$ can be computed in a vectorized way as
+\begin{align*}
+  x = \mathsf{cumsum}(\beta / \mathsf{cumprod}(\alpha)) \cdot \mathsf{cumprod}(\alpha)
+  .
+\end{align*}
+This is an $O(N)$ computation.
+
+
+
+
+\subsection{Gradient Norms}
+
+We analyze the discrete time case under the Euler discretization (\cref{sec:discretization-full}),
+where the HiPPO-LegS recurrent update is equation~\eqref{eq:legs-discrete}, restated here for convenience:
+\begin{align*}
+  c_{k+1} = \left( 1 - \frac{A}{k} \right) c_k + \frac{1}{k} B f_k.
+\end{align*}
+These gradient asymptotics hold under other discretizations.
+
+We will show that
+\begin{proposition}%
+  For any times $k < \ell$, the gradient norm of the HiPPO-LegS operator
+  for the output at time $\ell+1$ with respect to input at time $k$ is
+  $\left\| \frac{\partial c_{\ell+1}}{\partial f_{k}} \right\| = \Theta\left( 1 / \ell \right)$.
+\end{proposition}
+\begin{proof}%
+  We take $N$ to be a constant.
+
+  Without loss of generality assume $k > 2$, as the gradient change for a single initial step is bounded.
+  By unrolling the recurrence~\eqref{eq:legs-discrete}, the dependence of $c_{\ell+1}$ on $c_k$ and $f_k, \dots, f_{\ell}$ can be made explicit:
+  \begin{align*}
+    c_{\ell+1} &= \left( I - \frac{A}{\ell} \right) \dots \left( I - \frac{A}{k} \right) c_k
+    \\
+    &\quad + \left( I - \frac{A}{\ell} \right) \dots \left( I - \frac{A}{k+1} \right) \frac{B}{k} f_k
+    \\
+    &\quad + \left( I - \frac{A}{\ell} \right) \dots \left( I - \frac{A}{k+2} \right) \frac{B}{k+1} f_{k+1}
+    \\
+    &\quad \quad \vdots
+    \\
+    &\quad + \left( I - \frac{A}{\ell} \right) \frac{B}{\ell-1} f_{\ell-1}
+    \\
+    &\quad + \frac{B}{\ell} f_{\ell}
+    .
+  \end{align*}
+  Therefore
+  \begin{align*}
+    \frac{\partial c_{\ell+1}}{\partial f_k} = \left( I - \frac{A}{\ell} \right) \dots \left( I - \frac{A}{k+1} \right) \frac{B}{k}.
+  \end{align*}
+  Notice that $A$ has distinct eigenvalues $1, 2, \dots, N$, since those are the elements of its diagonal and $A$ is triangular (\cref{thm:legs}).
+  Thus the matrices $I - \frac{A}{\ell}, \dots, I - \frac{A}{k+1}$ are diagonalizable with a common change of basis.
+  The gradient then has the form $P D P^{-1} B$ for some invertible matrix
+  $P$ and some diagonal matrix $D$.
+  Its norm is therefore bounded from below (up to constant) by the smallest
+  singular value of $P$ and $\|P^{-1} B\|$, both of which are nonzero constants,
+  and the largest diagonal entry of $D$.
+  It thus suffices to bound this largest diagonal entry of $D$, which is the
+  largest eigenvalue of this product,
+  \begin{align*}
+    \rho = \left(1 - \frac{1}{\ell}\right) \dots \left(1 - \frac{1}{k+1}\right) \frac{1}{k}.
+  \end{align*}
+  The problem reduces to showing that $\rho = \Theta(1/l)$.
+
+  We will use the following facts about the function $\log \left( 1 - \frac{1}{x} \right)$.
+  First, it is an increasing function, so
+  \begin{align*}
+    \log \left( 1 - \frac{1}{x} \right) \ge \int_{x-1}^x \log \left( 1 - \frac{1}{\lambda} \right) \dd \lambda.
+  \end{align*}
+  Second, its antiderivative is
+  \begin{align*}
+    \int \log \left( 1 - \frac{1}{x} \right) = \int \log(x-1) - \log(x) = (x-1)\log(x-1) - x\log(x) = x\log\left( 1-\frac{1}{x} \right) - \log(x-1)
+    .
+  \end{align*}
+  
+  Therefore, we have
+  \begin{align*}
+    \log \left(1 - \frac{1}{\ell}\right) \dots \left(1 - \frac{1}{k+1}\right)
+    &= \sum_{i=k+1}^\ell \log (1 - \frac{1}{i})
+    \\
+    &\ge \sum_{i=k+1}^\ell \int_{i-1}^i \log \left(1 - \frac{1}{x}\right) \dd x
+    \\
+    &= \int_{k}^\ell \log \left(1 - \frac{1}{x}\right) \dd x
+    \\
+    &= \left[ (x-1)\log(x-1) - x\log(x) \right] \big|_{k}^{\ell}
+    \\
+    &= \ell \log \left( 1-\frac{1}{\ell} \right) - \log(\ell-1)
+    \\& - \left( k \log \left( 1-\frac{1}{k} \right) - \log(k-1) \right)
+    .
+  \end{align*}
+  Finally, note that $x \log \left( 1 - \frac{1}{x} \right)$ is an increasing function, and bounded from above since it is negative, so it is $\Theta(1)$ (this can also be seen from its Taylor expansion).
+  Thus we have
+  \begin{align*}
+    \log \rho \ge \Theta(1) - \log(\ell-1) + \log(k-1) - \log(k),
+  \end{align*}
+  Furthermore, all inequalities are asymptotically tight, so that $\rho = \Theta(1 / \ell)$ as desired.
+  
+\end{proof}
+
+
+
+
+\subsection{Function Approximation Error}
+
+\begin{proof}[Proof of \cref{prop:approximation_error}]%
+  Fix a time $t$.
+  HiPPO-LegS uses the measure $\omega(t, x) = \frac{1}{t} \mathbb{I}_{[0, t]}$ and the
+  polynomial basis $p_n(t, x) = (2n+1)^{\frac{1}{2}} P_n \left( \frac{2x}{t} - 1 \right)$.
+  Let $c_n(t) = \langle f_{\leq t}, p_n^{(t)} \rangle_{\mu^{(t)}}$ for $n = 0, 1, \dots$.
+  Then the projection $g^{(t)}$ is obtained by linear combinations of the basis
+  functions, with $c_n(t)$ as coefficients:
+  \begin{equation*}
+    g^{(t)}= \sum_{n=0}^{N - 1} c_n(t) p_n^{(t)}.
+  \end{equation*}
+  Since $p_n^{(t)}$ forms an orthonormal basis of the Hilbert space defined by
+  the inner product $\langle \cdot, \cdot \rangle_{\mu^{(t)}}$~\citep{chihara}, by Parseval's
+  identity,
+  \begin{equation*}
+    \norm{f_{\leq t} - g^{(t)}}^2_{\mu^{(t)}} = \sum_{n=N}^{\infty} c_n^2(t).
+  \end{equation*}
+
+  To bound the error $\norm{f_{\leq t} - g^{(t)}}_{\mu^{(t)}}$, it suffices to
+  bound the sum of the squares of the high-order coefficients $c_n(t)$ for
+  $n = N, N+1, \dots$.
+  We will bound each coefficient by integration by parts.
+
+  We first simplify the expression for $c_n(t)$.
+  For any $n \geq 1$, we have
+  \begin{align*}
+    c_n(t)
+    &= \langle f_{\leq t}, p_n^{(t)} \rangle_{\mu^{(t)}} \\
+    &= \frac{1}{t} (2n+1)^{\frac{1}{2}} \int_{0}^{t} f(x) P_n\left(\frac{2x}{t} - 1\right) \d x \\
+    &= \frac{(2n+1)^{\frac{1}{2}}}{2} \int_{-1}^{1} f \left( \frac{1+x}{2} t \right) P_n(x) \d x  & \text{(change of variable $x \to \frac{1+x}{2} t$)}.
+  \end{align*}
+
+  As $P_n(x) = \frac{1}{2n+1} \frac{d}{dx} (P_{n+1}(x) - P_{n-1}(x))$ (cf.\
+  \cref{sec:legendre-properties}), integration by parts yields:
+  \begin{align*}
+    c_n(t)
+    &= \frac{(2n+1)^{\frac{1}{2}}}{2} \left. \left[ f \left( \frac{1+x}{2} t \right) \frac{1}{2n+1} (P_{n+1}(x) - P_{n-1}(x)) \right] \right|_{-1}^1 \\
+    &\quad - \frac{(2n+1)^{\frac{1}{2}}}{2} \int_{-1}^{1} \frac{t}{2} f' \left( \frac{1+x}{2} t \right) \frac{1}{2n+1} (P_{n+1}(x) - P_{n-1}(x)) \d x.
+  \end{align*}
+  Notice that the boundary term is zero, since
+  $P_{n+1}(1) = P_{n-1}(1) = 1$ and $P_{n+1}(-1) = P_{n-1}(-1) = \pm 1$ (either
+  both 1 or both $-1$ depending on whether $n$ is odd or even).
+  Hence:
+  \begin{equation*}
+    c_n(t) = -\frac{1}{4} \cdot \frac{1}{(2n+1)^{\frac{1}{2}}} \cdot t \int_{-1}^{1} f' \left( \frac{1+x}{2} t \right) (P_{n+1}(x) - P_{n-1}(x)) \d x.
+  \end{equation*}
+
+  Now suppose that $f$ is $L$-Lipschitz, which implies that $\abs{f'} \leq L$.
+  Then
+  \begin{align*}
+    c_n^2(t)
+    &\leq t^2 L^2 \frac{1}{16} \cdot \frac{1}{2n+1} \left[ \int_{-1}^{1} \abs{P_{n+1}(x) - P_{n-1}(x)} \d x \right]^2 \\
+    &\leq t^2 L^2 \frac{1}{16} \cdot \frac{1}{2n+1} \cdot 2 \int_{-1}^{1} (P_{n+1}(x) - P_{n-1}(x))^2 \d x && \text{(Cauchy--Schwarz)} \\
+    &= t^2 L^2 \frac{1}{8} \frac{1}{2n+1} \left[ \int_{-1}^{1} P_{n+1}^2(x) \d x + \int_{-1}^{1} P_{n-1}^2(x) \d x \right] && \text{($P_{n+1}$ and $P_{n-1}$ are orthogonal)} \\
+    &= t^2 L^2 \frac{1}{8} \frac{1}{2n+1} \left[ \frac{2}{2n+3} + \frac{2}{2n-1} \right] \\
+    &= O(1) t^2 L^2 \frac{1}{n^2}.
+  \end{align*}
+  Summing for all $n \geq N$ yields:
+  \begin{align*}
+    \norm{f_{\leq t} - g^{(t)}}^2_{\mu^{(t)}}
+    &= \sum_{n=N}^{\infty} c_n^2(t) = O(1) t^2 L^2 \sum_{n=N}^{\infty} \frac{1}{n^2} = O(1) t^2 L^2 \frac{1}{N}.
+  \end{align*}
+  We then obtain that $\norm{f_{\leq t} - g^{(t)}}_{\mu^{(t)}} = O(tL/\sqrt{N})$ as claimed.
+
+  Now supposed that $f$ has $k$ derivatives and the $k$-th derivative is bounded.
+  The argument is similar to the one above where we integrate by parts $k$
+  times.
+  We sketch this argument here.
+
+  Take $k$ to be a constant, and let $n \geq k$.
+  Applying integration by parts $k$ times, noting that all the boundary
+  terms are zero, gives:
+  \begin{equation*}
+    c_n(t) = O(1) (2n+1)^{\frac{1}{2}} t^k \int_{-1}^{1} f^{(k)} \left( \frac{1+x}{2} t \right) q_k(x) \d x,
+  \end{equation*}
+  where $q_k(x)$ is a polynomial such that $\frac{\d^k}{\d x^k} q_k(x) = P_n(x)$.
+  Then since $f^{(k)}$ is bounded,
+  $\abs{c_n(t)} = O(1) (2n+1)^{\frac{1}{2}} \int_{-1}^{1} \abs{q_k(x)} \d x$, and so
+  \begin{equation*}
+    c_n^2(t) = O(1) t^{2k} (2n+1) \left[ \int_{-1}^{1} \abs{q_k(x)} \d x \right]^2 = O(1) t^{2k} (2n+1) \int_{-1}^{1} q_k^2(x) \d x \quad \text{(Cauchy--Schwarz)}.
+  \end{equation*}
+  It remains to bound $\int_{-1}^{1} q_k^2(x) \d x$.
+  Using the fact that
+  $\frac{\d}{\d x} P_n(x) = \frac{1}{2n+1} (P_{n+1}(x) - P_{n-1}(x))$ repeatedly, we have:
+  \begin{align*}
+    q_1 &= \frac{1}{2n+1} (P_{n+1} - P_{n-1}) = \frac{1}{n+O(1)} \cdot \frac{1}{2} (P_{n+1} - P_{n-1}) \\
+    q_2 &= \frac{1}{(n+O(1))^2} \frac{1}{2^2} (P_{n+2} - P_n - P_n + P_{n-2}) = \frac{1}{(n+O(1))^2} \frac{1}{2^2} (P_{n+2} - 2P_n + P_{n-2}) \\
+    q_3 &= \frac{1}{(n+O(1))^3} \frac{1}{2^3} (P_{n+3} - P_{n+1} - 2P_{n+1} + 2P_{n-1} + P_{n-1} - P_{n-3}) = \frac{1}{(n+O(1))^3} \frac{1}{2^3} (P_{n+3} - 3P_{n+1} + 3P_{n-1} - P_{n-3}) \\
+    \dots
+  \end{align*}
+  In general, when we expand out $\int_{-1}^{1} q_k^2(x) \d x$, since the $P_m$'s
+  are orthogonal, we get $k+1$ terms of the form
+  $\frac{1}{(n+O(1))^{2k}} \frac{1}{2^{2k}} \binom{k}{l}^2 \int_{-1}^{1} P_m^2(x) \d x$
+  for $k$ different values of $m$ in the range $[n-k, n+k]$, and $l$ goes from 0 to $k$.
+  For each $m$, $\int_{-1}^{1} P_m^2(x) \d x = \frac{1}{n+O(1)}$, and
+  $\sum_{l=0}^{k} \binom{k}{l}^2 = \binom{2k}{k}$.
+  Summing up all $k+1$ terms yields
+  \begin{equation*}
+    \int_{-1}^{1} q_k^2(x) \d x = \frac{1}{(n+O(1))^{2k+1}} \frac{1}{2^k} \binom{2k}{k}.
+  \end{equation*}
+  By Stirling's approximation, $\binom{2k}{k} = O(1) 4^k$, so
+  $\int_{-1}^{1} q_k^2(x) \d x = \frac{O(1) 2^k}{(n+O(1))^{2k+1}}$.
+  Noting that $k$ is a constant, plugging this into the bound for $c_n^2(t)$:
+  \begin{equation*}
+    c_n^2(t) = O(1) t^{2k} (2n+1) \frac{O(1)2^k}{(n+O(1))^{2k+1}} = O(1) t^{2k} \frac{1}{n^{2k}}.
+  \end{equation*}
+  Summing for all $n \geq N$ yields:
+  \begin{align*}
+    \norm{f_{\leq t} - g^{(t)}}^2_{\mu^{(t)}}
+    &= \sum_{n=N}^{\infty} c_n^2(t) = O(1) t^{2k} \sum_{n=N}^{\infty} \frac{1}{n^{2k}} = O(1) t^{2k} \frac{1}{N^{2k-1}}.
+  \end{align*}
+  We then obtain that $\norm{f_{\leq t} - g^{(t)}}_{\mu^{(t)}} = O(t^k N^{-k+1/2})$ as claimed.
+\end{proof}
+
+\textbf{Remark.} The approximation error of Legendre polynomials
+reduces to how fast the Legendre coefficients decay, subjected to the smoothness
+assumption of the input function.
+This result is analogous to the classical result in Fourier
+analysis, where the $n$-th Fourier coefficients decay as $O(n^{-k})$ if the input
+function has order-$k$ bounded derivatives~\citep{korner1989fourier}.
+That result is also proved by integration by parts.
+
+\end{document}
+
+

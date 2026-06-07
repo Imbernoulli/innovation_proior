@@ -1,0 +1,7 @@
+\section{Conclusion}
+Deploying LLMs in streaming applications is urgently needed but comes with challenges due to efficiency limitations and reduced performance with longer texts. Window attention provides a partial solution, but its performance plummets when initial tokens are excluded. Recognizing the role of these tokens as ``attention sinks", we introduced \method—a simple and efficient framework that enables LLMs to handle unlimited texts without fine-tuning. By adding attention sinks with recent tokens, \method can efficiently model texts of up to 4 million tokens. We further show that pre-training models with a dedicated sink token can improve the streaming performance. \method firstly decouples the LLM's pre-training window size and its actual text generation length, paving the way for the streaming deployment of LLMs.
+
+
+
+
+

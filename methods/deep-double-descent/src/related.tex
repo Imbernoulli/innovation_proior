@@ -1,0 +1,38 @@
+\section{Extended discussion of related work}
+\label{sec:related_appendix}
+
+% The curious ability of heavily over-parameterized neural networks to fit the training data perfectly while maintaining small generalization error was brought into focus by \cite{ZhangBHRV16}, which showed that commonly used neural networks have enough capacity to fit data even with random labels. \cite{belkin2018reconciling} corroborated that this generalize-while-interpolating phenomenon extends beyond neural networks to kernel learning. Since then, there has been a flurry of research to square empirically successful practices in deep learning with our traditional understanding of the bias-variance trade-off.
+
+%\cite{belkin2018reconciling} proposed that these seemingly contradictory ideas can be reconciled under a "double-descent curve". They demonstrate that neural networks are not an aberration in this regard --- "double-descent" is a general phenomenon observed also in linear regression with random features and random forests. The double-descent curve was also previously observed by \cite{advani2017high, geiger2019jamming}
+
+\paragraph{\cite{belkin2018reconciling}:} 
+This paper proposed, in very general terms, that the apparent contradiction between traditional notions of the bias-variance trade-off and empirically successful practices in deep learning can be reconciled under a double-descent curve---as model complexity increases, the test error follows the traditional ``U-shaped curve'', but beyond the point of interpolation, the error starts to \textit{decrease}. This work provides empirical evidence for the double-descent curve with fully connected networks trained on subsets of MNIST, CIFAR10, SVHN and TIMIT datasets. They use the $l_2$ loss for their experiments. They demonstrate that neural networks are not an aberration in this regard---double-descent is a general phenomenon observed also in linear regression with random features and random forests.
+
+\paragraph{Theoretical works on linear least squares regression:}
+A variety of papers have attempted to theoretically analyze this behavior in restricted settings, particularly the case of least squares regression under various assumptions on the training data, feature spaces and regularization method.
+% common feature in these works is that the training data ${x_i, y_i}_{i=1}^N$ ($x_i \in \R^D$) comes from a linear + noise model i.e. $y_i = w^* x_i + \epsilon$ where $\epsilon$ is additive noise.
+
+\begin{enumerate}
+    \item \cite{advani2017high, hastie2019surprises} both consider the linear regression problem stated above and analyze the generalization behavior in the asymptotic limit $N, D \rightarrow \infty$ using random matrix theory. \cite{hastie2019surprises} highlight that when the model is mis-specified, the minimum of training error can occur for over-parameterized models
+    \item \cite{belkin2019two} Linear least squares regression for two data models, where the input data is sampled from a Gaussian and a Fourier series model for functions on a circle. They provide a finite-sample analysis for these two cases
+    \item \cite{bartlett2019benign} provides generalization bounds for the minimum $l_2$-norm interpolant for Gaussian features
+    \item \cite{muthukumar2019harmless} characterize the fundamental limit of of any interpolating solution in the presence of noise and provide some interesting Fourier-theoretic interpretations.
+    \item \cite{mei2019generalization}: This work provides asymptotic analysis for ridge regression over random features
+\end{enumerate}
+
+Similar double descent behavior was investigated in \cite{opper1995statistical, opper2001learning}
+
+\cite{geiger2019jamming} showed that deep fully connected networks trained on the MNIST dataset with hinge loss exhibit a ``jamming transition'' when the number of parameters exceeds a threshold that allows training to near-zero train loss. \cite{geiger2019scaling} provide further experiments on CIFAR-10 with a convolutional network. They also highlight interesting behavior with ensembling around the critical regime, which is consistent with our
+informal intuitions in Section~\ref{sec:model-dd} and our experiments in Figures \ref{fig:ens_resnet}, \ref{fig:ens_mcnn}.
+
+\cite{advani2017high, geiger2019jamming, geiger2019scaling} also point out that double-descent is not observed when optimal early-stopping is used.
+
+%\cite{geiger2019scaling} show that ensembling 
+
+
+
+%\cite{belkin2018reconciling} propose that the apparent contradiction between traditional notions of the bias-variance trade-off and empirically successful practices in deep learning can be reconciled under a "double-descent curve"---as model complexity increases, the test error follows the traditional "U-shaped curve", but beyond the point of interpolation, the error starts to \textit{decrease}. They demonstrate that neural networks are not an aberration in this regard---"double-descent" is a general phenomenon observed also in linear regression with random features and random forests. The double-descent curve was also previously observed empirically by \cite{advani2017high, geiger2019jamming}
+
+%A variety of papers have attempted to theoretically analyze this behavior in restricted settings, particularly the case of least squares regression under various assumptions on the training data, feature spaces and regularization method. An incomplete list of papers that analyze linear least squares regression includes \cite{advani2017high, belkin2019two, hastie2019surprises, bartlett2019benign, muthukumar2019harmless, bibas2019new, Mitra2019UnderstandingOP, mei2019generalization}.
+
+%\cite{geiger2019jamming} showed that deep fully connected networks trained on the MNIST dataset with hinge loss exhibit a "jamming transition" when the number of parameters exceeds a threshold that allows training to near-zero train loss. \cite{geiger2019scaling} provide further experiments on CIFAR10 with a convolutional network. Our work extends the idea of this transition beyond varying the number of parameters to a notion of "Effective Model Complexity" that encompasses training time and regularization under a unified view. We also provide rigorous experimental evaluation of this phenomenon under different data domains and modern architectures. 

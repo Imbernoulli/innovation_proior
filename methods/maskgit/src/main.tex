@@ -1,0 +1,88 @@
+\documentclass[10pt,twocolumn,letterpaper]{article}
+
+\usepackage[pagenumbers]{cvpr} % To force page numbers, e.g. for an arXiv version
+
+\pdfoutput=1
+
+% Include other packages here, before hyperref.
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{pifont}
+\usepackage{courier}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{mathabx}
+\usepackage{dbfloatfix}
+\usepackage{anyfontsize}
+
+\usepackage[pagebackref,breaklinks,colorlinks,linkcolor=blue]{hyperref}
+
+
+% Support for easy cross-referencing
+\usepackage[capitalize]{cleveref}
+\crefname{section}{Sec.}{Secs.}
+\Crefname{section}{Section}{Sections}
+\Crefname{table}{Table}{Tables}
+\crefname{table}{Tab.}{Tabs.}
+
+\begin{document}
+\def\model{MaskGIT\xspace}
+\def\bestfid{6.18}
+\def\bestis{182.1}
+\def\bestfidhighres{7.32}
+
+\title{\model: Masked Generative Image Transformer}
+
+\author{Huiwen Chang\quad Han Zhang\quad Lu Jiang\quad Ce Liu$^\ast$ \quad William T. Freeman\\
+\vspace{1.3ex}
+{Google Research}
+}
+
+\renewcommand*{\thefootnote}{\fnsymbol{footnote}}
+\newcommand{\todo}[1]{\textcolor{red}{Todo:#1}}
+\newcommand{\huiwen}[1]{\textcolor{red}{Huiwen: #1}}
+\newcommand{\han}[1]{\textcolor{green}{Han: #1}}
+\newcommand{\lu}[1]{\textcolor{blue}{Lu: #1}}
+
+\interfootnotelinepenalty=1000000
+
+\twocolumn[{%
+\vspace{-5mm}
+\maketitle
+
+\begin{center}
+    \newcommand{\teaserwidth}{\textwidth}
+    \vspace{-8mm}
+    \includegraphics[width=\teaserwidth]{figures/teaser1.pdf}
+    \vspace{-6mm}
+    \captionof{figure}{\textbf{Example generation by MaskGIT on image synthesis and manipulation tasks}. We show that MaskGIT is a flexible model that can generate high-quality samples on (a) class-conditional synthesis, (b) class-conditional image manipulation, \eg replacing selected objects in the bounding box with ones from the given classes, and (c) image extrapolation. Examples shown here have resolutions 512$\times$512, 512$\times$512, and 512$\times$2560 in the three columns, respectively. Zoom in to see the details.} 
+    \vspace{1mm}
+	\label{fig:teaser}
+\end{center}%
+}]
+\footnotetext{$^\ast$ Currently affiliated with Microsoft Azure AI.}
+
+
+\input{0_abstract}
+\input{1_introduction}
+\input{2_related}
+\input{3_method}
+\input{4_experiments}
+\input{6_conclusion}
+
+%%%%%%%%% REFERENCES
+
+\bibliographystyle{ieee}
+\bibliography{main}
+
+% \vfill
+% \pagebreak
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\appendix
+\include{appendix}
+
+\end{document}

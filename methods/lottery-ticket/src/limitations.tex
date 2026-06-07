@@ -1,0 +1,16 @@
+\section{Limitations and Future Work}
+
+We only consider vision-centric classification tasks on smaller
+datasets (MNIST, CIFAR10). We do not investigate larger datasets (namely Imagenet \citep{imagenet}): iterative pruning is computationally intensive, requiring training a network 15 or more times consecutively for multiple trials. In future work, we intend to explore more efficient methods for finding winning tickets that will make it possible to
+study the lottery ticket hypothesis in more resource-intensive settings.
+
+Sparse  pruning is our only method for finding winning tickets.
+Although we reduce parameter-counts, the resulting architectures are not optimized for modern libraries or hardware. In future work,
+we intend to study other pruning methods from the extensive contemporary literature, such as structured pruning (which would produce networks optimized for contemporary hardware) and non-magnitude pruning methods (which could produce smaller winning tickets or
+find them earlier).
+
+The winning tickets we find have initializations that allow them to match the performance of the unpruned networks at sizes too small for
+randomly-initialized networks to do the same. In future work, we intend to study the properties of these initializations that, in concert with the inductive
+biases of the pruned network architectures, make these networks particularly adept at learning.
+
+On deeper networks (Resnet-18 and VGG-19), iterative pruning is unable to find winning tickets unless we train the networks with learning rate warmup. In future work, we plan to explore why warmup is necessary and whether other improvements to our scheme for identifying winning tickets could obviate the need for these hyperparameter modifications.

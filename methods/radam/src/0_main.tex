@@ -1,0 +1,141 @@
+\documentclass{article} % For LaTeX2e
+\usepackage{smile}
+\usepackage{iclr2020_conference,times}
+\usepackage{tabularx, booktabs,enumitem}
+\usepackage{diagbox}
+
+% Optional math commands from https://github.com/goodfeli/dlbook_notation.
+%\input{math_commands.tex}
+\usepackage{subcaption}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{url}
+
+\usepackage{multirow}
+\usepackage{wrapfig}
+\usepackage{svg}
+\usepackage{tabularx, booktabs}
+\newcolumntype{L}{>{\arraybackslash}X}
+\newcolumntype{Y}{>{\centering\arraybackslash}X}
+
+% \usepackage{minipage}
+\usepackage{float}
+\usepackage[linesnumbered,ruled,vlined]{algorithm2e}
+%\usepackage{todonotes} % insert [disable] to disable all notes
+%\newcommand{\xiaodl}[2][]{\todo[color=yellow,size=\scriptsize,fancyline,caption={},#1]{Xiaodong:#2}} 
+\newcommand{\XD}[1]{{\color{blue}{[{\bf XD}: #1]}}}
+\newcommand{\HMJ}[1]{{\color{blue}{[{\bf HMJ}: #1]}}}
+
+% \iclrfinalcopy
+
+\def\ie{{\textit{i.e.}}}
+\def\eg{{\textit{e.g.}}}
+\def\sics{\mbox{Scale-inv-}\mathcal{X}^2}
+
+\usepackage{setspace}
+\AtBeginDocument{%
+  \addtolength\abovedisplayskip{-0.4\baselineskip}%
+  \addtolength\belowdisplayskip{-0.35\baselineskip}%
+  \addtolength\abovedisplayshortskip{-0.4\baselineskip}%
+  \addtolength\belowdisplayshortskip{-0.35\baselineskip}%
+}
+
+\title{On the Variance of the Adaptive Learning Rate and Beyond}
+
+\iclrfinalcopy
+% Authors must not appear in the submitted version. They should be hidden
+% as long as the \iclrfinalcopy macro remains commented out below.
+% Non-anonymous submissions will be rejected without review.
+\author{Liyuan Liu ~\thanks{Work was done during an internship at Microsoft Dynamics 365 AI.}\\
+\footnotesize{University of Illinois, Urbana-Champaign} \\
+\scriptsize{\texttt{ll2@illinois}}\\
+\And
+Haoming Jiang~\thanks{Work was done during an internship at Microsoft Dynamics 365 AI.}\\
+\footnotesize{Georgia Tech}\\
+\scriptsize{\texttt{jianghm@gatech.edu}}\\
+\And
+Pengcheng He, Weizhu Chen\\
+\footnotesize{Microsoft Dynamics 365 AI}\\
+\scriptsize{\texttt{\{penhe,wzchen\}@microsoft.com}}\\
+\And
+Xiaodong Liu, Jianfeng Gao\\
+\footnotesize{Microsoft Research}\\
+\scriptsize{\texttt{\{xiaodl,jfgao\}@microsoft.com}}\\
+\And
+Jiawei Han\\
+\footnotesize{University of Illinois, Urbana-Champaign}\\
+\scriptsize{\texttt{hanj@illinois}}
+}
+\newcommand{\fix}{\marginpar{FIX}}
+\newcommand{\new}{\marginpar{NEW}}
+
+\begin{document}
+
+
+\maketitle
+
+\input{0abs.tex}
+\input{1intro.tex}
+\input{2prelim.tex}
+% \input{3ana.tex}
+\input{3ana_n.tex}
+% \input{4fix.tex}
+\input{4fix_n.tex}
+% \input{7approx.tex}
+% \input{5converge.tex}
+% \input{6exp.tex}
+\input{6exp_n.tex}
+% \input{8related.tex}
+\input{9con.tex}
+
+\vspace{-0.2cm}
+\section*{Acknowledge}
+\vspace{-0.3cm}
+We thank Zeyuan Allen-Zhu for valuable discussions and comments, Microsoft Research Technology Engineering team for setting up GPU machines.
+Research was sponsored in part by DARPA No. W911NF-17-C-0099 and FA8750-19-2-1004, National Science Foundation IIS 16-18481, IIS 17-04532, and IIS-17-41317, and DTRA HDTRA11810026. 
+% Any opinions, findings, and conclusions or recommendations expressed in this document are those of the authors and should not be interpreted as the views of any U.S. Government. 
+% The U.S. Government is authorized to reproduce and distribute reprints for Government purposes notwithstanding any copyright notation hereon.
+
+\begin{figure}[t]
+\begin{minipage}{0.38\textwidth}
+\begin{figure}[H]
+\centering
+    \includegraphics[width=\textwidth]{fig/variance_approx.pdf}
+\vspace{-0.6cm}
+\caption{The value of Equation~\ref{eqn:analytic-sqrt-var}, Equation~\ref{eqn:variance_appro} and their difference (absolute difference). The x-axis is $\rho$ and the y-axis is the variance (log scale).}
+    \label{fig:var_approx}
+\end{figure}
+\end{minipage}
+\;
+\begin{minipage}{0.61\textwidth}
+\begin{figure}[H]
+\centering
+\begin{tabular}[H]{ ccc } 
+ \includegraphics[width=0.3\textwidth]{fig/simu_var/0_1_var.pdf} & 
+ \includegraphics[width=0.3\textwidth]{fig/simu_var/0001_1_var.pdf} & 
+ \includegraphics[width=0.3\textwidth]{fig/simu_var/001_1_var.pdf}  \\
+ $\mu=0$ & $\mu=0.001$  & $\mu=0.01$ \\ 
+ \includegraphics[width=0.3\textwidth]{fig/simu_var/01_1_var.pdf} & 
+ \includegraphics[width=0.3\textwidth]{fig/simu_var/1_1_var.pdf}& 
+ \includegraphics[width=0.3\textwidth]{fig/simu_var/10_1_var.pdf} \\
+ $\mu=0.1$ & $\mu=1$ & $\mu=10$ \\
+\end{tabular}
+\vspace{-0.2cm}
+% \caption{The simulation of $\Var[\frac{1}{v_t}]$ and $\Var[\frac{c_t}{v_t}]$. The x-axis is iteration number (the simulation starts from 5) and the y-axis is the variance in the log scale.}
+\caption{The simulation of $\Var[\frac{1}{v_t}]$ and $\Var[\frac{c_t}{v_t}]$. The x-axis is iteration \# (from 5), the y-axis is the variance (log scale).}
+    \label{fig:vt_var_simulation}
+\end{figure}
+\end{minipage}
+\vspace{-0.4cm}
+\end{figure}
+
+% \subsubsection*{Acknowledgments}
+% We would like to thank Prof. Jiawei Han for his generous help. 
+
+\bibliography{iclr2020_conference}
+\bibliographystyle{iclr2020_conference}
+
+\newpage
+\appendix
+\input{appendix.tex}
+\end{document}

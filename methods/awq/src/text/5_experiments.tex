@@ -1,0 +1,104 @@
+\section{Experiments}
+\input{figure_text/tab_opt_acc}
+\input{figure_text/tab_mistral_mixtral_acc}
+
+
+\subsection{Settings}
+
+\myparagraph{Quantization. } We focus on \emph{weight-only grouped} quantization in this work. As shown in previous work~\cite{dettmers2022case, frantar2022gptq}, grouped quantization is always helpful for improving performance/model size trade-off. We used a group size of 128 throughout the work, except otherwise specified. We focus on INT4/INT3 quantization since they are able to mostly preserve the LLMs' performance~\cite{dettmers2022case}. For \methodshort, we used a small calibration set from the Pile~\cite{gao2020pile} dataset in order not to overfit to a specific downstream domain. We used a grid size of 20 to search for the optimal $\alpha$ in Equation~\ref{eq:scale_search_formula}. 
+
+\myparagraph{Models. } We benchmarked our method on LLaMA~\cite{touvron2023llama} and OPT~\cite{opt} families. There are other open LLMs like BLOOM~\cite{scao2022bloom}, but they are generally worse in quality, so we do not include them in our study. We further benchmark an instruction-tuned model Vicuna~\cite{vicuna2023} and visual language models OpenFlamingo-9B~\cite{openflamingo} and LLaVA-13B~\cite{liu2023llava} to demonstrate the generability of our method. 
+
+\myparagraph{Evaluations.} Following previous literature~\cite{dettmers2022llmint8, xiao2022smoothquant, frantar2022gptq, dettmers2022case, zeroquant}, we mainly profiled the quantized models on language modeling tasks (perplexity evaluation on WikiText-2~\cite{merity2016pointer}) since perplexity can stably reflect the LLM's performance~\cite{dettmers2022case}.
+
+\myparagraph{Baselines.} Our primary baseline is vanilla round-to-nearest quantization (RTN). It is actually quite strong when using a small group size like 128~\cite{frantar2022gptq, dettmers2022case}. We also compare with a state-of-the-art method GPTQ~\cite{frantar2022gptq} for LLM weight quantization. For GPTQ, we also compare with an updated version that uses a ``reorder'' trick (denoted as GPTQ-Reorder or GPTQ-R). Other techniques like ZeroQuant~\cite{zeroquant}, AdaRound~\cite{nagel2020up}, and BRECQ~\cite{li2021brecq} rely on backpropagation to update the quantized weights, which may not easily scale up to large model sizes; they also do not outperform GPTQ~\cite{frantar2022gptq}, thus not included for study. 
+
+
+\subsection{Evaluation}
+\input{figure_text/fig_vicuna_gpt4_eval}
+\input{figure_text/tab_openflamingo}
+\input{figure_text/tab_vila_acc}
+
+
+\myparagraph{Results on LLaMA models.}
+We focus on LLaMA models (LLaMA~\cite{touvron2023llama} and Llama-2~\cite{touvron2023llama2}) due to their superior performance compared to other open-source LLMs~\cite{opt, scao2022bloom}; it is also the foundation of many popular open-source models~\cite{alpaca, vicuna2023}. We evaluate the perplexity before and after quantization in Table~\ref{tab:llama_opt_ppl}. 
+\methodshort consistently outperforms round-to-nearest (RTN) and GPTQ~\cite{frantar2022gptq} (w/ and w/o reordering) across different model scales (7B-70B) and generations. 
+
+\myparagraph{Results on Mistral / Mixtral models.}
+We also evaluated \methodshort on the Mistral and Mixtral models, which are among the most popular open-source LLMs and Mixture-of-Experts (MoE) models, respectively~\cite{jiang2023mistral, jiang2024mixtral}. The results indicate that \methodshort achieves superior performance on both the Mistral and Mixtral models. This demonstrates that \methodshort is effective across various model architectures.
+
+
+
+
+
+
+\input{figure_text/fig_visual_reasoning}
+\input{figure_text/fig_coco_sample}
+
+
+\myparagraph{Quantization of instruction-tuned models.}
+Instruction tuning can significantly improve the models' performance and usability 
+~\cite{wei2021finetuned,sanh2021multitask,ouyang2022training,chung2022scaling}. It has become an essential procedure before model deployment. We further benchmark our method's performance on a popular instruction-tuned model Vicuna~\cite{vicuna2023} in Figure~\ref{fig:vicuna_gpt4_eval}. We used the GPT-4 score to evaluate the quantized models' performance against the FP16 counterpart on 80 sample questions~\cite{vicuna2023}.
+We compare the responses with both orders (quantized-FP16, FP16-quantized) to get rid of the ordering effect (we found GPT-4 tends to increase the rating of the first input), leading to 160 trials. 
+\methodshort consistently improves the INT3-g128 quantized Vicuna models over RTN and GPTQ under both scales (7B and 13B), demonstrating the generability to instruction-tuned models.  
+\input{figure_text/tab_codellama}
+
+
+\myparagraph{Quantization of multi-modal language models.} Large multi-modal models (LMMs) or visual language models (VLMs) are LLMs augmented with vision inputs~\cite{alayrac2022flamingo,li2023blip,koh2023grounding,driess2023palm,zhang2023llama,liu2023llava}. Such models are able to perform text generation conditioned on image/video inputs. Since our method does not have the overfitting issue to the calibration set, it can be directly applied to VLMs to provide accurate and efficient quantization. 
+We perform experiments with the OpenFlamingo-9B model~\cite{openflamingo} (an open-source reproduction of~\cite{alayrac2022flamingo}) on COCO captioning~\cite{chen2015microsoft} dataset (Table~\ref{tab:openflamingo}). We measured the average performance of 5k samples under different few-shot settings. We only quantize the language part of the model since it dominates the model size. 
+\methodshort outperforms existing methods under zero-shot and various few-shot settings, demonstrating the generability to different modalities and in-context learning workloads. It reduces the quantization degradation (32-shot) from 4.57 to 1.17 under INT4-g128, providing 4$\times$ model size reduction with negligible performance loss. 
+To further demonstrate the generability of \methodshort, we also evaluated \methodshort on one of the SoTA multi-image visual language models: VILA. The result in Table~\ref{tab:vila_acc} shows that \methodshort achieves lossless quantization performance on 11 visual-language benchmarks.
+We further provide some qualitative captioning results in Figure~\ref{fig:coco_sample} to show our advantage over RTN.  
+Our method provides a push-the-button solution for LMM/VLM quantization. It is the \emph{first} study of VLM low-bit quantization to the best of our knowledge.
+
+\input{figure_text/fig_calib_set_ablation}
+\input{figure_text/fig_kernel_speedup}
+\input{figure_text/tab_int2}
+
+\myparagraph{Visual reasoning results.}
+We further provide some qualitative visual reasoning examples of the LLaVA-13B~\cite{liu2023llava} model in Figure~\ref{fig:visual_reasoning}. \methodshort improves the responses compared to round-to-nearest (RTN) for INT4-g128 quantization, leading to more reasonable answers. In this first example, the \methodshort model can understand the meme as it resembles the Earth when looking from space, while RTN produces wrong descriptions (marked in \textcolor{red}{red}). %
+
+\myparagraph{Results on programming and math tasks}
+To further evaluate the performance of AWQ on tasks involving complex generations, we also tested AWQ on MBPP~\cite{austin2021program} and GSM8K~\cite{cobbe2021training}. MBPP~\cite{austin2021program} consists of around 1,000 Python programming problems, designed to be solvable by entry level programmers, covering programming fundamentals, standard library functionality, etc. GSM8K~\cite{cobbe2021training} was created to support the task of question answering on basic mathematical problems that require multi-step reasoning. We quantize CodeLlama-7b-Instruct-hf and Llama-2 to INT4-g128 and perform experiments on programming and math datasets (Table~\ref{tab:code_and_math}). AWQ outperforms existing methods on both datasets, demonstrating the generability to complex generation. AWQ under the INT4-g128 configuration demonstrates comparable
+performance to the original FP16 model on both datasets.
+
+
+\myparagraph{Extreme low-bit quantization.}
+We further quantize LLM to INT2 to accommodate limited device memory (Table~\ref{tab:int2}). RTN completely fails, and \methodshort brings significant perplexity improvement on top of GPTQ.%
+Our method is orthogonal to GPTQ.
+We can combine our method with GPTQ to further improve the INT2 quantization performance, making it a more practical setting. 
+
+\subsection{Data Efficiency and Generalization}
+\label{sec:ablation_study}
+\myparagraph{Better data-efficiency for the calibration set.} Our method requires a smaller calibration set since we do not rely on regression/backpropagation; we only measure the average activation scale from the calibration set, which is data-efficient.
+To demonstrate the idea, we compare the perplexity of the OPT-6.7B model with INT3-g128 quantization in Figure~\ref{fig:calib_set_ablation} (a). \methodshort needs a much smaller calibration to reach a good quantized performance; it can achieve better perplexity using 10$\times$ smaller calibration set compared to GPTQ (16 sequences \emph{v.s.} 192 sequences).
+
+\myparagraph{Robust to the calibration set distributions. }
+Our method is less sensitive to the calibration set distribution since we only measure the average activation scale from the calibration set, which is more generalizable across different dataset distributions. We further benchmarked the effect of the different calibration set distributions in Figure~\ref{fig:calib_set_ablation}(b). We took two subsets from the Pile dataset~\cite{gao2020pile}: PubMed Abstracts and Enron Emails~\cite{klimt2004enron}. We use each of the subsets as the calibration set and evaluate the quantized model on both sets (the calibration and evaluation sets are split with no overlapping; we used 1k samples for evaluation). Overall, using the same calibration and evaluation distribution works the best (PubMed-PubMed, Enron-Enron). But when using a different calibration distribution (PubMed-Enron, Enron-PubMed), \methodshort only increases the perplexity by 0.5-0.6, while GPTQ has 2.3-4.9 worse perplexity. This demonstrates the robustness of \methodshort to the calibration set distribution. 
+
+\subsection{Speedup Evaluation}
+\input{figure_text/tab_vila_latency}
+
+
+\myparagraph{Settings.} In Figure~\ref{fig:kernel_speedup}, we demonstrate the system acceleration results from \system. \system optimizes both linear layers and layers that do not have quantized weights. We conduct benchmarking experiments on RTX 4090 and Jetson Orin following the protocol described in exllama~\footnote{\url{https://github.com/turboderp/exllama}}. We perform batch size = 1 inference for all LLMs using a fixed prompt length of 4 tokens. We generate 200 tokens for each inference run and calculate the median latency as the final result.
+
+\myparagraph{Results.} As in Figure~\ref{fig:kernel_speedup}(a), \system brings \textbf{2.7-3.9$\times$} speedup to three families of LLMs (Llama-2, MPT and Falcon) on 4090 compared with the Huggingface FP16 implementation. For Llama-2-7B, we improve the inference speed from 52 tokens/s to 62 tokens/s through FP16 kernel fusion. On top of the stronger FP16 baseline, we further harvest \textbf{3.1$\times$} additional speedup from the fast quantized linear kernels. For Falcon-7B, the official implementation did not support KV cache correctly during the inference time, and thus it is significantly slower than other models. In this case, our FP16 optimizations bring about a larger speedup of \textbf{1.6$\times$}. On the laptop 4070 GPU with only 8GB memory, we are still able to run Llama-2-13B models at 33 tokens/s, while the FP16 implementation cannot fit 7B models. We also demonstrate visual-language model~\cite{lin2023vila} acceleration results in Table \ref{tab:vila_latency}. \system brings about \textbf{3$\times$} speedup to both VILA-7B and VILA-13B on NVIDIA Jetson Orin. Notably, we implement the forward pass for all AWQ models using native PyTorch APIs, and this code is reused across various GPU architectures. Hence, \system offers exceptional extensibility. %
+
+
+\myparagraph{Comparisons against other systems.}
+We compare \system against existing edge LLM inference systems AutoGPTQ, llama.cpp and exllama in Figure~\ref{fig:kernel_speedup_comparisons}. Our system achieves up to 1.7$\times$ speedup over llama.cpp on Orin. Furthermore, llama.cpp and exllama exhibit limited adaptability, primarily tailored for LLaMA and Llama-2 models. In contrast, our \system supports a wide range of applications, including StarCoder~\cite{li2023starcoder}, StableCode (GPT-NeoX)~\cite{black2022gpt}, Mistral~\cite{jiang2023mistral}, and Falcon~\cite{penedo2023refinedweb} while consistently delivering significant speedup over AutoGPTQ. \system even democratizes LLM deployment on extremely resource-constrained Raspberry Pi 4B, achieving 0.7 tokens/s for 7B models. 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

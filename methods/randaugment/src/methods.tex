@@ -1,0 +1,53 @@
+\section{Methods}
+\label{sec:methods}
+
+\begin{figure}[t]
+\begin{center}
+\centerline{\includegraphics[width=\linewidth]{mag_picture_v1.png}}
+% \vspace{-0.2cm}
+\caption{\textbf{Example images augmented by RandAugment.} In these examples $N$=2 and three magnitudes are shown corresponding to the optimal distortion magnitudes for ResNet-50, EfficientNet-B5 and EfficientNet-B7, respectively. As the distortion magnitude increases, the strength of the augmentation increases.}
+\label{fig:imagenet_mag_images}
+\end{center}
+\vspace{-1.5cm}
+%\vspace{-1.69cm}
+\end{figure}
+
+
+The primary goal of RandAugment is to remove the need for a separate search phase on a proxy task. The reason we wish to remove the search phase is because a separate search phase significantly complicates training and is computationally expensive.
+More importantly, the proxy task may provide sub-optimal results (see Section~\ref{sec:failures_of_AA}). 
+In order to remove a separate search phase, we aspire to fold the parameters for the data augmentation strategy into the hyper-parameters for training a model. Given that previous learned augmentation methods contained 30+ parameters \cite{cubuk2018autoaugment, lim2019fast, ho2019population}, we  focus on vastly reducing the parameter space for data augmentation.
+
+Previous work indicates that the main benefit of learned augmentation policies arise from increasing the diversity of examples \cite{cubuk2018autoaugment,ho2019population,lim2019fast}. 
+Indeed, previous work enumerated a policy in terms of choosing which transformations to apply out of $K$=14 available transformations, and probabilities for applying each transformation:
+\begin{table}[H]
+\footnotesize
+\centering
+\def\arraystretch{1.0}
+\begin{tabular}{lll}
+$\bullet\;$ \texttt{identity} & $\bullet\;$ \texttt{autoContrast} &
+$\bullet\;$ \texttt{equalize} \\ $\bullet\;$ \texttt{rotate} &
+$\bullet\;$ \texttt{solarize} & $\bullet\;$ \texttt{color} \\
+$\bullet\;$ \texttt{posterize} &
+$\bullet\;$ \texttt{contrast} & $\bullet\;$ \texttt{brightness} \\
+$\bullet\;$ \texttt{sharpness} & $\bullet\;$ \texttt{shear-x} &
+$\bullet\;$ \texttt{shear-y} \\
+$\bullet\;$ \texttt{translate-x} &
+$\bullet\;$ \texttt{translate-y} \\
+\end{tabular}
+\end{table}
+\vspace{-0.4cm}
+\noindent
+In order to reduce the parameter space but still maintain image diversity, we replace the learned policies and probabilities for applying each transformation with a parameter-free procedure of {\em always} selecting a transformation with uniform probability $\frac{1}{K}$.
+Given $N$ transformations for a training image, RandAugment may thus express $K^{N}$ potential policies.
+
+\input{algorithm_figure}
+
+The final set of parameters to consider is the magnitude of the each augmentation distortion.
+Following \cite{cubuk2018autoaugment}, we employ the same linear scale for indicating the strength of each transformation. Briefly, each transformation resides on an integer scale from 0 to 10 where a value of 10 indicates the maximum scale for a given transformation. A data augmentation policy consists of identifying an integer for each augmentation \cite{cubuk2018autoaugment, lim2019fast, ho2019population}.
+In order to reduce the parameter space further, we observe that the learned magnitude for each transformation follows a similar schedule during training (e.g. Figure 4 in \cite{ho2019population}) and postulate that a {\em single} global distortion $M$ may suffice for parameterizing all transformations. We experimented with four methods for the schedule of $M$ during training: constant magnitude, random magnitude, a linearly increasing magnitude, and a random magnitude with increasing upper bound. The details of this experiment can be found in Appendix~\ref{sec:magnitude_methods}. 
+
+The resulting algorithm contains two parameters $N$ and $M$ and may be expressed simply in two lines of Python code (Figure \ref{fig:algorithm}).
+Both parameters are human-interpretable such that larger values of $N$ and $M$ increase regularization strength.
+Standard methods may be employed to efficiently perform hyperparameter optimization \cite{snoek2012practical, golovin2017google}, however given the extremely small search space we find that naive grid search is quite effective (Section \ref{sec:failures_of_AA}). We justify all of the choices of this proposed algorithm in this subsequent sections by comparing the efficacy of the learned augmentations to {\em all} previous learned data augmentation methods.
+
+ 

@@ -1,0 +1,117 @@
+
+\section{HiPPO-LegS: Scaled Measures for Timescale Robustness}
+\label{sec:theory_legs}
+
+Exposing the tight connection between online function approximation and memory allows us to produce memory mechanisms with better theoretical properties, simply by choosing the measure appropriately.
+Although sliding windows are common in signal processing (\cref{sec:rw-ops}), a more intuitive approach for memory should \emph{scale} the window over time to avoid forgetting.
+
+Our novel \textbf{scaled Legendre measure (LegS)} assigns uniform weight to all history $[0, t]$:
+$\mu^{(t)} = \frac{1}{t} \mathbb{I}_{[0, t]}$. %
+App~\ref{sec:derivations}, Fig.~\ref{fig:measures} compares LegS, LegT, and LagT visually, showing the advantages of the scaled measure.
+
+
+Simply by specifying the desired measure, specializing the HiPPO framework (Sections~\ref{subsec:hippo-framework}, \ref{sec:discretization})
+yields a new memory mechanism (proof in \cref{sec:derivation-legs}).
+\begin{theorem}
+  \label{thm:legs}
+  The continuous- \eqref{eq:scaled-legendre-dynamics}
+  and discrete- \eqref{eq:legs-discrete} time dynamics for \textbf{HiPPO-LegS} are:
+  \small
+
+  \begin{minipage}{.35\linewidth}
+    \begin{align}
+      \ddt c(t) &= -\frac{1}{t} A c(t) + \frac{1}{t} B f(t)
+      \label{eq:scaled-legendre-dynamics}
+      \\
+      c_{k+1} &= \left( 1-\frac{A}{k} \right) c_k + \frac{1}{k} B f_k
+     \label{eq:legs-discrete}
+    \end{align}
+  \end{minipage}%
+  \hfill
+  \begin{minipage}{.52\linewidth}
+    \begin{align*}
+      A_{nk}
+      =
+      \begin{cases}
+        (2n+1)^{1/2}(2k+1)^{1/2} & \mbox{if } n > k \\
+        n+1 & \mbox{if } n = k \\
+        0 & \mbox{if } n < k
+      \end{cases},
+      \qquad
+      B_n = (2n+1)^{\frac{1}{2}}
+    \end{align*}
+  \end{minipage}
+\end{theorem}
+
+We show that HiPPO-LegS enjoys favorable
+theoretical properties: it is invariant to input timescale, is fast to compute,
+and has bounded gradients and approximation error.
+All proofs are in \cref{sec:hippo-theory}.
+
+\paragraph{Timescale robustness.}
+As the window size of LegS is adaptive, %
+projection onto this measure is intuitively robust to timescales.
+Formally, the HiPPO-LegS operator is \emph{timescale-equivariant}:
+dilating the input $f$ does not change the approximation coefficients.
+\begin{proposition}
+    \label{prop:timescale}
+    For any scalar $\alpha > 0$, if $h(t) = f(\alpha t)$, then
+    $\hippo(h)(t) = \hippo(f)(\alpha t)$.
+    \\ In other words, if $\gamma : t \mapsto \alpha t$ is any dilation function, then
+    $\hippo(f \circ \gamma) = \hippo(f) \circ \gamma$.
+\end{proposition}
+
+Informally, this is reflected by HiPPO-LegS having \emph{no timescale hyperparameters};
+in particular, the discrete recurrence \eqref{eq:legs-discrete} is invariant to the discretization step size.%
+\footnote{\eqref{eq:legs-discrete} uses the Euler method for illustration; HiPPO-LegS is invariant to other discretizations (\cref{sec:discretization-full}).}
+By contrast, LegT has a hyperparameter $\theta$ for the window size, and both LegT and LagT have a step size hyperparameter $\Delta t$ in the discrete time case.
+This hyperparameter is important in practice; \cref{subsec:low_order_projection} showed that $\Delta t$ relates to the gates of RNNs, which are known to be sensitive to their parameterization~\cite{jozefowicz2015empirical,tallec2018can,gu2020improving}.
+We empirically demonstrate the benefits of timescale robustness in \cref{subsec:exp-timescale}.
+
+
+
+
+
+
+
+
+
+\paragraph{Computational efficiency.}
+In order to compute a single step of the discrete HiPPO update, the main operation is multiplication by the (discretized) square matrix $A$.
+More general discretization specifically requires fast multiplication for any matrix of the form $I + \Delta t \cdot A$ and $(I - \Delta t \cdot A)^{-1}$ for arbitrary step sizes $\Delta t$.
+Although this is generically a $O(N^2)$ operation, LegS operators use a fixed $A$ matrix with special structure
+that turns out to have fast multiplication algorithms for any discretization.%
+\footnote{It is known that large families of structured matrices related to orthogonal polynomials are efficient~\cite{de2018two}.}
+\begin{proposition}%
+    \label{prop:efficiency}
+    Under any generalized bilinear transform discretization (cf.\
+    \cref{sec:discretization-full}), each step of the HiPPO-LegS recurrence in equation~\eqref{eq:legs-discrete} can be computed in $O(N)$ operations.
+\end{proposition}
+
+\cref{subsec:exp-scalability} validates the efficiency of HiPPO layers in practice, where unrolling the discretized versions of \cref{thm:legs} is 10x faster than standard matrix multiplication as done in standard RNNs.
+
+\paragraph{Gradient flow.}
+Much effort has been spent to alleviate the \emph{vanishing gradient problem} in RNNs~\cite{pascanu2013difficulty},
+where backpropagation-based learning is hindered by gradient magnitudes decaying exponentially in time.
+As LegS is designed for memory, it avoids the vanishing gradient issue.
+\begin{proposition}%
+  \label{prop:gradient-bound}
+    For any times $t_0 < t_1$, the gradient norm of HiPPO-LegS operator
+    for the output at time $t_1$ with respect to input at time $t_0$ is
+    $\left\| \frac{\partial c(t_1)}{\partial f(t_0)} \right\| = \Theta\left( 1/t_1 \right)$.
+\end{proposition}
+
+
+\paragraph{Approximation error bounds.}
+The error rate of LegS decreases with the smoothness of the input.
+
+\begin{proposition}%
+  \label{prop:approximation_error}
+  Let $f \colon \mathbb{R}_+ \to \mathbb{R}$ be a differentiable function, and let
+  $g^{(t)} = \proj_t(f)$ be its projection at time $t$ by
+  HiPPO-LegS with maximum polynomial degree $N-1$.
+  If $f$ is $L$-Lipschitz then $\norm{f_{\leq t} - g^{(t)}} = O(tL/\sqrt{N})$.
+  If $f$ has order-$k$ bounded derivatives then
+  $\norm{f_{\leq t} - g^{(t)}} = O(t^k N^{-k+1/2})$.
+\end{proposition}
+

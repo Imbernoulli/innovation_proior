@@ -1,0 +1,94 @@
+\usepackage{paralist}
+\usepackage{listings}
+\usepackage{xcolor}
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\definecolor{mydarkred}{rgb}{0.8,0.02,0.02}
+\definecolor{mydarkorange}{rgb}{0.40,0.2,0.02}
+\definecolor{mypurple}{RGB}{111,0,255}
+\definecolor{myred}{rgb}{1.0,0.0,0.0}
+\definecolor{mygold}{rgb}{0.75,0.6,0.12}
+\definecolor{mydarkgray}{rgb}{0.66, 0.66, 0.66}
+\definecolor{mygray}{gray}{0.9}
+
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=2
+}
+\lstset{style=mystyle}
+
+
+
+
+
+\newcommand{\myparagraph}[1]{\vspace{-5pt}\paragraph{#1}}
+
+
+\newcommand{\ignorethis}[1]{}
+\newcommand{\norm}[1]{\lVert#1\rVert}
+\newcommand{\fcseven}{$\mbox{fc}_7$}
+
+\renewcommand*{\thefootnote}{\fnsymbol{footnote}}
+
+
+\def\naive{na\"{\i}ve\xspace}
+\def\Naive{Na\"{\i}ve\xspace}
+
+\makeatletter
+\DeclareRobustCommand\onedot{\futurelet\@let@token\@onedot}
+\def\@onedot{\ifx\@let@token.\else.\null\fi\xspace}
+
+\def\iid{\emph{i.i.d}\onedot}
+\def\eg{\emph{e.g}\onedot} \def\Eg{\emph{E.g}\onedot}
+\def\ie{\emph{i.e}\onedot} \def\Ie{\emph{I.e}\onedot}
+\def\cf{\emph{c.f}\onedot} \def\Cf{\emph{C.f}\onedot}
+\def\etc{\emph{etc}\onedot} \def\vs{\emph{vs}\onedot}
+\def\wrt{w.r.t\onedot} \def\dof{d.o.f\onedot}
+\def\etal{\emph{et al}\onedot}
+\makeatother
+
+\newcommand{\ji}[1]{{\color{orange}{[}Ji: #1{]}}}
+\newcommand{\jiaming}[1]{{\color{green}{[}Jiaming: #1{]}}}
+\newcommand{\haotian}[1]{{\color{purple}{[}Haotian: #1{]}}}
+\newcommand{\shang}[1]{{\color{cyan}{[}Shang: #1{]}}}
+\newcommand{\SH}[1]{\textcolor{mydarkred}{[Song: #1]}}
+\newcommand{\WM}[1]{{\color{blue}{[}Weiming: #1{]}}}
+\makeatletter
+\newcommand{\weichen}[1]{\textcolor{olive}{[Weichen: #1]}}
+\newcommand\footnoteref[1]{\protected@xdef\@thefnmark{\ref{#1}}\@footnotemark}
+\makeatother
+
+\newcommand{\todo}[1]{{\color{red}{} \textbf{#1}{}}}
+
+\newcommand{\invalid}[1]{{\color{gray!50}{}#1{}}}
+\def\thisgray{\color{gray!75}}
+
+
+\newcommand{\ccolor}{\cellcolor{red!10}}
+
+
+
+
+
+
+\def\method{Activation-aware Weight Quantization\xspace}
+\def\methodshort{AWQ\xspace}
+\def\system{TinyChat\xspace}

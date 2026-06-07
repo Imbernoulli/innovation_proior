@@ -1,0 +1,65 @@
+\documentclass[a4paper,11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=1in]{geometry}
+%\usepackage{times}
+\usepackage[colorlinks,linkcolor=blue,citecolor=blue]{hyperref}
+
+\usepackage{amsfonts,amsmath,amsthm,amssymb}
+\usepackage{mathtools}
+\usepackage{mathabx}
+\usepackage[cal=boondoxo]{mathalfa}
+
+\usepackage{float,framed}
+%\usepackage{algorithm}
+\usepackage[noend]{algorithmic}
+\renewcommand{\algorithmicrequire}{\textbf{Parameters:}}
+\renewcommand{\algorithmicensure}{\textbf{Variables:}}
+
+\usepackage[noblocks]{authblk}
+\usepackage[numbers]{natbib}
+\usepackage{enumitem}
+\usepackage{bm}
+\usepackage{xspace}
+
+\usepackage{nicefrac}
+\usepackage{pgfplots}
+
+%\usepackage{tikz}
+%\usetikzlibrary{automata,positioning,fit,backgrounds}
+
+% floats
+\floatstyle{plain}
+\newfloat{algorithm}{h}{lop}
+\floatname{algorithm}{Algorithm}
+
+\include{header}
+
+\makeatletter
+\newcommand*\samethanks[1][\value{footnote}]{\footnotemark[#1]}
+\renewcommand*{\@fnsymbol}[1]{\ensuremath{
+  \ifcase#1 \or \natural \or \star \else\@ctrerr\fi}}
+\makeatother
+
+
+\title{Shampoo: Preconditioned Stochastic Tensor Optimization}
+%\date{}
+
+\author{%
+Vineet Gupta%
+\thanks{Google Brain. Email: \texttt{\{vineet,tkoren\}@google\!.\!com}}\qquad 
+Tomer Koren\samethanks\qquad 
+Yoram Singer%
+\thanks{Princeton University and Google Brain. Email: \texttt{y\!.\!s@cs\!.\!princeton\!.\!edu}}
+}
+
+%\affil[*]{Google Brain, 1600 Amphitheatre Parkway, Mountain View, CA 94043;
+%emails: \texttt{\{vineet,tkoren,singer\}@google.com}}%, }
+
+
+\begin{document}
+\maketitle
+
+\input{adamoo}
+
+\end{document}

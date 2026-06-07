@@ -1,0 +1,64 @@
+\section{Method}
+\label{sec:method}
+
+\input{resources/figures/fig_embedding}
+
+
+Our goal is to enable language-guided generation of new, user-specified concepts. To do so, we aim to encode these concepts into an intermediate representation of a pre-trained text-to-image model. 
+Ideally, this should be done in a manner that would allow us to leverage the rich semantic and visual prior represented by such a model, and use it to guide intuitive visual transformations of the concepts.
+
+It is natural to search for candidates for such a representation in the word-embedding stage of the text encoders typically employed by text-to-image models. There, the discrete input text is first converted into a continuous vector representation that is amenable to direct optimization.
+
+Prior work has shown that this embedding space is expressive enough to capture basic image semantics~\citep{cohen2022my,tsimpoukelli2021multimodal}. However, these approaches leveraged contrastive or language-completion objectives, neither of which require an in-depth visual understanding of the image. As we demonstrate in \Cref{sec:applications}, those methods fail to accurately capture the appearance of the concept, and attempting to employ them for synthesis leads to considerable visual corruption. Our goal is to find pseudo-words that can guide \textit{generation}, which is a \textit{visual} task. As such, we propose to find them through a \textit{visual} reconstruction objective. 
+
+
+Below, we outline the core details of applying our approach to a specific class of generative models --- Latent Diffusion Models~\citep{rombach2021highresolution}. In \Cref{sec:analysis}, we then analyze a set of extensions to this approach, motivated by GAN-inversion literature. However, as we later show, these additional complexities fail to improve upon the initial representation, presented here. 
+
+
+
+
+
+
+
+
+
+
+
+
+\paragraph{Latent Diffusion Models.}
+We implement our method over Latent Diffusion Models (LDMs)~\citep{rombach2021highresolution}, a recently introduced class of Denoising Diffusion Probabilistic Models (DDPMs)~\citep{ho2020denoising} that operate in the latent space of an autoencoder. 
+
+LDMs consist of two core components. First, an autoencoder is pre-trained on a large collection of images. An encoder $\mathcal{E}$ learns to map images $x\in \mathcal{D}_x$ into a spatial latent code $z = \mathcal{E}(x)$, regularized through either a KL-divergence loss or through vector quantization \citep{van2017neural,agustsson2017soft}. The decoder $D$ learns to map such latents back to images, such that $D\left(\mathcal{E}(x)\right)\approx x$.
+
+The second component, a diffusion model, is trained to produce codes within the learned latent space. This diffusion model can be conditioned on class labels, segmentation masks, or even on the output of a jointly trained text-embedding model. Let $c_\theta(y)$ be a model that maps a conditioning input $y$ into a conditioning vector. The LDM loss is then given by:
+\begin{equation}
+    L_{LDM} := \mathbb{E}_{z\sim\mathcal{E}(x), y, \epsilon \sim \mathcal{N}(0, 1), t }\Big[ \Vert \epsilon - \epsilon_\theta(z_{t},t, c_\theta(y)) \Vert_{2}^{2}\Big] \, ,
+    \label{eq:LDM_loss}
+\end{equation}
+where $t$ is the time step, $z_t$ is the latent noised to time $t$, $\epsilon$ is the unscaled noise sample, and $\epsilon_\theta$ is the denoising network. 
+Intuitively, the objective here is to correctly remove the noise added to a latent representation of an image. While training, $c_\theta$ and $\epsilon_\theta$ are jointly optimized to minimize the LDM loss. At inference time, a random noise tensor is sampled and iteratively denoised to produce a new image latent, $z_0$. Finally, this latent code is transformed into an image through the pre-trained decoder $x' = D(z_0)$.
+
+We employ the publicly available 1.4 billion parameter text-to-image model of \citet{rombach2021highresolution}, which was pre-trained on the LAION-400M dataset~\citep{schuhmann2021laion}. Here, $c_\theta$ is realized through a BERT~\citep{devlin2018bert} text encoder, with $y$ being a text prompt. 
+
+We next review the early stages of such a text encoder, and our choice of inversion space.
+
+\paragraph{Text embeddings.}
+
+Typical text encoder models, such as BERT, begin with a text processing step (\Cref{fig:embedding}, left). First, each word or sub-word in an input string is converted to a token, which is an index in some pre-defined dictionary. 
+Each token is then linked to a unique embedding vector that can be retrieved through an index-based lookup. These embedding vectors are typically learned as part of the text encoder $c_\theta$.
+
+In our work, we choose this embedding space as the target for inversion. Specifically, we designate a placeholder string, $S_*$, to represent the new concept we wish to learn. 
+We intervene in the embedding process and replace the vector associated with the tokenized string with a new,  \textit{learned} embedding $v_*$, in essence ``injecting'' the concept into our vocabulary. In doing so, we can then compose new sentences containing the concept, just as we would with any other word. %
+
+\paragraph{Textual inversion.}
+To find these new embeddings, we use a small set of images (typically $3$-$5$), which depicts our target concept across multiple settings such as varied backgrounds or poses. We find $v_*$ through direct optimization, by minimizing the LDM loss of \Cref{eq:LDM_loss} over images sampled from the small set. To condition the generation, we randomly sample neutral context texts, derived from the CLIP ImageNet templates~\citep{radford2021learning}. These contain prompts of the form ``A photo of $S_*$", ``A rendition of $S_*$", etc. The full list of templates is provided in the supplementary materials.
+
+Our optimization goal can then be defined as:
+\begin{equation}
+   v_* = \argmin_v \mathbb{E}_{z\sim\mathcal{E}(x), y, \epsilon \sim \mathcal{N}(0, 1), t }\Big[ \Vert \epsilon - \epsilon_\theta(z_{t},t, c_\theta(y)) \Vert_{2}^{2}\Big] \, ,
+    \label{eq:v_opt}
+\end{equation}
+and is realized by re-using the same training scheme as the original LDM model, while keeping both $c_\theta$ and $\epsilon_\theta$ fixed. Notably, this is a reconstruction task. As such, we expect it to motivate the learned embedding to capture fine visual details unique to the concept.
+
+\paragraph{Implementation details.}
+Unless otherwise noted, we retain the original hyper-parameter choices of LDM~\citep{rombach2021highresolution}. Word embeddings were initialized with the embeddings of a single-word coarse descriptor of the object (\eg ``sculpture" and ``cat" for the two concepts in \Cref{fig:teaser}). Our experiments were conducted using $2\times$V100 GPUs with a batch size of 4. The base learning rate was set to $0.005$. Following LDM, we further scale the base learning rate by the number of GPUs and the batch size, for an effective rate of $0.04$. All results were produced using $5,000$ optimization steps. We find that these parameters work well for most cases. However, we note that for some concepts, better results can be achieved with fewer steps or with an increased learning rate.

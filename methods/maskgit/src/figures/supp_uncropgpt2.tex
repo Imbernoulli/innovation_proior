@@ -1,0 +1,79 @@
+\renewcommand{\tmpwidth}{22mm}
+\setlength{\tabcolsep}{2pt}
+\begin{figure*}[!ht]
+    \centering
+    \begin{tabular}{cc cccc ccc}
+\toprule
+Groundtruth  & 
+ &\multicolumn{3}{c}{ ------ Outpaint bottom 50\% ------ } & &\multicolumn{3}{c}{ ------ Outpaint top 50\% ------ }  
+\\
+& 
+ \raisebox{0.85\tmpwidth }{\rotatebox[origin=l]{90}{ ImageGPT\cite{chen2020imagegpt}}} & 
+
+\includegraphics[width=\tmpwidth]{figures/supp_uncropgpt/1_gpt1.jpg}&
+\includegraphics[width=\tmpwidth]{figures/supp_uncropgpt/1_gpt2.jpg}&
+\includegraphics[width=\tmpwidth]{figures/supp_uncropgpt/1_gpt3.jpg}&
+% \\
+% & \multicolumn{3}{c}{------ ImageGPT\cite{chen2020imagegpt}'s Samples ------}  &
+\\
+\includegraphics[width=\tmpwidth]{figures/supp_uncropgpt/1_input.jpg} &
+ \raisebox{0.85\tmpwidth }{\rotatebox[origin=l]{90}{ VQGAN\cite{Esser21vqgan}}} & 
+\includegraphics[width=\tmpwidth]{figures/supp_uncropgpt/1_taming1.jpg}&
+\includegraphics[width=\tmpwidth]{figures/supp_uncropgpt/1_taming2.jpg}&
+\includegraphics[width=\tmpwidth]{figures/supp_uncropgpt/1_taming3.jpg} &
+\\
+% Groundtruth  & \multicolumn{3}{c}{------ VQGAN\cite{Esser21vqgan}'s Samples ------}  &
+% \\
+% Groundtruth  & \multicolumn{3}{c}{------ VQGAN\cite{Esser21vqgan}'s Samples ------}  &
+% Groundtruth  & \multicolumn{3}{c}{------ VQGAN\cite{Esser21vqgan}'s Samples ------}  
+& 
+ \raisebox{0.85\tmpwidth }{\rotatebox[origin=l]{90}{\model (Ours)}} & 
+\includegraphics[width=\tmpwidth]{figures/supp_uncropgpt/1_ours26.jpeg}&
+\includegraphics[width=\tmpwidth]{figures/supp_uncropgpt/1_ours5.jpeg}&
+\includegraphics[width=\tmpwidth]{figures/supp_uncropgpt/1_ours8.jpeg} &
+&
+\includegraphics[width=\tmpwidth]{figures/supp_uncropgpt/1_top_ours1.jpeg}&
+\includegraphics[width=\tmpwidth]{figures/supp_uncropgpt/1_top_ours7.jpeg}&
+\includegraphics[width=\tmpwidth]{figures/supp_uncropgpt/1_top_ours8.jpeg}
+
+\\
+%  &\multicolumn{3}{c}{--- MaskGIT's Samples (Outpainting Bottom Half) ---} &\multicolumn{3}{c}{--- MaskGIT's Samples (Outpainting Top Half) ---}  
+& 
+ \raisebox{0.85\tmpwidth }{\rotatebox[origin=l]{90}{ ImageGPT\cite{chen2020imagegpt}}} & 
+\includegraphics[width=\tmpwidth]{figures/supp_uncropgpt/2_gpt1.jpg}&
+\includegraphics[width=\tmpwidth]{figures/supp_uncropgpt/2_gpt2.jpg}&
+\includegraphics[width=\tmpwidth]{figures/supp_uncropgpt/2_gpt3.jpg} &
+\\
+% & \multicolumn{3}{c}{------ ImageGPT\cite{chen2020imagegpt}'s Samples ------}  &
+% \\
+\includegraphics[width=\tmpwidth]{figures/supp_uncropgpt/2_input.jpg} &
+ \raisebox{0.85\tmpwidth }{\rotatebox[origin=l]{90}{VQGAN\cite{Esser21vqgan}}} & 
+\includegraphics[width=\tmpwidth]{figures/supp_uncropgpt/2_taming1.jpg}&
+\includegraphics[width=\tmpwidth]{figures/supp_uncropgpt/2_taming2.jpg}&
+\includegraphics[width=\tmpwidth]{figures/supp_uncropgpt/2_taming3.jpg} &
+ \\   
+% Groundtruth  & \multicolumn{3}{c}{------ VQGAN\cite{Esser21vqgan}'s Samples ------}  &
+% \\
+
+& 
+ \raisebox{0.85\tmpwidth }{\rotatebox[origin=l]{90}{\model (Ours)}} & 
+\includegraphics[width=\tmpwidth]{figures/supp_uncropgpt/2_ours4.jpeg}&
+\includegraphics[width=\tmpwidth]{figures/supp_uncropgpt/2_ours11.jpeg}&
+\includegraphics[width=\tmpwidth]{figures/supp_uncropgpt/2_ours19.jpeg} &
+&
+\includegraphics[width=\tmpwidth]{figures/supp_uncropgpt/2_top_ours3.jpeg}&
+\includegraphics[width=\tmpwidth]{figures/supp_uncropgpt/2_top_ours2.jpeg}&
+\includegraphics[width=\tmpwidth]{figures/supp_uncropgpt/2_top_ours5.jpeg}
+ \\
+% &\multicolumn{3}{c}{--- MaskGIT's Samples (Outpainting Bottom Half) ---} &\multicolumn{3}{c}{--- MaskGIT's Samples (Outpainting Top Half) ---}  
+% \\ 
+       
+    \end{tabular}
+    \caption{Outpainting comparisons with the pixel-based approach ImageGPT\cite{chen2020imagegpt} and the transformer-based approach VQGAN\cite{Esser21vqgan}.
+    }
+    % \vspace{-6mm}
+    \label{fig:supp_uncropgpt-2}
+\end{figure*}
+
+
+

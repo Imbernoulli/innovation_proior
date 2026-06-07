@@ -1,0 +1,16 @@
+
+\begin{table}[t!]
+    \setlength\tabcolsep{5pt}
+    \centering
+    \begin{tabular}{lcccc} \toprule
+         & \tf{Top-1} & \tf{Top-5} & \tf{Top-20} & \tf{Top-100}  \\ \midrule
+        {Gold} & 44.9 & 66.8 & 78.1 & 85.0 \\
+        {Dist. Sup.} & 43.9 & 65.3 & 77.1 & 84.4 \\
+    \bottomrule
+    \end{tabular}
+    \caption{
+    Retrieval accuracy on the development set of Natural Questions, trained on passages that match the gold context (Gold) or the top BM25 passage that contains the answer (Dist. Sup.).
+    }
+    \label{tab:qa_ir_dist_sv}
+\end{table}
+

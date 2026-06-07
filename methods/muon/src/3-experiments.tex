@@ -1,0 +1,302 @@
+\section{Experiments}
+
+\subsection{Consistent Update RMS}
+\label{sec:exp:rms}
+
+As discussed in Sec \ref{sec:analysis:rms}, we aim to match the update RMS across all matrix parameters and also match it with that of AdamW. We experimented with two methods to control the Muon update RMS among parameters and compared them to a baseline that only maintains a consistent RMS with AdamW:
+
+\begin{enumerate}
+    \item \texttt{Baseline.} We multiplied the update matrix by $0.2\cdot \sqrt{H}$ ($H$ is the model hidden size) to maintain a consistent update RMS with AdamW. Note that $\max(A,B)$ equals to $H$ for most matrices.
+    \begin{align}
+    \mathbf{W}_t = \mathbf{W}_{t-1} - \eta_t (0.2\cdot\mathbf{O}_t\cdot\sqrt{H} + \lambda \mathbf{W}_{t-1})
+    \end{align}
+    \item \texttt{Update Norm.} We can directly normalize the updates calculated via Newton-Schulz iterations so its RMS strictly becomes 0.2;
+    \begin{align}
+    \mathbf{W}_t = \mathbf{W}_{t-1} - \eta_t (0.2\cdot\mathbf{O}_t/\mathop{\text{RMS}}(\mathbf{O}_t) + \lambda \mathbf{W}_{t-1})
+    \end{align}
+    \item \texttt{Adjusted LR.} For each update matrix, we can scale its learning rate by a factor of $0.2 \cdot \sqrt{\max(A, B)}$ based on its shape. 
+    \begin{align}
+    \mathbf{W}_t = \mathbf{W}_{t-1} - \eta_t (0.2\cdot\mathbf{O}_t\cdot\sqrt{\max(A,B)} + \lambda \mathbf{W}_{t-1})
+    \end{align}
+\end{enumerate}
+
+
+\paragraph{Analysis}
+We designed experiments to illustrate the impact of Muon update RMS at an early training stage, because we observed that unexpected behaviors happened very quickly when training models at larger scale. We experimented with small scale 800M models as described in \ref{sec:exp:moonscalinglaw}. The problem of inconsistent update RMS is more pronounced when the disparity between matrix dimensions increases. To highlight the problem for further study, we slightly modify the model architecture by replacing the Swiglu MLP with a standard 2-layer MLP, changing the shape of its matrix parameters from $[H, 2.6H]$ to $[H, 4H]$. We evaluated the model's loss and monitored a few of its parameters' RMS, specifically, attention query (shape $[H, H]$) and MLP (shape $[H, 4H]$). We evaluated the model after training for 4B tokens out of a 20B-token schedule. From Table~\ref{tab:muon-params-rms}, we observed several interesting findings:
+
+
+\begin{table}[t]
+\small
+\centering
+\caption{Controlling Muon's Update RMS Across Different Model Params}
+\label{tab:muon-params-rms}
+\begin{tabular}{c|c|c|c|c}
+\toprule
+Methods & Training loss & Validation loss & query weight RMS & MLP weight RMS \\
+\midrule
+Baseline & 2.734 & 2.812 & 3.586e-2 & 2.52e-2 \\
+Update Norm & \textbf{2.72} & \textbf{2.789} & 4.918e-2 & 5.01e-2 \\
+Adjusted LR & 2.721 & \textbf{2.789} & 3.496e-2 & 4.89e-2 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{enumerate}
+    \item Both \texttt{Update Norm} and \texttt{Adjusted LR} achieved better performances than \texttt{Baseline};
+    
+    \item For the MLP weight matrix of shape $[H, 4H]$, both \texttt{Update Norm} and \texttt{Adjusted LR} obtain a weight RMS that is roughly doubled comparing to \texttt{Baseline}. This is reasonable as $\sqrt{\text{max}(H,4H)} / \sqrt{H} = 2$, so the update RMS of \texttt{Update Norm} and \texttt{Adjusted LR} is roughly two times of \texttt{Baseline};
+    
+    \item For the attention query weight matrix of shape $[H, H]$, \texttt{Update Norm} still norms the update, while \texttt{Adjusted LR} does not because $\sqrt{\text{max}(H,H)} / \sqrt{H} = 1$. As a result, \texttt{Adjusted LR} results in a similar weight RMS as \texttt{Baseline}, but \texttt{Update Norm} has a larger weight rms similar to its MLP.
+\end{enumerate}
+
+Based on these findings, we choose the \texttt{Adjusted LR} method for future experiments because it has lower cost.
+
+\subsection{Scaling Law of Muon}
+\label{sec:exp:moonscalinglaw}
+
+For a fair comparison with AdamW, we performed scaling law experiments on a series of dense models in Llama \citep{grattafiori2024llama3herdmodels} architecture. Building a strong baseline is of crucial importance in optimizer research. Hence, we perform a grid search for hyper-parameters of AdamW, following the compute-optimal training setup \citep{kaplan2020scalinglawsneurallanguage} (the grid search experiments can be found in Appendix~\ref{sec:appendix:scaling}). Details of the model architecture and hyper-parameters can be found in Table~\ref{tab:model-specs}. For Muon, as discussed in Sec~\ref{sec:analysis:rms}, since we matched Muon's update RMS to AdamW, we directly reused the hyper-parameters that are optimal for the AdamW baseline.
+
+\begin{table}[t]
+\small
+\centering
+\caption{Scaling Law Models and Hyper-Parameters}
+\label{tab:model-specs}
+\begin{tabular}{c|c|c|c|c|c|c}
+\toprule
+\# Params. w/o Embedding & Head & Layer & Hidden & Tokens & LR & Batch Size* \\
+\midrule
+399M & 12 & 12 & 1536 & 8.92B  & 9.503e-4 & 96  \\
+545M & 14 & 14 & 1792 & 14.04B & 9.143e-4 & 128 \\
+822M & 16 & 16 & 2048 & 20.76B & 8.825e-4 & 160 \\
+1.1B & 18 & 18 & 2304 & 28.54B & 8.561e-4 & 192 \\
+1.5B & 20 & 20 & 2560 & 38.91B & 8.305e-4 & 256 \\
+\bottomrule
+\end{tabular}
+\\ \footnotesize{\small *In terms of number of examples in 8K context length.} 
+\end{table}
+
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.6\textwidth]{figures/chinlaw_8k.pdf}
+    \caption{Fitted scaling law curves for Muon and AdamW optimizers.}
+    \label{fig:scaling_lm_loss_fitting}
+\end{figure}
+
+    
+The fitted scaling law curve can be found in figure \ref{fig:scaling_lm_loss_fitting}, and the fitted equations are detailed in table \ref{tab:fit}. As shown in Figure~\ref{fig:scaling_lm_loss}, Muon only requires about 52\% training FLOPs to match the performance of AdamW under compute-optimal setting. 
+
+
+\begin{table}
+\centering
+\caption{Fitted parameters of the scaling law curves}
+\label{tab:fit}
+\begin{tabular}{c|l|l}
+\toprule
+ & Muon & AdamW \\
+\midrule
+LM loss (seqlen=8K) & $2.506 \times C^{-0.052}$ & $2.608 \times C^{-0.054}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+\subsection{Pretraining with Muon}
+\label{sec:exp:pretrain}
+
+\paragraph{Model Architecture} To evaluate Muon against contemporary model architectures, we pretrained from scratch using the deepseek-v3-small architecture \citep{deepseekai2024deepseekv3technicalreport} as it demonstrates strong performance and the original results serve as a reference for comparison. Our pretrained model has 2.24B activated and 15.29B total parameters (3B activated and 16B total when including embedding). Minor modifications to the architecture are detailed in Appendix~\ref{sec:appendix:modelarch}.
+
+
+\paragraph{Pretraining Data} Our pretraining data details can be found in \cite{k1p5}. The maximum context length during pretraining is 8K.
+
+
+\paragraph{Pretraining} The model is trained in several stages. We use a 1e-3 auxfree bias update rate in stage 1 and 2, and 0.0 auxfree bias update rate in stage 3. The weight decay is set to 0.1 for all stages. More details and discussions of model training can be found in the Appendix \ref{sec:appendix:stability}.
+
+\begin{enumerate}
+    \item \texttt{0 to 33B tokens:} In this stage, the learning rate linearly increases to 4.2e-4 in 2k steps. The batch size is kept at 2048 examples;
+    \item \texttt{33B to 5.2T tokens:} In this stage, the learning rate decays from 4.2e-4 to 4.2e-5 in a cosine style. We keep the batch size at 2048 until 200B tokens, and then doubled to 4096 for the remaining;
+    \item \texttt{5.2T to 5.7T tokens:} In this stage (also referred as the cooldown stage), the learning rate increases to 1e-4 in in 100 steps, and then linearly decays to 0 in 500B tokens, and we keep a constant 4096 batch size. In this stage, we use the highest quality data, focusing on math, code, and reasoning.
+\end{enumerate}
+
+\paragraph{Evaluation Benchmarks} Our evaluation encompasses four primary categories of benchmarks, each designed to assess distinct capabilities of the model:
+
+\begin{itemize}
+    \item \textbf{English Language Understanding and Reasoning}: MMLU(5-shot)\citep{hendrycks2021measuringmassivemultitasklanguage}, MMLU-pro(5-shot) \citep{wang2024mmluprorobustchallengingmultitask}, BBH(3-shot) \citep{suzgun2022challengingbigbenchtaskschainofthought}, TriviaQA(5-shot) \citep{joshi2017triviaqalargescaledistantly}
+
+    \item \textbf{Code Generation}: HumanEval(pass@1) \citep{chen2021codex}, MBPP(pass@1)\citep{austin2021programsynthesislargelanguage}
+    
+    \item  \textbf{Mathematical Reasoning}: GSM8K(4-shot) \citep{cobbe2021trainingverifierssolvemath} MATH \citep{hendrycks2021measuringmathematicalproblemsolving}, CMATH \citep{wei2023cmathlanguagemodelpass}
+
+    \item \textbf{Chinese Language Understanding and Reasoning}: C-Eval(5-shot) \citep{huang2023cevalmultilevelmultidisciplinechinese}, CMMLU(5-shot)\citep{li2024cmmlumeasuringmassivemultitask}
+\end{itemize}
+
+
+\paragraph{Performance} We named our model trained with Muon ``Moonlight''. We compared Moonlight with different public models on a similar scale. We first evaluated Moonlight at 1.2T tokens and compared it with the following models that have the same architecture and trained with comparable number of tokens:
+
+\begin{itemize}    
+    \item \texttt{Deepseek-v3-Small } (\cite{deepseekai2024deepseekv3technicalreport}) is a  2.4B/16B-parameter MoE model trained with 1.33T tokens;
+    \item \texttt{Moonlight-A} follows the same training settings as Moonlight, except that it uses the AdamW optimizer.
+\end{itemize}
+
+ For Moonlight and Moonlight-A, we used the intermediate 1.2T token checkpoint of the total 5.7T pretraining, where the learning rate is not decayed to minimal and the model has not gone through the cooldown stage yet.
+
+\begin{table}[!ht]
+    \small
+    \centering
+    \caption{Comparison of different models at around 1.2T tokens.}
+    \setlength{\tabcolsep}{4pt}
+    \begin{tabular}{@{}c l c c c c@{}}
+    \toprule
+    & \textbf{Benchmark (Metric)}  & \textbf{DSV3-Small} & \textbf{Moonlight-A@1.2T} & \textbf{Moonlight@1.2T} \\
+    \midrule
+    & Activated Params$^{\dagger}$ & 2.24B & 2.24B & 2.24B \\
+    & Total Params$^{\dagger}$ & 15.29B & 15.29B & 15.29B \\
+    & Training Tokens & 1.33T & 1.2T & 1.2T \\
+    & Optimizer & AdamW & AdamW & Muon \\
+    \midrule
+    \multirow{4}{*}{English} 
+    & MMLU & 53.3 & 60.2 & \textbf{60.4} \\
+    & MMLU-pro & - & 26.8 & \textbf{28.1} \\
+    & BBH & 41.4 & \textbf{45.3} & 43.2 \\
+    & TriviaQA & -  & 57.4 & \textbf{58.1} \\
+    \midrule
+    \multirow{2}{*}{Code} & HumanEval & 26.8 & 29.3 & \textbf{37.2} \\
+    & MBPP & 36.8 & 49.2 & \textbf{52.9} \\
+    \midrule
+    \multirow{3}{*}{Math} & GSM8K & 31.4 &  43.8 & \textbf{45.0} \\
+    & MATH & 10.7 & 16.1 & \textbf{19.8} \\
+    & CMath & - & 57.8 & \textbf{60.2} \\
+    \midrule
+    \multirow{2}{*}{Chinese} 
+    & C-Eval & - &  57.2 & \textbf{59.9} \\
+    & CMMLU & - & 58.2 & \textbf{58.8} \\
+    \bottomrule
+    \end{tabular}
+    
+    \footnotesize{\small $^{\dagger}$ The reported parameter counts exclude the embedding parameters.} 
+    \label{tab:1.33Tresults}
+\end{table}
+
+As shown in Table \ref{tab:1.33Tresults}, Moonlight-A, our AdamW-trained baseline model, demonstrates strong performance compared to similar public models. Moonlight performs significantly better than Moonlight-A, proving the scaling effectiveness of Muon. We observed that Muon especially excels on Math and Code related tasks, and we encourage the research community to further investigate this phenomena. After Moonlight is fully trained to 5.7T tokens, we compared it with public models at similar scale and showed the results in Table \ref{tab:5.7Tresults_full}:
+
+\begin{itemize}
+    \item \texttt{LLAMA3-3B} from \cite{grattafiori2024llama3herdmodels} is a 3B-parameter dense model trained with 9T tokens. 
+    \item \texttt{Qwen2.5-3B} from \cite{qwen2.5} is a 3B-parameter dense model trained with 18T tokens.
+    \item \texttt{Deepseek-v2-Lite} from \cite{deepseekv2} is a 2.4B/16B-parameter MOE model trained with 5.7T tokens.
+\end{itemize}
+
+
+\begin{table}[!ht]
+    \small
+    \centering
+    \caption{Comparison of different models on various benchmarks.}
+    \setlength{\tabcolsep}{4pt}
+    \begin{tabular}{@{}c l c c c c@{}}
+    \toprule
+    & \textbf{Benchmark (Metric)} & \textbf{Llama3.2-3B} & \textbf{Qwen2.5-3B} & \textbf{DSV2-Lite} & \textbf{Moonlight} \\
+    \midrule
+    & Activated Param$^{\dagger}$ & 2.81B & 2.77B & 2.24B & 2.24B \\
+    & Total Params$^{\dagger}$ & 2.81B & 2.77B & 15.29B & 15.29B \\
+    & Training Tokens  & 9T & 18T & 5.7T & 5.7T \\
+    & Optimizer & AdamW  & Unknown & AdamW & Muon \\
+    \midrule
+    \multirow{4}{*}{English}
+    & MMLU & 54.7 & 65.6 & 58.3 & \textbf{70.0} \\
+    & MMLU-pro & 25.0 & 34.6 & 25.5 & \textbf{42.4} \\
+    & BBH & 46.8 & 56.3 & 44.1 & \textbf{65.2} \\
+    & TriviaQA$^{\ddagger}$ & 59.6 & 51.1 & 65.1 & \textbf{66.3} \\
+    \midrule
+    \multirow{2}{*}{Code} & HumanEval & 28.0 & 42.1 & 29.9 & \textbf{48.1} \\
+    & MBPP & 48.7 & 57.1 & 43.2 & \textbf{63.8} \\
+    \midrule
+    \multirow{3}{*}{Math} & GSM8K & 34.0 & \textbf{79.1} & 41.1 & 77.4 \\
+    & MATH & 8.5 & 42.6 & 17.1 & \textbf{45.3} \\
+    & CMath & - & 80.0 & 58.4 & \textbf{81.1} \\
+    \midrule
+    \multirow{2}{*}{Chinese}
+    & C-Eval & - & 75.0 & 60.3 & \textbf{77.2} \\
+    & CMMLU & - & 75.0 & 64.3 & \textbf{78.2} \\
+    \bottomrule
+    \end{tabular}
+    
+    \footnotesize{$^{\dagger}$ The reported parameter counts exclude the embedding parameters.$^{\ddagger}$ We tested all listed models with the full set of TriviaQA.}
+    \label{tab:5.7Tresults_full}
+\end{table}
+
+
+As shown in Table~\ref{tab:5.7Tresults_full}, Moonlight outperforms models with similar architectures trained with an equivalent number of tokens. Even when compared to dense models trained on substantially larger datasets, Moonlight maintains competitive performance. Detailed comparisons can be found in Appendix~\ref{sec:appendix:comparisons}. The performance of Moonlight is further compared with other well-known language models on MMLU and GSM8k, as illustrated in Figure~\ref{fig:mmlu} and Appendix~\ref{sec:appendix:comparisons} Figure~\ref{Fig:model_perf}.\footnote{Performance metrics and computational requirements (FLOPs) for baseline models are sourced from~\citep{olmo20242}}. Notably, Moonlight lies on the Pareto frontier of model performance versus training budget, outperforming many other models across various sizes. 
+
+
+
+
+\subsection{Dynamics of Singular Spectrum}
+In order to validate the intuition that Muon can optimize the weight matrices in more diverse directions, we conducted a spectral analysis of the weight matrices trained with Muon and AdamW. For a weight matrix with singular values $\sigma = (\sigma_1, \sigma_2, \cdots, \sigma_n)$, we calculate the SVD entropy~\citep{svd_entropy, effectiverank} of this matrix as follows:
+\begin{equation}
+    H(\sigma) = -\frac{1}{\log n}\sum_{i=1}^n \frac{\sigma^2_i}{\sum_{j=1}^n \sigma^2_j} \log \frac{\sigma^2_i}{\sum_{j=1}^n \sigma^2_j} \notag
+\end{equation}
+As shown in Figure~\ref{fig_svd_entropy}, we visualized the average SVD entropy of the weight matrices across different training checkpoints during pretraining with 1.2T tokens. We can see that across all training checkpoints and all groups of weight matrices, the SVD entropy of Muon is higher than that of AdamW, which verifies the intuition that Muon can provide a more diverse spectrum of updates for the weight matrices. This discrepancy is more significant in the router weights for expert selection, which indicates that mixture-of-expert models can benefit more from Muon.
+
+Moreover, we visualized the singular value distributions of each weight matrix at the checkpoint trained with 1.2T tokens as demonstrated in Appendix~\ref{sec:appendix:svd}. We find that, for over 90\% of the weight matrices, the SVD entropy when optimized by Muon is higher than that of AdamW, providing strong empirical evidence for Muon's superior capability in exploring diverse optimization directions.
+
+
+\input{figures/svd_entropy_fig}
+
+
+\subsection{Supervised Finetuning (SFT) with Muon}
+
+
+In this section, we present ablation studies on the Muon optimizer within the standard SFT stage of LLM training. Our findings demonstrate that the benefits introduced by Muon persist during the SFT stage. Specifically, a model that is both Muon-pretrained and Muon-finetuned outperforms others in the ablation studies. However, we also observe that when the SFT optimizer differs from the pretraining optimizer, SFT with Muon does not show a significant advantage over AdamW. This suggests that there is still considerable room for further exploration, which we leave for future work.
+
+\subsubsection{Ablation Studies on the Interchangeability of Pretrain and SFT Optimizers}
+
+To further investigate Muon’s potential, we finetuned Moonlight@1.2T and Moonlight-A@1.2T using both the Muon and AdamW optimizers. These models were finetuned for two epochs on the open-source tulu-3-sft-mixture dataset (\cite{lambert2024tulu3}), which contains 4k sequence length data. The learning rate followed a linear decay schedule, starting at $5 \times 10^{-5}$ and gradually reducing to $0$. The results, shown in Table \ref{tab:optim-interchangeability}, highlight the superior performance of Moonlight@1.2T compared to Moonlight-A@1.2T.
+
+
+\begin{table}[ht]
+\small
+\centering
+\caption{Examining the impact of optimizer interchangeability between pretraining and SFT phases.}
+\label{tab:optim-interchangeability}
+\begin{tabular}{l c|c|c|c|c}
+\toprule
+\textbf{Benchmark (Metric)} & \textbf{\# Shots} & \multicolumn{4}{|c}{\textbf{Moonlight-1.2T}} \\
+\midrule
+Pretraining Optimizer & - & Muon & AdamW & Muon & AdamW \\
+SFT Optimzier & - & Muon & Muon & AdamW & AdamW \\
+\midrule
+MMLU (EM) & 0-shot (CoT) & \textbf{55.7} & 55.3 & 50.2 & 52.0 \\
+HumanEval (Pass@1) & 0-shot & \textbf{57.3} & 53.7 & 52.4 & 53.1 \\
+MBPP (Pass@1) & 0-shot & \textbf{55.6} & 55.5 & 55.2 & 55.2 \\
+GSM8K (EM) & 5-shot & \textbf{68.0} & 62.1 & 64.9 & 64.6 \\
+\bottomrule
+\end{tabular}
+
+\end{table}
+
+\subsubsection{SFT with Muon on public pretrained models}
+
+We further applied Muon to the supervised fine-tuning (SFT) of a public pretrained model, specifically the Qwen2.5-7B base model (\cite{qwen2.5}), using the open-source tulu-3-sft-mixture dataset (\cite{lambert2024tulu3}). The dataset was packed with an 8k sequence length, and we employed a cosine decay learning rate schedule, starting at $2 \times 10^{-5}$ and gradually decreasing to $2 \times 10^{-6}$. The results are presented in Table \ref{tab:public-model-SFT-results}. For comparison, we show that the Muon-finetuned model achieves performance on par with the Adam-finetuned model. These results indicate that for optimal performance, it is more effective to apply Muon during the pretraining phase rather than during supervised fine-tuning.
+
+\begin{table}[ht]
+\small
+\centering
+\caption{Comparison of Adam and Muon optimizers applied to the SFT of the Qwen2.5-7B pretrained model.}
+\label{tab:public-model-SFT-results}
+\begin{tabular}{l c|c|c}
+\toprule
+\textbf{Benchmark (Metric)} & \textbf{\# Shots} & \textbf{Adam-SFT} & \textbf{Muon-SFT} \\
+\midrule
+Pretrained Model & - & \multicolumn{2}{|c}{Qwen2.5-7B} \\
+\midrule
+MMLU (EM) & 0-shot (CoT) & \textbf{71.4} & 70.8 \\
+HumanEval (Pass@1) & 0-shot & \textbf{79.3} & 77.4 \\
+MBPP (Pass@1) & 0-shot & \textbf{71.9} & 71.6 \\
+GSM8K (EM) & 5-shot & \textbf{89.8} & 85.8 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+
+
+

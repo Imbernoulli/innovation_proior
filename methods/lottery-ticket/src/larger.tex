@@ -1,0 +1,82 @@
+\section{VGG and Resnet for CIFAR10}
+\label{sec:larger}
+
+Here, we study the lottery ticket hypothesis on networks evocative of the architectures and techniques used in practice.
+Specifically, we consider VGG-style deep convolutional networks (VGG-19 on CIFAR10---\citet{vgg}) and residual
+networks (Resnet-18 on CIFAR10---\citet{resnet}).%
+\footnote{See Figure \ref{fig:convnets} and Appendices \ref{app:resnet18} for details on the networks, hyperparameters, and training regimes.}
+These networks are trained with batchnorm, weight decay,
+decreasing learning rate schedules, and augmented training data.
+We continue to find winning tickets for all of these architectures; however, our method for finding them, iterative pruning,
+is sensitive to the particular learning rate used. In these experiments, rather than measure early-stopping time (which, for these
+larger networks, is entangled with learning rate schedules), we plot accuracy at several moments during training to illustrate
+the relative rates at which accuracy improves.
+
+\textbf{Global pruning.}
+On Lenet and Conv-2/4/6, we prune each layer separately at the same rate.
+For Resnet-18 and VGG-19, we modify this strategy slightly:
+we prune these deeper networks \emph{globally}, removing the lowest-magnitude weights collectively across all convolutional layers. 
+In Appendix \ref{app:layerwise-vs-global}, we find that global pruning identifies smaller winning tickets for Resnet-18 and VGG-19. Our conjectured explanation for this behavior is as follows:
+For these deeper networks, some layers have far more parameters than others.
+For example, the first two convolutional layers of VGG-19 have 1728 and 36864 parameters, while the last has 2.35 million. When all layers are pruned at the same rate, these smaller layers become bottlenecks, preventing us from identifying the smallest possible winning tickets. Global pruning makes it possible to avoid this pitfall.
+
+\begin{figure}
+\centering
+\vspace{-.5em}
+\includegraphics[width=.7\textwidth]{graphs/cifar10/icml/vgg19-iclr-30000/legend}%
+\vspace{-1em}
+\includegraphics[width=.33\textwidth]{graphs/cifar10/icml/vgg19-iclr-30000/accuracy}%
+\includegraphics[width=.33\textwidth]{graphs/cifar10/icml/vgg19-iclr-60000/accuracy}%
+\includegraphics[width=.33\textwidth]{graphs/cifar10/icml/vgg19-iclr-112000/accuracy}%
+\vspace{-1em}
+\caption{Test accuracy (at 30K, 60K, and 112K iterations) of VGG-19 when iteratively pruned.}
+\label{fig:vgg}
+\end{figure}
+
+\begin{figure}
+\centering
+\vspace{-.5em}
+\includegraphics[width=.7\textwidth]{graphs/cifar10/icml/resnet18-iclr-10000/legend}%
+\vspace{-1em}
+\includegraphics[width=.33\textwidth]{graphs/cifar10/icml/resnet18-iclr-10000/accuracy}%
+\includegraphics[width=.33\textwidth]{graphs/cifar10/icml/resnet18-iclr-20000/accuracy}%
+\includegraphics[width=.33\textwidth]{graphs/cifar10/icml/resnet18-iclr-29900/accuracy}%
+\vspace{-1em}
+\caption{Test accuracy (at 10K, 20K, and 30K iterations) of Resnet-18 when iteratively pruned.}
+\label{fig:resnet18}
+\end{figure}
+
+\textbf{VGG-19.} We study the variant VGG-19 adapted for CIFAR10 by \citet{rethinking-pruning};
+we use the the same training regime and
+hyperparameters: 160 epochs (112,480 iterations)
+with SGD with momentum (0.9) and decreasing the learning rate by a factor of 10 at 80 and 120 epochs.
+This network has 20 million parameters. 
+Figure \ref{fig:vgg} shows the results of iterative
+pruning and random reinitialization on VGG-19 at two initial learning rates: 0.1 (used in \citet{rethinking-pruning}) and 0.01.
+At the higher learning rate, iterative pruning does not find winning tickets, and performance
+is no better than when the pruned networks are randomly reinitialized.
+However, at the lower learning rate, the usual pattern reemerges, with
+subnetworks that remain within 1 percentage point of the original accuracy while $P_m \geq 3.5\%$.
+(They are not winning tickets, since they do not match the original accuracy.)
+When randomly reinitialized, the subnetworks lose accuracy as they are pruned in the same manner as other experiments throughout this paper.
+Although these subnetworks learn faster than the unpruned network early in training (Figure \ref{fig:vgg} left),
+this accuracy advantage erodes later in training due to the lower initial learning rate. However, these
+subnetworks still learn faster than when reinitialized.
+
+To bridge the gap between the lottery ticket behavior of the lower learning rate and the accuracy advantage of the higher learning rate,
+we explore the effect of linear learning rate warmup from 0 to the initial learning rate over $k$ iterations.
+Training VGG-19 with warmup ($k=10000$, green line) at learning rate 0.1 improves the test accuracy of the unpruned network by about one percentage point.
+Warmup makes it possible to find winning tickets, exceeding this initial accuracy when $P_m \geq 1.5\%$.
+
+\textbf{Resnet-18.} Resnet-18 \citep{resnet} is a 20 layer convolutional network with residual connections designed for CIFAR10.
+It has 271,000 parameters. We train the network for 30,000 iterations with SGD with momentum (0.9), decreasing
+the learning rate by a factor of 10 at 20,000 and 25,000 iterations. Figure \ref{fig:resnet18} shows the results
+of iterative pruning and random reinitialization at learning rates 0.1 (used in \citet{resnet}) and 0.01. These results largely mirror those of VGG:
+iterative pruning finds winning tickets at the lower learning rate but not the higher learning rate.
+The accuracy of the best winning tickets at the lower learning rate (89.5\% when $41.7\% \geq P_m \geq 21.9\%$) falls short of the original network's accuracy at the higher learning rate (90.5\%).
+At lower learning rate, the winning ticket again initially learns faster (left plots of Figure \ref{fig:resnet18}), but falls behind the unpruned network
+at the higher learning rate later in training (right plot).
+Winning tickets trained with warmup close the accuracy gap with the unpruned network at the higher learning rate,
+reaching 90.5\% test accuracy with learning rate 0.03 (warmup, $k=20000$) at $P_m = 27.1\%$. For these hyperparameters, we still
+find winning tickets when $P_m \geq 11.8\%$. Even with warmup, however, we could not find hyperparameters for which
+we could identify winning tickets at the original learning rate, 0.1.

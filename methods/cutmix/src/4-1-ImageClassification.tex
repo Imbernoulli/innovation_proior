@@ -1,0 +1,52 @@
+
+
+\begin{figure}
+    \centering
+    \includegraphics[width=\linewidth]{test_loss2.pdf}
+    \caption{Top-1 test error plot for CIFAR100 (left) and ImageNet (right) classification. 
+    Cutmix achieves lower test errors than the baseline at the end of training.
+    }
+    \label{fig:cls_loss}
+\end{figure}
+
+
+\subsection{Image Classification}
+\label{sec:image_cls}
+
+\subsubsection{ImageNet Classification}
+\label{sec:imagenet_cls}
+We evaluate on ImageNet-1K benchmark~\cite{ImageNet}, the dataset containing 1.2M training images and 50K validation images of 1K categories.
+For fair comparison, we use the standard augmentation setting for ImageNet dataset such as re-sizing, cropping, and flipping, as done in~\cite{pyramidnet,ghiasi2018dropblock,densenet,GoogleNet}. 
+We found that regularization methods {including} Stochastic Depth~\cite{stochasticdepth},  Cutout~\cite{devries2017cutout}, Mixup~\cite{zhang2017mixup}, and CutMix require a greater number of training epochs till convergence. 
+Therefore, we have trained all the models for $300$ epochs with initial learning rate $0.1$ decayed by factor $0.1$ at epochs $75$, $150$, and $225$. 
+The batch size is set to $256$. 
+The hyper-parameter $\alpha$ is set to $1$. 
+We report the best performances of CutMix and other baselines during training. 
+
+\input{tables/ImageNet-ResNet50.tex}
+
+We briefly describe the settings for baseline augmentation schemes.
+We set the dropping rate of residual blocks to $0.25$ for the best performance of Stochastic Depth~\cite{stochasticdepth}.
+The mask size for Cutout~\cite{devries2017cutout} is set to $112\times112$ and the location for dropping out is uniformly sampled. 
+The performance of DropBlock~\cite{ghiasi2018dropblock} is from the original paper and the difference from our setting is the training epochs which is set to $270$.
+Manifold Mixup~\cite{verma2018manifoldmixup} applies Mixup operation on the randomly chosen internal feature map.
+We have tried $\alpha=0.5$ and $1.0$ for Mixup and Manifold Mixup and have chosen $1.0$ which has shown better performances.
+It is also possible to extend CutMix to feature-level augmentation (Feature CutMix).
+Feature CutMix applies CutMix at a randomly chosen layer per minibatch as Manifold Mixup does.
+
+\input{tables/ImageNet-Deeper.tex}
+
+\noindent\textbf{Comparison against baseline augmentations: }
+Results are given in Table~\ref{table:imagenet-res50}.
+We observe that CutMix achieves the best result, {$\textbf{21.40\%}$} top-1 error, among the considered augmentation strategies.
+CutMix outperforms Cutout and Mixup, the two closest approaches to ours, by $+1.53\%$ and $+1.18\%$, respectively.
+On the feature level as well, we find CutMix preferable to Mixup, with top-1 errors $21.78\%$ and $22.50\%$, respectively.
+
+\noindent\textbf{Comparison against architectural improvements: }
+We have also compared improvements due to CutMix versus architectural improvements (\eg greater depth or additional modules). 
+We observe that CutMix improves the performance by $\textbf{+2.28\%}$ while increased depth (ResNet-50 $\rightarrow$ ResNet-152) boosts $+1.99\%$ and SE~\cite{SENet} and GE~\cite{GENet} boosts $+1.56\%$ and $+1.80\%$, respectively.
+Note that unlike above architectural boosts improvements due to CutMix come at little or memory or computational time.
+
+\noindent\textbf{CutMix for Deeper Models: }
+We have explored the performance of CutMix for the deeper networks, ResNet-101~\cite{resnet} and ResNeXt-101 (32$\times$4d)~\cite{resnext}, on ImageNet.
+As seen in Table~\ref{table:imagenet-deeper}, we observe $ \textbf{+1.60\%}$ and $\textbf{+1.71\%}$ respective improvements in top-1 errors due to CutMix.

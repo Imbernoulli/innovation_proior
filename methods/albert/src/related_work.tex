@@ -1,0 +1,36 @@
+\section{Related work}
+
+\subsection{Scaling Up Representation Learning for Natural Language}
+Learning representations of natural language has been shown to be useful for a wide range of NLP tasks and has been widely adopted~\citep{mikolov2013distributed,le-mikolov:2014,dai2015semi, peters2018deep,devlin2018bert,radford2018improving,radford2019language}.
+One of the most significant changes in the last two years is the shift from pre-training word embeddings, whether standard~\citep{mikolov2013distributed,pennington-etal-2014-glove} or contextualized~\citep{NIPS2017_7209,peters2018deep}, to full-network pre-training followed by task-specific fine-tuning~\citep{dai2015semi, radford2018improving,devlin2018bert}.
+In this line of work, it is often shown that larger model size improves performance.
+For example, \cite{devlin2018bert} show that across three selected natural language understanding tasks, using larger hidden size, more hidden layers, and more attention heads always leads to better performance.
+However, they stop at a hidden size of 1024, presumably because of the model size and computation cost problems. 
+% We show that, under the same setting, increasing the hidden size to 2048 leads to model degradation and hence worse performance.
+% Therefore, scaling up representation learning for natural language is not as easy as simply increasing model size.
+
+It is difficult to experiment with large models due to computational constraints, especially in terms of 
+GPU/TPU memory limitations.
+Given that current state-of-the-art models often have hundreds of millions or even billions of parameters, we can easily hit  memory limits.
+To address this issue, \cite{chen2016training} propose a method called gradient checkpointing to reduce the memory requirement to be sublinear at the cost of an extra forward pass. 
+\cite{gomez2017reversible} propose a way to reconstruct each layer's activations from the next layer so that they do not need to store the intermediate activations.
+Both methods reduce the memory consumption at the cost of speed. \cite{raffel2019exploring} proposed to use model parallelization to train a giant model.
+In contrast, our parameter-reduction techniques reduce memory consumption and increase training speed. 
+
+
+\subsection{Cross-layer parameter sharing}
+The idea of sharing parameters across layers 
+%cross-layer parameter sharing 
+has been previously explored with the Transformer architecture~\citep{vaswani2017attention}, but this prior work has focused on training for standard encoder-decoder tasks rather than the pretraining/finetuning setting. Different from our observations, \cite{dehghani2018universal} show that  networks with cross-layer parameter sharing (Universal Transformer, UT) get better performance on language modeling and subject-verb agreement than the standard transformer. Very recently, \cite{bai2019deep} propose a Deep Equilibrium Model (DQE) for transformer networks and show that DQE can reach an equilibrium point for which the input embedding and the output embedding of a certain layer stay the same. Our observations show that our embeddings are oscillating rather than converging. \cite{Hao_2019} combine a parameter-sharing transformer with the standard one, which further increases the number of parameters of the standard transformer.  
+
+\vspace{-5pt}
+\subsection{Sentence Ordering Objectives}
+ALBERT uses a pretraining loss based on predicting the ordering of two consecutive segments of text. Several researchers have experimented with pretraining objectives that similarly relate to discourse coherence. 
+Coherence and cohesion in discourse have been widely studied and many phenomena have been identified that connect neighboring text segments~\citep{DBLP:journals/cogsci/Hobbs79,halliday-76,grosz-etal-1995-centering}. 
+Most objectives found effective in practice are quite simple. 
+Skip-thought~\citep{Kiros2015skipthought} and FastSent~\citep{hill2016fastsent} sentence embeddings are learned by using an encoding of a sentence to predict words in neighboring sentences. 
+Other objectives for sentence embedding learning include predicting future sentences rather than only neighbors~\citep{gan-etal-2017-learning} and predicting explicit discourse markers~\citep{jernite2017discourse,nie-etal-2019-dissent}. 
+Our loss is most similar to the sentence ordering objective of \citet{jernite2017discourse}, where sentence embeddings are learned in order to determine the ordering of two consecutive sentences. 
+Unlike most of the above work, however, our loss is defined on textual segments rather than sentences. BERT~\citep{devlin2018bert} uses a loss based on predicting whether the second segment in a pair has been swapped with a segment from another document.
+We compare to this loss in our experiments and find that sentence ordering is a more challenging pretraining task and more useful for certain downstream tasks.
+Concurrently to our work, \cite{wang2019structbert} also try to predict the order of two consecutive segments of text, but they combine it with the original next sentence prediction in a three-way classification task rather than empirically comparing the two. 

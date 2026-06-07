@@ -1,0 +1,7 @@
+\subsection{Neural machine translation}
+\label{sec:nmt}
+
+We trained Transformer based models \citep{vaswani2017attention} on the WMT2014 English-to-German translation task on a single Tensor Processing Unit (TPU) node. We took the base model from \citet{vaswani2017attention} and trained it using the proposed warmup-then-decay learning rate scheduling scheme and, additionally, the same scheme wrapped with Lookahead. We found Lookahead speedups the early stage of the training over Adam and the later proposed AdaFactor \citep{adafactor} optimizer. All the methods converge to similar training loss and BLEU score at the end, see Figure~\ref{fig:nmt} and Table~\ref{tab:ntm}. 
+
+Our NMT experiments further confirms Lookahead improves the robustness of the inner loop optimizer. We found Lookahead enables a wider range of learning rate \{0.02, 0.04, 0.06\} choices for the Transformer model that all converge to similar final losses. Full details are given in Appendix~\ref{app:nmt}.
+% Furthermore, Lookahead alleviates the need for the linear warmup learning scheme proposed in the original \citet{vaswani2017attention} paper. Full details are given in the Appendix~\ref{app:nmt}.

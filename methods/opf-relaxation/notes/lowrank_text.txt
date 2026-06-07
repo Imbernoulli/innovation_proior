@@ -1,0 +1,245 @@
+
+===== page 1 [pdftotext] =====
+        Low-Rank Solution of Convex Relaxation for Optimal Power Flow Problem
+
+                                   Somayeh Sojoudi∗, Ramtin Madani+ and Javad Lavaei+
+                   ∗
+                       Department of Computing and Mathematical Sciences, California Institute of Technology
+                                   +
+                                     Department of Electrical Engineering, Columbia University
+
+
+   Abstract—This paper is concerned with solving the nonconvex            The paper [5] proposes two methods to solve an OPF
+problem of optimal power flow (OPF) via a convex relaxation            problem: (i) using a convex relaxation based on semidefinite
+based on semidefinite programming (SDP). We have recently              programming (SDP), and (ii) solving the SDP-type Lagrangian
+shown that the SDP relaxation has a rank-1 solution from which
+the global solution of OPF can be found, provided the power            dual of OPF. That work shows that the SDP relaxation is exact
+network has no cycle. The present paper aims to provide a              if and only if the duality gap is zero. More importantly, [5]
+better understating of the SDP relaxation for cyclic networks. To      makes the observation that OPF has a zero duality gap for
+this end, an upper bound is derived on rank of the minimum-            IEEE benchmark systems with 14, 30, 57, 118 and 300 buses,
+rank solution of the SDP relaxation, which depends only on the         in addition to several randomly generated power networks.
+topology of the power network. This bound is expected to be
+very small in practice due to the mostly planar structure of real-     This technique is the first method proposed since the introduc-
+world networks. A heuristic method is then proposed to enforce         tion of the OPF problem that is able to find a provably global
+the low-rank solution of the SDP relaxation to become rank-1.          solution for practical OPF problems. The convex relaxation
+To elucidate the efficacy of this technique, it is proved that this    proposed in [5] has been generalized to more complicated
+method works for weakly-cyclic networks with cycles of size 3.         problems, such as security constrained OPF, in [6].
+Although this paper mainly focuses on OPF, the results developed
+here can be applied to several OPF-based emerging optimizations           By exploiting the passivity of transmission lines and trans-
+for future electrical grids.                                           formers, the paper [7] shows that the SDP relaxation is exact
+                                                                       in two cases: (i) for acyclic networks, and (ii) for cyclic
+                         I. I NTRODUCTION                              networks after relaxing the angle constraints via the inclusion
+                                                                       of actual/virtual phase shifters (similar result was derived in
+   The real-time operation of a power network depends heavily
+                                                                       [8] and [9] for acyclic networks). Although the SDP relaxation
+on various large-scale optimization problems solved from
+                                                                       works for the above-mentioned IEEE cyclic systems, it may
+every few minutes to every several months. State estimation,
+                                                                       not be exact for every mesh network (see the three-bus
+optimal power flow (OPF), security-constrained OPF, and
+                                                                       example contrived in [10]). The present paper aims to explore
+transmission planning are some fundamental operations solved
+                                                                       the limitations of the SDP relaxation for mesh networks.
+for transmission networks. Although most of the energy-
+                                                                          The exactness of the SDP relaxation amounts to the exis-
+related optimizations are traditionally solved at transmission
+                                                                       tence of a rank-1 solution for this problem. In the case when
+level, there are a few optimizations associated with distribution
+                                                                       the SDP relaxation is not exact, its solution may still be useful
+systems, e.g., sizing of capacitor banks and network reconfig-
+                                                                       if its rank is low compared to the size of the network. Since the
+uration. Each of these problems has the power flow equations
+                                                                       SDP relaxation may not be exact for mesh networks, the first
+embedded in it. With the exception of the security-constrained
+                                                                       goal of this work is to study the rank of the minimum-rank
+OPF, these problems often have less than 10,000 variables.
+                                                                       solution of the SDP relaxation (under the load over-satisfaction
+Even though the number of variables in these optimizations is
+                                                                       assumption [5]). To this end, an upper bound is derived on this
+modest compared to many real-world optimizations involving
+                                                                       number, which depends only on the topology of the network.
+millions of variables, it is very challenging to solve energy-
+                                                                       This number is expect to be very small in practice due to
+related optimization problems efficiently. This is in part due
+                                                                       the mostly planar structure of real-world power networks.
+to the nonlinearities imposed by the laws of physics.
+                                                                       A question arises as to whether this low-rank solution can
+   The OPF problem is the most fundamental optimization for
+                                                                       be converted to a rank-1 solution leading to a nearly global
+power systems, which aims to find an optimal operating point
+                                                                       solution of OPF. To address this problem, a heuristic algorithm
+of the power network minimizing a certain objective function
+                                                                       is proposed whose efficacy is demonstrated in simulations.
+(e.g., power loss or generation cost) subject to network and
+                                                                       Moreover, it is proved that this method is guaranteed to work
+physical constraints [1]. Due to the nonlinear interrelation
+                                                                       for certain weakly-cyclic networks.
+among active power, reactive power and voltage magnitude,
+                                                                          The SDP relaxation for OPF has attracted much attention
+OPF is described by nonlinear equations and may have a
+                                                                       due to its ability to find a global solution in polynomial
+nonconvex feasibility region [2]. Since 1962, this problem has
+                                                                       time, and has been applied to various applications in power
+been studied thoroughly, and various heuristic and local-search
+                                                                       systems including: voltage regulation in distribution systems
+algorithms have been developed [3], [4].
+                                                                       [11], state estimation [12], calculation of voltage stability
+  Emails: sojoudi@caltech.edu; rm3122@columbia.edu; lavaei@ee.colum-   margin [13], economic dispatch in unbalanced distribution net-
+bia.edu.                                                               works [14], power management under time-varying conditions
+
+===== page 2 [pdftotext] =====
+                                                                         max        max     max       max    max       max
+[15], distributed energy management [16], OPF with storage              θlm    = θml    , Plm     = Pml   , Slm    = Sml    and
+integration [17], and charging of electric vehicles [18]. The           ∆Vlm = ∆Vml (we consider θlm less than 90◦ due
+                                                                            max         max                max
+
+results of this work enhance the theoretical foundation of the          to the current practice in power networks).
+convex relaxation for all of the above problems as well as            • N (k) denotes the set of the neighboring nodes of bus k.
+emerging applications related to renewable energy, distributed
+generation, and demand response.                                                     III. C ONVEX R ELAXATION
+   Notations: R, Hn , and Hn+ denote the sets of real numbers,         Consider the OPF problem (1) subject to one of the capacity
+n×n Hermitian matrices, and n×n positive semidefinite Her-          constraints given in (3). This problem is nonconvex due to the
+mitian matrices, respectively. Re{W}, Im{W}, rank{W},               nonlinear terms |Vk |’s and Vk Vl∗ ’s. Since this problem is NP-
+and trace{W} denote the real part, imaginary part, rank, and        hard in the worst case, the paper [5] suggests solving a convex
+trace of a given scalar/matrix W, respectively. The notation        relaxation of OPF. To this end, notice that the constraints of
+W  0 means that W is Hermitian and positive semidefinite.          OPF can all be expressed as linear functions of the entries
+The notation “i” is reserved for the imaginary unit. The nota-      of the quadratic matrix VV∗ . This implies that if the matrix
+tion ]x denotes the angle of a complex number x. The symbol         VV∗ is replaced by a new matrix variable W ∈ Hn , then
+“*” represents the conjugate transpose operator. Given a matrix     the constraints of OPF become convex in W. Since W
+W, its (l, m) entry is denoted as Wlm . The superscript (·)opt is   plays the role of VV∗ , two constraints must be added to the
+used to show the optimal value of an optimization parameter.        reformulated OPF problem in order to preserve the equivalence
+                                                                    of the two formulations: (i) W  0, and (ii) rank{W} = 1.
+                 II. O PTIMAL P OWER F LOW                          Observe that Constraint (ii) is the only nonconvex constraint of
+   Consider a power network with the set of buses N :=              the reformulated OPF problem. Inspired by this observation,
+{1, 2, ..., n}, the set of generator buses O ⊆ N and the set        the SDP relaxation of OPF is defined as the OPF problem
+of flow lines L ⊆ N × N , where:                                    reformulated in terms of W under the additional constraint
+   • A known constant-power load with the complex value             W  0. This problem is provided in (2) and (4). If the SDP
+      PDk + QDk i is connected to each bus k ∈ N .                  relaxation has a rank-1 solution Wopt, then it is said that the
+   • A generator with an unknown complex output PGk +               relaxation is exact. The exactness of the SDP relaxation is a
+      QGk i is connected to each bus k ∈ O.                         desirable property being sought, because it makes the convex
+   • Each line (l, m) ∈ L of the network is modeled as a            SDP relaxation and the nonconvex OPF problem equivalent.
+      passive device with an admittance ylm (the network can                         IV. L OW-R ANK S OLUTION
+      be modeled as a general admittance matrix).
+                                                                       Definition 1: Define η as the minimum number of vertices
+The goal is to design the unknown outputs of all generators in
+                                                                    whose removal from the power network eliminates all cycles
+such a way that the load constraints are satisfied. To formulate
+                                                                    of the network.
+this problem, named optimal power flow (OPF), define:
+                                                                       To illustrate the definition of η, observe that this number is
+   • Vk : Unknown complex voltage at bus k ∈ N .                    equal to 0 if the network is acyclic and is equal to 1 if all
+   • Plm : Unknown active power transferred from bus l ∈ N          cycles of the network share a common node.
+      to the rest of the network through the line (l, m) ∈ L.          Definition 2: A subgraph S = (NS , LS ) of the power
+   • Slm : Unknown complex power transferred from bus l ∈           network is called an induced subgraph if NS ⊆ N and
+      N to the rest of the network through the line (l, m) ∈ L.     LS = {(l, m) | l, m ∈ NS and (l, m) ∈ L}. A maximum
+   • fk (PGk ): Known convex function representing the gen-
+                                                                    induced subtree (subjungle) of the network refers to an induced
+      eration cost for generator k ∈ O.                             subgraph S that is a tree (jungle) with the maximum number
+Define V, PG, QG , PD and QD as the vectors {Vk }k∈N ,              of vertices.
+{PGk }k∈O , {QGk }k∈O , {PDk }k∈N and {QDk }k∈N , respec-              According to the definition of η, a maximum induced
+tively. Given the known vectors
+                             P PD and QD , OPF minimizes            subjungle of the power network has n − η vertices.
+the total generation cost      k∈O fk (PGk ) over the unknown          Definition 3: Given a positive number r and a matrix A ∈
+parameters V, PG and QG subject to the power balance                Hr+ , define G(A) as a graph with the vertex set Nr = {1, ..., r}
+equations at all buses and some network constraints. To             and the edge set {(l, m) | Alm 6= 0, (l, m) ∈ Nr × Nr }.
+simplify the formulation of OPF, with no loss of generality            Definition 4: Two simple graphs G1 and G2 are called
+assume that O = N . The mathematical formulation of OPF             equivalent if there exists an edge-preserving bijection between
+is given in (1), where:                                             their vertex sets. The notation G1 ≡ G2 shows this equivalence.
+   • (1a) and (1b) are the power balance equations accounting          The following lemma has been borrowed from [19].
+      for the conservation of energy at bus k.                         Lemma 1: Consider a graph G with a maximum induced
+                                                                                                        |G|
+   • (1c), (1d) and (1e) restrict the active power, reactive        subtree T . Given a matrix A ∈ H+ with the property G(A) ≡
+      power and voltage magnitude at bus k, for the given limits    G, the relation rank{A} ≥ |T | − 1 holds.                      
+      Pkmin , Pkmax, Qmin
+                       k , Qk
+                             max
+                                 , Vkmin , Vkmax .                     The power balance equations (1a) and (1b) are equality
+   • Each line of the network is subject to one of the four         constraints. One may relax these equations to inequality con-
+      capacity constraints given in (3), for given upper bounds     straints so that each bus k ∈ N can be oversupplied. This
+
+===== page 3 [pdftotext] =====
+        OPF Problem                                                    SDP Relaxation of OPF
+                      P                                                              P
+        Minimize          fk (PGk ) over PG , QG , V                   Minimize          fk (PGk ) over PG, QG , W ∈ Hn+
+                   k∈O                                                            k∈O
+        Subject to:                                                    Subject to:
+
+          1- A capacity constraint for each line (l, m) ∈ L              1- A convexified capacity constraint for each line
+
+          2- The following constraints for each bus k ∈ N :              2- The following constraints for each bus k ∈ N :
+
+                             X                                                              X
+          PGk − PDk =                 Re {Vk (Vk∗ − Vl∗ )ykl
+                                                          ∗
+                                                             } (1a)      PGk − PDk =                                 ∗
+                                                                                                    Re {(Wkk − Wkl )ykl } (2a)
+                            l∈N (k)                                                       l∈N (k)
+                              X                                                             X
+          QGk − QDk =                 Im {Vk (Vk∗ − Vl∗ )ykl
+                                                          ∗
+                                                             } (1b)      QGk − QDk =                                  ∗
+                                                                                                     Im {(Wkk − Wkl )ykl } (2b)
+                            l∈N (k)                                                        l∈N (k)
+
+          Pkmin ≤ PGk ≤ Pkmax                                 (1c)       Pkmin ≤ PGk ≤ Pkmax                               (2c)
+          Qmin
+            k   ≤ QGk ≤ Qmax
+                          k                                   (1d)       Qmin
+                                                                           k   ≤ QGk ≤ Qmax
+                                                                                         k                                 (2d)
+            min          max
+          Vk ≤ |Vk | ≤ Vk                                     (1e)       (Vk ) ≤ Wkk ≤ (Vkmax )2
+                                                                            min 2
+                                                                                                                           (2e)
+
+
+
+        Capacity constraint for line (l, m) ∈ L                        Convexified capacity constraint for line (l, m) ∈ L
+
+
+                                    max                                                            max
+           |θlm | , |]Vl − ]Vm | ≤ θlm                        (3a)        Im{Wlm } ≤ Re{Wlm } tan(θlm  )                   (4a)
+                               ∗   ∗ ∗           max                                        ∗       max
+           |Plm | = |Re {Vl (Vl − Vm )ylm }| ≤ Plm            (3b)        Re{(Wll − Wlm )ylm  } ≤ Plm                      (4b)
+                                                                                                 max 2
+           |Slm | = |Vl (Vl∗ − Vm∗ )ylm
+                                     ∗       max
+                                        | ≤ Slm               (3c)                      ∗ 2
+                                                                          |(Wll − Wlm )ylm | ≤ (Slm  )                     (4c)
+                              max                                                                     max 2
+           |Vl − Vm | ≤ ∆Vlm                                  (3d)        Wll + Wmm − Wlm − Wml ≤ (∆Vlm  )                 (4d)
+
+
+
+
+                                                                      to the capacity constraint (3a), (3b) or (3d) and under the
+                                                                      load over-satisfaction assumption. If this problem is feasi-
+                                                                      ble, then its corresponding SDP relaxation has a solution
+                                                                      (Wopt , Popt    opt
+                                                                                G , QG ) such that
+
+                                                                                           rank{Wopt } ≤ η + 1.                    (5)
+
+                                                                        Sketch of proof: Let J denote a maximum induced sub-
+                                                                      jungle of the power network. One can expand the subjungle
+                                                                      J into a tree T by adding a minimal set of additional
+                                                                      edges to this possibly disconnected subgraph. Notice that
+                 Fig. 1: A graph with η = 1.
+                                                                      |J | = |T | = n−η. Denote the edge set of T as LT . Since the
+                                                                      OPF problem is feasibly by assumption, there exists an optimal
+                                                                      solution (W0 , Popt   opt
+                                                                                      G , QG ) for this problem. Now, consider the
+notion is called over-satisfaction and has been considered in a       optimization problem:
+number of papers (see [5], [3] and the references therein). The                          X
+main idea is that whenever a power network operates under a                 minn −ε             Re{Wlm }                         (6a)
+                                                                          W∈H+
+normal condition, it is expected that the solution of the OPF                         (l,m) ∈ LT
+problem remains intact or changes insignificantly under the                                    0
+                                                                           s.t.      Wkk = Wkk   ,                   k∈N          (6b)
+load over-satisfaction assumption.                                                                   0
+                                                                                     Re{Wlm } ≥ Re{Wlm },           (l, m) ∈ L    (6c)
+   In this part, we make the practical assumption that each                                          0
+                                                                                     Im{Wlm } = Im{Wlm },           (l, m) ∈ L    (6d)
+power line in the network is a passive device with nonnegative
+resistance and inductance.                                            where ε is an arbitrary strictly positive number. Let Wopt
+   Theorem 1: Consider the OPF problem given in (1) subject           denote an arbitrary solution of the above optimization. Since

@@ -1,0 +1,78 @@
+\section{Sample-wise Non-monotonicity}
+\label{sec:samples}
+
+In this section, we investigate the effect of varying the number of train samples,
+for a fixed model and training procedure.
+Previously, in model-wise and epoch-wise double descent, we explored behavior in the critical regime, where $\EMC_{\cD, \eps}(\cT) \approx n$, by varying the EMC.
+Here, we explore the critical regime by varying the number of train samples $n$.
+By increasing $n$, the same training procedure $\cT$ can switch from being effectively over-parameterized
+to effectively under-parameterized.
+
+% Increasing model capacity and train time are two ways of traversing the parameterization space from underparameterized to overparameterized. Another path through the space, is varying the number of samples. There, fewer samples can shift the regime from under- to over-parameterized and vice versa.
+
+We show that increasing the number of samples has two different effects on the test error vs. model complexity graph.
+On the one hand, (as expected) increasing the number of samples shrinks the area under the curve.
+On the other hand, increasing the number of samples also has the effect of ``shifting the curve to the right'' and increasing the model complexity at which test error peaks.
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}[c]{.45\textwidth}
+        
+         \centering
+        %  \vspace{-6.5cm}
+         \includegraphics[width=\textwidth]{mcnn_p10_big}
+         \includegraphics[width=\textwidth]{mcnn_p20_big}
+         \caption{Model-wise double descent for 5-layer CNNs on CIFAR-10, for varying dataset sizes.  
+         %Increasing the number of train samples lowers the peak, and also shifts it to the right.
+         {\bf Top:}
+         There is a range of model sizes (shaded green)
+         where training on $2\x$ more samples does not improve test error.
+         {\bf Bottom:}
+         There is a range of model sizes (shaded red)
+         where training on $4\x$ more samples does not improve test error.}
+         \label{fig:sample-modeld}
+    \end{subfigure}\hspace{0.7cm}
+    \begin{subfigure}[c]{.45\textwidth}
+         \centering
+         \includegraphics[width=\textwidth]{nlp_sampledd_test-annotated}
+         \caption{\textbf{Sample-wise non-monotonicity.}
+        Test  loss (per-word perplexity) as a function of number of train samples, for two transformer models trained to completion on IWSLT'14. For both model sizes, there is a regime where more samples hurt performance. Compare to Figure~\ref{fig:moresamplesareworse}, of model-wise double-descent in the identical setting.}
+        \label{fig:nlpdd}
+    \end{subfigure}
+    \caption{Sample-wise non-monotonicity.}
+\end{figure}
+
+These twin effects are shown in Figure~\ref{fig:sample-modeld}.
+Note that there is a range of model sizes
+where the effects ``cancel out''---and
+having $4\x$ more train samples does not help test
+performance when training to completion.
+Outside the critically-parameterized regime, for sufficiently under- or over-parameterized models, having more samples helps.
+This phenomenon is corroborated in Figure~\ref{fig:grid},
+which shows test error as a function of both model and sample size,
+in the same setting as Figure~\ref{fig:sample-modeld}.
+
+
+%\todo{add early-stopping discussion in the appendix -- more data should probably always help if we early-stop.}
+
+\begin{figure}[h]
+    \centering
+      \includegraphics[width=\textwidth]{joint_grid}
+    \caption{{\bf Left:} Test Error as a function of model size and
+    number of train samples, for 5-layer CNNs on CIFAR-10 + 20\% noise.
+    Note the ridge of high test error again lies along the interpolation threshold.
+    {\bf Right: } Three slices of the left plot,
+    showing the effect of more data for models of different sizes.
+    Note that, when training to completion, more data helps for
+    small and large models, but does not help
+    for near-critically-parameterized models (green).
+    }
+    \label{fig:grid}
+\end{figure}
+
+In some settings, these two effects combine to yield a regime of model sizes
+where more data actually hurts test performance as in
+Figure~\ref{fig:moresamplesareworse} (see also 
+Figure~\ref{fig:nlpdd}).
+Note that this phenomenon is not unique to DNNs:
+more data can hurt even for linear models 
+(see Appendix~\ref{sec:rff}).

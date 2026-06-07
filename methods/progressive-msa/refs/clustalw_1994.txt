@@ -1,0 +1,647 @@
+
+===== page 1 [pdftotext] =====
+\.j 1994 Oxford University Press                                           Nucleic Acids Research, 1994, Vol. 22, No. 22 4673-4680
+
+
+CLUSTAL W: improving the sensitivity of progressive
+multiple sequence alignment through sequence weighting,
+position-specific gap penalties and weight matrix choice
+Julie D.Thompson, Desmond G.Higgins+ and Toby J.Gibson*
+European Molecular Biology Laboratory, Postfach 102209, Meyerhofstrasse 1, D-69012 Heidelberg,
+Germany
+
+Received July 12, 1994; Revised and Accepted September 23, 1994
+
+
+ABSTRACT
+The sensitivity of the commonly used progressive                             practical. The new methods are made available in a program
+multiple sequence alignment method has been greatly                          called CLUSTAL W, which is freely available and portable to
+improved for the alignment of divergent protein                              a wide variety of computers and operating systems.
+sequences. Firstly, individual weights are assigned to                         In order to align just two sequences, it is standard practice to
+each sequence in a partial alignment in order to down-                       use dynamic programming (2). This guarantees a mathematically
+weight near-duplicate sequences and up-weight the                            optimal alignment, given a table of scores for matches and
+most divergent ones. Secondly, amino acid substitution                       mismatches between all amino acids or nucleotides [e.g. the
+matrices are varied at different alignment stages                            PAM250 matrix (3) or BLOSUM62 matrix (4)] and penalties
+according to the divergence of the sequences to be                           for insertions or deletions of different lengths. Attempts at
+aligned. Thirdly, residue-specific gap penalties and                         generalising dynamic programming to multiple alignments are
+locally reduced gap penalties in hydrophilic regions                         limited to small numbers of short sequences (5). For much more
+encourage new gaps in potential loop regions rather                          than eight or so proteins of average length, the problem is
+than regular secondary structure. Fourthly, positions                        uncomputable given current computer power. Therefore, all of
+in early alignments where gaps have been opened                              the methods capable of handling larger problems in practical
+receive locally reduced gap penalties to encourage the                       timescales make use of heuristics. Currently, the most widely
+opening up of new gaps at these positions. These                             used approach is to exploit the fact that homologous sequences
+modifications are incorporated into a new program,                           are evolutionarily related. One can build up a multiple alignment
+CLUSTAL W which is freely available.                                         progressively by a series of pairwise alignments, following the
+                                                                             branching order in a phylogenetic tree (1). One first aligns the
+INTRODUCTION                                                                 most closely related sequences, gradually adding in the more
+                                                                             distant ones. This approach is sufficiently fast to allow alignments
+The simultaneous alignment of many nucleotide or amino acid                  of virtually any size. Further, in simple cases, the quality of the
+sequences is now an essential tool in molecular biology. Multiple            alignments is excellent, as judged by the ability to correctly align
+alignments are used to find diagnostic patterns to characterise              corresponding domains from sequences of known secondary or
+protein families; to detect or demonstrate homology between new              tertiary structure (6). In more difficult cases, the alignments give
+sequences and existing families of sequences; to help predict the            good starting points for further automatic or manual refinement.
+secondary and tertiary structures of new sequences; to suggest                  This approach works well when the data set consists of
+oligonucleotide primers for PCR; as an essential prelude to                  sequences of different degrees of divergence. Pairwise alignment
+molecular evolutionary analysis. The rate of appearance of new               of very closely related sequences can be carried out very
+sequence data is steadily increasing and the development of                  accurately. The correct answer may often be obtained using a
+efficient and accurate automatic methods for multiple alignment              wide range of parameter values (gap penalties and weight matrix).
+is, therefore, of major importance. The majority of automatic                By the time the most distantly related sequences are aligned, one
+multiple alignments are now carried out using the 'progressive'              already has a sample of aligned sequences which gives important
+approach of Feng and Doolittle (1). In this paper, we describe               information about the variability at each position. The positions
+a number of improvements to the progressive multiple alignment               of the gaps that were introduced during the early alignments of
+method which greatly improve the sensitivity without sacrificing             the closely related sequences are not changed as new sequences
+any of the speed and efficiency which makes this approach so                 are added. This is justified because the placement of gaps in
+
+
+*To whom correspondence should be addressed
+'Present address: European Bioinformatics Institute, Hinxton Hall, Hinxton, Cambridge CB10 1RQ, UK
+
+===== page 2 [pdftotext] =====
+4674 Nucleic Acids Research, 1994, Vol. 22, No. 22
+
+alignments between closely related sequences is much more             penalty after each residue. Short stretches of hydrophilic residues
+accurate than between distantly related ones. When all of the         (e.g. 5 or more) usually indicate loop or random coil regions
+sequences are highly divergent (e.g. less than -25-30% identity       and the gap opening penalties are locally reduced in these
+between any pair of sequences), this progressive approach             stretches. In addition, the locations of the gaps found in the early
+becomes much less reliable.                                           alignments are also given reduced gap opening penalties. It has
+   There are two major problems with the progressive approach:        been observed in alignments between sequences of known
+the local minimum problem and the choice of alignment                 structure that gaps tend not to be closer than roughly eight
+parameters. The local minimum problem stems from the 'greedy'         residues on average (12). We increase the gap opening penalty
+nature of the alignment strategy. The algorithm greedily adds         within eight residues of exising gaps. The two main series of
+sequences together, following the initial tree. There is no           amino acid weight matrices that are used today are the PAM
+guarantee that the global optimal solution, as defined by some        series (3) and the BLOSUM series (4). In each case, there is
+overall measure of multiple alignment quality (7,8), or anything      a range of matrices to choose from. Some matrices are
+close to it, will be found. More specifically, any mistakes           appropriate for aligning very closely related sequences where
+(misaligned regions) made early in the alignment process cannot       most weight by far is given to identities, with only the most
+be corrected later as new information from other sequences is         frequent conservative substitutions receiving high scores. Other
+added. This problem is frequently thought of as mainly resulting      matrices work better at greater evolutionary distances where less
+from an incorrect branching order in the initial tree. The initial    importance is attached to identities (13). We choose different
+trees are derived from a matrix of distances between separately       weight matrices, as the alignment proceeds, depending on the
+aligned pairs of sequences and are much less reliable than trees      estimated divergence of the sequences to be aligned at each stage.
+from complete multiple alignments. In our experience, however,           Sequences are weighted to correct for unequal sampling across
+the real problem is caused simply by errors in the initial            all evolutionary distances in the data set (14). This down-weights
+alignments. Even if the topology of the guide tree is correct, each   sequences that are very similar to other sequences in the data
+alignment step in the multiple alignment process may have some        set and up-weights the most divergent ones. The weights are
+percentage of the residues misaligned. This percentage will be        calculated directly from the branch lengths in the initial guide
+very low on average for very closely related sequences but will       tree (15). Sequence weighting has already been shown to be
+increase as sequences diverge. It is these misalignments which        effective in improving the sensitivity of profile searches (15,16).
+carry through from the early alignment steps that cause the local     In the original CLUSTAL programs (17-19), the initial guide
+minimum problem. The only way to correct this is to use an            trees, used to guide the multiple alignment, were calculated using
+iterative or stochastic sampling procedure (e.g. 7,9,10). We do       the UPGMA method (20). We now use the Neighbour-Joining
+not directly address this problem in this paper.                      method (21) which is more robust against the effects of unequal
+   The alignment parameter choice problem is, in our view, at         evolutionary rates in different lineages and which gives better
+least as serious as the local minimum problem. Stochastic or          estimates of individual branch lengths. This is useful because it
+iterative algorithms will be just as badly affected as progressive    is these branch lengths which are used to derive the sequence
+ones if the parameters are inappropriate: they will arrive at a       weights. We also allow users to choose between fast approximate
+false global minimum. Traditionally, one chooses one weight           alignments (22) or full dynamic programming for the distance
+matrix and two gap penalties (one for opening a new gap and           calculations used to make the guide tree.
+one for extending an existing gap) and hope that these will work        The new improvements dramatically improve the sensitivity
+well over all parts of all the sequences in the data set. When the    of the progressive alignment method for difficult alignments
+sequences are all closely related, this works. The first reason       involving highly diverged sequences. We show one very
+is that virtually all residue weight matrices give most weight to     demanding test case of over 60 SH3 domains (23) which includes
+identities. When identities dominate an alignment, almost any         sequence pairs with as little as 12% identity and where there is
+weight matrix will find approximately the correct solution. With      only one exactly conserved residue across all of the sequences.
+very divergent sequences, however, the scores given to non-           Using default parameters, we can achieve an alignment that is
+identical residues will become critically important; there will be    almost exactly correct, according to available structural
+more mismatches than identities. Different weight matrices will       information (24). Using the program in a wide variety of
+be optimal at different evolutionary distances or for different       situations, we find that it will normally find the correct alignment
+classes of proteins.                                                  in all but the most difficult and pathological of cases.
+   The second reason is that the range of gap penalty values that
+will find the correct or best possible solution can be very broad     MATERIAL AND METHODS
+for highly similar sequences (11). As more and more divergent         The basic alignment method
+sequences are used, however, the exact values of the gap penalties    The basic multiple alignment algorithm consists of three main
+become important for success. In each case, there may be a very       stages: (i) all pairs of sequences are aligned separately in order
+narrow range of values which will deliver the best alignment.         to calculate a distance matrix giving the divergence of each pair
+Further, in protein alignments, gaps do not occur randomly (i.e.      of sequences; (ii) a guide tree is calculated from the distance
+with equal probability at all positions). They occur far more often   matrix; (iii) the sequences are progressively aligned according
+between the major secondary structural elements of a-helices and      to the branching order in the guide tree. An example using 7
+fl-strands than within (12).                                          globin sequences of known tertiary structure (25) is given in
+   The major improvements described in this paper attempt to          Figure 1.
+address the alignment parameter choice problem. We dynamically
+vary the gap penalties in a position- and residue-specific manner.     The distance matrix/pairwise alignments
+The observed relative frequencies of gaps adjacent to each of         In the original CLUSTAL programs, the pairwise distances were
+the 20 amino acids (12) are used to locally adjust the gap opening    calculated using a fast approximate method (22). This allows very
+
+===== page 3 [pdftotext] =====
+                                                                                                                                                 Nucleic Acids Research, 1994, Vol. 22, No. 22 4675
+                                           Hbb_Human
+                                           Hbb_Horse
+                                                                1I
+
+                                                                2       .17
+                                                                                                                                           In Figure 1 we give the 7 x7 distance matrix between the 7 globin
+                                           Hba_Hunan
+                                           Hba_Horse
+                                                                3
+                                                                4
+                                                                        59
+                                                                        59
+                                                                                    .60
+                                                                                  .59         .13
+                                                                                                                                           sequences calculated using the full dynamic programming
+ Pairwise alignment
+ Caculate ditnemti
+                                           MygYPhyca
+                                           GlbS_Petma
+                                                                5
+                                                                6
+                                                                        .77
+                                                                        .81
+                                                                                  .77
+                                                                                  .82
+                                                                                              .75
+                                                                                              .73
+                                                                                                          .75
+                                                                                                          .74
+                                                                                                                                           method.
+
+
+
+           l
+                                                                                                                        .90
+                                           Lgb2_Luplu           7       .87       .86         .86         .88
+
+                                                                                                                                           The guide tree
+                                                           Hba-Horse                                                    Myg_Phy-a          The trees used to guide the final multiple alignment process are
+                                                       Hba_Hun
+                                                       HbbbHorse
+                                                                                                                                           calculated from the distance matrix of step 1 using the Neighbour-
+   UnotdNeighbor-joiningt
+                                                      Hbb_Hunun                                                          GIb5_Petna
+                                                                                                                                           Joining method (21). This produces unrooted trees with branch
+                                                                                                                                           lengths proportional to estimated divergence along each branch.
+                                                                                                                                           The root is placed by a 'mid-point' method (15) at a position
+                                                                                                                 Lgb2_Luplu                where the means of the branch lengths on either side of the root
+                                                                                                                                           are equal. These trees are also used to derive a weight for each
+                                                                      086 Hbb_Human: 0.221
+                                                                                                                                           sequence (15). The weights are dependent upon the distance from
+                                                                .
+                                                               .226
+
+                                                                                      Hbb_Horse:            0.225
+                                                       061
+                                                                                                                                           the root of the tree but sequences which have a common branch
+  Rooted NJ tree (guide tree)
+                                                .01                                   Hba_Hunuan: 0.194
+                                                                                      Hba-jHorse: 0.203
+                                                                                                                                           with other sequences share the weight derived from the shared
+  and sequence weights                                                                                                                     branch. In the example in Figure 1, the leghaemoglobin
+                                                                                      ~~Myg..Pbyca:         0.411
+                                                               389
+                                                                                      Gib5Petma:            0398
+                                                                                                                                           (Lgb2-Luplu) gets a weight of 0.442, which is equal to the
+                                                                                      Lgb2..Lupiu:              0.442
+                                                                                                                                           length of the branch from the root to it. The human (-globin
+                                                                                                                                           (Hbb_Human) gets a weight consisting of the length of the
+                                            -VEK
+                                               9                W~                                                            1001.3?MLO   branch leading to it that is not shared with any other sequences
+                                                                                                                                           (0.081) plus half the length of the branch shared with the horse
+                                            _y, 2UVLVIaVWaKS
+                                           --V_
+                                           VwaIl *I3KKRSM1
+                                                          phtAinooDzL3Lvx4I1aLqcVDM1LK
+                                                                        tI3E0DLVKVY*IA0TIV0                                                 3-globin (0.226/2) plus one quarter the length of the branch
+                                                                                                                                           shared by all four haemoglobins (0.061/4) plus one fifth the
+  Progressive
+  alignmentn                                                                                                                               branch shared between the haemoglobins and myoglobin
+  Align following
+  the guide tree
+                            .aav                                                                                                           (0.015/5) plus one sixth the branch leading to all the vertebrate
+                                 _51i                                                                                                      globins (0.062). This sums to a total of 0.221. In contrast, in
+                                      _-
+                                       A = UWVXSVNDAX -==
+                                             ~~
+                                                   L=-
+                                                       Df --UOmnZDL
+                                                               ~~~~~~~~~~~~~~~~~~~~~~~~                         "QVD "                     the normal progressive alignment algorithm, all sequences would
+                           VI-                                               PM]Qv4?z
+                                                                                  Ga A=:vv
+                                                                                       AL
+                                                                                                                                           be equally weighted. The rooted tree with branch lengths and
+                                                                                                                                           sequence weights for the 7 globins is given in Figure 1.
+                                                                                                     E---
+
+                                  ZL                                   LDK   V1LhSV                 --1   ---
+
+
+                           LOW                        P)LDl                    IV         T   KY    ------
+                           LAV                    -   --       II- CI
+                                                              - A                              A------
+                                                                                                                                           Progressive alignment
+                           V
+                            .
+                                  I
+
+                                  .
+                                           I?
+                                            .
+                                                                                                    D     A-- -
+                                                                                                                                           The basic procedure at this stage is to use a series of pairwise
+                                                                                                                                           alignments to align larger and larger groups of sequences,
+                                                                                                                                           following the branching order in the guide tree. You proceed
+Figure 1. The basic progressive alignment procedure, illustrated using a set of                                                            from the tips of the rooted tree towards the root. In the globin
+7 globins of known tertiary structure. The sequence names are from Swiss Prot                                                              example in Figure 1 you align the sequences in the following
+(38): Hba_Horse: horse ca-globin; Hba-Human: human ca-globin; Hbb_Horse:                                                                   order: human vs. horse ,B-globin; human vs. horse ct-globin; the
+horse 3-globin; HbbHuman: human ,B-globin; Myg.Phyca: sperm whale
+myoglobin; Glb5.Petma: lamprey cyanohaemoglobin; Lgb2_Luplu: lupin                                                                         2 oa-globins vs. the 2 0-globins; the myoglobin vs. the
+leghaemoglobin. In the distance matrix, the mean number of differences per residue                                                         haemoglobins; the cyanohaemoglobin vs. the haemoglobins plus
+is given. The unrooted tree shows all branch lengths drawn to scale. In the rooted                                                         myoglobin; the leghaemoglobin vs. all the rest. At each stage
+tree, all branch lengths (mean number of differences per residue along each branch)                                                        a full dynamic programming (26,27) algorithm is used with a
+are given as well as weights for each sequence. In the multiple alignment, the
+approximate positions of the 7 a-helices common to all 7 proteins are shown.                                                               residue weight matrix and penalties for opening and extending
+This alignment was derived using CLUSTAL W with default parameters and                                                                     gaps. Each step consists of aligning two existing alignments or
+the PAM (3) series of weight matrices.                                                                                                     sequences. Gaps that are present in older alignments remain fixed.
+                                                                                                                                           In the basic algorithm, new gaps that are introduced at each stage
+                                                                                                                                           get full gap opening and extension penalties, even if they are
+large numbers of sequences to be aligned, even on a                                                                                        introduced inside old gap positions (see the section on gap
+microcomputer. The scores are calculated as the number of k-                                                                               penalties below for modifications to this rule). In order to
+tuple matches (runs of identical residues, typically 1 or 2 long                                                                           calculate the score between a position from one sequence or
+for proteins or 2-4 long for nucleotide sequences) in the best                                                                             alignment and one from another, the average of all the pairwise
+alignment between two sequences minus a fixed penalty for every                                                                            weight matrix scores from the amino acids in the two sets of
+gap. We now offer a choice between this method and the slower                                                                              sequences is used, i.e. if you align 2 alignments with 2 and 4
+but more accurate scores from full dynamic programming                                                                                     sequences respectively, the score at each position is the average
+alignments using two gap penalties (for opening or extending                                                                               of 8 (2 x4) comparisons. This is illustrated in Figure 2. If either
+gaps) and a full amino acid weight matrix. These scores are                                                                                set of sequences contains one or more gaps in one of the positions
+calculated as the number of identities in the best alignment divided                                                                       being considered, each gap versus a residue is scored as zero.
+by the number of residues compared (gap positions are excluded).                                                                           The default amino acid weight matrices we use are rescored to
+Both of these scores are initially calculated as per cent identity                                                                         have only positive values. Therefore, this treatment of gaps treats
+scores and are converted to distances by dividing by 100 and                                                                               the score of a residue versus a gap as having the worst possible
+subtracting from 1.0 to give number of differences per site. We                                                                            score. When sequences are weighted (see Improvements to
+do not correct for multiple substitutions in these initial distances.                                                                      progressive alignment, below), each weight matrix value is
+
+===== page 4 [pdftotext] =====
+4676 Nucleic Acids Research, 1994, Vol. 22, No. 22
+                                         Without sequence Weights:                Gap opein peralty
+               1   peeksava 1            Score-        m(t.T)
+               2   geekaa     1                   +    Y(t,1)
+               3   padktnv k aa                   +
+                                                  +
+                                                       Y(1,-)
+                                                       Y(1, )
+               4   aadktnv a                      +   K(k,v)
+                                                  +   M(k, 1)
+                                                  +   M(k,v)
+                                                  *   M(k, 1) /S
+
+               5   egewql     hv         With sequence Weights Wi:
+               6   aaekt k    sa         Bore -*      (tIV)*j5
+                                               +    M(t,L)Wj.w6
+                                              *     Kl1, )1SW
+                                              +     Y(1,1)*WzWe
+                                              +       Klk,v)WtW5
+                                              +       Y(lck,1) U%tW6
+                                              *       K(k,v)1I4W5
+                                              *       MM
+                                                       l,1) 1We/S                      QLSQEEMVLALWDKVN--EEEVGGEALGRLLVVYPWTQRFFDSFGDL
+                                                                                       VLSPADKTNVKAAWGKVGAHAGEYGAEALERMFLSFPTTKTYFPHFDLS
+                                                                                       VLSAADKTNVKAAWSKVGGHAGEYGAEALERMFLGFPTTKTYFPHFDLS
+Figure 2. The scoring scheme for comparing two positions from two alignments.
+Two sections of alignment with 4 and 2 sequences respectively are shown. The     Figure 3. The variation in local gap opening penalty is plotted for a section of
+score of the position with amino acids T,L,K,K versus the position with amino    alignment. The inital gap opening penalty is indicated by a dotted line. Two
+acids V and I is given with and without sequence weights. M(X,Y) is the weight   hydrophilic stretches are underlined. The lowest penalties correspond to the ends
+matrix entry for amino acid X versus amino acid Y. W,, is the weight for         of the alignment, the hydrophilic stretches and the two positions with gaps. The
+sequence n.                                                                      highest values are within 8 residues of the two gap positions. The rest of the
+                                                                                 variation is caused by the residue specific gap penalties (12).
+multiplied by the weights from the 2 sequences, as illustrated
+in Figure 2.                                                                     Dependence on the weight matrix. It has been shown (16,28) that
+Improvements to progressive alignment                                            varying the gap penalties used with different weight matrices can
+                                                                                 improve the accuracy of sequence alignments. Here, we use the
+All of the remaining modifications apply only to the fmal                        average score for two mismatched residues (i.e. off-diagonal
+progressive alignment stage. Sequence weighting is relatively                    values in the matrix) as a scaling factor for the GOP.
+straightforward and is already widely used in profile searches
+(15,16). The treatment of gap penalties is more complicated.                     Dependence on the similarity of the sequences. The per cent
+Initial gap penalties are calculated depending on the weight                     identity of the two (groups of) sequences to be aligned is used
+matrix, the similarity of the sequences and the length of the                    to increase the GOP for closely related sequences and decrease
+sequences. Then, an attempt is made to derive sensible local gap                 it for more divergent sequences on a linear scale.
+opening penalties at every position in each prealigned group of
+sequences that will vary as new sequences are added. The use                     Dependence on the lengths of the sequences. The scores for both
+of different weight matrices as the alignment progresses is novel                true and false sequence alignments grow with the length of the
+and largely by-passes the problem of initial choice of weight                    sequences. We use the logarithm of the length of the shorter
+matrix. The final modification allows us to delay the addition                   sequence to increase the GOP with sequence length. Using these
+of very divergent sequences until the end of the alignment                       three modifications, the initial GOP calculated by the program is:
+process, when all of the more closely related sequences have
+already been aligned.                                                            GOP - [GOP + log[min(N,M)]} * (average residue mismatch
+                                                                                 score) * (per cent identity scaling factor)
+Sequence weighting                                                               where N, M are the lengths of the two sequences.
+Sequence weights are calculated directly from the guide tree. The
+weights are normalised such that the biggest one is set to 1.0                   Dependence on the difference in the lengths of the sequences.
+and the rest are all less than 1.0. Groups of closely related                    The GEP is modified depending on the difference between the
+sequences receive lowered weights because they contain much                      lengths of the two sequences to be aligned. If one sequence is
+duplicated information. Highly divergent sequences without any                   much shorter than the other, the GEP is increased to inhibit too
+close relatives receive high weights. These weights are used as                  many long gaps in the shorter sequence. The initial GEP
+simple multiplication factors for scoring positions from different               calculated by the program is:
+sequences or prealigned groups of sequences. The method is
+illustrated in Figure 2. In the globin example in Figure 1, the                  GEP - GEP * [1.0 + Ilog(N/M)I]
+two at-globins get down-weighted because they are almost                         where N, M are the lengths of the two sequences.
+duplicate sequences (as do the two 3-globins); they receive a
+combined weight of only slightly more than if a single a-globin                  Position-specific gap penalties
+was used.                                                                        In most dynamic programming applications, the initial gap
+                                                                                 opening and extension penalties are applied equally at every
+Initial gap penalties                                                            position in the sequence, regardless of the location of a gap,
+Initially, two gap penalties are used: a gap opening penalty                     except for terminal gaps which are usually allowed at no cost.
+(GOP), which gives the cost of opening a new gap of any length,                  In CLUSTAL W, before any pair of sequences or prealigned
+and a gap extension penalty (GEP), which gives the cost of every                 groups of sequences are aligned, we generate a table of gap
+item in a gap. Initial values can be set by the user from a menu.                opening penalties for every position in the two (sets of) sequences.
+The software then automatically attempts to choose appropriate                   An example is shown in Figure 3. We manipulate the initial gap
+gap penalties for each sequence alignment, depending on the                      opening penalty in a position-specific manner, in order to make
+following factors.                                                               gaps more or less likely at different positions.
+
+===== page 5 [pdftotext] =====
+                                                                             Nucleic Acids Research, 1994, Vol. 22, No. 22 4677
+
+   The local gap penalty modification rules are applied in a           Divergent sequences
+hierarchical manner. The exact details of each rule are given          The most divergent sequences (most different on average from
+below. Firstly, if there is a gap at a position, the gap opening       all of the other sequences) are usually the most difficult to align
+and gap extension penalties are lowered; the other rules do not        correctly. It is sometimes better to delay the incorporation of these
+apply. This makes gaps more likely at positions where there are        sequences until all of the more easily aligned sequences are
+already gaps. If there is no gap at a position, then the gap opening   merged first. This may give a better chance of correctly placing
+penalty is increased if the position is within 8 residues of an        the gaps and matching weakly conserved positions against the
+existing gap. This discourages gaps that are too close together.       rest of the sequences. A choice is offered to set a cut-off (default
+Finally, at any position within a run of hydrophilic residues, the     is 40% identity or less with any other sequence) that will delay
+penalty is decreased. These runs usually indicate loop regions         the alignment of the divergent sequences until all of the rest have
+in protein structures. If there is no run of hydrophilic residues,     been aligned.
+the penalty is modified using a table of residue-specific gap
+propensities (12). These propensities were derived by counting         Software and algorithms
+the frequency of each residue at either end of gaps in alignments      Dynamic programming
+of proteins of known structure. An illustration of the application     The most demanding part of the multiple alignment strategy, in
+of these rules from one part of the globin example in Figure 1         terms of computer processing and memory usage, is the alignment
+is given in Figure 3.                                                  of two (groups of) sequences at each step in the final progressive
+                                                                       alignment. To make it possible to align very long sequences (e.g.
+Lowered gap penalties at existing gaps. If there are already gaps      dynein heavy chains at 5,000 residues) in a reasonable amount
+                                                                                                  -
+
+
+
+
+at a position, then the GOP is reduced in proportion to the number     of memory, we use the memory efficient dynamic programming
+of sequences with a gap at this position and the GEP is lowered        algorithm of Myers and Miller (26). This sacrifices some
+by a half. The new gap opening penalty is calculated as:               processing time but makes very large alignments practical in very
+                                                                       little memory. One disadvantage of this algorithm is that it does
+GOP - GOP * 0.3 * (no. of sequences without a gap/no. of               not allow different gap opening and extension penalties at each
+sequences).                                                            position. We have modified the algorithm so as to allow this and
+                                                                       the details are described in a separate paper (27).
+Increased gap penalties near existing gaps. If a position does
+not have any gaps but is within 8 residues of an existing gap,         Menus/file formats
+the GOP is increased by:                                               Six different sequence input formats are detected automatically
+                                                                       and read by the program: EMBL/Swiss Prot, NBRF/PIR,
+GOP - GOP * t2 + [(8 - distance from gap) * 2]/8j                      Pearson/FASTA (29), GCG/MSF (30), GDE (Steven Smith,
+                                                                       Harvard University Genome Center) and CLUSTAL format
+                                                                       alignments. The last three formats allow users to read in complete
+Reduced gap penalties in hydrophilic stretches. Any run of 5           alignments (e.g. for calculating phylogenetic trees or for addition
+hydrophilic residues is considered to be a hydrophilic stretch.        of new sequences to an existing alignment). Alignment output
+The residues that are to be considered hydrophilic may be set          may be requested in standard CLUSTAL format (self-explanatory
+by the user but are conservatively set to D, E, G, K, N, Q, P,         blocked alignments) or in formats compatible with the GDE,
+R or S by default. If, at any position, there are no gaps and any      PHYLIP (31) or GCG (30) packages. The program offers the
+of the sequences has such a stretch, the GOP is reduced by one         user the ability to calculate Neighbour-Joining phylogenetic trees
+third.                                                                 from existing alignments with options to correct for multiple hits
+                                                                       (32,33) and to estimate confidence levels using a bootstrap
+Residue-specific penalties. If there is no hydrophilic stretch and     resampling procedure (34). The trees may be output in the 'New
+the position does not contain any gaps, then the GOP is multiplied     Hampshire' format that is compatible with the PHYLIP package
+by one of the 20 numbers in Table 1, depending on the residue.         (31).
+If there is a mixture of residues at a position, the multiplication
+factor is the average of all the contributions from each sequence.     Alignment to an alignment
+                                                                       Profile alignment is used to align two existing alignments (either
+Weight matrices                                                        of which may consist of just one sequence) or to add a series
+Two main series of weight matrices are offered to the user: the        of new sequences to an existing alignment. This is useful because
+Dayhoff PAM series (3) and the BLOSUM series (4). The default          one may wish to build up a multiple alignment gradually,
+is the BLOSUM series. In each case, there is a choice of matrix        choosing different parameters manually or correcting intermediate
+ranging from strict ones, useful for comparing very closely related    errors as the alignment proceeds. Often, just a few sequences
+sequences to very 'soft' ones that are useful for comparing very       cause misalignments in the progressive algorithm and these can
+distantly related sequences. Depending on the distance between         be removed from the process and then added at the end by profile
+the two sequences or groups of sequences to be compared, we            alignment. A second use is where one has a high quality reference
+switch between 4 different matrices. The distances are measured        alignment and wishes to keep it fixed while adding new sequences
+directly from the guide tree. The ranges of distances and tables       automatically.
+used with the PAM series of matrices are: 80-100% :PAM20,
+60-80%:PAM60, 40-60%:PAM120, 0-40%:PAM350.                             Portability/availability
+The range used with the BLOSUM series is: 80-100%:                     The full source code of the package is provided free to academic
+BLOSUM80, 60-80% :BLOSUM62, 30-60% :BLOSUM45,                          users. The program will run on any machine with a full ANSI
+0-30%:BLOSUM30.                                                        conforming C compiler. It has been tested on the following
+
+===== page 6 [pdftotext] =====
+4678 Nucleic Acids Research, 1994, Vol. 22, No. 22
+hardware/software combinations: Decstation/Ultrix, Vax or               Table 1. Pascarella and Argos residue specific gap modification factors
+ALPHA/VMS, Silicon Graphics/IRIX. The source code and                   A                  1.13                          M                  1.29
+documentation are available by E-mail from the EMBL file server         C                  1.13                          N                  0.63
+(send the words HELP and HELP SOFTWARE on two lines                     D                  0.96                          p                  0.74
+to the internet address: Netserv@EMBL-Heidelberg.DE) or by              E                  1.31                          Q                  1.07
+anonymous FTP from FTP.EMBL-Heidelberg.DE. Queries may                  F                  1.20                          R                  0.72
+                                                                        G                  0.61                          S                  0.76
+be addressed by E-mail to Des.Higgins@EBI.AC.UK or                      H                  1.00                          T                  0.89
+Gibson@EMBL-Heidelberg.DE.                                              I                  1.32                          V                  1.25
+                                                                        K                  0.96                          Y                  1.00
+                                                                        L                  1.21                          W                  1.23
+RESULTS AND DISCUSSION                                                  The values are normalised around a mean value of 1.0 for H. The lower the
+Alignment of SH3 domains                                                value, the greater the chance of having an adjacent gap. These are derived from
+                                                                        the original table of relative frequencies of gaps adjacent to each residue (12)
+The -60 residue SH3 domain was chosen to illustrate the                 by subtraction from 2.0.
+performance of CLUSTAL W, as there is a reference manual
+alignment (23) and the fold is known (24). SH3 domains, with
+a minimum similarity below 12% identity, are poorly aligned             individually compared to the alignment as having apparently
+by progressive alignment programs such as CLUSTAL V and                 nonsense segments with respect to the other sequences.
+PILEUP: neither program can generate the correct blocks
+corresponding to the secondary structure elements.                      Finding the best alignment
+   Figure 4 shows an alignment generated by CLUSTAL W of                In cases where all of the sequences in a data set are very similar
+the example set of SH3 domains. The alignment was generated             (e.g. no pair less than 35% identical), CLUSTAL W will find
+in two steps. After progressive alignment, five blocks were             an alignment which is difficult to improve by eye. In this sense,
+produced, corresponding to structural elements, with gaps               the alignment is optimal with regard to the alternative of manual
+inserted exclusively in the known loop regions. The fl-strands          alignment. Mathematically, this is vague and can only be put on
+in blocks 1, 4 and 5 were all correctly superposed. However,            a more systematic footing by finding an objective function (a
+four sequences in block 2 and one sequence in block 3 were              measure of multiple alignment quality) that exactly mirrors the
+misaligned by 1-2 residues (underlined in Figure 4). A second           information used by an 'expert' to evaluate an alignment.
+progressive alignment of the aligned sequences, including the           Nonetheless, if an alignment is impossible to improve by eye,
+gaps, improved this alignment: A single misaligned sequence,            then the program has achieved a very useful result.
+H P55, remains in block 2 (boxed in Figure 4), while block                 In more difficult cases, as more divergent sequences are
+3 is now completely aligned. This alignment corrects several            included, it becomes increasingly difficult to find good alignments
+errors (e.g. P85A, P85B and FUS1) in the manual alignment (23).         and to evaluate them. What we find with CLUSTAL W is that
+   The SH3 alignment illustrates several features of CLUSTAL            the basic block-like structure of the alignment (corresponding to
+W usage. Firstly, in a practical application involving divergent        the major secondary structure elements) is usually recovered, with
+sequences, the initial progressive alignment is likely to be a good     some of the most divergent sequences misaligned in small regions.
+but not perfect approximation to the correct alignment. The             This is a very useful starting point for manual refinement, as
+alignment quality can be improved in a number of ways. If the           it helps define the major blocks of similarity. The problem
+block structure of the alignment appears to be correct, realignment     sequences can be removed from the analysis and realigned to
+of the alignment will usually improve most of the misaligned            the rest of the sequences automatically or with different parameter
+blocks: the existing gaps allow the blocks to 'float' cheaply to        settings. An examination of the tree used to guide the alignment
+a locally optimal position without disturbing the rest of the           will usually show which sequences will be most unreliably placed
+alignment. Remaining sequences which are doubtfully aligned             (those that branch off closest to the root and/or those that align
+can then be individually tested by profile alignment to the             to other single sequences at a very low level of sequence identity
+remainder: the misaligned H_P55 SH3 domain can be correctly             rather than align to a group of prealigned sequences). Finally,
+aligned by profile (with GOP c 8). The indel regions in the final       one can simply iterate the multiple alignment process by feeding
+alignment can then be manually cleaned up: usually the exact            an output alignment back into CLUSTAL W and repeating the
+alignment in the loop regions is not determinable, and may have         multiple alignment process (using the same or different
+no meaning in structural terms. It is then desirable to have a single
+gap per structural loop. CLUSTAL W achieved this for two of             parameters). The SH3 domain alignment in Figure 4 was derived
+the four SH3 loop regions (Figure 4).                                   in this way by 2 passes using default parameters. In the second
+  If the block structure of the alignment appears suspect, greater      pass, the local gap penalties are dominated by the placement of
+intervention by the user may be required. The most divergent            the initial major gap positions. The alignment will either remain
+sequences, especially if they have large insertions (which can          unchanged or will converge rapidly (after 1 or 2 extra passes)
+be discerned with the aid of dot matrix plots), should be left out      on a better solution. If the placement of the initial gaps is
+of the progressive alignment. If there are sets of closely related      approximately correct but some of the sequences are locally
+sequences that are deeply diverged from other sets, these can           misaligned, this works well.
+be separately aligned and then merged by profile alignment.
+Incorrectly determined sequences, containing frameshifts, can           Comparison with other methods
+also confound regions of an alignment: these can be hard to detect      Recently, several papers have addressed the problem of position-
+but sometimes they have been grouped within the excluded                specific parameters for multiple alignment. In one case (35), local
+divergent sequences: then they may be revealed when they are            gap penalties are increased in a-helical and 0-strand regions when
+
+===== page 7 [pdftotext] =====
+                                                                                               Nucleic Acids Research, 1994, Vol. 22, No. 22 4679
+
+ ASV_vSRC ttfvalydyesrte----t41sfk---itgjr1qivnnt ---------igdwwlahslttg ---------qtgyipsnyvapsd
+ RSV_vSRC ttfvalydyeswte-----tdl sfk - --kgir lqivnnt ----------g4nl1ahslttg ---------qtgyipsnyvapa4$
+  H_csRC1 ttfvalyt'esrte-----td'lsfk --- kgerlqivnnt ---------e*gdwwlahslstg ---------qtgyipsnyvapsd
+ Xl1cSRC1 ttfvalyzdyesrte-----tdlof k - --   lrqivnnt---------e6g4ww1arslssg ---------qtgyipsnyvaps~
+   H nSRC ttfvaly4yesrte ---- tklsfk---I..kg#rlqivnntrkvd ------vrqgdww1ahslstg ---------qtgyipsnyvaps4
+ Xl cSRC2 t t fva lydyeeorte-----td1sfr---kger1qivnnt ---------sgdwlarslssg ---------qtgyipenyvapst
+ ASV_vYES tvfvaly4tyeartt----dGlsfk---kglrfqiinnt            -gwasagkgisyaa
+   C cYES tvfvalydyeartt----d4lsfk---.cg4Wrfqiinnt----------*g4wwearsiatg ---------ktgyipsnyvapa4
+   HcYESl tifvalyd(yeartt-----edl.sfk---kg fiin-gdwwearsiatg---------kngyipsnyvapa
+  Xl cYES tVfValyttyeartt-----e41sfr---kg~rfgiinnt ----------eogdwwearsiatg ---------ktgyipsnyvapad
+  Xl cFYN tlfvaly4yearte---- d:dlsf q--- ~g~,kfqilnssa--e------gdwwearslttg ---------gtgyipsnyvapv
+   H cFYN tlfvalyIayearte-----ddlafh ---kgekfqilnss---------eog4wwearslttg ---------etgyipsnyvapv
+   M_cFGR tifvalydyeartg ---- ddlt ft---tg4,kfhilnnt--------- 1ty4wwearslssg ---------hrgyvpsnyvapv
+   H_cFGR tlfialyd4yearte---- d4ltft --- q"kfhilnnt ---------og4nwearslseg---------ktgcipsnyvap4
+   Ha_STK tifv&ly4yearie ---- e4lsfk --- ger1qiinta ----------dgdwwyarslitn ---------segyipatyvapek
+     *RHOK iivvaly4tyeaihh-----e4lsfq---.kg4qxuvvlees----------gewwkarslatr----------kegyipsnyvarv4q
+     H HCK tivvalydyeaihr---- e4lsfq----kgdqinvvleea----------gewwkarslatk ---------kegyipsnyvarvn
+     *HLYN divvalypydgihp-----ddlsfk --- kg~kkvleeh----------gewwkakslltk ---------kegfipsnyvakln
+      HBLK rfvvalfalyaa'vnd ----- 4lqvl --- kgklqvlrst ---------gawwlarslvtg ---------regyvpsnfvapve
+   H_LSKT nlvialhsyepshd----gqd1gfe---kguMq1ri1eqs----------gewwkaqslttg ---------qegfipfnfvakan
+     HILCK nlvialhsyepshd-----gdlgf e - - -tgqljerilIeqs----------gewwkaqsttg----------qegfipfnfvakan
+ FSV vABL nlfvalyafvasgd -----tlisit--kg:~klrvlgynh---------ngewceaqtkng ----------qgvvpsnyitpvn
+  Din ABLI qlfvalydfqagge---- ng1s1k---kg01qvrilsynk---------sgewceahssgn ----------vgwvpsnyvtpln
+   C cTKL    klvvalydyepthd-----gd1g1k---qgM'k1rv1ees----------gewwraqslttg----------qegliphnfvaxnvn
+ Ce_sem5/1 mneavael4fqagsp-----delsfk --- rgn__t1kv1nk4d-------- efhwykaeld--g ---------negfipsnyirmnte
+ ce_sem5/2 kfvqaifdfnpqes ----g:*1afk---tgdvit1in---------kd4pnnwegq1n- -n ---------rrgifpsnyvcpyn
+   Din_SRCl rvvvs1y4yksr e-----sdlsfmn--- kgdrmnevi4dt ----------sdnwrvvn1ttr ---------gegliplnfvaeer
+ASV GAGCRK eyvtralfdfkgn4d                 g1pk--gilkirlk-ewnem5--rzivyec
+    C Spca elvialydygeksp---- revtink---.kg4i1t11n --------k-------      kv]evn--d ---------rqgfvpaayvkklq
+   DmnSpca ecvvalydyteksp---- revsmnk--- cgdvltlln ---------snnkdwwkvevn--d--------- rqgfvpaayikkia%
+   DinSpcb phvkslfpfgqmm---gtrn11kskt ---------nddwwcvrkdn-g ---------vegfvpanyvreve;
+      H_PLC rtvkalyaykakrs ---- delfc---rga1ihnvs---------kepggwwkgdygt-r---------iqqyfpsnyvedis
+   R_PLCII cavkalfdykaqre-----d*ltft---ksaiiqnve-----------kdggwwrgdygg-k ---------kqlwfpsnyveemni
+   E PLCII cavkalfdykaqre-----deltft --- ksaiiqnve ----------qeggwwrgdygg-k ---------kqlwfpsnyveeumv
+    H-PLCI cavkalfdykaqre----d*ltfi --- ksaiignve ---------kqeggwwrgdygg-k ---------kqlwfpsnyveeinv
+H_RASA/GAp rrvrailpytkvpd----±d Ia- - -kg4mf ivhn ---------ele:dgwmwvtnlrtd---------eqgliveidlveevg
+   Ac M4ILE pqvkalydlydaqtg ---- diltfk- - -e g4t iivhq---------kdPagwwege1n--g ---------krgwvpanyvqdi
+   Ac-MILC eqaralydfaaenp----de1tfn---egavvtvin ---------ksnpd1wwegeln--g ---------grgvfpasyvelip
+      H_HS1 isavlydyqgegs-----d:elafd --- pdavitdie ----------v4egvwvrgrch- -g ---------hfglfpanyvklle
+      H VAV gtakarydfcar4r ----ees01sk---egdjiiki1nkk---------gqqgwwrgeiyg ----------rvgwfpanyveedy
+   Din_SRC2 klvvalyi1gkaie;g-----gd1svge--kn_aeyevidds ---------gehwwkvkdialg----------nvgyipsnyvqaea
+      R-CSK teciakynfhgtae-----qdlpfc --- kg4lvltiv-avtk---------dpnwykaknikvg----------regiipanyvgkre
+   H-NCK/l vvvnakfayvaqqe ------1dik- - -Icner1w1lds ----------kswwrvrns-nmn ---------ktgfvpsnyverkn
+   H_NCK/2 inpayvkfnymnaere-----dels ij- - -ozgtkgaizmIka---------dgwwrgsyn--g ---------qvgwfpsnyvteeg
+   H NCK/3 hvvqalypfsssnd---- ee1nfe---k-g_4vmndviekp --------enalpewwkcrkin-g ----------vglvpknyvtvznq
+  H_NCF1/l qtyraianyektsg----sBeMals --- tg4vvevveks ----------sgwwfcqznk--a ---------krgwipasf1ep,l4
+  H-NCF1/2 epyvaikaytaveg-----devsll --- egeavevihk -l--------1dgwwvirkd--d ---------vtgyfpenmylqksg
+  H_NCF2/1 eahrvlfgfvpetk-----eelqvnu--- pgnivfvlkkg ---------ndnwatvmfn--g ---------qkglvpcnylepve
+  H_NCF2/2 sqvealfsyeatgp-----ed1efq---eg4ii1v1skvn ---------eewlegeckg----------kvgifpkvfvedca
+    Y-ABPI pwataey4lydaaed-----ne1tfv---en4eqkiinie--------- f v4jddlgelkd-g ---------skglfpsniyvslgn
+  Y_EEMl/l kvikaky7syqaqts----ke1sfmn---egeWffyvsgd ---------e~kdwykasnp'stg ---------kegvvpktyfevft4
+  YBEEMl/2 lyaivlydfkaeka-----deltty --- vg466lficahh ---------ncewfiakpigrlg---------gpglvpvgfvsiid
+  C PBO/85 itaialy4yqaagd-----deisfd---pd4iitnie ---------mi4dgwwrgvck--g ---------ryglf panyvelrg-
+     YCDC25 g'ivvaay4fnypikk-dss-sq1lsvq---ggtiyilnkn ---------esagwwdglvidasngkv -------nrgwfpqnfgrplr
+   Y_SCD25 dvvectyqyftksr-----nklslr---vgdliyvltkg ---------sngwwdgv1irhsannn=ns1ail----drgwfppsftrsil
+    y-Fus1 ktytviqdyeprlt-----diiiris ---l1g*kvkilath ---------tgcvknqsivvakrlegvpdlea
+  OC_CACb favrtnvgynpspgd~vpvmilg,aJ±fr---pkdflhikeky---------tndwwiglvkctkegibv-----------nedrgfipspgvcldl
+     DinDL lyva1lf4ydpnrdd-glp-sr1pf--g41i1hvtnas--------- cdd-ewwqarrvlgdneieqgvsrwr
+    H P55 mnfmraqfd$ydpkkdn-lip-c a 1k-f gdiiqiinkI ---------dsnwwqgrvegsske--------saglipspelqewr
+   E P85A fgyralypfrrerp-----edlell---pg4vlvvsraalqalgvaigniirc-pqevgwmpglnertr ---------qrgdfpgtyveflg
+   E P85B ycqyralydykkere-----ediTlh --- lgdiltvnkgslvalgfsdgq*aJ&-peiiigwlngynettg ---------ergdfpgtyveyig
+    H_P8BE ycyralydykkere-----edidlh --- lg4iltvnkgslvalgfsdgp4a±&.-pe4igwlngynettg ---------ergdfpgtyveyig
+   Sp_STEE fqttaisdyenssn ------  kt--- ag4tiiviev1-----         ""-4dgwcdgics--e ---------krgwfptscidssk
+     H Atk kkvvalydymupina----nalqlr --- kgeyfilees ---------nl1pwwrardkn-g-------- -q-egyipsnyvteae
+
+
+
+   Figure 4. CLUSTAL W alignment of a set of SH3 domains taken from Musacchio et al. (23). Secondary structure assignments for the solved Spectrin (24) and
+   Fyn (39) domains are according to DSSP (40). The alignment was generated in two steps using default parameters. After full multiple alignment, the aligned sequences
+   were realigned. Segments which were correctly aligned in the second pass are underlined. The single misaligned segment in H-P55 and the misaligned residue
+   in H_NCKI2 are boxed. The sequences are coloured to illustrate significant features. All G (orange) and P (yellow) are coloured. Other residues matching a frequent
+   occurrence of a property in a column are coloured: hydrophobic = blue; hydrophobic tendency = light blue; basic = red; acidic = purple; hydrophilic = green;
+   unconserved = white. The alignment figure was prepared with the GDE sequence editor (S.Smith, Harvard University) and COLORMASK (J.Thompson, EMBL).
+
+
+
+   the 3-D structures of one or more of the sequences are known.                        number of available sequences and their evolutionary
+   In a second case (36), a hidden Markov model was used to                             relationships. It will also depend on the decision making process
+   estimate position-specific gap penalties and residue substitution                    during multiple aligrnment (e.g. when to change weight matrix)
+   weight matrices when large numbers of examples of a protein                          and the accuracy and appropriateness of our parameterisation.
+   domain were known. With CLUSTAL W, we attempt to derive                              In the long term, this can only be evaluated by exhaustive testing
+   the same information purely from the set of sequences to be                          of sets of sequences where the correct alignment (or parts of it)
+   aligned. Therefore, we can apply the method to any set of                            are known from structural information. What is clear, however,
+   sequences. The success of this approach will depend on the                           is that the modifications described here significantly improve the
+
+===== page 8 [pdftotext] =====
+4680 Nucleic Acids Research, 1994, Vol. 22, No. 22
+sensitivity of the progressive multiple alignment approach. This                   16. Luithy, R., Xenarios, I. and Bucher, P. (1994) Protein Sci. 3, 139-146.
+is achieved with almost no sacrifice in speed and efficiency.                      17. Higgins, D.G. and Sharp, P.M. (1988) Gene 73, 237-244.
+                                                                                   18. Higgins, D.G. and Sharp, P.M. (1989) CABIOS 5, 151-153.
+   There are several areas where further improvements in                           19. Higgins, D.G., Bleasby, A.J. and Fuchs, R. (1992) CABIOS 8, 189-191.
+sensitivity and accuracy can be made. Firstly, the residue weight                 20. Sneath, P.H.A. and Sokal, R.R. (1973) Numerical Taxonomy. W.H.
+matrices and gap settings can be made more accurate as more                            Freeman, San Francisco.
+and more data accumulate, while matrices for specific sequence                    21. Saitou, N. and Nei, M. (1987) Mol. Biol. Evol. 4, 406-425.
+types can be derived [e.g. for transmembrane regions (37)].                       22. Bashford, D., Chothia, C. and Lesk, A.M. (1987) J. Mol. Biol. 196,
+                                                                                        199-216.
+Secondly, stochastic or iterative optimisation methods can be used                23. Musacchio, A., Gibson, T., Lehto, V.-P. and Saraste, M. (1992). FEBS
+to refine initial alignments (7,9,10). CLUSTAL W could be run                          Lett. 307, 55-61.
+with several sets of starting parameters and in each case, the                    24. Musacchio, A., Noble, M., Pauptit, R., Wierenga, R. and Saraste, M. (1992).
+alignments refined according to an objective function. The search                      Nature, 359, 851 -855.
+                                                                                  25. Bashford, D., Chothia, C. and Lesk, A.M. (1987). J. Mol. Biol. 196,
+for a good objective function that takes into account the sequence-                     199-216.
+and position-specific information used in CLUSTAL W is a key                      26. Myers, E.W. and Miller, W. (1988). CABIOS 4, 11-17.
+area of research. Finally, the average number of examples of                      27. Thompson, J.D. (1994). CABIOS submitted for publication.
+each protein domain or family is growing steadily. It is not only                 28. Smith, T.F., Waterman, M.S. and Fitch, W.M. (1981) J. Mol. Evol. 18,
+important that programs can cope with the large volumes of data                        38-46.
+                                                                                  29. Pearson, W.R. and Lipman, D.J. (1988) Proc. Natl. Acad. Sci. USA. 85,
+that are being generated, they should be able to exploit the new                       2444-2448.
+information to make the alignments more and more accurate.                        30. Devereux, J., Haeberli, P. and Smithies, 0. (1984) Nucleic Acids Res. 12,
+Globally optimal alignments (according to an objective function)                       387-395.
+may not always be possible, but the problem may be avoided                        31. Felsenstein, J. (1989) Cladistics 5, 164-166.
+                                                                                  32. Kimura, M. (1980) J. Mol. Evol. 16, 111-120.
+if sufficiently large volumes of data become available. CLUSTAL                   33. Kimura, M. (1983) The Neutral Theory of Molecular Evolution. Cambridge
+W is a step in this direction.                                                         University Press, Cambridge.
+                                                                                  34. Felsenstein, J. (1985) Evolution 39, 783-791.
+                                                                                  35. Smith, R.F. and Smith, T.F. (1992) Protein Engng 5, 35-41.
+ACKNOWLEDGEMENTS                                                                  36. Krogh, A., Brown, M., Mian, S., Sjolander, K. and Haussler, D. (1994)
+                                                                                       J. Mol. Biol. 235-1501-1531.
+Numerous people have offered advice and suggestions for                           37. Jones, D.T., Taylor, W.R. and Thornton, J.M. (1994) FEBS Lett. 339,
+improvements to earlier versions of the CLUSTAL programs.                              269-275.
+D.H. wishes to apologise to all of the irate CLUSTAL V users                      38. Bairoch, A. and Bockmann, B. (1992) Nucleic Acids Res. 20, 2019-2022.
+who had to live with the bugs and lack of facilities for getting                  39. Noble, M.E.M., Musacchio, A., Saraste, M., Courtneidge, S.A. and
+trees in the New Hampshire format. We wish to specifically thank                       Wierenga, R.K. (1993) EMBO J. 12, 2617-2624.
+                                                                                  40. Kabsch, W. and Sander, C. (1983) Biopolymers 22, 2577-2637.
+Jeroen Coppieters who suggested using a series of weight matrices
+and Steven Henikoff for advice on using the BLOSUM matrices.
+We are grateful to Rein Aasland, Peer Bork, Ariel Blocker and
+Bertrand Seraphin for providing challenging alignment problems.
+T.G. and J.T. thank Kevin Leonard for support and encourage-
+ment. Finally, we thank all of the people who have been involved
+with various CLUSTAL programs over the years, namely Paul
+Sharp, Rainer Fuchs and Alan Bleasby.
+
+REFERENCES
+  1. Feng, D.-F. and Doolittle, R.F. (1987) J. Mol. Evol. 25, 351-360.
+ 2. Needleman, S.B. and Wunsch, C.D. (1970) J. Mol. Biol. 48, 443-453.
+ 3. Dayhoff, M.O., Schwartz, R.M. and Orcutt, B.C. (1978) In Atlas of Protein
+     Sequence and Structure, vol. 5, suppl. 3 (Dayhoff, M.O., ed.), pp 345-352.
+     NBRF, Washington.
+ 4. Henikoff, S. and Henikoff, J.G. (1992) Proc. Natl. Acad. Sci. USA 89,
+     10915-10919.
+ 5. Lipman, D.J., Altschul, S.F. and Kececioglu, J.D. (1989) Proc. Nad. Acad.
+     Sci. USA 86, 4412-4415.
+ 6. Barton, G.J. and Stemnberg, M.J.E. (1987) J. Mol. Biol. 198, 327-337.
+ 7. Gotoh, 0. (1993) CABIOS 9, 361-370.
+ 8. Altschul, S.F. (1989) J. Theor. Biol. 138, 297-309.
+ 9. Lukashin, A.V., Engelbrecht, J. and Brunak, S. (1992) Nucleic Acids Res.
+     20, 2511-2516.
+10. Lawrence, C.E., Altschul, S.F., Boguski, M.S., Liu, J.S., Neuwald, A.F.
+     and Wooton, J.C. (1993) Science 262, 208-214.
+11. Vingron, M. and Waterman, M.S. (1993) J. Mol. Biol. 234, 1-12.
+12. Pascarella, S. and Argos, P. (1992) J. Mol. Biol. 224, 461-471.
+13. Collins, J.F. and Coulson, A.F.W. (1987) In Nucleic Acid and Protein
+     Sequence Analysis, A Practical Approach (Bishop, M.J. and Rawlings, C.J.,
+     eds), chapter 13, pp. 323-358.
+14. Vingron, M. and Sibbald, P.R. (1993) Proc. Natl. Acad. Sci. USA 90,
+     8777-8781.
+15. Thompson, J.D., Higgins, D.G. and Gibson, T.J. (1994) CABIOS 10,
+     19-29.

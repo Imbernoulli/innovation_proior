@@ -1,0 +1,85 @@
+% % !TEX encoding = UTF-8
+% % !TEX Root = 0_main.tex
+% \section{Experiments}
+
+% To empirically evaluate our proposed method, we conduct experiments with different neural networks, including CNNs, LSTMs and Transformers on both Vision tasks and NLP tasks. 
+% Specifically, we first discuss the performance of CAdam on neural machine translation, on which the state-of-the-art employs Adam with ``warmup''.
+% Then, we will move to the typical optimization benchmarks to evaluate the effectiveness of our method. 
+% % \subsection{Transformer on Neural Machine Translation}
+% % We conduct experiments on IWSLT14 De-En dataset.
+% % \begin{table}[htb!]
+% %     \centering
+% %     \begin{tabular}{c|c|c|c|c}
+% %          \multirow{2}{*}{Method} &  \multicolumn{2}{c|}{IWSLT DE-EN}& \multicolumn{2}{c}{IWSLT EN-DE}\\
+% %          \cline{2-5}
+% %           & ppl & GLUE  & ppl & GLUE \\
+% %          \hline
+% %          Adam-warmup   &  & $34.66 \pm 0.014$ &  & \\
+% %          CAdam-9995   &  & $34.76 \pm 0.003$ &  &\\
+% %         %  CAdam-999-warmup   &  &  &  &\\
+         
+% %     \end{tabular}
+% %     \caption{GLUE score on Neural Machine Translation}
+% %     \label{tab:nmt}
+% % \end{table}
+
+% \subsection{Transformer on Neural Machine Translation}
+% We conduct experiments on IWSLT14 De-En dataset.
+% \begin{table}[htb!]
+%     \centering
+%     \begin{tabular}{c|c|c|c}
+%          Method & IWSLT DE-EN & IWSLT EN-DE & WMT16 EN-DE \\
+%          \hline
+%          Adam-warmup   & $34.66 \pm 0.014$ & $28.56 \pm 0.067$ & $26.93$\\
+%          CAdam-9995   & $34.76 \pm 0.003$ & $28.48 \pm 0.054$ & $27.27$\\
+%         %  CAdam-999-warmup   &  &  &  &\\
+         
+%     \end{tabular}
+%     \caption{BLEU score on Neural Machine Translation}
+%     \label{tab:nmt}
+% \end{table}
+% % \xiaodl{Tab 1. BLEU?}
+% \subsection{LSTM on Language Modeling}
+
+
+% \subsection{Convolutional Neural Neetwork on Cifar10 and ImageNet}
+% We conduct experiments on Cifar10, Cifar100, and IMageNet (ILSVRC2012) datasets.
+
+% \begin{table}[htb!]
+%     \centering
+%     \begin{tabular}{c|c|c|c}
+%          Method &  Cifar10 & Cifar100 & ImageNet\\
+%          \hline
+%          Adam   &  &  & \\
+%          CAdam   &  &  & \\
+         
+%     \end{tabular}
+%     \caption{Accuracy on Image Classification}
+%     \label{tab:image_cls}
+% \end{table}
+
+
+% \begin{figure}[t]
+% \centering
+% \begin{subfigure}[b]{0.48\textwidth}
+%     \centering
+%     \includegraphics[width=\textwidth]{fig/train_loss.pdf}
+%     \caption{\,}
+% \end{subfigure}%
+% \begin{subfigure}[b]{0.54\textwidth}
+%     \centering
+%     \includegraphics[width=\textwidth]{fig/test_acc.pdf}
+%     \caption{\,}
+% \end{subfigure}
+% \caption{Training of ResNet-18 on the cifa10 dataset. (a) Training loss. (b) Test accuracy.}
+%     \label{fig:cifa10}
+% \end{figure}
+
+% \begin{figure}[t]
+% \centering
+%     \includegraphics[width=\textwidth]{fig/cifa10_lr.pdf}
+% \caption{Performance on Cifar10 of CAdam, Adam and SGD with different learning rate. X-axis is the number of epoches. The upper row is the test accuracy and the lower row is the training loss. }
+% \label{fig:cifa10_lr}
+% \end{figure}
+
+% % \input{7approx.tex}

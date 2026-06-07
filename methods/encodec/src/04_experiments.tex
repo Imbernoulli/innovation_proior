@@ -1,0 +1,221 @@
+\begin{figure}[t]
+     \centering
+     \input{pullfigure.tikz}
+     \caption{Human evaluations (MUSHRA: comparative scoring of samples) across bandwidths of standard codecs
+     and neural codecs. For \encodec{} we report the 
+     initial bandwidth without entropy coding (in plain) and with entropy coding (hollow). Lyra-v2 is a neural audio codec, while EVS and Opus are competitive standard codecs. The audio samples are from speech and music. The ground truth is 16bits 24kHz wave.
+     \label{fig:mushra_bandwidth}}
+ \end{figure}
+
+\section{Experiments and Results}
+
+\subsection{Dataset}
+\label{experiments:dataset}
+
+\looseness=-1
+We train $\encodec$ on 24 kHz monophonic across diverse domains, namely: speech, noisy speech, music and general audio while we train the fullband stereo $\encodec$ on only 48 kHz music. 
+For speech, we use the clean speech segments from DNS Challenge 4~\citep{dns} and the Common Voice dataset~\citep{ardila2019common}. For general audio, we use on AudioSet~\citep{gemmeke2017audio} together with FSD50K~\citep{fonseca2021fsd50k}. 
+For music, we rely on the Jamendo dataset~\citep{bogdanov2019mtg} for training and evaluation and we further evaluate our models on music using a proprietary music dataset. Data splits are detailed in Appendix~\ref{sec:exp_details}. 
+
+For training and validation, we define a mixing strategy which consists in either sampling a single source from a dataset or performing on the fly mixing of two or three sources. Specifically, we have four strategies: (s1) we sample a single source from Jamendo with probability 0.32; (s2) we sample a single source from the other datasets with the same probability; (s3) we mix two sources from all datasets with a probability of 0.24; (s4) we mix three sources from all datasets except music with a probability of 0.12. 
+
+The audio is normalized by file and we apply a random gain between -10 and 6 dB. We reject any sample that has been clipped. Finally we add reverberation using room impulse responses provided by the DNS challenge with probability 0.2, and RT60 in the range [0.3, 1.3] except for the single-source music samples.
+For testing, we use four categories: clean speech from DNS alone, clean speech mixed with FSDK50K sample, Jamendo sample alone, proprietary music sample alone.
+
+\subsection{Baselines}
+
+Opus~\citep{valin2012definition} is a versatile speech and audio codec standardized by the IETF in 2012. 
+It scales from 6 kbps narrowband monophonic audio to 510 kbps fullband stereophonic audio. EVS~\citep{dietz2015overview} is a codec standardized in 2014 by 3GPP and developed for Voice over LTE (VoLTE).
+It supports a range of bitrates from 5.9 kbps to 128 kbps, and audio bandwidths from 4 kHz to 20 kHz. It is the successor of AMR-WB~\citep{bhagat2012adaptive}.% and retains full backwards compatibility.
+% Both Opus and EVS have been widely deployed for speech communication, audiovisual conferencing services and audio streaming over the internet and serve billions of daily users.
+We use both codecs to serve as traditional digital signal processing baselines. We also utilize MP3 compression at 64 kbps as an additional baseline for the stereophonic signal compression case. MP3 uses lossy data compression by approximating the accuracy of certain components of sound that are considered to be beyond hearing capabilities of most humans. Finally, we compare $\encodec$ to the SoundStream model from the official implementation available in Lyra 2~\footnote{https://github.com/google/lyra} at 3.2 kbps and 6 kbps on audio upsampled to 32 kHz.
+We also reproduced a version of SoundStream~\citep{zeghidour2021soundstream} with minor improvements. Namely, we use the relative feature loss introduce in Section~\ref{model:losses}, and layer normalization (applied separately for each time step) in the discriminators, except for the first and last layer, which improved the audio quality during our preliminary studies. Results a reported in Table~\ref{tab:comp} in the Appendix~\ref{sec:add_res}.
+
+% over signals sampled at 24 kHz~\footnote{As no official implementation is provided, we use our own implementation for the SoundStream model, after reaching comparable results to the ones reported in the SoundStream paper.}. 
+% SoundStream model was developed to support for operates on signals sampled at 24 kHz and supports a range of bitrates from 3kbps to 18kbps, with the option of having a single model handling multiple bitrates. It is relying on a fully convolutional encoder-decoder architecture inspired from \cite{melgan}, a residual vector quantizer and it was trained with a combination of adversarial and reconstruction losses for audio generation.  
+
+% \adios{rephrase this paragraph to include only diffq and our won soundstream implementation}
+% We additionally introduce and evaluate another fully differentiable vector quantizer based on Gumbel-Softmax (GS)~\cite{jang2016categorical}. In which, we follow the same neural architecture and replace the quantization layer with a GS layer. A formal definition of the GS quantizer can be found in Appendix~\ref{sec:model:gs}.
+
+
+% \vspace{-0.1cm}
+\subsection{Evaluation Methods}
+\label{eval_methods}
+We consider both subjective and objective evaluation metrics. For the subjective tests we follow the MUSHRA protocol~\citep{series2014method}, using both a hidden reference and a low anchor. Annotators were recruited using a crowd-sourcing platform, in which they were asked to rate the perceptual quality of the provided samples in a range between 1 to 100. We randomly select 50 samples of 5 seconds from each category of the the test set and force at least 10 annotations per samples. To filter noisy annotations and outliers we remove annotators who rate the reference recordings less then 90 in at least 20\% of the cases, or rate the low-anchor recording above 80 more than 50\% of the time. 
+For objective metrics, we use ViSQOL~\citep{hines2012visqol,chinen2020visqol}~\footnote{We compute visqol with: \url{https://github.com/google/visqol} using the recommended recipes.}, together with the Scale-Invariant Signal-to-Noise Ration (SI-SNR)~\citep{luo2019conv, nachmani2020voice, chazan2021single}. 
+
+\subsection{Training}
+\label{training}
+
+We train all models for 300 epochs, with one epoch being 2,000 updates with the Adam optimizer with a batch size of 64 examples of 1 second each, a learning rate of $3\cdot 10^{-4}$, $\beta_1=0.5$, and $\beta_2=0.9$. 
+All the models are traind using 8 A100 GPUs. We use the balancer introduced in Section~\ref{model:losses}
+with weights
+$\lambda_t = 0.1$, $\lambda_f = 1$, $\lambda_g=3$, $\lambda_\mathrm{feat} = 3$ for the 24 kHz models.
+For the 48 kHz model, we use instead $\lambda_g=4$, $\lambda_\mathrm{feat} = 4$.
+
+% We train on 4 A100 GPUs hosted on AWS for most experiments except the 48 kHz for which 8 GPUs are used.
+
+\subsection{Results}
+\label{results}
+
+\begin{table}[t]
+    \caption{MUSHRA scores for Opus, EVS, Lyra-v2, and $\encodec$ for various bandwidths under the streamable setting. Results are reported across different audio categories (clean speech, noisy speech, and music), sampled at 24 kHz. We report mean scores and 95\% confidence intervals.
+    For \encodec{}, we also report the average bandwidth after using the entropy coding described in Section~\ref{sec:lm}. \label{tab:main_table}}
+  \centering
+  \setlength\tabcolsep{4pt}
+  \resizebox{0.95\textwidth}{!}{
+  \begin{tabular}{lrrccccccc}
+    \toprule
+    Model & Bandwidth & Entropy Coded & Clean Speech & Noisy Speech & Music Set-1 & Music Set-2\\
+    \midrule
+    Reference & - & - & 95.5\pmr{1.6} & 93.9\pmr{1.8} & 93.2\pmr{2.5} & 97.1\pmr{1.3} \\
+    \midrule
+    Opus & 6.0 kbps  & - &30.1\pmr{2.8} & 19.1\pmr{5.9} & 20.6\pmr{5.8} & 17.9\pmr{5.3} \\
+    Opus & 12.0 kbps & - & 76.5\pmr{2.3} & 61.9\pmr{2.1} & 77.8\pmr{3.2} & 65.4\pmr{2.7} \\
+    \midrule
+    EVS  & 9.6 kbps & - & 84.4\pmr{2.5} & 80.0\pmr{2.4} & 89.9\pmr{2.3} & 87.7\pmr{2.3} \\
+    \midrule
+    Lyra-v2  & 3.0 kbps & - & 53.1\pmr{1.9} & 52.0\pmr{4.7} & 69.3\pmr{3.3} & 42.3\pmr{3.5} \\
+    Lyra-v2  & 6.0 kbps & - &66.2\pmr{2.9} & 59.9\pmr{3.3} & 75.7\pmr{2.6} & 48.6\pmr{2.1} \\
+    \midrule
+    \encodec  & 1.5 kbps & 0.9 kbps &49.2\pmr{2.4} & 41.3\pmr{3.6} & 68.2\pmr{2.2} & 66.5\pmr{2.3} \\
+    \encodec  & 3.0 kbps & 1.9 kbps& 67.0\pmr{1.5} & 62.5\pmr{2.3} & 89.6\pmr{3.1} & 87.8\pmr{2.9} \\
+    \encodec  & 6.0 kbps & 4.1 kbps & 83.1\pmr{2.7} & 69.4\pmr{2.3} & 92.9\pmr{1.8} & 91.3\pmr{2.1} \\
+    \encodec  & 12.0 kbps & 8.9 kbps & 90.6\pmr{2.6} & 80.1\pmr{2.5} & 91.8\pmr{2.5} & 92.9\pmr{1.2} \\
+    \bottomrule
+  \end{tabular}}
+\end{table}
+
+
+
+\looseness=-1
+We start with the results for $\encodec$ with a bandwidth in $\{1.5, 3, 6, 12\}$ kbps and compare them to the baselines. Results for the streamable setup are reported in Figure~\ref{fig:mushra_bandwidth} and a breakdown per category in Table~\ref{tab:main_table}. We additionally explored other quantizers such as Gumbel-Softmax and DiffQ (see details in Appendix~\ref{sec:abb_quant}), however, we found in preliminary results that they provide similar or worse results, hence we do not report them.
+
+When considering the same bandwidth, \encodec is superior to all evaluated baselines considering the MUSHRA score. Notice, \encodec at 3kbps reaches better performance on average than Lyra-v2 using 6kbps and Opus at 12kbps. When considering the additional language model over the codes, we can reduce the bandwidth by $\sim 25-40\%$. For instance, we can reduce the bandwidth of the 3 kpbs model to 1.9 kbps. We observe that for higher bandwidth, 
+the compression ratio is lower, which could be explained by the small size of the Transformer model used, making
+hard to model all codebooks together.
+
+
+\subsubsection{Ablation study}
+\label{results:comparison}
+Next, we perform an ablation study to better evaluate the effect of the discriminator setup, streaming, multi-target bandwidth, and balancer. We provide more detailed ablation studies in the Appendix, Section~\ref{sec:add_res}.
+
+{\noindent \bf The effect of discriminators setup.}
+Various discriminators were proposed in prior work to improve the perceptual quality of the generated audio. The Multi-Scale Discriminator (MSD) model proposed by~\citet{melgan} and adopted in~\citep{hifigan, hifi++, zeghidour2021soundstream}, operates on the raw waveform at different resolutions. We adopt the same MSD configuration as described in~\citet{zeghidour2021soundstream}. \citet{hifigan} additionally propose the Multi-Period Discriminator (MPD) model, which reshapes the waveform to a 2D input with multiple periods.
+% We set the periods to [1, 2, 3, 4, 5] on 24 kHz audio as it greatly improves the audio reconstruction quality and MOS scores compared to the original periods of [2, 3, 5, 7, 11] that appears to be better suited for 48 kHz.
+Next, the STFT Discriminator (Mono-STFTD) model was introduced in~\citet{zeghidour2021soundstream}, where a single network operates over the complex-valued STFT. 
+
+\begin{table}[t!]
+  \caption{Comparing discriminators using objective (ViSQOL, SI-SNR) and subjective metrics (MUSHRA).\label{tab:discriminators}}
+  \centering
+  \begin{tabular}{lccccc}
+    \toprule
+    Discriminator setup & SI-SNR & ViSQOL & MUSHRA\\
+    \midrule
+    MSD+Mono-STFT         & 5.99 & 4.22 & 62.91\pmr{2.62}\\
+    % MSD+Mono-STFT         & \textbf{6.67} & \textbf{4.38} & 47.2\pmr{3.4}\\
+    MPD                   & 7.35 & 4.24 & 60.7\pmr{2.8}\\
+    MS-STFT+MPD           & 6.55 & \textbf{4.34} & \textbf{79.0\pmr{1.9}}\\
+    \midrule
+    MS-STFT               & \textbf{6.67} & \textbf{4.35} & \textbf{77.5\pmr{1.8}}\\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\looseness=-1
+We evaluate our MS-STFTD discriminator against three other discriminator configurations: (i) MSD+Mono-STFTD (as in~\citet{zeghidour2021soundstream}); (ii) MPD only; (iii) MS-STFTD only; (vi) MS-STFTD+MPD. Results are reported in Table~\ref{tab:discriminators}. Results suggest that using only a multi-scale STFT-based discriminator such as MS-STFTD, is enough to generate high quality audio. Additionally, it simplifies the model training and reduces training time. Including the MPD discriminator, adds a small gain when considering the MUSHRA score. 
+
+
+\begin{table}[t!]
+  \caption{Streamable vs. Non-streamable evaluations at 6 kbps on an equal mix of speech and music.\label{tab:cnc}}
+  \centering
+  \begin{tabular}{lcccc}
+    \toprule
+    Model & Streamable &  SI-SNR & ViSQOL\\
+    \midrule
+    Opus     & \ding{51}  & 2.45 & 2.60\\
+    EVS      & \ding{51}  & 1.89 & 2.74\\
+    \encodec & \ding{51}  & 6.67 & 4.35\\
+    \encodec & \ding{55}  & 7.46 & 4.39\\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+
+
+{\noindent \bf The effect of the streamable modeling.}
+We also investigate streamable vs. non-streamable setups and report results in Table~\ref{tab:cnc}. Unsurprisingly, we notice a small degradation switching from non-streamable to streamable but the performance remains strong while this setting enables streaming inference.
+
+{\noindent \bf The effect of the balancer.}
+Lastly, we present results evaluating the impact of the balancer. We train the $\encodec$ model considering various values $\lambda_t$, $\lambda_f$, $\lambda_g$, and $\lambda_{feat}$ with and without the balancer. Results are reported in Table~\ref{tab:balancer} in the Appendix. As expected, results suggest the balancer significantly stabilizes the training process. See Appendix~\ref{sec:add_res} for more details. 
+
+\subsubsection{Stereo Evaluation}
+\label{results:stereo}
+\begin{table}
+  \centering
+  \caption{\textbf{Stereophonic} extreme music compression versus MP3 and Opus for music sampled at 48 kHz. 
+  \label{tab:stereo}}
+  \begin{tabular}{lrrrc}
+    \toprule
+    Model & Bandwidth & Entropy Coded & Compression &  MUSHRA \\
+    \midrule
+    Reference & - & - & 1$\times$ & \textbf{95.1\pmr{1.8}}\\
+    \midrule
+    MP3 & 64 kbps & - & 24$\times$            & 82.7\pmr{3.2}\\
+    Opus & 6 kbps& - & 256$\times$          & 17.7\pmr{5.9}\\
+    Opus & 24 kbps& - &64$\times$         & 82.9\pmr{3.7}\\
+    \encodec & 6  kbps& 4.2 kbps & 256$\times$     & 82.9\pmr{2.4} \\
+    \encodec & 12 kbps& 8.9 kbps & 128$\times$	 & \textbf{88.0\pmr{2.7}} \\
+    \encodec & 24 kbps& 19.4 kbps & 64$\times$	 & \textbf{87.5\pmr{2.6}} \\
+    \bottomrule
+    \end{tabular}
+\end{table}
+
+All previously reported results considered only the monophonic setup. Although it makes sense when considering speech data, however for music data, stereo compression is highly important. We adjust our current setup to stereo by only modifying our discriminator setup as described in Section~\ref{model:losses}.
+
+Results for $\encodec$ working at 6 kbps, $\encodec$ with Residual Vector Quantization (RVQ) at 6 kbps, and Opus at 6 kbps, and MP3 at 64 kbps are reported in Table~\ref{tab:stereo}. \encodec is significantly outperforms Opus at 6kbps and is comparable to MP3 at 64kbps, while \encodec at 12kpbs achieve comparable performance to \encodec at 24kbps. Using a language model and entropy coding gives a variable gain
+between 20\% to 30\%.
+
+\subsection{Latency and computation time}
+\label{sec:latency}
+
+
+\begin{table}
+  \centering
+  \caption{Initial latency and real time factor (RTF) for Lyra~v2, \encodec at 24 kHz and 48 kHz. A RTF greater than 1 indicates faster than real time processing.
+  We report the RTF for both the encoding (Enc.) and decoding (Dec.), without and 
+  with entropy coding (EC). All models are evaluated at 6 kbps.
+  \label{tab:latency}}
+    % \resizebox{0.8\textwidth}{!}{
+  \begin{tabular}{lcrrrr}
+    \toprule
+    & & \multicolumn{4}{c}{Real Time Factor}\\
+    \cmidrule{3-6}
+    Model & Latency & \emph{Enc.} & \emph{Dec.} &  \emph{Enc. + EC} & \emph{Dec. + EC}  \\
+    \midrule
+    Lyra v2 (32 kHz) & - & 27.4 & 67.2 & - & - \\
+    \midrule
+    \encodec 24 kHz & 13 ms & 9.8 & 10.4 & 1.6 & 1.6\\
+    \encodec 48 kHz & 1 s & 6.8 & 5.1 & 0.68 & 0.66\\
+    \bottomrule
+    \end{tabular}
+    % }
+\end{table}
+
+We report the initial latency and real time factor on Table~\ref{tab:latency}.
+The real-time factor is here defined as the ratio between the duration of the audio and the processing time, so that it is greater than one when the method is faster than real time. We profiled all models on a single thread of a MacBook Pro 2019 CPU at 6 kbps. 
+
+\looseness=-1
+{\noindent \bf Initial latency.}
+The 24 kHz streaming \encodec{} model has an initial latency (i.e., without the computation time) of 13.3 ms.
+The 48 kHz non-streaming version has an initial latency of 1 second, due to the normalizations used.
+Note that using entropy coding increases the initial latency, because the stream
+cannot be ``flushed'' with each frame, in order to keep the overhead small. 
+Thus decoding the frame at time $t$, requires for the frame $t + 1$ to be partially received, increasing the latency by 13ms.
+
+{\noindent \bf Real time factor.}
+While our model is worse than Lyra~v2 in term of processing speed, it processes the audio 10 times
+faster than real time, making it a good candidate for real life applications. The gain from the entropy coding comes at a cost, although the processing is still faster than real time and could be used
+for applications where latency is not essential (e.g. streaming). At 48 kHz, the increased number of step size lead to a slower than real time processing, although a more efficient implementation, or using 
+accelerated hardware would improve the RTF. It could also be used for archiving where real time processing is not required.
+

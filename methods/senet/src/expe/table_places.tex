@@ -1,0 +1,19 @@
+%------------------------------------- table --------------------------------------------
+\begin{table}[t]
+\renewcommand\arraystretch{1.1}
+\small
+\caption{Single-crop error rates (\%) on Places365 validation set.}
+\label{tab:places-results}
+\vspace{-1.5em}
+\begin{center}{\scalebox{0.95}{
+\begin{tabular}{l|p{1.3cm}<{\centering}|p{1.3cm}<{\centering}}
+\hline
+& top-1 err. & top-5 err.\\
+\hline
+Places-365-CNN \cite{shen_places365} & $41.07$ & $11.48$ \\
+ResNet-152 (ours) & $41.15$ & $11.61$ \\
+SE-ResNet-152 & \textbf{40.37} & \textbf{11.01} \\
+\hline
+\end{tabular}}}
+\end{center}
+\end{table}

@@ -1,0 +1,42 @@
+# Synthesis — Importance Sampling for Rare-Event Estimation
+
+## Three sources (all retrieved & read this run)
+1. **Primary (IS foundation)** — Kahn & Marshall 1953, "Methods of Reducing Sample Size in Monte Carlo Computations," *Operations Research* 1(5):263–278 (RAND P-337).
+   - Original is paywalled (INFORMS) and RAND hosts only a metadata page (no full-text PDF digitized); sci-hub/archive.org all failed. **GAP FLAGGED.**
+   - Its *actual* load-bearing result is reproduced and explicitly attributed in a faithful secondary I did read in full: Owen's MC chapter end-notes: "The famous result that the optimal importance density q(x) is proportional to p(x)|f(x)| appears in Kahn and Marshall (1953). They describe a variational approach…". This is the equation the whole method rests on, captured verbatim.
+2. **Background / communications anchor** — Ke, Zhu, Yi, He, Yang, Wang, "Adaptive Importance Sampling and Quasi-Monte Carlo Methods for 6G URLLC Systems," arXiv:2303.03575 (retrieved, read IS sections in full). Gives the BER/WER rare-event IS setup, relative error ≈ 1/√(p_e N), exponential tilting for BPSK/AWGN (mean translation g_θ = N(x+θ, σ²I)), variance scaling, optimal proposal g* = I(Y)π/E[I], the IS variance. Cites Smith-Shafi-Gao as "[2]" the gentle intro to IS in comms.
+   - The candidate communications *primary*, Smith, Shafi & Gao 1997 "Quick simulation: a review of importance sampling techniques in communication systems," IEEE JSAC 15(4):597–613, is paywalled (IEEE Xplore / ACM DL / sci-hub all failed). **GAP FLAGGED.** The URLLC paper covers the same comms-IS ground and is retrievable.
+3. **Third-party explainers** — (a) Owen, "Importance Sampling" (Monte Carlo theory, methods & examples), chapter 9 (Stanford, artowen.su.domains), read pp.1-25,37-39 — basic IS, variance theorem 9.4, optimal zero-variance density, exponential tilting, exit-probability (Siegmund drift reversal). (b) Karl Sigman, Columbia IEOR 4703 notes "Rare event simulation and importance sampling" — crude MC variance σ/μ ~ 1/√p, change of measure, likelihood ratio, exponential tilting / Lundberg constant, insurance ruin.
+
+## The derivation spine (what reasoning.md must walk)
+- Want p_f = P(A) = E_p[1_A], A a rare set, p_f tiny (1e-6..1e-9 in URLLC; deep-fade/error-floor regime).
+- Crude MC: p̂ = (1/n)Σ 1_{A_i}, X_i = 1_{A_i}, μ = E = p_f, σ² = p_f(1-p_f). Relative error σ/μ = √((1-p_f)/p_f) ≈ 1/√p_f → ∞ as p_f→0 (Sigman). CI half-width z·σ/√n; to pin RELATIVE error to ε need n ≈ z²(1-p_f)/(ε² p_f) ≈ 1/(ε² p_f) → for ε=0.1 (10%), z≈2 → n ≈ 100/p_f samples. p_f=1e-9 → 1e11 samples. Infeasible.
+- Rewrite under new density q (positive wherever 1_A·p ≠ 0):
+  p_f = ∫ 1_A(x) p(x) dx = ∫ 1_A(x) [p(x)/q(x)] q(x) dx = E_q[1_A(X) · w(X)], w = p/q (likelihood ratio).
+- IS estimator p̂_q = (1/n) Σ 1_{A}(X_i) w(X_i), X_i ~ q. Unbiased (Owen 9.2): E_q[p̂_q]=p_f exactly, for any valid q.
+- Variance (Owen Thm 9.1): Var_q(p̂_q)=σ_q²/n, σ_q² = ∫_Q (1_A p)²/q dx − p_f² = ∫_Q (1_A p − p_f q)²/q dx.
+- Optimal q* (Kahn–Marshall): minimize σ_q² over q. With f=1_A ≥ 0 and μ=p_f>0, set q*(x)=1_A(x)p(x)/p_f. Then σ_{q*}²=0 — zero variance. Derivation: by the second form of σ_q², the integrand (1_A p − p_f q)²/q = 0 pointwise iff q ∝ 1_A p; normalize → q* = 1_A p / p_f. Or Cauchy–Schwarz: ∫(1_A p)²/q · ∫ q ≥ (∫ 1_A p)² = p_f², equality iff q ∝ 1_A p. (This is the Kahn–Marshall variational result q* ∝ |f|p.)
+- WALL: q* contains the unknown p_f in its normalizer — circular (computing q* requires the answer). Unusable directly. But it tells us the SHAPE: concentrate q on A, weighted by p there.
+- So pick a PARAMETRIC tilt q_θ near the shape of q*. For light-tailed p (Gaussian noise), exponential tilting = mean translation: shift the noise so the rare set becomes typical.
+  - Gaussian/BPSK/AWGN (URLLC eq.6): π(y|x)=N(x,σ²I). Tilt g_θ(y|x)=N(x+θ,σ²I). Likelihood ratio w = π/g_θ = exp(−(y−x)ᵀθ/σ²)·exp(−‖θ‖²/(2σ²))... careful with sign: π/g = exp(−[(y−x)ᵀθ]/σ²) exp(‖θ‖²/(2σ²))? Re-derive: log π−log g = −‖y−x‖²/(2σ²) + ‖y−x−θ‖²/(2σ²) = [‖y−x−θ‖²−‖y−x‖²]/(2σ²) = [−2(y−x)ᵀθ+‖θ‖²]/(2σ²). So w = exp([−2(y−x)ᵀθ+‖θ‖²]/(2σ²)) = exp(−(y−x)ᵀθ/σ²)·exp(‖θ‖²/(2σ²)). MATCHES URLLC eq.6 form (their eq.6 writes exp(−(y−x)ᵀθ/σ²)exp(‖θ‖²/(2σ²)) — verified).
+  - General exponential family / random walk (Sigman, Owen 9.6): twist f→ g_θ(x)=e^{θx}f(x)/K(θ), K MGF; for a negative-drift walk choose θ=γ (Lundberg constant, E_g e^{γΔ}=1 → K(γ)=1) so the tilted walk has POSITIVE drift and crosses level b w.p.1; w=e^{−γR}. Siegmund drift-reversal θ*=−θ0 for normal walk.
+- Choosing θ: minimize the IS variance, equivalently the 2nd moment E_θ[p̂²] (1st moment fixed = p_f²). URLLC Lemma1/Thm2: E_θ[p̂²]=(1/N)Σ I(y_i)² exp([−2(y−x)ᵀθ+‖θ‖²]/(2σ²)); convex in θ (∂²/∂θ²>0); optimal θ̂ solves ∇=0 → θ̂ = Σ I·(y−x)e^{−(y−x)ᵀθ̂/σ²} / Σ I·e^{−(y−x)ᵀθ̂/σ²} (fixed point). Practically: aim θ to translate the noise mean into the dominant error region (the decision-boundary / minimum-distance direction). For BPSK single-bit deep error, θ aligned to flip the sign of the matched-filter output — shift mean toward the boundary.
+- DANGER (Owen, repeatedly): wrong q → unbounded weights w=p/q → estimator variance can be WORSE than crude MC, even infinite. Happens when q has lighter tails than p in a region where 1_A p is non-negligible (q→0 magnifies (1_A p − p_f q)²/q). Over-tilting (θ too large) pushes mass past A; weights for the samples that DO land in A become huge. Must keep q's support ⊇ {1_A p ≠ 0} and avoid q decaying faster than p there. Self-normalized IS (divide by Σw) trades unbiasedness for stability when only unnormalized ratio is known.
+- LAND ON CODE: BPSK over AWGN, crude MC BER vs IS BER by mean-translation tilt of the noise toward the decision boundary; estimator p̂ = mean(1_{error}·w); compare variance / sample count.
+
+## Empirical discipline split
+- PRE-METHOD FACTS (→ context.md Background): rare-event phenomena are pre-existing: communication systems must hit BER/outage 1e-6..1e-9 (URLLC reliability targets); deep fades in Rayleigh dominate BER tails; LDPC error floors come from trapping/absorbing sets (Richardson 2003 "Error floors of LDPC codes"); PMD outage in optical. These are facts about the world / prior systems → context. Crude-MC "need ~100/p" is a derivable pre-method fact (large-deviations of binomial) — derive in reasoning, state setup in context.
+- DERIVE ON PAGE (reasoning.md): the 100/p_f sample bound, the change-of-measure identity, the zero-variance optimal density, the likelihood ratio for Gaussian tilt, the variance formula, the unbounded-weight failure mode.
+- EXCLUDED: any measured BER/outage numbers produced BY this IS method; the method's own speedup results. (URLLC numerics are this-paper-of-a-different-method's results; treat only the *setup* facts, not claim them as the IS method's win.)
+
+## Design decisions → why
+- Why change measure rather than just sample more? crude n~100/p_f infeasible; variance reduction is the only lever. (Sigman, URLLC.)
+- Why likelihood-ratio reweight? to keep the estimator UNBIASED for p_f under q (the p/q correction exactly undoes the measure change). (Owen 9.2.)
+- Why the optimal q* is unusable? its normalizer IS p_f (circular). So use a parametric family. (Owen p.5.)
+- Why exponential tilting / mean translation specifically? for light-tailed (Gaussian) noise the tilt that makes the rare set typical is a mean shift; it keeps q in the same family (cheap to sample, closed-form w), and exponential tilting is the large-deviations-optimal change of measure (gives the right exponential decay rate). (Owen 9.6, Sigman 1.1.1, URLLC.)
+- Why choose θ by minimizing 2nd moment / drift-reversal? 1st moment fixed, so min variance = min 2nd moment; convex in θ; Siegmund: drift-reversal asymptotically optimal as b→∞ (σ_θ*/μ stays bounded, no other θ does). (Owen 9.9, URLLC Thm2.)
+- Why is over-tilting dangerous? weights p/q blow up where q under-covers A; infinite variance possible. Keep support, don't over-shoot. (Owen p.3,5.)
+- Why self-normalized variant exists? when only π,g known up to constant; stabilizes weights at cost of bias O(1/n). (Owen 9.2, URLLC eq after (1).)
+
+## Code grounding
+- Canonical structure = standard BPSK/AWGN BER harness (gaussianwaves/dsplog standard: bits→±1, add N(0,σ²), σ²=N0/2, threshold at 0, count) + IS layer from URLLC eq.6-7 (shift noise mean by θ, weight exp([−2(y−x)ᵀθ+‖θ‖²]/(2σ²))). Theoretical check: BER=Q(√(2·Eb/N0)).

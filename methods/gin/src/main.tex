@@ -1,0 +1,244 @@
+\documentclass{article} % For LaTeX2e
+\usepackage{iclr2019_conference,times}
+
+% Optional math commands from https://github.com/goodfeli/dlbook_notation.
+\input{math_commands.tex}
+
+
+
+
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+
+
+%\usepackage{hyperref}       % hyperlinks
+%\usepackage[options]{nohyperref}  % This makes hyperref commands do nothing without errors
+%\usepackage[draft]{hyperref}
+\usepackage[hidelinks]{hyperref}
+\usepackage{url}            % simple URL typesetting
+
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+
+\usepackage{amsmath,amsthm,amssymb,bm} % define this before the line numbering.
+\usepackage{xspace}
+\usepackage{array}
+\usepackage{enumerate}
+\usepackage{enumitem}
+\usepackage{stmaryrd}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{multirow}
+\usepackage{times}
+% \usepackage[dvipdfmx]{graphicx}
+\usepackage{graphicx} % more modern
+\usepackage{natbib}
+\usepackage{algorithm}
+\usepackage{algorithmicx,algpseudocode}
+\usepackage{hyperref}
+\usepackage{sidecap}
+\usepackage{wrapfig}
+\usepackage{todonotes}
+
+\numberwithin{equation}{section}
+
+\sidecaptionvpos{figure}{t}
+
+\def\sint{\begingroup\textstyle\int\endgroup} % small integral
+
+\newcommand{\reals}{\mathbf{R}}
+\newcommand{\integers}{\mathbf{Z}}
+\newcommand{\naturals}{\mathbf{N}}
+\newcommand{\rationals}{\mathbf{Q}}
+
+% Caligraphic alphabet
+\newcommand{\calr}{\mathcal{R}} % only because \cr already taken
+%\newcommand{\ca}{\mathcal{A}} \newcommand{\cb}{\mathcal{B}} \newcommand{\cc}{\mathcal{C}} \newcommand{\cd}{\mathcal{D}} \newcommand{\ce}{\mathcal{E}} \newcommand{\cf}{\mathcal{F}} \newcommand{\cg}{\mathcal{G}} \newcommand{\ch}{\mathcal{H}} \newcommand{\ci}{\mathcal{I}} \newcommand{\cj}{\mathcal{J}} \newcommand{\ck}{\mathcal{K}} \newcommand{\cl}{\mathcal{L}} \newcommand{\cm}{\mathcal{M}} \newcommand{\cn}{\mathcal{N}} \newcommand{\co}{\mathcal{O}} \newcommand{\cp}{\mathcal{P}} \newcommand{\cq}{\mathcal{Q}} \newcommand{\cs}{\mathcal{S}} \newcommand{\ct}{\mathcal{T}} \newcommand{\cu}{\mathcal{U}} \newcommand{\cv}{\mathcal{V}} \newcommand{\cw}{\mathcal{W}} \newcommand{\cx}{\mathcal{X}} \newcommand{\cy}{\mathcal{Y}} \newcommand{\cz}{\mathcal{Z}}
+
+\newcommand{\ind}[1]{1_{#1}} % Indicator function
+\newcommand{\pr}{\mathbb{P}} % Generic probability
+\newcommand{\ex}{\mathbb{E}} % Generic expectation
+\newcommand{\var}{\textrm{Var}}
+\newcommand{\cov}{\textrm{Cov}}
+\newcommand{\sgn}{\textrm{sgn}}
+\newcommand{\kl}{\textrm{KL}} 
+
+\newcommand{\law}{\mathcal{L}}  % \law{X}, the measure associated with r.v. X
+\newcommand{\normal}{N} % for normal distribution (can probably skip this)
+
+% Convergence
+\newcommand{\convd}{\stackrel{d}{\longrightarrow}} % convergence in distribution/law/measure
+\newcommand{\convp}{\stackrel{p}{\longrightarrow}} % convergence in probability
+\newcommand{\convas}{\stackrel{\textrm{a.s.}}{\longrightarrow}} % convergence almost surely
+
+\newcommand{\eqd}{\stackrel{d}{=}} % equal in distribution/law/measure
+\newcommand{\conv}{\textrm{conv}} % for denoting the convex hull
+
+\newcommand{\inv}[1]{{#1}^{-1}}
+% Theorem-like declarations
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+\newcommand{\refalgo}[1]{Alg.~\ref{#1}}
+\newcommand{\refsec}[1]{Sec.~\ref{#1}}
+\newcommand{\reffig}[1]{Fig.~\ref{#1}}
+\newcommand{\reftab}[1]{Tab.~\ref{#1}}
+\newcommand{\refeq}[1]{Eq.~\ref{#1}}
+\newcommand{\refdef}[1]{Def.~\ref{#1}}
+\newcommand{\refthm}[1]{Thm.~\ref{#1}}
+\newcommand{\reflem}[1]{Lemma~\ref{#1}}
+\newcommand{\refcor}[1]{Corr.~\ref{#1}}
+
+\newcommand{\bp}{\mathbb{P}}
+
+\newcommand{\Ph}{\widehat{P}_k}
+\newcommand{\PC}{P_{\cc,k}}
+\newcommand{\Lc}{\widetilde{L}}
+\newcommand{\Yt}{\widetilde{Y}}
+\newcommand{\Pt}{\widetilde{P}}
+\newcommand{\Oc}{\mathcal{O}}
+
+\newcommand{\dist}{\kappa_{\Pi}} % distortion ratio 
+\newcommand{\pns}{\delta_{\Pi}} % probability of non-singularity (delta(M,k))
+\newcommand{\epsm}{\varepsilon_{\Pi}} % 1+\dist, epsilon(M, k)
+\newcommand{\nys}{Nystr\"om}
+
+\newcommand{\leftgr}[1]{{#1}^{\text{lr}}} % \leftgr
+\newcommand{\rightgr}[1]{{#1}^{\text{rr}}} % \rightgr
+\newcommand{\lobatto}[1]{{#1}^{\text{lo}}} % \tilde
+
+\newcommand{\loss}{\textrm{loss}}
+
+
+\newcommand{\nlsum}{\sum\nolimits}
+\newcommand{\set}[1]{\left\lbrace #1\right\rbrace}
+\DeclareMathOperator{\sspan}{span}
+
+\newcount\COMMENTs  % 0 suppresses notes to selves in text
+\COMMENTs=1   % TODO: set to 0 for final version
+\usepackage{color}
+\definecolor{darkgreen}{rgb}{0,0.5,0}
+\definecolor{purple}{rgb}{1,0,1}
+\newcommand{\comm}[2]{\ifnum\COMMENTs=1\textcolor{#1}{#2}\fi}
+% add yourself here:
+\newcommand{\cli}[1]{\comm{purple}      {[CL: #1]}}
+\newcommand{\sj}[1]  {\comm{red}   {[SJ: #1]}}
+\newcommand{\ssr}[1]{\comm{cyan}     {[SS: #1]}}
+%\newcommand{\revise}[1]{\comm{purple}     {[Revise #1]}}
+\newcommand{\jure}[1]{\comm{purple}      {[JL: #1]}}
+
+\newcount\REVISEs  % 0 suppresses notes to selves in text
+\REVISEs=0   % TODO: set to 0 for final version
+\usepackage{color}
+\definecolor{darkgreen}{rgb}{0,0.5,0}
+\definecolor{purple}{rgb}{1,0,1}
+\newcommand{\commm}[2]{\ifnum\REVISEs=1\textcolor{#1}{#2}\else#2\fi}
+% add yourself here:
+\newcommand{\revise}[1]{\commm{purple} {#1}}
+
+\newcommand{\ours}{\text{DAN}\xspace}
+\newcommand{\mnist}{\textbf{MNIST}\xspace}
+\newcommand{\usps}{\textbf{USPS}\xspace}
+\newcommand{\svhn}{\textbf{SVHN}\xspace}
+
+\newcommand{\single}{observation\xspace}
+\newcommand{\multi}{sample\xspace}
+\newcommand{\multis}{samples\xspace}
+
+\newcommand{\ie}{\textit{i.e.}}
+\newcommand{\eg}{\textit{e.g.}}
+
+
+\title{How Powerful are Graph Neural Networks?}
+
+% Authors must not appear in the submitted version. They should be hidden
+% as long as the \iclrfinalcopy macro remains commented out below.
+% Non-anonymous submissions will be rejected without review.
+
+\author{Keyulu Xu  \thanks{Equal contribution.} \ \thanks{Work partially performed while in Tokyo, visiting Prof. Ken-ichi Kawarabayashi.} \\
+MIT\\
+\texttt{keyulu@mit.edu} \\
+\And
+Weihua Hu \footnotemark[1] \ \thanks{Work partially performed while at RIKEN AIP and University of Tokyo.} \\
+Stanford University \\
+\texttt{weihuahu@stanford.edu} \\
+\And
+Jure Leskovec\\
+Stanford University \\
+\texttt{jure@cs.stanford.edu}\\
+\And
+Stefanie Jegelka\\
+MIT\\
+\texttt{stefje@mit.edu} \\
+}
+
+% The \author macro works with any number of authors. There are two commands
+% used to separate the names and addresses of multiple authors: \And and \AND.
+%
+% Using \And between authors leaves it to \LaTeX{} to determine where to break
+% the lines. Using \AND forces a linebreak at that point. So, if \LaTeX{}
+% puts 3 of 4 authors names on the first line, and the last on the second
+% line, try using \AND instead of \And before the third author name.
+
+\newcommand{\fix}{\marginpar{FIX}}
+\newcommand{\new}{\marginpar{NEW}}
+
+\iclrfinalcopy % Uncomment for camera-ready version, but NOT for submission.
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Graph Neural Networks (GNNs) are an effective framework for representation learning of graphs. GNNs follow a neighborhood aggregation scheme, where the representation vector of a node is computed by recursively aggregating and transforming representation vectors of its neighboring nodes. Many GNN variants have been proposed and have achieved state-of-the-art results on both node and graph classification tasks. 
+However, despite GNNs revolutionizing graph representation learning, there is limited understanding of  their representational properties and limitations.
+%
+Here, we present a theoretical framework for analyzing the expressive power of GNNs to capture different graph structures. Our results characterize the discriminative power of popular GNN variants, such as Graph Convolutional Networks and GraphSAGE, and show that they cannot learn to distinguish certain simple graph structures. 
+We  then develop a simple architecture that is provably the most expressive among the class of GNNs and is as powerful as the Weisfeiler-Lehman graph isomorphism test. 
+We empirically validate our theoretical findings on a number of graph classification benchmarks, and demonstrate that our model achieves state-of-the-art performance.
+\end{abstract}
+
+
+\input{intro.tex}
+
+\input{preliminary.tex}
+
+\input{framework.tex}
+
+\input{method.tex}
+
+\input{theory.tex}
+
+\input{experiments.tex}
+
+\input{conclusion.tex}
+
+
+\subsubsection*{Acknowledgments}
+This research was supported by NSF CAREER award 1553284, a DARPA D3M award and DARPA DSO’s Lagrange program under grant FA86501827838. This research was also supported in part by
+NSF, ARO MURI, 
+Boeing, Huawei, Stanford Data Science Initiative,
+and Chan Zuckerberg Biohub. 
+Weihua Hu was supported by Funai Overseas Scholarship. We thank Prof. Ken-ichi Kawarabayashi and Prof. Masashi Sugiyama for supporting this research with computing resources and providing great advice. We thank Tomohiro Sonobe and Kento Nozawa for managing servers. We thank Rex Ying and William Hamilton for helpful feedback. We thank Simon S. Du, Yasuo Tabei, Chengtao Li, and Jingling Li for helpful discussions and positive comments.
+
+
+\bibliography{deepgraph}
+\bibliographystyle{iclr2019_conference}
+
+\input{appendix.tex}
+
+
+
+\end{document}

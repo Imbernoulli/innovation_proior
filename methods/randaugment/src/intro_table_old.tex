@@ -1,0 +1,17 @@
+\begin{table}[t]
+\scriptsize
+\begin{tabular}{l|cc|cc|cc|cc}
+          & \multicolumn{2}{c|}{\textbf{CIFAR-10}} & \multicolumn{2}{c|}{\textbf{SVHN}} & \multicolumn{2}{c|}{\textbf{ImageNet}} & \multicolumn{2}{c}{\textbf{ImageNet}} \\
+          & \multicolumn{2}{c|}{PyramidNet}        & \multicolumn{2}{c|}{Wide-ResNet}   & \multicolumn{2}{c|}{ResNet-50}         & \multicolumn{2}{c}{EfficientNet-B7}      \\ \hline
+          & cost              & acc.              & cost            & acc.            & cost              & acc.              & cost              & acc.              \\ \hline
+Baseline & 0 & 97.3 & 0 & 98.5 & 0 & 76.3 & 0 & 84.0 \\
+\hline
+AA        & 5K              & 98.5              & 1K            & 98.9            & 15K             & 77.6             & 15K             & 84.4            \\
+Fast AA   & 3.5               & 98.3              & 1.5             & 98.8            & 450               & 77.6             & -                 & -                  \\
+PBA       & 5.0               & 98.5              & 1.0             & 98.9            & -                 & -                  & -                 & -                  \\
+RA (ours) & 0                 & 98.5              & 0               & 99.0            & 0                 & 77.6             & 0                 & 85.0             \\
+\end{tabular}
+\vspace{0.2cm}
+\caption{\textbf{RandAugment matches or exceeds predictive performance of other augmentation methods but with zero search cost on a separate proxy task.} We report the number of GPU hours spent on the learned augmentation search and the test accuracy achieved for AutoAugment (AA) \cite{cubuk2018autoaugment}, Fast AutoAugment \cite{lim2019fast}, Population Based Augmentation (PBA) \cite{ho2019population} and the proposed RandAugment (RA) for CIFAR-10~\cite{krizhevsky2009learning}, SVHN~\cite{netzer2011reading} and ImageNet~\cite{imagenet2009} classification tasks. Computational cost is reported as the number of GPU hours expended for identifying the augmentation policy in a separate search phase on a proxy task. The error rate is reported as a percentage on a cross-validated validation or test split. Dash indicates that results are not available.}
+\label{tab:summary_results}  
+\end{table}

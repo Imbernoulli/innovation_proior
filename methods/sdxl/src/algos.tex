@@ -1,0 +1,41 @@
+\newcommand{\condaug}{
+\begin{algorithm}
+\caption{\label{alg:cond} Conditioning pipeline for size- and crop-conditioning}
+\begin{algorithmic}
+\Require Training dataset of images $\boldsymbol{\mathcal{D}}$, target image size for training $\boldsymbol{s} = (h_{\mathrm{tgt}}, w_{\mathrm{tgt}})$ 
+\Require Resizing function $\boldsymbol{R}$, cropping function function $\boldsymbol{C}$
+\Require Model train step $\boldsymbol{T}$
+\State converged $\gets$ False
+\While{not converged}
+\State $x \sim \boldsymbol{\mathcal{D}}$
+\State $w_{\text{\tiny{original}}} \gets \mathrm{width}(x)$
+\vspace{2pt}
+\State $h_{\text{\tiny{original}}} \gets \mathrm{height}(x)$
+\vspace{2pt}
+\State $\csize \gets (h_{\text{\tiny{original}}},w_{\text{\tiny{original}}})$
+\vspace{2pt}
+\State $x \gets \boldsymbol{R}(x, \boldsymbol{s})$ \Comment{resize smaller image size to target size $\boldsymbol{s}$}
+\vspace{2pt}
+\If{$h_{\text{\tiny{original}}} \leq w_{\text{\tiny{original}}}$}
+    \vspace{2pt}
+    \State $c_{\text{\tiny{left}}} \sim \boldsymbol{\mathcal{U}}(0,\mathrm{width}(x) - s_w)$ \Comment{sample $c_{\text{\tiny{left}}}$ from discrete uniform distribution}
+    \vspace{2pt}
+    \State $c_{\text{\tiny{top}}} = 0$
+    \vspace{2pt}
+\ElsIf{$h_{\text{\tiny{original}}} > w_{\text{\tiny{original}}}$}
+    \vspace{2pt}
+    \State $c_{\text{\tiny{top}}} \sim \boldsymbol{\mathcal{U}}(0,\mathrm{height}(x) - s_h)$ \Comment{sample $c_{\text{\tiny{top}}}$ from discrete uniform distribution}
+    \vspace{2pt}
+    \State $c_{\text{\tiny{left}}} = 0$
+    \vspace{2pt}
+\EndIf
+\State $\ccrop \gets \left(c_{\text{\tiny{top}}}, c_{\text{\tiny{left}}}\right)$
+\vspace{2pt}
+\State $x \gets \boldsymbol{C}(x, \boldsymbol{s}, \ccrop)$ \Comment{crop image to size $\boldsymbol{s}$ with top-left coordinate 
+$\left(c_{\text{\tiny{top}}}, c_{\text{\tiny{left}}}\right)$}
+\vspace{2pt}
+\State converged $\gets \boldsymbol{T}(x, \csize, \ccrop)$ \Comment{train model conditioned on $\csize$ and $\ccrop$}
+\EndWhile
+\end{algorithmic}
+\end{algorithm}
+}

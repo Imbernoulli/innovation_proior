@@ -1,0 +1,670 @@
+
+\section{Experiment Details}
+\label{appendix:experiment}
+
+We test our method for sampling the most widely-used \textit{variance-preserving} (VP) type  DPMs~\citep{sohl2015deep,ho2020denoising}. 
+In this case, we have $\alpha_t^2+\sigma_t^2=1$ for all $t\in[0,T]$ and $\tilde\sigma=1$. In spite of this, our method and theoretical results are general and independent of the choice of the noise schedule $\alpha_t$ and $\sigma_t$. 
+
+For all experiments, we evaluate DPM-Solver on NVIDIA A40 GPUs. However, the computation resource can be other types of GPU, such as NVIDIA GeForce RTX 2080Ti, because we can tune the batch size for sampling.
+
+\subsection{Diffusion ODEs w.r.t. $\lambda$}
+\label{appendix:RK}
+Alternatively, the diffusion ODE can be reparameterized to the $\lambda$ domain. In this section, we propose the formulation of diffusion ODEs w.r.t. $\lambda$ for VP type, and other types can be similarly derived.
+
+For a given $\lambda$, denote $\hat\alpha_{\lambda}\coloneqq \alpha_{t(\lambda)}$, $\hat\sigma_{\lambda}\coloneqq \sigma_{t(\lambda)}$. As $\hat\alpha_{\lambda}^2 + \hat\sigma_{\lambda}^2 = 1$, we can prove that $\frac{\dd\lambda}{\dd\hat\alpha_{\lambda}}=\frac{1}{\hat\alpha_{\lambda}\hat\sigma^2_{\lambda}}$, so $\frac{\dd\log \hat\alpha_{\lambda}}{\dd \lambda}=\hat\sigma^2_{\lambda}$. Applying change-of-variable to Eq.~\eqref{eqn:diffusion_ode}, we have
+\begin{equation}
+\label{eqn:diffusion_ode_logSNR}
+    \frac{\dd\hat\xv_\lambda}{\dd\lambda} = \hat\hv_\theta(\hat\x_\lambda,\lambda)\coloneqq \hat\sigma_\lambda^2 \hat\x_\lambda - \hat\sigma_\lambda \hat\epsilonv_\theta(\hat\x_\lambda,\lambda).
+\end{equation}
+The ODE Eq.~\eqref{eqn:diffusion_ode_logSNR} can be also solved directly by RK methods, and we use such formulation for the experiments of RK2 ($\lambda$) and RK3 ($\lambda$) in Table~\ref{tab:RK_compare}.
+
+\subsection{Code Implementation}
+We implement our code with both JAX (for continuous-time DPMs) and PyTorch (for discrete-time DPMs), and our code is released at \url{https://github.com/LuChengTHU/dpm-solver}.
+
+\subsection{Sample Quality Comparison with Continuous-Time Sampling Methods}
+\begin{table}[t]
+    \centering
+    \caption{\small{Sample quality measured by FID $\downarrow$ on CIFAR-10 dataset with continuous-time methods, varying the number of function evaluations (NFE).}}
+    \label{tab:continuous_fid}
+    \resizebox{\textwidth}{!}{%
+    \begin{tabular}{lllrrrrrrr}
+    \toprule
+      \multicolumn{3}{l}{Sampling method $\backslash$ NFE} & 10 & 12 & 15 & 20 & 50 & 200 & 1000 \\
+    \midrule
+     \multicolumn{9}{l}{CIFAR-10 (continuous-time model (VP deep)~\citep{song2020score}, linear noise schedule)}  & \\
+     \arrayrulecolor{black!30}\midrule
+      \multirow{3}{*}{SDE} & \multirow{2}{*}{Euler (denoise)~\citep{song2020score}} & $\epsilon=10^{-3}$ & 304.73 & 278.87 & 248.13 & 193.94 & 66.32 & 12.27 & \textbf{2.44} \\
+      & & $\epsilon=10^{-4}$ & 444.63 & 427.54 & 395.95 & 300.41 & 101.66 & 22.98 & 5.01 \\
+      \arrayrulecolor{black!30}\cmidrule{2-10}
+      & Improved Euler~\citep{jolicoeur2021gotta} & $\epsilon=10^{-3}$ & \multicolumn{7}{c}{82.42(NFE=48), 2.73(NFE=151), 2.44(NFE=180)}\\
+      \arrayrulecolor{black!30}\midrule
+      \multirow{4}{*}{ODE} & \multirow{2}{*}{RK45 Solver~\citep{dormand1980family,song2020score}} & $\epsilon=10^{-3}$ & \multicolumn{7}{c}{19.55(NFE=26), 17.81(NFE=38), 3.55(NFE=62)} \\
+      & & $\epsilon=10^{-4}$ & \multicolumn{7}{c}{51.66(NFE=26), 21.54(NFE=38),  12.72(NFE=50), 2.61(NFE=62)} \\
+      \arrayrulecolor{black!30}\cmidrule{2-10}
+      & \multirow{2}{*}{\shortstack{DPM-Solver\\(\textbf{ours})}} & $\epsilon=10^{-3}$ & \textbf{4.70} & \textbf{3.75} & \textbf{3.24} & 3.99 & \multicolumn{3}{c}{3.84 (NFE = 42)} \\%$^\dagger$3.81 & $^\dagger$ 3.78 & $^\dagger$ 3.78 \\
+      & & $\epsilon=10^{-4}$ & 6.96 & 4.93 & 3.35 & \textbf{2.87} & \multicolumn{3}{c}{\textbf{2.59 (NFE = 51)}}\\ %
+    \arrayrulecolor{black}\bottomrule
+    \end{tabular}%
+    }
+\end{table}
+
+Table~\ref{tab:continuous_fid} shows the detailed FID results, which is corresponding to Fig.~\ref{fig:cifar10_fid_continuous}. We use the official code and checkpoint in~\citep{song2020score}, the code license is Apache License 2.0. We use their released ``checkpoint\_8'' of the ``VP deep'' type. We compare methods for $\epsilon=10^{-3}$ and $\epsilon=10^{-4}$. We find that the sampling methods based on diffusion SDEs can achieve better sample quality with $\epsilon=10^{-3}$; and that the sampling methods based on diffusion ODEs can achieve better sample quality with $\epsilon=10^{-4}$. For DPM-Solver, we find that DPM-Solver with less than 15 NFE can achieve better FID with $\epsilon=10^{-3}$ than $\epsilon=10^{-4}$, while DPM-Solver with more than 15 NFE can achieve better FID with $\epsilon=10^{-4}$ than $\epsilon=10^{-3}$.
+
+For the diffusion SDEs with Euler discretization, we use the PC sampler in~\citep{song2020score} with ``euler\_maruyama'' predictor and no corrector, which uses uniform time steps between $T$ and $\epsilon$. We add the ``denoise'' trick at the final step, which can greatly improve the FID score for $\epsilon=10^{-3}$.
+
+For the diffusion SDEs with Improved Euler discretization~\citep{jolicoeur2021gotta}, we follow the results in their original paper, which only includes the results with $\epsilon=10^{-3}$. The corresponding relative tolerance $\epsilon_{rel}$ are $0.50$, $0.10$ and $0.05$, respectively.
+
+For the diffusion ODEs with RK45 Solver, we use the code in~\citep{song2020score}, and tune the \texttt{atol} and \texttt{rtol} of the solver. For the NFE from small to large, we use the same \texttt{atol} = \texttt{rtol} = $0.1$, $0.01$, $0.001$ for the results of $\epsilon=10^{-3}$, and the same \texttt{atol} = \texttt{rtol} = $0.1$, $0.05$, $0.02$, $0.01$, $0.001$ for the results of $\epsilon=10^{-4}$, respectively.
+
+For the diffusion ODEs with DPM-Solver, we use the method in Appendix~\ref{appendix:dpm-solver-fast} for NFE $\leq 20$, and the adaptive step size solver in Appendix~\ref{appendix:algorithm}. For $\epsilon=10^{-3}$, we use DPM-Solver-12 with relative tolerance $\epsilon_{\text{rtol}}=0.05$. For $\epsilon=10^{-4}$, we use DPM-Solver-23 with relative tolerance $\epsilon_{\text{rtol}}=0.05$. 
+
+\subsection{Sample Quality Comparison with RK Methods}
+Table~\ref{tab:RK_compare} shows the different performance of RK methods and DPM-Solver-2 and 3. We list the detailed settings in this section.
+
+Assume we have an ODE with
+\begin{equation*}
+    \frac{\dxv_t}{\dt} = \Fv(\x_t,t),
+\end{equation*}
+Starting with $\tilde\x_{t_{i-1}}$ at time $t_{i-1}$, we use RK2 to approximate the solution $\tilde\x_{t_i}$ at time $t_i$ in the following formulation (which is known as the explicit midpoint method):
+\begin{equation*}
+\begin{aligned}
+    h_i &= t_{i} - t_{i-1}, \\
+    s_i &= t_{i-1} + \frac{1}{2} h_i, \\
+    \uv_i &= \tilde\x_{t_{i-1}} + \frac{h_i}{2}\Fv(\tilde\x_{t_{i-1}}, t_{i-1}),\\
+    \tilde\x_{t_i} &= \tilde\x_{t_{i-1}} + h_i \Fv(\uv_i, s_i).
+\end{aligned}
+\end{equation*}
+And we use the following RK3 to approximate the solution $\tilde\x_{t_i}$ at time $t_i$ (which is known as ``Heun's third-order method''), because it is very similar to our proposed DPM-Solver-3:
+\begin{equation*}
+\begin{aligned}
+    h_i &= t_{i} - t_{i-1}, \quad r_1 = \frac{1}{3}, \quad r_2 = \frac{2}{3}, \\
+    s_{2i-1} &= t_{i-1} + r_1 h_i, \quad s_{2i} = t_{i-1} + r_2 h_i, \\
+    \uv_{2i-1} &= \tilde\x_{t_{i-1}} + r_1 h_i\Fv(\tilde\x_{t_{i-1}}, t_{i-1}),\\
+    \uv_{2i} &= \tilde\x_{t_{i-1}} + r_2 h_i\Fv(\uv_{2i-1}, s_{2i-1}),\\
+    \tilde\x_{t_i} &= \tilde\x_{t_{i-1}} + \frac{h_i}{4} \Fv(\tilde\x_{t_{i-1}}, t_{i-1}) + \frac{3 h_i}{4} \Fv(\uv_{2i}, s_{2i}).
+\end{aligned}
+\end{equation*}
+
+
+We use $\Fv(\x_t,t)=\hv_\theta(\x_t,t)$ in Eq.~\eqref{eqn:diffusion_ode} for the results with RK2 ($t$) and RK3 ($t$), and $\Fv(\hat\x_\lambda, \lambda)=\hat\hv_\theta(\hat\x_\lambda,\lambda)$ in Eq.~\eqref{eqn:diffusion_ode_logSNR} for the results with RK2 ($\lambda$) and RK3 ($\lambda$). For all experiments, we use the uniform step size w.r.t. $t$ or $\lambda$.
+
+
+
+\subsection{Sample Quality Comparison with Discrete-Time Sampling Methods}
+\begin{table}[htbp]
+    \centering
+    \caption{\label{tab:fid-discrete}\small{Sample quality measured by FID $\downarrow$ on CIFAR-10, CelebA 64$\times$64 and ImageNet 64$\times$64 with discrete-time DPMs, varying the number of function evaluations (NFE). The method $^\dagger$GGDM needs extra training, and some results are missing in their original papers, which are replaced by ``$\backslash$''.}}
+    \resizebox{\textwidth}{!}{%
+    \begin{tabular}{llrrrrrrr}
+    \toprule
+      \multicolumn{2}{l}{Sampling method $\backslash$ NFE} & 10 & 12 & 15 & 20 & 50 & 200 & 1000 \\
+    \midrule
+     \multicolumn{8}{l}{CIFAR-10 (discrete-time model~\citep{ho2020denoising}, linear noise schedule)} \\
+     \arrayrulecolor{black!30}\midrule
+      \multicolumn{1}{l}{DDPM~\citep{ho2020denoising}} & Discrete & 278.67 & 246.29 & 197.63 & 137.34 & 32.63 & 4.03 & \textbf{3.16} \\
+      \multicolumn{1}{l}{Analytic-DDPM~\citep{bao2022analytic}} & Discrete & 35.03 & 27.69 & 20.82 & 15.35 & 7.34 & 4.11 & 3.84 \\
+      \multicolumn{1}{l}{Analytic-DDIM~\citep{bao2022analytic}} & Discrete & 14.74 & 11.68 & 9.16 & 7.20 & 4.28 & 3.60 & 3.86 \\
+      \multicolumn{1}{l}{$^{\dagger}$GGDM~\citep{watson2021learning}} & Discrete & 8.23 & $\backslash$ & 6.12 & 4.72 & $\backslash$ & $\backslash$ & $\backslash$ \\
+      \multicolumn{1}{l}{DDIM~\citep{song2020denoising}} & Discrete & 13.58 & 11.02 & 8.92 & 6.94 & 4.73 & 4.07 & 3.95 \\
+      \arrayrulecolor{black!30}\midrule
+      \multirow{2}{*}{\shortstack{DPM-Solver (Type-1 discrete)}} & $\epsilon=10^{-3}$ & \textbf{6.37} & \textbf{4.65} & \textbf{3.78} & 4.28 & \multicolumn{3}{c}{3.90 (NFE = 44)}\\
+      & $\epsilon=10^{-4}$ & 11.32 & 7.31 & 4.75 & 3.80 & \multicolumn{3}{c}{3.57 (NFE = 46)}  \\
+      \arrayrulecolor{black!30}\midrule
+      \multirow{2}{*}{DPM-Solver (Type-2 discrete)} & $\epsilon=10^{-3}$ & 6.42 & 4.86 & 4.39 & 5.52 & \multicolumn{3}{c}{5.22 (NFE = 42)}\\
+      & $\epsilon=10^{-4}$ & 10.16 & 6.26 & 4.17 & \textbf{3.72} & \multicolumn{3}{c}{\textbf{3.48 (NFE = 44)}}  \\    
+      \arrayrulecolor{black}\midrule
+     \multicolumn{7}{l}{CelebA 64$\times$64 (discrete-time model~\citep{song2020denoising}, linear noise schedule)}  & \\
+     \arrayrulecolor{black!30}\midrule
+      DDPM~\citep{ho2020denoising} & Discrete & 310.22 & 277.16 & 207.97 & 120.44 & 29.25 & 3.90 & 3.50 \\
+      Analytic-DDPM~\citep{bao2022analytic} & Discrete & 28.99 & 25.27 & 21.80 & 18.14 & 11.23 & 6.51 & 5.21\\
+      Analytic-DDIM~\citep{bao2022analytic} & Discrete & 15.62 & 13.90 & 12.29 & 10.45 & 6.13 & 3.46 & 3.13\\
+      DDIM~\citep{song2020denoising} & Discrete & 10.85 & 9.99 & 7.78 & 6.64 & 5.23 & 4.78 & 4.88\\
+      \arrayrulecolor{black!30}\midrule
+      \multirow{2}{*}{DPM-Solver (Type-1 discrete)} & $\epsilon=10^{-3}$ & 7.15 & 5.51 & 4.28 & 4.40 & \multicolumn{3}{c}{4.23 (NFE = 36)}\\
+      & $\epsilon=10^{-4}$ & 6.92 & 4.20 & \textbf{3.05} & \textbf{2.82} & \multicolumn{3}{c}{\textbf{2.71 (NFE = 36)}}  \\
+      \arrayrulecolor{black!30}\midrule
+      \multirow{2}{*}{DPM-Solver (Type-2 discrete)} & $\epsilon=10^{-3}$ & 7.33 & 6.23 & 5.85 & 6.87 & \multicolumn{3}{c}{6.68 (NFE = 36)}\\
+      & $\epsilon=10^{-4}$ & \textbf{5.83} & \textbf{3.71} & 3.11 & 3.13 & \multicolumn{3}{c}{3.10 (NFE = 36)}  \\
+     \arrayrulecolor{black}\midrule
+    \multicolumn{7}{l}{ImageNet 64$\times$64 (discrete-time model~\citep{nichol2021improved}, cosine noise schedule)}  & \\
+      \arrayrulecolor{black!30}\midrule
+      DDPM~\citep{ho2020denoising} & Discrete & 305.43 & 287.66 & 256.69 & 209.73 & 83.86 & 28.39 & 17.58\\
+      Analytic-DDPM~\citep{bao2022analytic} & Discrete & 60.65 & 53.66 & 45.98 & 37.67 & 22.45 & \textbf{17.16} & \textbf{16.14} \\
+      Analytic-DDIM~\citep{bao2022analytic} & Discrete & 70.62 & 54.88 & 41.56 & 30.88 & 19.23 & 17.49 & 17.57 \\
+      $^\dagger$GGDM~\citep{watson2021learning} & Discrete & 37.32 & $\backslash$ & 24.69 & 20.69 & $\backslash$ & $\backslash$ & $\backslash$ \\ 
+      DDIM~\citep{song2020denoising} & Discrete & 67.07 & 52.69 & 40.49 & 30.67 & 20.10 & 17.84 & 17.73 \\
+      \arrayrulecolor{black!30}\midrule
+      \multirow{2}{*}{DPM-Solver (Type-1 discrete)} & $\epsilon=10^{-3}$ & 24.44 & 20.03 & 19.31 & 18.59 & \multicolumn{3}{c}{17.50 (NFE = 48)}\\
+      & $\epsilon=10^{-4}$ & 27.74 & 23.66 & 20.09 & 19.06 & \multicolumn{3}{c}{17.56 (NFE = 51)}  \\
+      \arrayrulecolor{black!30}\midrule
+      \multirow{2}{*}{DPM-Solver (Type-2 discrete)} & $\epsilon=10^{-3}$ & \textbf{24.40} & \textbf{19.97} & \textbf{19.23} & \textbf{18.53} & \multicolumn{3}{c}{\textbf{17.47 (NFE = 57)}}\\
+      & $\epsilon=10^{-4}$ & 27.72 & 23.75 & 20.02 & 19.08 & \multicolumn{3}{c}{17.62 (NFE = 48)} \\
+    \arrayrulecolor{black}\bottomrule
+    \end{tabular}%
+    }
+\end{table}
+
+\begin{table}[htbp]
+    \centering
+    \caption{\label{tab:fid-discrete-highres}\small{Sample quality measured by FID $\downarrow$ on ImageNet 128$\times$128 with classifier guidance and on LSUN bedroom 256$\times$256, varying the number of function evaluations (NFE). For DDIM and DDPM, we use uniform time steps for all the experiments, except that the experiment$^\dagger$ uses the fine-tuned time steps by~\citep{dhariwal2021diffusion}. For DPM-Solver, we use the uniform logSNR steps as described in Appendix~\ref{appendix:dpm-solver-fast}.}}
+    \resizebox{\textwidth}{!}{%
+    \begin{tabular}{llrrrrrrr}
+    \toprule
+      \multicolumn{2}{l}{Sampling method $\backslash$ NFE} & 10 & 12 & 15 & 20 & 50 & 100 & 250 \\
+    \midrule
+     \multicolumn{8}{l}{ImageNet 128$\times$128 (discrete-time model~\citep{dhariwal2021diffusion}, linear noise schedule, classifier guidance scale: 1.25)} \\
+     \arrayrulecolor{black!30}\midrule
+      \multicolumn{1}{l}{DDPM~\citep{ho2020denoising}} & Discrete & 199.56 & 172.09 & 146.42 & 119.13 & 49.38 & 23.27 & \textbf{2.97} \\
+      \multicolumn{1}{l}{DDIM~\citep{song2020denoising}} & Discrete & 11.12 & 9.38 & 8.22 & 7.15 & 5.05 & 4.18 & 3.54 \\
+      \arrayrulecolor{black!30}\midrule
+      \multirow{2}{*}{\shortstack{DPM-Solver (Type-1 discrete)}} & $\epsilon=10^{-3}$ & \textbf{7.32} & \textbf{4.08} & \textbf{3.60} & 3.89 & 3.63 & 3.62 & 3.63 \\
+      & $\epsilon=10^{-4}$ & 13.91 & 5.84 & 4.00 & \textbf{3.52} & \textbf{3.13} & \textbf{3.10} & 3.09  \\
+      \arrayrulecolor{black}\midrule
+     \multicolumn{7}{l}{LSUN bedroom 256$\times$256 (discrete-time model~\citep{dhariwal2021diffusion}, linear noise schedule)}  & \\
+     \arrayrulecolor{black!30}\midrule
+      DDPM~\citep{ho2020denoising} & Discrete & 274.67 & 251.26 & 224.88 & 190.14 & 82.70 & 34.89 & $^\dagger$2.02 \\
+      DDIM~\citep{song2020denoising} & Discrete & 10.05 & 7.51 & 5.90 & 4.98 & 2.92 & 2.30 & 2.02 \\
+      \arrayrulecolor{black!30}\midrule
+      \multirow{2}{*}{DPM-Solver (Type-1 discrete)} & $\epsilon=10^{-3}$ & \textbf{6.10} & 4.29 & 3.30 & 3.09 & 2.53 & 2.46 & 2.46 \\
+      & $\epsilon=10^{-4}$ & 8.04 & \textbf{4.21} & \textbf{2.94} & \textbf{2.60} & \textbf{2.01} & \textbf{1.95} & \textbf{1.94}  \\
+    \arrayrulecolor{black}\bottomrule
+    \end{tabular}%
+    }
+\end{table}
+
+
+
+We compare DPM-Solver with other discrete-time sampling methods for DPMs, as shown in Table~\ref{tab:fid-discrete} and Table~\ref{tab:fid-discrete-highres}. We use the code in~\citep{song2020denoising} for sampling with DDPM and DDIM, and the code license is MIT License. We use the code in~\citep{bao2022analytic} for sampling with Analytic-DDPM and Analytic-DDIM, whose 
+license is unknown. We directly follow the best results in the original paper of GGDM~\citep{watson2021learning}.
+
+For the CIFAR-10 experiments, we use the pretrained checkpoint by~\citep{ho2020denoising}, which is also provided in the released code in~\citep{song2020denoising}. We use quadratic time steps for DDPM and DDIM, which empirically has better FID performance than the uniform time steps~\citep{song2020denoising}. We use the uniform time steps for Analytic-DDPM and Analytic-DDIM. For DPM-Solver, we use both Type-1 discrete and Type-2 discrete methods to convert the discrete-time model to the continuous-time model. We use the method in Appendix~\ref{appendix:dpm-solver-fast} for NFE $\leq 20$, and the adaptive step size solver in Appendix~\ref{appendix:algorithm} for NFE $> 20$. For all the experiments, we use DPM-Solver-12 with relative tolerance $\epsilon_{\text{rtol}}=0.05$.
+
+For the CelebA 64x64 experiments, we use the pretrained checkpoint by~\citep{song2020denoising}. We use quadratic time steps for DDPM and DDIM, which empirically has better FID performance than the uniform time steps~\citep{song2020denoising}. We use the uniform time steps for Analytic-DDPM and Analytic-DDIM. For DPM-Solver, we use both Type-1 discrete and Type-2 discrete methods to convert the discrete-time model to the continuous-time model. We use the method in Appendix~\ref{appendix:dpm-solver-fast} for NFE $\leq 20$, and the adaptive step size solver in Appendix~\ref{appendix:algorithm} for NFE $> 20$. For all the experiments, we use DPM-Solver-12 with relative tolerance $\epsilon_{\text{rtol}}=0.05$. Note that our best FID results on CelebA 64x64 is even better than the 1000-step DDPM (and all the other methods).
+
+For the ImageNet 64x64 experiments, we use the pretrained checkpoint by~\citep{nichol2021improved}, and the code license is MIT License. We use the uniform time steps for DDPM and DDIM, following~\citep{song2020denoising}. We use the uniform time steps for Analytic-DDPM and Analytic-DDIM. For DPM-Solver, we use both Type-1 discrete and Type-2 discrete methods to convert the discrete-time model to the continuous-time model. We use the method in Appendix~\ref{appendix:dpm-solver-fast} for NFE $\leq 20$, and the adaptive step size solver in Appendix~\ref{appendix:algorithm} for NFE $> 20$. For all the experiments, we use DPM-Solver-23 with relative tolerance $\epsilon_{\text{rtol}}=0.05$. Note that the ImageNet dataset includes real human photos and it may have privacy issues, as discussed in~\citep{yang2021study}.
+
+For the ImageNet 128x128 experiments, we use classifier guidance for sampling with the pretrained checkpoints (for both the diffusion model and the classifier model) by~\citep{dhariwal2021diffusion}, and the code license is MIT License. We use the uniform time steps for DDPM and DDIM, following~\citep{song2020denoising}. For DPM-Solver, we only use Type-1 discrete method to convert the discrete-time model to the continuous-time model. We use the method in Appendix~\ref{appendix:dpm-solver-fast} for NFE $\leq 20$, and the adaptive step size solver DPM-Solver-12 with relative tolerance $\epsilon_{\text{rtol}}=0.05$ (detailed in Appendix~\ref{appendix:algorithm}) for NFE $> 20$. For all the experiments, we set the classifier guidance scale $s=1.25$, which is the best setting for DDIM in~\citep{dhariwal2021diffusion} (we refer to their Table 14 for details).
+
+For the LSUN bedroom 256x256 experiments, we use the unconditional pretrained checkpoint by~\citep{dhariwal2021diffusion}, and the code license is MIT License. We use the uniform time steps for DDPM and DDIM, following~\citep{song2020denoising}. For DPM-Solver, we only use Type-1 discrete method to convert the discrete-time model to the continuous-time model. We use the method in Appendix~\ref{appendix:dpm-solver-fast} for DPM-Solver.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+\subsection{Comparing Different Orders of DPM-Solver}
+We also compare the sample quality of the different orders of DPM-Solver, as shown in Table~\ref{tab:dpm-solver-123}. We use DPM-Solver-1,2,3 with uniform time steps w.r.t. $\lambda$, and the fast version in Appendix~\ref{appendix:dpm-solver-fast} for NFE less than 20, and we name it as \textit{DPM-Solver-fast}. For the discrete-time models, we only compare the Type-2 discrete method, and the results of Type-1 are similar.
+
+As the actual NFE of DPM-Solver-2 is $2\times\lfloor\text{NFE}/2\rfloor$ and the actual NFE of DPM-Solver-3 is $3\times\lfloor\text{NFE}/3\rfloor$, which may be smaller than NFE, we use the notation $^\dagger$ to note that the actual NFE is less than the given NFE. We find that for NFE less than 20, the proposed fast version (DPM-Solver-fast) is usually better than the single order method, and for larger NFE, DPM-Solver-3 is better than DPM-Solver-2, and DPM-Solver-2 is better than DPM-Solver-1, which matches our proposed convergence rate analysis.
+
+\begin{table}[t]
+    \centering
+    \caption{Sample quality measured by FID $\downarrow$ of different orders of DPM-Solver, varying the number of function evaluations (NFE). The results with $^\dagger$ means the actual NFE is smaller than the given NFE because the given NFE cannot be divided by $2$ or $3$. For DPM-Solver-fast, we only evaluate it for NFE less than 20, because it is almost the same as DPM-Solver-3 for large NFE.} %
+    \label{tab:dpm-solver-123}
+    
+    \small{
+    \begin{tabular}{llrrrrrrr}
+    \toprule
+      \multicolumn{2}{l}{Sampling method $\backslash$ NFE} & 10 & 12 & 15 & 20 & 50 & 200 & 1000 \\
+    \midrule
+     \multicolumn{8}{l}{CIFAR-10 (VP deep continuous-time model~\citep{song2020score})}  & \\
+     \arrayrulecolor{black!30}\midrule
+      \multirow{4}{*}{$\epsilon=10^{-3}$} & DPM-Solver-1 & 11.83 & 9.69 & 7.78 & 6.17 & 4.28 & 3.85 & 3.83  \\
+      & DPM-Solver-2 & 5.94 & 4.88 & $^\dagger$4.30  & 3.94 & 3.78 & 3.74 & 3.74\\
+      & DPM-Solver-3 & $^\dagger$18.37 & 5.53 & 4.08 & $^\dagger$4.04 & $^\dagger$3.81 & $^\dagger$3.78 & $^\dagger$3.78 \\
+      & DPM-Solver-fast & \textbf{4.70} & \textbf{3.75} & \textbf{3.24} & 3.99 & $\backslash$ & $\backslash$ & $\backslash$\\
+      \arrayrulecolor{black!30}\midrule
+      \multirow{4}{*}{$\epsilon=10^{-4}$} & DPM-Solver-1 & 11.29 & 9.07 & 7.15 & 5.50 & 3.32 & 2.72 & 2.64 \\
+      & DPM-Solver-2 & 7.30 & 5.28 & $^\dagger$4.23 & 3.26 & 2.69 & \textbf{2.60} & \textbf{2.59}\\
+      & DPM-Solver-3 & $^\dagger$54.56 & 6.03 & 3.55 & $^\dagger$2.90 & $^{\dagger}$\textbf{2.65} & $^\dagger$2.62 & $^\dagger$2.62 \\
+      & DPM-Solver-fast & 6.96 & 4.93 & 3.35 & \textbf{2.87} & $\backslash$ & $\backslash$ & $\backslash$\\
+     \arrayrulecolor{black}\midrule
+     \multicolumn{8}{l}{CIFAR-10 (DDPM discrete-time model~\citep{ho2020denoising}), DPM-Solver with Type-2 discrete}  & \\
+     \arrayrulecolor{black!30}\midrule
+      \multirow{4}{*}{$\epsilon=10^{-3}$} & DPM-Solver-1 & 16.69 & 13.63 & 11.08 & 8.90 & 6.24 & 5.44 & 5.29 \\
+      & DPM-Solver-2 & 7.90 & 6.15 & $^\dagger$5.53 & 5.24 & 5.23 & 5.25 & 5.25\\
+      & DPM-Solver-3 & $^\dagger$24.37 & 8.20 & 5.73 & $^\dagger$5.43 & $^\dagger$5.29 & $^\dagger$5.25 & $^\dagger$5.25\\
+      & DPM-Solver-fast & \textbf{6.42} & \textbf{4.86} & 4.39 & 5.52 & $\backslash$ & $\backslash$ & $\backslash$\\
+      \arrayrulecolor{black!30}\midrule
+      \multirow{4}{*}{$\epsilon=10^{-4}$} & DPM-Solver-1 & 13.61 & 10.98 & 8.71 & 6.79 & 4.36 & 3.63 & 3.49\\
+      & DPM-Solver-2 & 11.80 & 6.31 & $^\dagger$5.23 & 3.95 & 3.50 & 3.46 & 3.46\\
+      & DPM-Solver-3 & $^\dagger$67.02 & 9.45 & 5.21 & $^\dagger$3.81 & $^\dagger$\textbf{3.49} & $^\dagger$\textbf{3.45} & $^\dagger$\textbf{3.45}\\
+      & DPM-Solver-fast & 10.16 & 6.26 & \textbf{4.17} & \textbf{3.72} & $\backslash$ & $\backslash$ & $\backslash$\\
+     \arrayrulecolor{black}\midrule
+     \multicolumn{9}{l}{CelebA 64$\times$64 (discrete-time model~\citep{song2020denoising}, linear noise schedule), DPM-Solver with Type-2 discrete}\\
+     \arrayrulecolor{black!30}\midrule
+      \multirow{4}{*}{$\epsilon=10^{-3}$} & DPM-Solver-1 & 18.66 & 16.30 & 13.92 & 11.84 & 8.85 & 7.24 & 6.93 \\
+      & DPM-Solver-2 & 5.89 & 5.83 & $^\dagger$6.08 & 6.38 & 6.78 & 6.84 & 6.85 \\
+      & DPM-Solver-3 & $^\dagger$11.45 & 5.46 & 6.18 & $^\dagger$6.51 & $^\dagger$6.87 & $^\dagger$6.84 & $^\dagger$6.85 \\
+      & DPM-Solver-fast & 7.33 & 6.23 & 5.85 & 6.87 & $\backslash$ & $\backslash$ & $\backslash$ \\
+      \arrayrulecolor{black!30}\midrule
+      \multirow{4}{*}{$\epsilon=10^{-4}$} & DPM-Solver-1 & 13.24 & 11.13 & 9.08 & 7.24 & 4.50 & 3.48 & 3.25 \\
+      & DPM-Solver-2 & \textbf{4.28} & \textbf{3.40} & $^\dagger$3.30 & 3.17 & \textbf{3.19} & \textbf{3.20} & \textbf{3.20}\\
+      & DPM-Solver-3 & $^\dagger$49.48 & 3.84 & \textbf{3.09} & $^\dagger$3.15 & $^\dagger$3.20 & $^\dagger$\textbf{3.20} & $^\dagger$\textbf{3.20}\\
+      & DPM-Solver-fast & 5.83 & 3.71 & 3.11 & \textbf{3.13} & $\backslash$ & $\backslash$ & $\backslash$ \\
+     \arrayrulecolor{black}\midrule
+    \multicolumn{9}{l}{ImageNet 64$\times$64 (discrete-time model~\citep{nichol2021improved}, cosine noise schedule), DPM-Solver with Type-2 discrete} \\
+     \arrayrulecolor{black!30}\midrule
+      \multirow{4}{*}{$\epsilon=10^{-3}$} & DPM-Solver-1 & 32.84 & 28.54 & 24.79 & 21.71 & 18.30 & 17.45 & 17.18 \\
+      & DPM-Solver-2 & 29.20 & 24.97 & $^\dagger$22.26 & 19.94 & 17.79 & 17.29 & \textbf{17.27} \\
+      & DPM-Solver-3 & $^\dagger$57.48 & 24.62 & 19.76 & $^\dagger$18.95 & $^\dagger$\textbf{17.52} & \textbf{17.26} & \textbf{17.27} \\
+      & DPM-Solver-fast & \textbf{24.40} & \textbf{19.97} & \textbf{19.23} & \textbf{18.53} & $\backslash$ & $\backslash$ & $\backslash$ \\
+      \arrayrulecolor{black!30}\midrule
+      \multirow{4}{*}{$\epsilon=10^{-4}$} & DPM-Solver-1 & 32.31 & 28.44 & 25.15 & 22.38 & 19.14 & 17.95 & 17.44 \\
+      & DPM-Solver-2 & 33.16 & 27.28 & $^\dagger$24.26 & 20.58 & 18.04 & 17.46 & 17.41 \\
+      & DPM-Solver-3 & $^\dagger$162.27 & 27.28 & 22.38 & $^\dagger$19.39 & $^\dagger$17.71 & $^\dagger$17.43 & $^\dagger$17.41\\
+      & DPM-Solver-fast & 27.72 & 23.75 & 20.02 & 19.08 & $\backslash$ & $\backslash$ & $\backslash$ \\
+    \arrayrulecolor{black}\bottomrule
+    \end{tabular}
+    }
+\end{table}
+
+\subsection{Runtime Comparison between DPM-Solver and DDIM}
+Theoretically, for the same NFE, the runtime of DPM-Solver and DDIM are almost the same (linear to NFE) because the main computation costs are the serial evaluations of the large neural network $\epsilonv_\theta$ and the other coefficients are \textbf{analytically} computed with ignorable costs.
+
+Table~\ref{tab:runtime} shows the runtime of DPM-Solver and DDIM on a single NVIDIA A40, varying different datasets and NFE. We use \texttt{torch.cuda.Event} and \texttt{torch.cuda.synchronize} for accurately computing the runtime. We use the discrete-time pretrained diffusion models for each dataset. We evaluate the runtime for 8 batches and computes the mean and std of the runtime. We use 64 batch size for LSUN bedroom 256x256 due to the GPU memory limitation, and 128 batch size for other datasets.
+
+For DDIM, we use the official implementation\footnote{\url{https://github.com/ermongroup/ddim}}. We find that our implementation of DPM-Solver reduces some repetitive computation of the coefficients, so under the same NFE, DPM-Solver is slightly faster than DDIM of their implementation. Nevertheless, the runtime evaluation results show that the runtime of DPM-Solver and DDIM are almost the same for the same NFE, and the runtime is approximately linear to the NFE. Therefore, the speedup for the NFE is almost the actual speedup of the runtime, so the proposed DPM-Solver can greatly speedup the sampling of DPMs.
+
+
+\begin{table}[t]
+    \centering
+    \caption{\small{Runtime of a single batch (second / batch, $\pm$std) on a single NVIDIA A40 of DDIM and DPM-Solver for sampling by discrete-time diffusion models, varying the number of function evaluations (NFE).}}
+    \label{tab:runtime}
+    \resizebox{\textwidth}{!}{%
+    \begin{tabular}{lrrrr}
+    \toprule
+      Sampling method $\backslash$ NFE & 10 & 20 & 50 & 100 \\
+    \midrule
+     \multicolumn{4}{l}{CIFAR-10 32$\times$32 (batch size = 128)} \\
+     \arrayrulecolor{black!30}\midrule
+      DDIM & 0.956($\pm$0.011) & 1.924($\pm$0.016) & 4.838($\pm$0.024) & 9.668($\pm$0.013) \\
+      DPM-Solver & 0.923($\pm$0.006) & 1.833($\pm$0.004) & 4.580($\pm$0.005) & 9.204($\pm$0.011) \\
+      \arrayrulecolor{black}\midrule
+      \multicolumn{4}{l}{CelebA 64$\times$64 (batch size = 128)} \\
+     \arrayrulecolor{black!30}\midrule
+      DDIM & 3.253($\pm$0.015) & 6.438($\pm$0.029) & 16.132($\pm$0.050) & 32.255($\pm$0.044)\\
+      DPM-Solver & 3.126($\pm$0.003) & 6.272($\pm$0.006) & 15.676($\pm$0.008) & 31.269($\pm$0.012)  \\
+      \arrayrulecolor{black}\midrule
+     \multicolumn{4}{l}{ImageNet 64$\times$64 (batch size = 128)} \\
+     \arrayrulecolor{black!30}\midrule
+      DDIM & 5.084($\pm$0.018) & 10.194($\pm$0.022) & 25.440($\pm$0.044) & 50.926($\pm$0.042) \\
+      DPM-Solver & 4.992($\pm$0.004) & 9.991($\pm$0.003) & 24.948($\pm$0.007) & 49.835($\pm$0.028) \\
+      \arrayrulecolor{black}\midrule
+     \multicolumn{4}{l}{ImageNet 128$\times$128 (batch size = 128, with classifier guidance)} \\
+     \arrayrulecolor{black!30}\midrule
+      DDIM & 29.082($\pm$0.015) & 58.159($\pm$0.012) & 145.427($\pm$0.011) & 290.874($\pm$0.134) \\
+      DPM-Solver & 28.865($\pm$0.011) & 57.645($\pm$0.008) & 144.124($\pm$0.035) & 288.157($\pm$0.022) \\
+      \arrayrulecolor{black}\midrule
+     \multicolumn{4}{l}{LSUN bedroom 256$\times$256 (batch size = 64)} \\
+     \arrayrulecolor{black!30}\midrule
+      DDIM & 37.700($\pm$0.005) & 75.316($\pm$0.013) & 188.275($\pm$0.172) & 378.790($\pm$0.105)\\
+      DPM-Solver & 36.996($\pm$0.039) & 73.873($\pm$0.023) & 184.590($\pm$0.010) & 369.090($\pm$0.076) \\
+    \arrayrulecolor{black}\bottomrule
+    \end{tabular}%
+    }
+\end{table}
+
+
+
+\subsection{Conditional Sampling on ImageNet 256x256}
+For the conditional sampling in Fig.~\ref{fig:intro}, we use the pretrained checkpoint in~\citep{dhariwal2021diffusion} with classifier guidance (ADM-G), and the classifier scale is $1.0$. The code license is MIT License. We use uniform time step for DDIM, and the fast version for DPM-Solver in Appendix~\ref{appendix:dpm-solver-fast} (DPM-Solver-fast) with 10, 15, 20 and 100 steps.
+
+Fig.~\ref{fig:appendix-conditional} shows the conditional sample results by DDIM and DPM-Solver. We find that DPM-Solver with 15 NFE can generate comparable samples with DDIM with 100 NFE.
+
+
+\begin{figure}[t]
+	\hspace{0.16\linewidth}
+	\begin{minipage}{0.20\linewidth}
+	\centering
+	NFE = 10
+	\end{minipage}
+	\begin{minipage}{0.19\linewidth}
+	\centering
+	NFE = 15
+	\end{minipage}
+	\begin{minipage}{0.19\linewidth}
+	\centering
+	NFE = 20
+	\end{minipage}
+	\begin{minipage}{0.20\linewidth}
+	\centering
+	NFE = 100
+	\end{minipage}
+	\vspace{0.2cm}
+	\\
+	\centering
+	\begin{minipage}{0.15\linewidth}
+	\centering
+    DDIM \\
+    \centering
+    \citep{song2020denoising}
+    \\
+    \vspace{2.2cm}
+	\centering
+    DPM-Solver \\ 
+	\centering
+    (ours)
+	\end{minipage}
+	\begin{minipage}{0.8\linewidth}
+		\centering
+			\includegraphics[width=\linewidth]{figures/intro_1.png}\\
+	\end{minipage}
+	\vspace{0.2cm}
+	\\
+	\centering
+	\begin{minipage}{0.15\linewidth}
+	\centering
+    DDIM \\
+    \centering
+    \citep{song2020denoising}
+    \\
+    \vspace{2.2cm}
+	\centering
+    DPM-Solver \\ 
+	\centering
+    (ours)
+	\end{minipage}
+	\begin{minipage}{0.8\linewidth}
+		\centering
+			\includegraphics[width=\linewidth]{figures/intro_2.png}\\
+	\end{minipage}
+	\caption{\label{fig:appendix-conditional}
+Samples by DDIM~\citep{song2020denoising} and DPM-Solver (ours) with 10, 15, 20, 100 number of function evaluations (NFE) with the same random seed, using the pre-trained DPMs on ImageNet 256$\times$256 with classifier guidance~\citep{dhariwal2021diffusion}.
+}
+\end{figure}
+
+
+
+
+
+\subsection{Additional Samples}
+Additional sampling results on CIFAR-10, CelebA 64x64, ImageNet 64x64, LSUN bedroom 256x256~\citep{yu2015lsun}, ImageNet 256x256 are reported in
+Figs.~\ref{fig:appendix-cifar10-discrete}-\ref{fig:appendix-imagenet256-discrete}.
+
+
+
+
+\begin{figure}[t]
+	\hspace{0.1\linewidth}
+	\begin{minipage}{0.21\linewidth}
+	\centering
+	NFE = 10
+	\end{minipage}
+	\begin{minipage}{0.22\linewidth}
+	\centering
+	NFE = 12
+	\end{minipage}
+	\begin{minipage}{0.22\linewidth}
+	\centering
+	NFE = 15
+	\end{minipage}
+	\begin{minipage}{0.22\linewidth}
+	\centering
+	NFE = 20
+	\end{minipage}
+	\vspace{0.2cm}
+	\\
+	\centering
+	\begin{minipage}{0.1\linewidth}
+	\centering
+    \small{DDIM}\\
+    \centering
+    \small{\citep{song2020denoising}}
+    \\
+    \vspace{2.5cm}
+	\centering
+    \small{DPM-Solver} \\ 
+	\centering
+    \small{(ours)}
+	\end{minipage}
+	\begin{minipage}{0.89\linewidth}
+		\centering
+			\includegraphics[width=0.24\linewidth]{figures/cifar10-appendix/cifar10_ddim_10.png}
+			\includegraphics[width=0.24\linewidth]{figures/cifar10-appendix/cifar10_ddim_12.png}
+			\includegraphics[width=0.24\linewidth]{figures/cifar10-appendix/cifar10_ddim_15.png}
+			\includegraphics[width=0.24\linewidth]{figures/cifar10-appendix/cifar10_ddim_20.png} \\
+            \vspace{0.5cm}
+			\includegraphics[width=0.24\linewidth]{figures/cifar10-appendix/cifar10_ddim_fast_10.png}
+			\includegraphics[width=0.24\linewidth]{figures/cifar10-appendix/cifar10_ddim_fast_12.png}
+			\includegraphics[width=0.24\linewidth]{figures/cifar10-appendix/cifar10_ddim_fast_15.png}
+			\includegraphics[width=0.24\linewidth]{figures/cifar10-appendix/cifar10_ddim_fast_20.png} \\
+	\end{minipage}
+	\vspace{0.2cm}
+	\caption{\label{fig:appendix-cifar10-discrete}
+Random samples by DDIM~\citep{song2020denoising} (quadratic time steps) and DPM-Solver (ours) with 10, 12, 15, 20 number of function evaluations (NFE) with the same random seed, using the pre-trained discrete-time DPMs~\citep{ho2020denoising} on CIFAR-10.
+}
+\end{figure}
+
+
+
+\begin{figure}[t]
+	\hspace{0.1\linewidth}
+	\begin{minipage}{0.21\linewidth}
+	\centering
+	NFE = 10
+	\end{minipage}
+	\begin{minipage}{0.22\linewidth}
+	\centering
+	NFE = 12
+	\end{minipage}
+	\begin{minipage}{0.22\linewidth}
+	\centering
+	NFE = 15
+	\end{minipage}
+	\begin{minipage}{0.22\linewidth}
+	\centering
+	NFE = 20
+	\end{minipage}
+	\vspace{0.2cm}
+	\\
+	\centering
+	\begin{minipage}{0.1\linewidth}
+	\centering
+    \small{DDIM}\\
+    \centering
+    \small{\citep{song2020denoising}}
+    \\
+    \vspace{2.cm}
+	\centering
+    \small{DPM-Solver} \\ 
+	\centering
+    \small{(ours)}
+	\end{minipage}
+	\begin{minipage}{0.89\linewidth}
+		\centering
+			\includegraphics[width=0.24\linewidth]{figures/celeba-appendix/celeba_ddim_10.png}
+			\includegraphics[width=0.24\linewidth]{figures/celeba-appendix/celeba_ddim_12.png}
+			\includegraphics[width=0.24\linewidth]{figures/celeba-appendix/celeba_ddim_15.png}
+			\includegraphics[width=0.24\linewidth]{figures/celeba-appendix/celeba_ddim_20.png} \\
+            \vspace{0.5cm}
+			\includegraphics[width=0.24\linewidth]{figures/celeba-appendix/celeba_ddim_fast_10.png}
+			\includegraphics[width=0.24\linewidth]{figures/celeba-appendix/celeba_ddim_fast_12.png}
+			\includegraphics[width=0.24\linewidth]{figures/celeba-appendix/celeba_ddim_fast_15.png}
+			\includegraphics[width=0.24\linewidth]{figures/celeba-appendix/celeba_ddim_fast_20.png} \\
+	\end{minipage}
+	\vspace{0.2cm}
+	\caption{\label{fig:appendix-celeba-discrete}
+Random samples by DDIM~\citep{song2020denoising} (quadratic time steps) and DPM-Solver (ours) with 10, 12, 15, 20 number of function evaluations (NFE) with the same random seed, using the pre-trained discrete-time DPMs~\citep{song2020denoising} on CelebA 64x64.
+}
+\end{figure}
+
+
+
+
+\begin{figure}[t]
+	\hspace{0.1\linewidth}
+	\begin{minipage}{0.21\linewidth}
+	\centering
+	NFE = 10
+	\end{minipage}
+	\begin{minipage}{0.22\linewidth}
+	\centering
+	NFE = 12
+	\end{minipage}
+	\begin{minipage}{0.22\linewidth}
+	\centering
+	NFE = 15
+	\end{minipage}
+	\begin{minipage}{0.22\linewidth}
+	\centering
+	NFE = 20
+	\end{minipage}
+	\vspace{0.2cm}
+	\\
+	\centering
+	\begin{minipage}{0.1\linewidth}
+	\centering
+    \small{DDIM}\\
+    \centering
+    \small{\citep{song2020denoising}}
+    \\
+    \vspace{2.cm}
+	\centering
+    \small{DPM-Solver} \\ 
+	\centering
+    \small{(ours)}
+	\end{minipage}
+	\begin{minipage}{0.89\linewidth}
+		\centering
+			\includegraphics[width=0.24\linewidth]{figures/imagenet64-appendix/imagenet64_ddim_10.png}
+			\includegraphics[width=0.24\linewidth]{figures/imagenet64-appendix/imagenet64_ddim_12.png}
+			\includegraphics[width=0.24\linewidth]{figures/imagenet64-appendix/imagenet64_ddim_15.png}
+			\includegraphics[width=0.24\linewidth]{figures/imagenet64-appendix/imagenet64_ddim_20.png} \\
+            \vspace{0.5cm}
+			\includegraphics[width=0.24\linewidth]{figures/imagenet64-appendix/imagenet64_ddim_fast_10.png}
+			\includegraphics[width=0.24\linewidth]{figures/imagenet64-appendix/imagenet64_ddim_fast_12.png}
+			\includegraphics[width=0.24\linewidth]{figures/imagenet64-appendix/imagenet64_ddim_fast_15.png}
+			\includegraphics[width=0.24\linewidth]{figures/imagenet64-appendix/imagenet64_ddim_fast_20.png} \\
+	\end{minipage}
+	\vspace{0.2cm}
+	\caption{\label{fig:appendix-imagenet64-discrete}
+Random samples by DDIM~\citep{song2020denoising} (uniform time steps) and DPM-Solver (ours) with 10, 12, 15, 20 number of function evaluations (NFE) with the same random seed, using the pre-trained discrete-time DPMs~\citep{nichol2021improved} on ImageNet 64x64.
+}
+\end{figure}
+
+
+
+\begin{figure}[t]
+	\hspace{0.1\linewidth}
+	\begin{minipage}{0.21\linewidth}
+	\centering
+	NFE = 10
+	\end{minipage}
+	\begin{minipage}{0.22\linewidth}
+	\centering
+	NFE = 12
+	\end{minipage}
+	\begin{minipage}{0.22\linewidth}
+	\centering
+	NFE = 15
+	\end{minipage}
+	\begin{minipage}{0.22\linewidth}
+	\centering
+	NFE = 20
+	\end{minipage}
+	\vspace{0.2cm}
+	\\
+	\centering
+	\begin{minipage}{0.1\linewidth}
+	\centering
+    \small{DDIM}\\
+    \centering
+    \small{\citep{song2020denoising}}
+    \\
+    \vspace{2.cm}
+	\centering
+    \small{DPM-Solver} \\ 
+	\centering
+    \small{(ours)}
+	\end{minipage}
+	\begin{minipage}{0.89\linewidth}
+		\centering
+			\includegraphics[width=0.24\linewidth]{figures/bedroom_guided-appendix/bedroom_guided_ddim_10.png}
+			\includegraphics[width=0.24\linewidth]{figures/bedroom_guided-appendix/bedroom_guided_ddim_12.png}
+			\includegraphics[width=0.24\linewidth]{figures/bedroom_guided-appendix/bedroom_guided_ddim_15.png}
+			\includegraphics[width=0.24\linewidth]{figures/bedroom_guided-appendix/bedroom_guided_ddim_20.png} \\
+            \vspace{0.5cm}
+			\includegraphics[width=0.24\linewidth]{figures/bedroom_guided-appendix/bedroom_guided_ddim_fast_10.png}
+			\includegraphics[width=0.24\linewidth]{figures/bedroom_guided-appendix/bedroom_guided_ddim_fast_12.png}
+			\includegraphics[width=0.24\linewidth]{figures/bedroom_guided-appendix/bedroom_guided_ddim_fast_15.png}
+			\includegraphics[width=0.24\linewidth]{figures/bedroom_guided-appendix/bedroom_guided_ddim_fast_20.png} \\
+	\end{minipage}
+	\vspace{0.2cm}
+	\caption{\label{fig:appendix-bedroom256-discrete}
+Random samples by DDIM~\citep{song2020denoising} (uniform time steps) and DPM-Solver (ours) with 10, 12, 15, 20 number of function evaluations (NFE) with the same random seed, using the pre-trained discrete-time DPMs~\citep{dhariwal2021diffusion} on LSUN bedroom 256x256.
+}
+\end{figure}
+
+
+\begin{figure}[t]
+	\hspace{0.1\linewidth}
+	\begin{minipage}{0.21\linewidth}
+	\centering
+	NFE = 10
+	\end{minipage}
+	\begin{minipage}{0.22\linewidth}
+	\centering
+	NFE = 12
+	\end{minipage}
+	\begin{minipage}{0.22\linewidth}
+	\centering
+	NFE = 15
+	\end{minipage}
+	\begin{minipage}{0.22\linewidth}
+	\centering
+	NFE = 20
+	\end{minipage}
+	\vspace{0.2cm}
+	\\
+	\centering
+	\begin{minipage}{0.1\linewidth}
+	\centering
+    \small{DDIM}\\
+    \centering
+    \small{\citep{song2020denoising}}
+    \\
+    \vspace{2.cm}
+	\centering
+    \small{DPM-Solver} \\ 
+	\centering
+    \small{(ours)}
+	\end{minipage}
+	\begin{minipage}{0.89\linewidth}
+		\centering
+			\includegraphics[width=0.24\linewidth]{figures/imagenet256_guided-appendix/imagenet256_guided_ddim_10.png}
+			\includegraphics[width=0.24\linewidth]{figures/imagenet256_guided-appendix/imagenet256_guided_ddim_12.png}
+			\includegraphics[width=0.24\linewidth]{figures/imagenet256_guided-appendix/imagenet256_guided_ddim_15.png}
+			\includegraphics[width=0.24\linewidth]{figures/imagenet256_guided-appendix/imagenet256_guided_ddim_20.png} \\
+            \vspace{0.5cm}
+			\includegraphics[width=0.24\linewidth]{figures/imagenet256_guided-appendix/imagenet256_guided_ddim_fast_10.png}
+			\includegraphics[width=0.24\linewidth]{figures/imagenet256_guided-appendix/imagenet256_guided_ddim_fast_12.png}
+			\includegraphics[width=0.24\linewidth]{figures/imagenet256_guided-appendix/imagenet256_guided_ddim_fast_15.png}
+			\includegraphics[width=0.24\linewidth]{figures/imagenet256_guided-appendix/imagenet256_guided_ddim_fast_20.png} \\
+	\end{minipage}
+	\vspace{0.2cm}
+	\caption{\label{fig:appendix-imagenet256-discrete}
+Random class-conditional samples (class: 90, lorikeet) by DDIM~\citep{song2020denoising} (uniform time steps) and DPM-Solver (ours) with 10, 12, 15, 20 number of function evaluations (NFE) with the same random seed, using the pre-trained discrete-time DPMs~\citep{dhariwal2021diffusion} on ImageNet 256x256 with classifier guidance (classifier scale: 1.0).
+}
+\end{figure}
+
+
+
+
+
+
+
+
+
+
+
+

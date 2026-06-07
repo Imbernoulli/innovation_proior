@@ -1,0 +1,144 @@
+ \documentclass{article}
+ \pdfoutput=1
+
+\usepackage{iclr2021_conference,times}
+\input{math_commands}
+
+\iclrfinalcopy
+
+%\usepackage{todonotes}
+\usepackage{enumitem}
+\usepackage{todonotes}
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{hyperref}       % hyperlinks
+%\hypersetup{
+%    colorlinks=true,
+%    linkcolor=blue,
+%    urlcolor=blue,
+%}
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{amsmath}
+\usepackage{xcolor}
+\usepackage{float}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{subfigure}
+\usepackage{graphicx}
+\usepackage{verbatim}
+\usepackage{multirow}
+\usepackage{multicol}
+
+\usepackage{titlesec}
+\titlespacing\section{0pt}{0pt plus 0pt minus 0pt}{0pt plus 0pt minus 0pt}
+\titlespacing\subsection{0pt}{0pt plus 0pt minus 0pt}{0pt plus 0pt minus 0pt}
+\titlespacing\subsubsection{0pt}{0pt plus 0pt minus 0pt}{0pt plus 0pt minus 0pt}
+
+%\setlength{\belowdisplayskip}{0pt} 
+%\setlength{\belowdisplayshortskip}{0pt}
+%\setlength{\abovedisplayskip}{0pt} 
+%\setlength{\abovedisplayshortskip}{0pt}
+
+\usepackage[skip=0pt]{caption}
+%\setlength{\belowcaptionskip}{-3pt}
+\setlength{\textfloatsep}{3pt plus 2.0pt minus 2.0pt}
+%\setlength{\floatsep}{5pt plus 1.0pt minus 2.0pt} %usually should be not used
+\setlength{\intextsep}{2pt plus 2.0pt minus 2.0pt}
+
+\usepackage[ruled]{algorithm2e}
+\usepackage{amsmath, amsthm, thm-restate}
+\usepackage{chngcntr}
+
+\newtheorem{definition}{Definition}
+\newtheorem{lemma}{Lemma}
+\newtheorem{proposition}{Proposition}
+\newtheorem{remark}{Remark}
+
+\def\*#1{\mathbf{#1}}
+\newcommand{\bs}[1]{\ensuremath{\boldsymbol{#1}}}
+
+\newtheoremstyle{slanted}
+  {0.9\topsep}%   Space above
+  {0.9\topsep}%   Space below
+  {\it}%  Body font
+  {}%          Indent amount (empty = no indent, \parindent = para indent)
+  {\bfseries}% Thm head font
+  {.}%         Punctuation after thm head
+  {0.5em}%     Space after thm head: " " = normal interword space;
+     %         \newline = linebreak
+  {}%          Thm head spec (can be left empty, meaning `normal')
+
+\theoremstyle{slanted}
+\newtheorem{theorem}{Theorem}
+
+\newtheorem{corollary}{Corollary}
+
+\newcommand\blfootnote[1]{%
+  \begingroup
+  \renewcommand\thefootnote{}\footnote{#1}%
+  \addtocounter{footnote}{-1}%
+  \endgroup
+}
+
+%\usepackage{enumitem}
+%\setitemize{noitemsep,topsep=0pt,parsep=0pt,partopsep=0pt}
+
+\title{Rethinking Attention with Performers}
+
+
+% The \author macro works with any number of authors. There are two commands
+% used to separate the names and addresses of multiple authors: \And and \AND.
+%
+% Using \And between authors leaves it to LaTeX to determine where to break the
+% lines. Using \AND forces a line break at that point. So, if LaTeX puts 3 of 4
+% authors names on the first line, and the last on the second line, try using
+% \AND instead of \And before the third author name.
+
+
+\author{Krzysztof Choromanski$^{*1}$, Valerii Likhosherstov$^{*2}$, David Dohan$^{*1}$, Xingyou Song$^{*1}$ \\ 
+  \textbf{Andreea Gane$^{*1}$,  Tamas Sarlos$^{*1}$,  Peter Hawkins$^{*1}$, Jared Davis$^{*3}$, Afroz Mohiuddin$^{1}$} \\
+  \textbf{Lukasz Kaiser$^{1}$, David Belanger$^{1}$, Lucy Colwell$^{1,2}$, Adrian Weller$^{2,4}$} \\
+  $^1$Google $^2$University of Cambridge $^3$DeepMind $^4$Alan Turing Institute \\
+}
+
+\begin{document}
+\maketitle
+\vspace{-0.8cm}
+\begin{abstract}
+\vspace{-0.3cm}
+We introduce \textit{Performers}, Transformer architectures which can estimate regular (softmax) full-rank-attention Transformers with provable accuracy, but using only linear (as opposed to quadratic) space and time complexity, without relying on any priors such as sparsity or low-rankness. To approximate softmax attention-kernels, Performers use a novel \textit{Fast Attention Via positive Orthogonal Random features} approach (FAVOR+), which may be of independent interest for scalable kernel methods. FAVOR+ can also be used to efficiently model kernelizable attention mechanisms beyond softmax. This representational power is crucial to accurately compare softmax with other kernels for the first time on large-scale tasks, beyond the reach of regular Transformers, and investigate optimal attention-kernels. Performers are linear architectures fully compatible with regular Transformers and with strong theoretical guarantees: unbiased or nearly-unbiased estimation of the attention matrix, uniform convergence and low  estimation variance. We tested Performers on a rich set of tasks stretching from pixel-prediction through text models to protein sequence modeling. We demonstrate competitive results with other examined efficient sparse and dense attention methods, showcasing effectiveness of the novel attention-learning paradigm leveraged by Performers. 
+
+\end{abstract}
+
+\blfootnote{$^\ast$Equal contribution. Correspondence to \texttt{\{kchoro,lcolwell\}@google.com}.}
+%\footnotetext[1]{}
+
+\blfootnote{Code for Transformer models on protein data can be found in \textcolor{blue}{\url{github.com/google-research/google-research/tree/master/protein_lm}} and Performer code can be found in \textcolor{blue}{\url{github.com/google-research/google-research/tree/master/performer}}. Google AI Blog: \textcolor{blue}{\url{https://ai.googleblog.com/2020/10/rethinking-attention-with-performers.html}}}
+\vspace{-1.5cm}
+\input{intro_related_work}
+%\newpage
+\input{algorithm}
+\input{theory}
+%\newpage
+\input{experiments}
+\input{conclusion}
+
+%\input{rebuttal}
+
+\newpage
+\input{broader_impact}
+\input{acknowledgements}
+\newpage
+\bibliographystyle{iclr2021_conference}
+\bibliography{performers}
+
+\newpage
+
+\input{appendix}
+
+
+\end{document}

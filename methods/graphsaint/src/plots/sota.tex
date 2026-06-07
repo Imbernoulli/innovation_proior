@@ -1,0 +1,105 @@
+\tikzset{mark size=3.5}
+\begin{tikzpicture}
+\def \gsaint{red}
+\def \fastgcn{blue}
+\def \sgcn{black}
+\def \asgcn{black!50!green}
+\def \ppi{asterisk}
+\def \flickr{x}
+\def \reddit{+}
+\def \yelp{Mercedes star}
+\def \op{0.2}
+\begin{axis}[
+    xmode=log,
+    xmin=0,xmax=1200,ymin=0.3,ymax=1,
+    width=0.48\textwidth,
+    height=0.38\textwidth,
+    xlabel=Training time (sec),
+    ylabel=Test F1\textsubscript{mic},
+    scatter/classes={%
+    ppi={mark=\ppi,black!60,thick},
+    flickr={mark=\flickr,black!60,thick},
+    reddit={mark=\reddit,black!60,thick},
+    yelp={mark=\yelp,black!60,thick},
+    gsaint={mark=square*,\gsaint,mark size=2pt},
+    sgcn={mark=square*,\sgcn,mark size=2pt},
+    fastgcn={mark=square*,\fastgcn,mark size=2pt},
+    asgcn={mark=square*,\asgcn,mark size=2pt},
+    gsaintppi={mark=\ppi,\gsaint},
+    gsaintflickr={mark=\flickr,\gsaint},
+    gsaintreddit={mark=\reddit,\gsaint},
+    gsaintyelp={mark=\yelp,\gsaint},
+    fastgcnppi={mark=\ppi,\fastgcn},
+    fastgcnflickr={mark=\flickr,\fastgcn},
+    fastgcnreddit={mark=\reddit,\fastgcn},
+    fastgcnyelp={mark=\yelp,\fastgcn},
+    sgcnppi={mark=\ppi,\sgcn},
+    sgcnflickr={mark=\flickr,\sgcn},
+    sgcnreddit={mark=\reddit,\sgcn},
+    sgcnyelp={mark=\yelp,\sgcn},
+    asgcnppi={mark=\ppi,\asgcn},
+    asgcnflickr={mark=\flickr,\asgcn},
+    asgcnreddit={mark=\reddit,\asgcn},
+    asgcnyelp={mark=\yelp,\asgcn}
+    },
+    legend style={font=\small},
+    legend cell align=left,
+    legend columns=4,
+    legend style={at={(0.43,1.29)},anchor=north,/tikz/column 4/.style={column sep=5pt},draw=none,/tikz/every even column/.append style={column sep=0.07cm}},
+    y label style={at={(axis description cs:0.12,.5)},anchor=south},
+    % legend pos=north east
+]
+\addplot[scatter,thick,only marks,%
+    scatter src=explicit symbolic] 
+    table[meta=label] {
+    x  y      label
+   27  0.964  gsaintppi  
+    4  0.507  gsaintflickr
+   12  0.964  gsaintreddit
+   95  0.642  gsaintyelp
+};
+\addplot [mark=none,fill=\gsaint,draw=none, 
+    fill opacity=\op]coordinates {
+    (4,0.507) (12,0.964) (27,0.964) (95,0.642) (4,0.507)}\closedcycle;
+\addplot[scatter,thick,only marks, 
+    scatter src=explicit symbolic]
+    table[meta=label]{
+    x  y      label
+   35  0.637  fastgcnppi
+    5  0.389  fastgcnflickr 
+   26  0.953  fastgcnreddit
+  161  0.634  fastgcnyelp
+};
+\addplot [mark=none,fill=\fastgcn,draw=none, 
+    fill opacity=\op]coordinates {
+    (5,0.398) (35,0.637) (26,0.953) (161,0.634) (5,0.398)}\closedcycle;
+\addplot[scatter,thick,only marks,
+    scatter src=explicit symbolic]
+    table[meta=label]{
+    x  y      label
+   16  0.954  sgcnppi 
+    8  0.464  sgcnflickr 
+  119  0.964  sgcnreddit
+  117  0.640  sgcnyelp
+};
+\addplot [mark=none,fill=\sgcn,draw=none, 
+    fill opacity=\op]coordinates {
+    (8,0.464) (16,0.954) (119,0.964) (117,0.640) (8,0.464)}\closedcycle;
+\addplot[scatter,thick,only marks,
+    scatter src=explicit symbolic]
+    table[meta=label]{
+    x  y      label
+   36  0.687  asgcnppi
+  169  0.506  asgcnflickr
+  659  0.958  asgcnreddit
+};
+\addplot [mark=none,fill=\asgcn,draw=none, 
+    fill opacity=\op]coordinates {
+    (36,0.687) (659,0.958) (2500,0.55) (169,0.506) (36,0.687)}\closedcycle;
+%\addlegendimage{line width=0.3mm,color=red}
+%\addlegendentry{Analytical results}
+\legend{PPI,Flickr,Reddit,Yelp,{\graphsaint},S-GCN,GraphSAGE,AS-GCN}
+\end{axis}
+
+%\legend{gsaint,sgcn}
+\end{tikzpicture}

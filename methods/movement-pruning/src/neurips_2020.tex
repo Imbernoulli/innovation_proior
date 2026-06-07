@@ -1,0 +1,486 @@
+\documentclass{article}
+
+% if you need to pass options to natbib, use, e.g.:
+%     \PassOptionsToPackage{numbers, compress}{natbib}
+% before loading neurips_2020
+
+% ready for submission
+% \usepackage{neurips_2020}
+
+% to compile a preprint version, e.g., for submission to arXiv, add add the
+% [preprint] option:
+% \usepackage[preprint]{neurips_2020}
+
+% to compile a camera-ready version, add the [final] option, e.g.:
+\usepackage[final]{neurips_2020}
+
+% to avoid loading the natbib package, add option nonatbib:
+% \usepackage[nonatbib]{neurips_2020}
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{hyperref}       % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+
+% Supp packages
+\usepackage[pdftex]{graphicx}
+\usepackage{wrapfig}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{multirow}
+\usepackage{subfig}
+
+% TODO: remove these commands
+\usepackage[normalem]{ulem}
+\usepackage{xcolor}
+\newcommand{\relu}{\operatorname{ReLU}}
+\newcommand{\sr}[1]{\textcolor{red}{SR: #1}}
+\newcommand{\vs}[1]{\textcolor{olive}{VS: #1}}
+
+
+
+\title{Movement Pruning: \\ Adaptive Sparsity by Fine-Tuning}
+
+\author{
+  Victor Sanh\textsuperscript{1}, Thomas Wolf\textsuperscript{1}, Alexander M. Rush\textsuperscript{1,2}\\
+  \textsuperscript{1}Hugging Face, \textsuperscript{2}Cornell University\\
+  \texttt{\{victor,thomas\}@huggingface.co} ; \texttt{arush@cornell.edu}
+}
+
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+    Magnitude pruning is a widely used strategy for reducing model size in pure supervised learning; however, it is less effective in the transfer learning regime that has become standard for state-of-the-art natural language processing applications. We propose the use of \textit{movement pruning}, a simple, deterministic first-order weight pruning method that is more adaptive to pretrained model fine-tuning. We give mathematical foundations to the method and compare it to existing zeroth- and first-order pruning methods. Experiments show that when pruning large pretrained language models, movement pruning shows significant improvements in high-sparsity regimes. When combined with distillation, the approach achieves minimal accuracy loss with down to only 3\% of the model parameters.
+\end{abstract}
+
+
+
+\section{Introduction}
+%%%%%%%%%%%%%%%%%%%%%%
+
+Large-scale transfer learning has become ubiquitous in deep learning and achieves state-of-the-art performance in applications in natural language processing and related fields. In this setup, a large model pretrained on a massive generic dataset is then fine-tuned on a smaller annotated dataset to perform a specific end-task. Model accuracy has been shown to scale with the pretrained model and dataset size \citep{Raffel2019ExploringTL}. However, significant resources are required to ship and deploy these large models, and training the models have high environmental costs \citep{Strubell2019EnergyAP}. 
+
+Sparsity induction is a widely used approach to reduce the memory footprint of neural networks at only a small cost of accuracy. Pruning methods, which remove weights based on their importance, are a particularly simple and effective method for compressing models. Smaller models are easier to sent on edge devices such as mobile phones but are also significantly less energy greedy: the majority of the energy consumption comes from fetching the model parameters from the long term storage of the mobile device to its volatile memory \citep{Han2016EIEEI,6757323}.
+
+Magnitude pruning \citep{Han2015LearningBW, Han2016DeepCC}, which preserves weights with high absolute values, is the most widely used method for weight pruning. It has been applied to a large variety of architectures in computer vision \citep{Guo2016DynamicNS}, in language processing \citep{Gale2019TheSO}, and more recently has been leveraged as a core component in the \textit{lottery ticket hypothesis} \citep{Frankle2019LinearMC}.
+
+While magnitude pruning is highly effective for standard supervised learning, it is inherently less useful in the transfer learning regime. In supervised learning, weight values are primarily determined by the end-task training data. In transfer learning, weight values are mostly predetermined by the original model and are only fine-tuned on the end task. This prevents these methods from learning to prune based on the fine-tuning step, or ``fine-pruning.''
+
+In this work, we argue that to effectively reduce the size of models for transfer learning, one should instead use \textit{movement pruning}, i.e., pruning approaches that consider the changes in weights during fine-tuning. Movement pruning differs from magnitude pruning in that both weights with low and high values can be pruned if they shrink during training. This strategy moves the selection criteria from the 0th to the 1st-order and facilitates greater pruning based on the fine-tuning objective. To test this approach, we introduce a particularly simple, deterministic version of movement pruning utilizing the straight-through estimator \citep{Bengio2013EstimatingOP}. 
+
+We apply movement pruning to pretrained language representations (BERT) \citep{devlin-etal-2019-bert,Vaswani2017AttentionIA} on a diverse set of fine-tuning tasks. In highly sparse regimes (less than 15\% of remaining weights), we observe significant improvements over magnitude pruning and other 1st-order methods such as $L_0$ regularization \citep{Louizos2017LearningSN}. Our models reach 95\% of the original BERT performance with only 5\% of the encoder's weight on natural language inference (MNLI) \citep{N18-1101} and question answering (SQuAD v1.1) \citep{Rajpurkar2016SQuAD10}. Analysis of the differences between magnitude pruning and movement pruning shows that the two methods lead to radically different pruned models with movement pruning showing greater ability to adapt to the end-task.
+
+
+
+\section{Related Work}
+%%%%%%%%%%%%%%%%%%%%%%
+
+In addition to magnitude pruning, there are many other approaches for generic model weight pruning. Most similar to our approach are methods for using parallel score matrices to augment the weight matrices \citep{Mallya2018PiggybackAM,Ramanujan2019WhatsHI}, which have been applied for convolutional networks. Differing from our methods, these methods keep the weights of the model fixed (either from a randomly initialized network or a pre-trained network) and the scores are updated to find a good sparse subnetwork. 
+
+Many previous works have also explored using higher-order information to select prunable weights. \citet{LeCun1989OptimalBD} and \citet{Hassibi1993OptimalBS} leverage the Hessian of the loss to select weights for deletion. Our method does not require the (possibly costly) computation of second-order derivatives since the importance scores are obtained simply as the by-product of the standard fine-tuning. \citep{Theis2018FasterGP,Ding2019GlobalSM,Lee2019SNIPSN} use the absolute value or the square value of the gradient. In contrast, we found it useful to preserve the direction of movement in our algorithm.
+
+
+Compressing pretrained language models for transfer learning 
+is also a popular area of study. Other approaches include knowledge distillation \citep{Sanh2019DistilBERTAD,Tang2019DistillingTK} and structured pruning \citep{Fan2019ReducingTD,Sajjad2020PoorMB,Michel2019AreSH,Wang2019StructuredPO}. Our core method does not require an external teacher model and targets individual weight. We also show that having a teacher can further improve our approach. Recent work also builds upon iterative magnitude pruning with rewinding \citep{Yu2019PlayingTL}, weight redistribution \citep{Dettmers2019SparseNF} models from scratch. This differs from our approach which we frame in the context of transfer learning (focusing on the fine-tuning stage).
+Finally, another popular compression approach is quantization. Quantization has been applied to a variety of modern large architectures  \citep{fan2020training,Zafrir2019Q8BERTQ8,Gong2014CompressingDC} providing high memory compression rates at the cost of no or little performance. 
+As shown in previous works \citep{Li2020TrainLT,Han2016DeepCC} quantization and pruning are complimentary and can be combined to further improve the performance/size ratio. 
+
+
+
+\section{Background: Score-Based Pruning}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\label{sec:notation}
+
+We first establish shared notation for discussing different neural network pruning strategies.  Let $\mathbf{W} \in \mathbb{R}^{n \times n}$ refer to a generic weight matrix in the model (we consider square matrices, but they could be of any shape). To determine which weights are pruned, we introduce a parallel matrix of associated importance scores $\mathbf{S} \in \mathbb{R}^{n \times n}$. Given importance scores, each pruning strategy computes a mask $\mathbf{M}\in \{0,1\}^{n \times n}$. Inference for an input $\mathbf{x}$ becomes $\mathbf{a} = (\mathbf{W} \odot \mathbf{M}) \mathbf{x}$, where $\odot$ is the Hadamard product.
+A common strategy is to keep the top-$v$ percent of weights by importance. We define Top$_v$ as a function which selects the $v\%$ highest values in $\mathbf{S}$: 
+\begin{equation}
+\label{eq:topk}
+\text{Top}_v(\mathbf{S})_{i,j}=
+    \begin{cases}
+      1, &  S_{i,j} \text{ in top } v\%  \\
+      0, & \text{o.w.}
+    \end{cases}
+\end{equation}
+
+Magnitude-based weight pruning determines the mask based on the absolute value of each weight as a measure of importance.
+Formally, we have importance scores $\mathbf{S} = \big(|W_{i,j}|\big)_{1 \leq i,j \leq n}$, and masks $\mathbf{M} = \text{Top}_v(\mathbf{S})$ (Eq~\eqref{eq:topk}). There are several extensions to this base setup. \citet{Han2015LearningBW} use iterative magnitude pruning: the model is first trained until convergence and weights with the lowest magnitudes are removed afterward. The sparsified model is then re-trained with the removed weights fixed to 0. This loop is repeated until the desired sparsity level is reached.
+
+In this study, we focus on \textit{automated gradual pruning} \citep{Zhu2018ToPO}. It supplements magnitude pruning by allowing masked weights to be updated such that they are not fixed for the entire duration of the training. Automated gradual pruning enables the model to recover from previous masking choices \citep{Guo2016DynamicNS}. In addition, one can gradually increases the sparsity level $v$ during training using a cubic sparsity scheduler: $v^{(t)} = v_f + (v_i - v_f)\left( 1-\frac{t-t_i}{N\Delta t} \right)^3$.
+The sparsity level at time step $t$, $v^{(t)}$ is increased from an initial value $v_i$ (usually 0) to a final value $v_f$ in $n$ pruning steps after $t_i$ steps of warm-up. The model is thus pruned and trained jointly.
+
+
+
+\section{Movement Pruning}
+%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Magnitude pruning can be seen as utilizing zeroth-order information (absolute value) of the running model. In this work, 
+we focus on movement pruning methods where importance is derived from first-order information. Intuitively,
+instead of selecting weights that are far from zero, we retain connections that are moving away from zero during the training process. We consider two versions of movement pruning: hard and soft. 
+
+For (hard) movement pruning, masks are computed using the Top$_v$ function: $\mathbf{M} = \text{Top}_v(\mathbf{S})$. Unlike magnitude pruning, during training, we learn both the weights $\mathbf{W}$ and their importance scores $\mathbf{S}$. During the forward pass, we compute for all $i$, $a_i = \sum_{k=1}^{n}   W_{i,k}   M_{i,k} x_k$.  
+
+Since the gradient of Top$_v$ is 0 everywhere it is defined, we follow \citet{Ramanujan2019WhatsHI, Mallya2018PiggybackAM} and approximate its value with the \textit{straight-through estimator} \citep{Bengio2013EstimatingOP}. In the backward pass, Top$_v$ is ignored and the gradient goes "straight-through" to $\mathbf{S}$. The approximation of gradient of the loss $\cal L$ with respect to $S_{i,j}$ is given by \begin{equation}
+    \label{eq:update_S}
+    \frac{\partial {\cal L}}{\partial {S}_{i,j}} = \frac{\partial {\cal L}}{\partial {a}_i} \frac{\partial {a}_i}{\partial {S}_{i,j}} = \frac{\partial {\cal L}}{\partial {a}_i} {W}_{i,j} {x}_j
+\end{equation}
+This implies that the scores of weights are updated, even if these weights are masked in the forward pass. 
+We prove in Appendix~\ref{sec:proof} that movement pruning as an optimization problem will converge.
+
+We also consider a relaxed (soft) version of movement pruning based on the binary mask function described by \citet{Mallya2018PiggybackAM}. Here we replace hyperparameter $v$ with a fixed global threshold value $\tau$ that controls the binary mask. The mask is calculated as $\mathbf{M} = (\mathbf{S} > \tau)$. In order to control the sparsity level, we add a regularization term $R(\mathbf{S}) = \lambda_{\text{mvp}} \sum_{i,j} \sigma(S_{i,j})$ which encourages the importance scores to decrease over time\footnote{We also experimented with $\sum_{i,j}|S_{i,j}|$ but it turned out to be harder to tune while giving similar results.}. The coefficient $\lambda_{\text{mvp}}$ controls the penalty intensity and thus the sparsity level.
+
+
+
+\begin{table*}
+    \centering
+    \resizebox{1.\columnwidth}{!}{%
+    \begin{tabular}{lcccc}
+        \toprule
+          & Magnitude pruning & $L_0$ regularization & Movement pruning & Soft movement pruning \\
+          \midrule
+        Pruning Decision & 0th order & 1st order & 1st order & 1st order \\
+        Masking Function &  Top$_v$ & Continuous Hard-Concrete &  Top$_v$ &  Thresholding \\
+        Pruning Structure & Local or Global & Global & Local or Global & Global \\
+        Learning Objective & $\mathcal{L}$ & $\mathcal{L} + \lambda_{l0} \mathbb{E}(L_0)$ & $\mathcal{L}$ & $\mathcal{L} + \lambda_{\text{mvp}} R(\mathbf{S})$ \\
+        Gradient Form &  & Gumbel-Softmax & Straight-Through & Straight-Through\\
+        Scores $\mathbf{S}$ 
+            & $|W_{i,j}|$ 
+            & $-\sum_{t} (\frac{\partial {\cal L}}{\partial {W}_{i,j}})^{(t)} {W}^{(t)}_{i,j} f(\overline{S}_{i,j}^{(t)})$
+            & $-\sum_{t} (\frac{\partial {\cal L}}{\partial {W}_{i,j}})^{(t)} {W}^{(t)}_{i,j}$ 
+            & $-\sum_{t} (\frac{\partial {\cal L}}{\partial {W}_{i,j}})^{(t)} {W}^{(t)}_{i,j}$\\
+        \bottomrule
+    \end{tabular}%
+    }
+    \caption{Summary of the pruning methods considered in this work and their specificities. The expression of $f$ of $L_0$ regularization is detailed in Eq~\eqref{grad_l0}.}
+    \label{tab:specificities}
+\end{table*}
+
+\paragraph{Method Interpretation}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\label{sec:momemtum_acc}
+
+In movement pruning, the gradient of $\cal{L}$ with respect to $W_{i,j}$ is given by the standard gradient derivation: $\frac{\partial {\cal L}}{\partial W_{i,j}} = \frac{\partial {\cal L}}{\partial a_i} M_{i,j} x_j$. By combining it to Eq~\eqref{eq:update_S}, we have $\frac{\partial {\cal L}}{\partial S_{i,j}} = \frac{\partial {\cal L}}{\partial W_{i,j}} W_{i,j}$ (we omit the binary mask term $M_{i,j}$ for simplicity). From the gradient update in Eq~\eqref{eq:update_S}, $S_{i,j}$ is increasing when $\frac{\partial {\cal L}}{\partial S_{i,j}} < 0$, which happens in two cases: \begin{itemize}
+    \item (a) $\frac{\partial {\cal L}}{\partial W_{i,j}} < 0$ and $W_{i,j} > 0$
+    \item (b) $\frac{\partial {\cal L}}{\partial W_{i,j}} > 0$ and $W_{i,j} < 0$
+\end{itemize}
+It means that during training $W_{i,j}$ is increasing while being positive or is decreasing while being negative. It is equivalent to saying that $S_{i,j}$ is increasing when $W_{i,j}$ is moving away from 0. Inversely, $S_{i,j}$ is decreasing when $\frac{\partial {\cal L}}{\partial S_{i,j}} > 0$ which means that $W_{i,j}$ is shrinking towards 0.
+
+\begin{figure*}
+    \centering
+    \subfloat[Magnitude pruning\label{fig:delta_map}]{  {\includegraphics[height=5.2cm]{finetuning_delta_map.png}} }
+    \subfloat[Movement pruning\label{fig:delta_mvp}]{ {\includegraphics[height=5.2cm]{finetuning_delta_mvp.png}} }
+    
+    \caption{During fine-tuning (on MNLI), the weights stay close to their pre-trained values which limits the adaptivity of magnitude pruning. We plot the identity line in black. Pruned weights are plotted in grey. Magnitude pruning selects weights that are far from 0 while movement pruning selects weights that are moving away from 0.}
+    \label{fig:delta}
+\end{figure*}
+
+While magnitude pruning selects the most important weights as the ones which maximize their distance to 0 ($|W_{i,j}|$), movement pruning selects the weights which are moving the most away from 0 ($S_{i,j}$). For this reason, magnitude pruning can be seen as a 0th order method, whereas movement pruning is based on a 1st order signal. In fact, $\mathbf{S}$ can be seen as an accumulator of movement: from equation \eqref{eq:update_S}, after $T$ gradient updates, we have
+\begin{equation}
+    \label{acc_of_mvt}
+    S_{i,j}^{(T)} = - \alpha_S \sum_{t<T} (\frac{\partial {\cal L}}{\partial W_{i,j}})^{(t)} W^{(t)}_{i,j}
+\end{equation}
+
+Figure~\ref{fig:delta} shows this difference empirically by comparing weight values during fine-tuning against their pre-trained value.  As observed by \citet{Gordon2020CompressingBS}, fine-tuned weights stay close in absolute value to their initial pre-trained values. For magnitude pruning, this stability around the pre-trained values implies that we know with high confidence before even fine-tuning which weights will be pruned as the weights with the smallest absolute value at pre-training will likely stay small and be pruned. In contrast, in movement pruning, the pre-trained weights do not have such an awareness of the pruning decision since the selection is made during fine-tuning (moving away from 0), and both low and high values can be pruned. We posit that this is critical for the success of the approach as it is able to prune based on the task-specific data, not only the pre-trained value.
+
+\paragraph{$\mathbf{L_0}$ Regularization}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Finally we note that movement pruning (and its soft variant) yield a similar update as $L_0$ regularization based pruning, another movement based pruning approach \citep{Louizos2017LearningSN}. Instead of straight-through, $L_0$ uses the \textit{hard-concrete} distribution, where the mask $\mathbf{M}$ is sampled for all $i, j$ with hyperparameters $b>0$, $l<0$, and $r>1$: 
+\begin{align*}
+     u &\sim \mathcal{U}(0,1) & 
+     \overline{{S}}_{i,j} &= \sigma \big( ( \log(u) - \log(1-u) + {S}_{i,j})/b \big)\\
+     {Z}_{i,j} &= (r-l) \overline{{S}}_{i,j} + l & 
+     {M}_{i,j} &= \min(1, \relu({Z}_{i,j}))
+\end{align*}
+
+\noindent The expected $L_0$ norm has a closed form involving the parameters of the hard-concrete: 
+$  \mathbb{E}(L_0) = \sum_{i,j} \sigma \big( \log S_{i,j} - b \log(-l/r) \big)$.
+Thus, the weights and scores of the model can be optimized in an end-to-end fashion to minimize the sum of the training loss $\cal L$ and the expected $L_0$ penalty. A coefficient $\lambda_{l0}$ controls the $L_0$ penalty and indirectly the sparsity level. Gradients take a similar form:
+\begin{equation}
+    \label{grad_l0}
+    \frac{\partial {\cal L}}{\partial {S}_{i,j}} = \frac{\partial {\cal L}}{\partial a_i} {W}_{i,j} x_j f(\overline{S}_{i,j})
+    \text{  where  }
+    f(\overline{S}_{i,j}) = \frac{r-l}{b} \bar{S}_{i,j} (1-\bar{S}_{i,j}) \mathbf{1}_{\{0 \leq {Z}_{i,j} \leq 1\}}
+\end{equation}
+At test time, a non-stochastic estimation of the mask is used: 
+%\begin{equation}
+    $\mathbf{\hat{M}} = \min\Big( 1, \relu \big( (r-l) \sigma(\mathbf{S}) +l \big) \Big)$
+%\end{equation}
+and weights multiplied by 0 can simply be discarded.
+
+Table~\ref{tab:specificities} highlights the characteristics of each pruning method.
+The main differences are in the masking functions, pruning structure, and the final gradient form.
+
+
+
+\section{Experimental Setup}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Transfer learning for NLP uses large pre-trained language models that are fine-tuned on target tasks \citep{ruder-etal-2019-transfer, devlin-etal-2019-bert, radford2019language, liu2019roberta}.
+We experiment with task-specific pruning of \texttt{BERT-base-uncased}, a pre-trained model that contains roughly 84M parameters. We freeze the embedding modules and fine-tune the transformer layers and the task-specific head. All reported sparsity percentages are relative to \texttt{BERT-base} and correspond exactly to model size even comparing to baselines.
+
+We perform experiments on three monolingual (English) tasks, which are common benchmarks for the recent progress in transfer learning for NLP: question answering (SQuAD v1.1) \citep{Rajpurkar2016SQuAD10}, natural language inference (MNLI) \citep{N18-1101}, and sentence similarity  (QQP) \citep{WinNT}. The datasets respectively contain 8K, 393K, and 364K training examples. SQuAD is formulated as a span extraction task, MNLI and QQP are paired sentence classification tasks.
+
+
+For a given task, we fine-tune the pre-trained model for the same number of updates (between 6 and 10 epochs) across pruning methods\footnote{Preliminary experiments showed that increasing the number of pruning steps tended to improve the end performance}. We follow \citet{Zhu2018ToPO} and use a cubic sparsity scheduling for Magnitude Pruning (MaP), Movement Pruning (MvP), and Soft Movement Pruning (SMvP). Adding a few steps of cool-down at the end of pruning empirically improves the performance especially in high sparsity regimes. The schedule for $v$ is: 
+\begin{equation}
+    \label{sparsity_scheduler_cold_down}
+    \begin{cases}
+      v_i & 0 \leq t < t_i\\
+      v_f + (v_i - v_f)(1-\frac{t-t_i-t_f}{N\Delta t})^3 &  t_i \leq t < T - t_f\\
+      v_f & \text{o.w.}
+    \end{cases}
+\end{equation}
+\noindent where $t_f$ is the number of cool-down steps.
+
+We compare our results against several state-of-the-art pruning baselines: Reweighted Proximal Pruning (RPP) \citep{Guo2019ReweightedPP} combines re-weighted $L_1$ minimization and Proximal Projection \citep{Parikh2014ProximalA} to perform unstructured pruning. LayerDrop \citep{Fan2019ReducingTD} leverages structured dropout to prune models at test time. For RPP and LayerDrop, we report results from authors. We also compare our method against the mini-BERT models, a collection of smaller BERT models with varying hyper-parameters \citep{Turc2019WellReadSL}.
+
+Finally, \cite{Gordon2020CompressingBS,Li2020TrainLT} apply unstructured magnitude pruning as a post-hoc operation whereas we use \textit{automated gradual pruning} \citep{Zhu2018ToPO}  which improves on these methods by enabling masked weights to be updated. %For instance, (2002.08307) obtains a score of 58.7 on MNLI compared to 78.4 at 90\% sparsity with automated gradual pruning.
+Moreover, \cite{McCarley2019PruningAB} compares multiple methods to compute structured masking ($L_0$ regularization and head importance as described in \citep{Michel2019AreSH}) and found that structured $L_0$ regularization performs best. We did not find any implementation for this work, so for fair comparison, we presented a strong unstructured $L_0$ regularization baseline.
+
+
+
+\section{Results}
+%%%%%%%%%%%%%%%%%
+
+Figure~\ref{fig:perf} displays the results for the main pruning methods at different levels of pruning on each dataset. First, we observe the consistency of the comparison between magnitude and movement pruning: at low sparsity (more than 70\% of remaining weights), magnitude pruning outperforms all methods with little or no loss with respect to the dense model whereas the performance of movement pruning methods quickly decreases even for low sparsity levels. However, magnitude pruning performs poorly with high sparsity, and the performance drops extremely quickly. In contrast, first-order methods show strong performances with less than 15\% of remaining weights. 
+
+\begin{figure*}
+    \caption{Comparisons between different pruning methods in high sparsity regimes. \textbf{Soft movement pruning consistently outperforms other methods in high sparsity regimes.} We plot the performance of the standard fine-tuned BERT along with 95\% of its performance. Sparsity percentages are relative to BERT-base and correspond exactly to model size.
+    }
+    \label{fig:perf}
+    \includegraphics[width=0.97\columnwidth]{perf.png}
+\end{figure*}
+
+Table~\ref{tab:perf} shows the specific model scores for different methods at high sparsity levels. Magnitude pruning on SQuAD achieves 54.5 F1 with 3\% of the weights compared to 73.3 F1 with $L_0$ regularization, 76.3 F1 for movement pruning, and 79.9 F1 with soft movement pruning. These experiments indicate that in high sparsity regimes, importance scores derived from the movement accumulated during fine-tuning induce significantly better pruned models compared to absolute values.
+
+Next, we compare the difference in performance between first-order methods. We see that straight-through based hard movement pruning (MvP) is comparable with $L_0$ regularization (with a significant gap in favor of movement pruning on QQP). Soft movement pruning (SMvP) consistently outperforms hard movement pruning and $L_0$ regularization by a strong margin and yields the strongest performance among all pruning methods in high sparsity regimes. These comparisons support the fact that even if movement pruning (and its relaxed version soft movement pruning) is simpler than $L_0$ regularization, it yet yields stronger performances for the same compute budget. 
+
+Finally, movement pruning and soft movement pruning compare favorably to the other baselines, except for QQP where RPP is on par with soft movement pruning. Movement pruning also outperforms the fine-tuned mini-BERT models.
+This is coherent with \citep{Li2020TrainLT}: it is both more efficient and more effective to train a large model and compress it afterward than training a smaller model from scratch. We do note though that current hardware does not support optimized inference for sparse models: from an inference speed perspective, it might often desirable to use a small dense model such as mini-BERT over a sparse alternative of the same size.
+
+
+\begin{table*}
+  \caption{
+  Performance at high sparsity levels. \textbf{(Soft) movement pruning outperforms current state-of-the art pruning methods at different high sparsity levels.} 3\% corresponds to 2.6 millions (M) non-zero parameters in the encoder and 10\% to 8.5M.
+  }
+  \label{tab:perf}
+  \centering
+  \resizebox{0.9\columnwidth}{!}{%
+    \begin{tabular}{lcc|cccc}
+        \toprule
+          & \shortstack{BERT base\\ fine-tuned} & \shortstack{Remaining \\Weights (\%)} & MaP & $L_0$ Regu & MvP & soft MvP \\
+        \hline
+        \multirow{2}{*}{\shortstack{SQuAD - Dev\\EM/F1}} & \multirow{2}{*}{80.4/88.1}
+              & 10\% & 67.7/78.5 & 69.9/80.0 & \textbf{71.9}/\textbf{81.7} & 71.3/81.5\\
+            & & 3\%  & 40.1/54.5 & 61.2/73.3 & 65.2/76.3 & \textbf{69.5}/\textbf{79.9}\\
+        \hline
+        \multirow{2}{*}{\shortstack{MNLI - Dev\\acc/MM acc}} & \multirow{2}{*}{84.5/84.9}
+              & 10\% & 77.8/79.0 & 77.9/78.5 & 79.3/79.5 & \textbf{80.7}/\textbf{81.1}\\
+            & & 3\%  & 68.9/69.8 & 75.1/75.4 & 76.1/76.7 & \textbf{79.0}/\textbf{79.6}\\
+        \hline
+        \multirow{2}{*}{\shortstack{QQP - Dev\\acc/F1}} & \multirow{2}{*}{91.4/88.4}
+            & 10\% & 78.8/75.1 & 87.5/81.9 & 89.1/85.5 & \textbf{90.5}/\textbf{87.1}\\
+          & & 3\%  & 72.1/58.4 & 86.5/81.0 & 85.6/81.0 & \textbf{89.3}/\textbf{85.6}\\
+        \bottomrule
+    \end{tabular}%
+    }
+\end{table*}
+
+\paragraph{Distillation further boosts performance}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{figure*}
+    \caption{Comparisons between different pruning methods augmented with distillation. \textbf{Distillation improves the performance across all pruning methods and sparsity levels.}}
+    \label{fig:perf_with_distil}
+    \includegraphics[width=0.97\columnwidth]{perf_with_distil.png}
+\end{figure*}
+
+\begin{table*}
+  \caption{Distillation-augmented performances for selected high sparsity levels. \textbf{All pruning methods benefit from distillation signal further enhancing the ratio Performance VS Model Size.}}
+  \label{tab:perf_w_distil}
+  \centering
+  \resizebox{0.9\columnwidth}{!}{%
+     \begin{tabular}{lcc|cccc}
+        \toprule
+          & \shortstack{BERT base\\ fine-tuned} & \shortstack{Remaining \\Weights (\%)} & MaP & $L_0$ Regu & MvP & soft MvP \\
+        \hline
+        \multirow{2}{*}{\shortstack{SQuAD - Dev\\EM/F1}} & \multirow{2}{*}{80.4/88.1}
+            & 10\% & 70.2/80.1 & 72.4/81.9 & 75.6/84.3 & \textbf{76.6}/\textbf{84.9}\\
+          & & 3\%  & 45.5/59.6 & 64.3/75.8 & 67.5/78.0 & \textbf{72.7}/\textbf{82.3}\\
+        \hline
+        \multirow{2}{*}{\shortstack{MNLI - Dev\\acc/MM acc}} & \multirow{2}{*}{84.5/84.9}
+            & 10\% & 78.3/79.3 & 78.7/79.7 & 80.1/80.4 & \textbf{81.2}/\textbf{81.8}\\
+          & & 3\%  & 69.4/70.6 & 76.0/76.2 & 76.5/77.4 & \textbf{79.5}/\textbf{80.1}\\
+        \hline
+        \multirow{2}{*}{\shortstack{QQP - Dev\\acc/F1}} & \multirow{2}{*}{91.4/88.4}
+            & 10\% & 79.8/65.0 & 88.1/82.8 & 89.7/86.2 & \textbf{90.2}/\textbf{86.8}\\
+          & & 3\%  & 72.4/57.8 & 87.0/81.9 & 86.1/81.5 & \textbf{89.1}/\textbf{85.5}\\
+        \bottomrule
+    \end{tabular}%
+    }
+\end{table*}
+
+Following previous work, we can further leverage knowledge distillation \citep{Bucila2006ModelC,Hinton2015DistillingTK} to boost performance for free in the pruned domain \citep{Jiao2019TinyBERTDB,Sanh2019DistilBERTAD} using our baseline fine-tuned \texttt{BERT-base} model as teacher. The training objective is a convex combination of the training loss and a knowledge distillation loss on the output distributions. Figure~\ref{fig:perf_with_distil} shows the results on SQuAD, MNLI, and QQP for the three pruning methods boosted with distillation. Overall, we observe that the relative comparisons of the pruning methods remain unchanged while the performances are strictly increased. Table~\ref{tab:perf_w_distil} shows for instance that on SQuAD, movement pruning at 10\% goes from 81.7 F1 to 84.3 F1. When combined with distillation, soft movement pruning yields the strongest performances across all pruning methods and studied datasets: it reaches 95\% of \texttt{BERT-base} with only a fraction of the weights in the encoder ($\sim$5\% on SQuAD and MNLI).
+
+
+
+\section{Analysis}
+%%%%%%%%%%%%%%%%%%
+
+\paragraph{Movement pruning is adaptive}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{figure*}
+    \centering
+    \subfloat[Distribution of remaining weights\label{fig:remaining_weight_distrib}]{ {\includegraphics[height=4.4cm]{remaining_weights_distrib_map_and_mvp.png}} }
+    \subfloat[Scores and weights learned by movement pruning\label{fig:scores_vs_weights}]{ {\includegraphics[height=4.8cm]{scores_vs_weights_mvp.png}} }
+    \caption{Magnitude pruning and movement pruning leads to pruned models with radically different weight distribution.}
+\end{figure*}
+\begin{figure}
+  \begin{minipage}{0.49\textwidth}
+    \caption{Comparison of local and global selections of weights on SQuAD at different sparsity levels. \textbf{For magnitude and movement pruning, local and global Top$_v$ performs similarly at all levels of sparsity.}}
+    \label{fig:local_vs_global}
+    \includegraphics[width=1\columnwidth]{local_vs_global.png}
+  \end{minipage}\hfill
+  \begin{minipage}{0.49\textwidth}
+    \caption{\textbf{Remaining weights per layer in the Transformer.} Global magnitude pruning tends to prune uniformly layers. Global 1st order methods allocate the weight to the lower layers while heavily pruning the highest layers.}
+    \label{fig:sparsity_per_layer}
+    \includegraphics[width=1\columnwidth]{sparsity_per_layer.png}
+  \end{minipage}
+\end{figure}
+
+Figure~\ref{fig:remaining_weight_distrib} compares the distribution of the remaining weights for the same matrix of a model pruned at the same sparsity using magnitude and movement pruning. We observe that by definition, magnitude pruning removes all the weights that are close to zero, ending up with two clusters. In contrast, movement pruning leads to a smoother distribution, which covers the whole interval except for values close to 0.
+
+Figure~\ref{fig:scores_vs_weights} displays each individual weight against its associated importance score in movement pruning. We plot pruned weights in grey. We observe that movement pruning induces no simple relationship between the scores and the weights. Both weights with high absolute value or low absolute value can be considered important. 
+However, high scores are systematically associated with non-zero weights (and thus the ``v-shape''). 
+This is coherent with the interpretation we gave to the scores (section~\ref{sec:momemtum_acc}): a high score $\mathbf{S}$ indicates that during fine-tuning, the associated weight moved away from 0 and is thus non-null.
+
+\paragraph{Local and global masks perform similarly }
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+We study the influence of the locality of the pruning decision. While local Top$_v$ selects the $v$\% most important weights matrix by matrix, global Top$_v$ uncovers non-uniform sparsity patterns in the network by selecting the $v$\% most important weights in the whole network. Previous work has shown that a non-uniform sparsity across layers is crucial to the performance in high sparsity regimes \citep{He2018AMCAF}. In particular, \citet{Mallya2018PiggybackAM} found that the sparsity tends to increase with the depth of the network layer.
+
+Figure~\ref{fig:local_vs_global} compares the performance of local selection (matrix by matrix) against global selection (all the matrices) for magnitude pruning and movement pruning. Despite being able to find a global sparsity structure, we found that global did not significantly outperform local, except in high sparsity regimes (2.3 F1 points of difference with 3\% of remaining weights for movement pruning). Even though the distillation signal boosts the performance of pruned models, the end performance difference between local and global selections remains marginal.
+
+
+Figure~\ref{fig:sparsity_per_layer} shows the remaining weights percentage obtained per layer when the model is pruned until 10\% with global pruning methods. Global weight pruning is able to allocate sparsity non-uniformly through the network, and it has been shown to be crucial for the performance in high sparsity regimes \citep{He2018AMCAF}. We notice that except for global magnitude pruning, all the global pruning methods tend to allocate a significant part of the weights to the lowest layers while heavily pruning in the highest layers. Global magnitude pruning tends to prune similarly to local magnitude pruning, i.e., uniformly across layers.
+
+
+
+%% Conclusion
+%%%%%%%%%%%%%
+\section{Conclusion}
+
+We consider the case of pruning of pretrained models for task-specific fine-tuning and compare zeroth- and first-order pruning methods. We show that a simple method for weight pruning based on straight-through gradients is effective for this task and that it adapts using a first-order importance score. We apply this movement pruning to a transformer-based architecture and empirically show that our method consistently yields strong improvements over existing methods in high-sparsity regimes. The analysis demonstrates how this approach adapts to the fine-tuning regime in a way that magnitude pruning cannot.  In future work, it would also be interesting to leverage group-sparsity inducing penalties \citep{BachSparsity2011} to remove entire columns or filters. In this setup, we would associate a score to a group of weights (a column or a row for instance). In the transformer architecture, it would give a systematic way to perform feature selection and remove entire columns of the embedding matrix.
+
+
+
+%% Broader impact
+%%%%%%%%%%%%%%%%%
+\section{Broader Impact}
+
+This work is part of a broader line of research on reducing the memory size of state-of-the-art models in Natural Language Processing (and more generally in Artificial Intelligence). This line of research has potential positive impact in society from a privacy and security perspective: being able to store and run state-of-the-art NLP capabilities on devices (such as smartphones) would erase the need to send API calls (with potentially private data) to a remote server. It is particularly important since there is a rising concern about the potential negative uses of centralized personal data. Moreover, this is complementary to hardware manufacturers' efforts to build chips that will considerably speedup inference for sparse networks while reducing the energy consumption of such networks.
+
+From an accessibility standpoint, this line of research has the potential to give access to extremely large models \citep{Raffel2019ExploringTL,brown2020language} to the broader community, and not only big labs with large clusters. Extremely compressed models with comparable performance enable smaller teams or individual researchers to experiment with large models on a single GPU. For instance, it would enable the broader community to engage in analyzing a model's biases such as gender bias \citep{Lu2018GenderBI,Vig2020CausalMA}, or a model's lack of robustness to adversarial attacks \citep{Wallace2019UniversalAT}. More in-depth studies are necessary in these areas to fully understand the risks associated to a model and create robust ways to mitigate them before massively deploying these capabilities.
+
+\begin{ack}
+This work is conducted as part the authors' employment at Hugging Face.
+\end{ack}
+
+
+\bibliography{neurips_2020} 
+\bibliographystyle{unsrtnat}
+
+
+\clearpage
+\appendix
+
+
+
+\section{Appendices}
+%%%%%%%%%%%%%%%%%%%%
+\label{sec:appendix}
+
+
+\subsection{Guarantees on the decrease of the training loss}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\label{sec:proof}
+
+As the scores are updated, the relative order of the importances is likely shuffled, and some connections will be replaced by more important ones. Under certain conditions, we are able to formally prove that as these replacements happen, the training loss is guaranteed to decrease. Our proof is adapted from \citep{Ramanujan2019WhatsHI} to consider the case of fine-tuable $\mathbf{W}$.
+
+We suppose that (a) the training loss $\cal L$ is smooth and admits a first-order Taylor development everywhere it is defined and (b) the learning rate of $\mathbf{W}$ ($\alpha_{\mathbf{W}}>0$) is small. We define the TopK function as the analog of the Top$_v$ function, where $k$ is an integer instead of a proportion. We first consider the case where $k=1$ in the TopK masking, meaning that only one connection is remaining (and the other weights are deactivated/masked). Let's denote $W_{i,j}$ this sole remaining connection at step $t$. Following Eq~\eqref{eq:topk}, it means that $\forall 1 \leq u,v \leq n, S^{(t)}_{u,v} \leq S^{(t)}_{i,j}$.
+
+We suppose that at step $t+1$, connections are swapped and the only remaining connection at step $t+1$ is $(k,l)$. We have:
+\begin{equation}
+\label{eq:double_inequality}
+    \begin{cases}
+      \text{At $t$},   & \forall 1 \leq u,v \leq n, S^{(t)}_{u,v} \leq S^{(t)}_{i,j} \\
+      \text{At $t+1$}, & \forall 1 \leq u,v \leq n, S^{(t+1)}_{u,v} \leq S^{(t+1)}_{k,l}
+    \end{cases}
+\end{equation}
+
+Eq~\eqref{eq:double_inequality} gives the following inequality: $S^{(t+1)}_{k,l} - S^{(t)}_{k,l} \geq S^{(t+1)}_{i,j} - S^{(t)}_{i,j}$. After re-injecting the gradient update in Eq~\eqref{eq:update_S}, we have:
+\begin{equation}
+\label{eq:inequality}
+-\alpha_{\mathbf{S}} \frac{\partial {\cal L}}{\partial a_k} W^{(t)}_{k,l} x_l \geq -\alpha_{\mathbf{S}} \frac{\partial {\cal L}}{\partial a_i} W^{(t)}_{i,j} x_j
+\end{equation}
+
+Moreover, the conditions in Eq~\eqref{eq:double_inequality} lead to the following inferences: $a^{(t)}_i = W^{(t)}_{i,j} x_j$ and $a^{(t+1)}_k = W^{(t+1)}_{k,l} x_l$.
+
+Since $\alpha_{\mathbf{W}}$ is small, $||(a^{(t+1)}_i, a^{(t+1)}_k) - (a^{(t)}_i, a^{(t)}_k)||_{2}$ is also small. Because the training loss $\cal L$ is smooth, we can write the 1st order Taylor development of $\cal{L}$ in point $(a^{(t)}_i, a^{(t)}_k)$:
+
+\begin{equation}
+\label{eq:taylor}
+    \begin{split}
+        & \mathcal{L}(a^{(t+1)}_i, a^{(t+1)}_k) - \mathcal{L}(a^{(t)}_i, a^{(t)}_k) \\
+        & \approx \frac{\partial {\cal L}}{\partial a_k} (a^{(t+1)}_k - a^{(t)}_k) + \frac{\partial {\cal L}}{\partial a_i} (a^{(t+1)}_i - a^{(t)}_i)\\
+        & = \frac{\partial {\cal L}}{\partial a_k} W^{(t+1)}_{k,l} x_l - \frac{\partial {\cal L}}{\partial a_i} W^{(t)}_{i,j} x_j \\
+        & = \frac{\partial {\cal L}}{\partial a_k} W^{(t+1)}_{k,l} x_l + (- \frac{\partial {\cal L}}{\partial a_k} W^{(t)}_{k,l} x_l + \frac{\partial {\cal L}}{\partial a_k} W^{(t)}_{k,l} x_l) - \frac{\partial {\cal L}}{\partial a_i} W^{(t)}_{i,j} x_j \\
+        & = \frac{\partial {\cal L}}{\partial a_k} (W^{(t+1)}_{k,l} x_l - W^{(t)}_{k,l} x_l) + (\frac{\partial {\cal L}}{\partial a_k} W^{(t)}_{k,l} x_l - \frac{\partial {\cal L}}{\partial a_i} W^{(t)}_{i,j} x_j) \\
+        & = \frac{\partial {\cal L}}{\partial a_k} x_l (-\alpha_{\mathbf{W}} \frac{\partial {\cal L}}{\partial a_k} x_l m(S^{(t)})_{k,l}) + (\frac{\partial {\cal L}}{\partial a_k} W^{(t)}_{k,l} x_l - \frac{\partial {\cal L}}{\partial a_i} W^{(t)}_{i,j} x_j)
+    \end{split}
+\end{equation}
+
+The first term is null because of inequalities \eqref{eq:double_inequality} and the second term is negative because of inequality \eqref{eq:inequality}. Thus $\mathcal{L}(a^{(t+1)}_i, a^{(t+1)}_k) \leq  \mathcal{L}(a^{(t)}_i, a^{(t)}_k)$: when connection $(k,l)$ becomes more important than $(i,j)$, the connections are swapped and the training loss decreases between step $t$ and $t+1$.
+
+Similarly, we can generalize the proof to a set $\mathcal{E} = \{\big((a_i,b_i), (c_i,d_i)\big); i \leq N\}$ of $N$ swapping connections.
+
+We note that this proof is not specific to the \textit{TopK} masking function. In fact, we can extend the proof using the \textit{Threshold} masking function $\mathbf{M} := (\mathbf{S} >= \tau)$ \citep{Mallya2018PiggybackAM}. Inequalities \eqref{eq:double_inequality} are still valid and the proof stays unchanged. 
+
+Last, we note these guarantees do not hold if we consider the absolute value of the scores $|S_{i,j}|$ (as it is done in \citet{Ding2019GlobalSM} for instance). We prove it by contradiction. If it was the case, it would also be true one specific case: the \textit{negative threshold} masking function ($\mathbf{M} := (\mathbf{S} < \tau)$ where $\tau < 0$).
+
+We suppose that at step $t+1$, the only remaining connection $(i,j)$ is replaced by $(k,l)$:
+\begin{equation}
+\label{eq:double_inequality_contradic_proof}
+    \begin{cases}
+      \text{At $t$},   & \forall 1 \leq u,v \leq n, S^{(t)}_{i,j} \leq \tau \leq S^{(t)}_{u,v} \\
+      \text{At $t+1$}, & \forall 1 \leq u,v \leq n, S^{(t+1)}_{k,l} \leq \tau \leq S^{(t+1)}_{u,v}
+    \end{cases}
+\end{equation}
+
+The inequality on the gradient update becomes: $-\alpha_{\mathbf{S}} \frac{\partial {\cal L}}{\partial a_k} W^{(t)}_{k,l} x_l < -\alpha_{\mathbf{S}} \frac{\partial {\cal L}}{\partial a_i} W_{i,j} x_j$ and following the same development as in Eq~\eqref{eq:taylor}, we have $\mathcal{L}(a^{(t+1)}_i, a^{(t+1)}_k) - \mathcal{L}(a^{(t)}_i, a^{(t)}_k) \geq 0$: the loss increases. We proved by contradiction that the guarantees on the decrease of the loss do not hold if we consider the absolute value of the score as a proxy for importance.
+
+
+\subsection{Code and Hyperparameters}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Our code to reproduce our results along with the commands to launch the scripts are available\footnote{\url{huggingface.co/mvp}} through the Hugging Face Transformers library \citep{Wolf2019HuggingFacesTS}. We also detail all the hyperparameters used in our experiments.
+
+All of the presented experiments run on a single 16GB V100.
+
+
+\subsection{Inference speed}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Early experiments show that even though models fine-pruned with movement pruning are extremely sparse and can be stored efficiently, they do not benefit from significant improvement in terms of inference speed when using the standard PyTorch inference. In fact, in our implementation, sparse matrices are simply matrices with lots of 0 inside which does not induce significant inference speedup without specific hardware optimizations. Recently, hardware manufacturers have announced chips specifically designed for sparse networks\footnote{\url{https://devblogs.nvidia.com/nvidia-ampere-architecture-in-depth/}}.
+
+
+\end{document}

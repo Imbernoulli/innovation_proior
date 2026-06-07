@@ -1,0 +1,942 @@
+\documentclass{article}
+
+% if you need to pass options to natbib, use, e.g.:
+%     \PassOptionsToPackage{numbers, compress}{natbib}
+% before loading neurips_2020
+
+% ready for submission
+%\usepackage{neurips_2020}
+
+% to compile a preprint version, e.g., for submission to arXiv, add add the
+% [preprint] option:
+%     \usepackage[preprint]{neurips_2020}
+
+% to compile a camera-ready version, add the [final] option, e.g.:
+%     \usepackage[final]{neurips_2020}
+
+% to avoid loading the natbib package, add option nonatbib:
+\usepackage[nonatbib]{neurips_2020}
+%     \usepackage{natbib}
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{hyperref}       % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{enumitem}
+\usepackage[ruled]{algorithm2e}
+\usepackage{amsmath,amsthm,amssymb,amsfonts}
+\usepackage{color}
+\usepackage{svg}
+\usepackage{mathtools}
+\usepackage{wrapfig}
+\usepackage{multicol}
+\usepackage{multirow}
+\usepackage{tikz}
+\usepackage{caption}
+\newcommand*\circled[1]{\tikz[baseline=(char.base)]{
+    \node[shape=circle, draw, inner sep=0pt, 
+        minimum height=8pt] (char) {\vphantom{1g}#1};}}
+       
+\usepackage{comment} 
+\usepackage[outercaption]{sidecap}    
+\usepackage{subcaption}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{corollary}{Corollary}[theorem]
+\newtheorem{lemma}[theorem]{Lemma}
+\usepackage{changepage}   % for the adjustwidth environment
+\usepackage{hyperref}
+\setitemize{noitemsep,topsep=0pt,parsep=0pt,partopsep=0pt}
+
+%\title{AdaBelief: An Adaptive Optimizer Scaled by Belief}
+\title{AdaBelief Optimizer: Adapting Stepsizes by the Belief in Observed Gradients}
+% The \author macro works with any number of authors. There are two commands
+% used to separate the names and addresses of multiple authors: \And and \AND.
+%
+% Using \And between authors leaves it to LaTeX to determine where to break the
+% lines. Using \AND forces a line break at that point. So, if LaTeX puts 3 of 4
+% authors names on the first line, and the last on the second line, try using
+% \AND instead of \And before the third author name.
+
+\author{%
+  David S.~Hippocampus\thanks{Use footnote for providing further information
+    about author (webpage, alternative address)---\emph{not} for acknowledging
+    funding agencies.} \\
+  Department of Computer Science\\
+  Cranberry-Lemon University\\
+  Pittsburgh, PA 15213 \\
+  \texttt{hippo@cs.cranberry-lemon.edu} \\
+  % examples of more authors
+  % \And
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+  % \AND
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+  % \And
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+  % \And
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+%Recent research on first-order gradient optimizers can be broadly categorized as adaptive learning rate scheme such as Adam and AdaGrad, and accelerated schemes such as heavy-ball and Nesterov Momentum. Adaptive methods typically have fast convergence but poor generalization, while accelerated schemes generalize well but converges slowly during early stages of training. 
+Most popular optimizers for deep learning can be broadly categorized as adaptive methods (e.g.~Adam) and accelerated schemes (e.g.~stochastic gradient descent (SGD) with momentum).
+For many models such as convolutional neural networks (CNNs), adaptive methods typically converge faster but generalize worse compared to SGD; for complex settings such as generative adversarial networks (GANs), adaptive methods are typically the default because of their stability, while SGD often causes mode collapse.
+We propose AdaBelief to simultaneously achieve three goals: fast convergence as in adaptive methods, good generalization as in SGD, and training stability.
+%AdaBelief is a one-line modification of Adam: 
+%Denote the observed gradient as $g_t$ at step $t$ and its exponential moving average (EMA) as $m_t$. 
+%The intuition for AdaBelief is:
+%if $g_t$ deviates much (little) from the prediction $m_t$, we distrust (trust) the current observation, and take a small (large) step.
+The intuition for AdaBelief is to adapt the stepsize according to the "belief" in the current gradient direction.
+Viewing the exponential moving average (EMA) of the noisy gradient as the prediction of the gradient at the next time step, if the observed gradient greatly deviates from the prediction, we distrust the current observation and take a small step; if the observed gradient is close to the prediction, we trust it and take a large step.
+We validate 
+%the fast convergence, good generalization performance, and training stability of
+AdaBelief in extensive experiments, showing that it outperforms other methods with fast convergence and high accuracy on image classification and language modeling. Specifically, on ImageNet, AdaBelief achieves comparable accuracy to SGD. Furthermore, in the training of a GAN on Cifar10, AdaBelief demonstrates high stability and improves the quality of generated samples compared to a well-tuned Adam optimizer.
+% AdaBelief outperforms other methods on Cifar image classification and language modeling; furthermore, AdaBelief achieves comparable accuracy as SGD on ImageNet; and in the training of GAN, AdaBelief demonstrates high stability and significantly improves the quality of generated samples.
+
+
+\end{abstract}
+\section{Introduction}
+%Optimization is one of the core factors for machine learning \cite{krizhevsky2012imagenet, rumelhart1985learning}. %Optimization techniques can be categorized into zeroth-order, first-order and second-order methods. Zeroth-order methods are generally not suitable to train large-scale models.
+% second order optimization methods intro
+%Second-order methods (e.g. Newton's method \cite{boyd2004convex}, Quasi-Newton method and Gauss-Newton method \cite{wedderburn1974quasi,schraudolph2002fast,wedderburn1974quasi}, L-BFGS \cite{nocedal1980updating}, Conjugate-Gradient \cite{hestenes1952methods}) are widely used in conventional optimization. 
+%Hessian-free optimization (HFO) \cite{martens2010deep} uses second-order methods to train neural networks.
+%Compared with first-order gradient methods, second order methods typically use curvature information and are invariant to scaling \cite{battiti1992first}, thus have a better performance on small-scale tasks;
+%however it's not as widely used as first-order gradient methods.
+%however, second order methods are not widely used in deep learning, mainly because of the high memory consumption and potential numerical instability for large-scale neural network models. Compared with first-order methods, second order methods typically use curvature information, hence are invariant to scaling; however, second order methods have large computation burden or numerical instability \cite{martens2010deep}, hence not widely used in deep learning.
+
+Modern neural networks are typically trained with first-order gradient methods, which
+%due to their memory-efficiency and simplicity. First-order methods 
+can be broadly categorized into two branches: the accelerated stochastic gradient descent (SGD) family \cite{robbins1951stochastic}, such as Nesterov accelerated gradient (NAG) \cite{nesterov27method}, SGD with momentum (SGDM) \cite{sutskever2013importance} and heavy-ball method (HB) \cite{polyak1964some}; and the adaptive learning rate methods, such as Adagrad \cite{duchi2011adaptive}, AdaDelta \cite{zeiler2012adadelta}, RMSProp \cite{graves2013generating} and Adam \cite{kingma2014adam}. SGD methods use a global learning rate for all parameters, while adaptive methods compute an individual learning rate for each parameter. 
+
+Compared to the SGD family, adaptive methods typically converge fast in the early training phases, but have poor generalization performance \cite{wilson2017marginal, lyu2019gradient}. Recent progress tries to combine the benefits of both, such as switching from Adam to SGD either with a hard schedule as in SWATS \cite{keskar2017improving}, or with a smooth transition as in AdaBound \cite{luo2019adaptive}. Other modifications of Adam are also proposed: AMSGrad \cite{reddi2019convergence} fixes the error in convergence analysis of Adam, Yogi \cite{zaheer2018adaptive} considers the effect of minibatch size, MSVAG \cite{balles2017dissecting} dissects Adam as sign update and magnitude scaling, RAdam \cite{liu2019variance} rectifies the variance of learning rate, Fromage \cite{bernstein2020distance} controls the distance in function space, and AdamW \cite{loshchilov2017decoupled} decouples weight decay from gradient descent. Although these modifications achieve better accuracy compared to Adam, their generalization performance is typically worse than SGD on large-scale datasets such as ImageNet \cite{russakovsky2015imagenet}; furthermore, compared with Adam, many optimizers are empirically unstable when training generative adversarial networks (GAN) \cite{goodfellow2014generative}. 
+
+%We propose a new optimizer named ``AdaBelief'', which has three properties: (1) fast convergence as adaptive methods, (2) good generalization performance as SGD, and (3) training stability in complex settings such as GAN. 
+
+%AdaBelief can be easily modified from Adam. 
+To solve the problems above, we propose ``AdaBelief'', which can be easily modified from Adam.
+Denote the observed gradient at step $t$  as $g_t$ and its exponential moving average (EMA) as $m_t$. Denote the EMA of $g_t^2$ and $(g_t - m_t)^2$ as $v_t$ and $s_t$, respectively. $m_t$ is divided by $\sqrt{v_t}$ in Adam, while it is divided by $\sqrt{s_t}$ in AdaBelief. 
+Intuitively, $\frac{1}{\sqrt{s_t}}$ is the ``belief'' in the observation: if $g_t$ deviates much from the prediction $m_t$, we have weak belief in $g_t$, and take a small step; if $g_t$ is close to the prediction $m_t$, we have a strong belief in $g_t$, and take a large step. 
+%For deterministic problem, we will show $v_t$ is related to the curvature of the loss function, hence AdaBelief can be viewed as an computation-efficient approximation to second-order methods; for stochastic problem, we will demonstrate $v_t$ is related to the variance of $g_t$.
+We validate the performance of AdaBelief with extensive experiments. Our contributions can be summarized as:
+\begin{itemize}[topsep=0pt,parsep=0pt,partopsep=0pt, leftmargin=*]
+\item We propose AdaBelief, which can be easily modified from Adam without extra parameters. AdaBelief has three properties: (1) fast convergence as in adaptive gradient methods, (2) good generalization as in the SGD family, and (3) training stability in complex settings such as GAN.
+\item We theoretically analyze the convergence property of AdaBelief in both convex optimization and non-convex stochastic optimization.
+\item We validate the performance of AdaBelief with extensive experiments: 
+AdaBelief achieves fast convergence as Adam and good generalization as SGD in image classification tasks on CIFAR and ImageNet; 
+%on CIFAR dataset, AdaBelief outperforms other methods in both convergence speed and accuracy; AdaBelief achieves comparable accuracy to SGD on ImageNet classification; 
+AdaBelief outperforms other methods in language modeling; in the training of a W-GAN \cite{arjovsky2017wasserstein}, compared to a well-tuned Adam optimizer, AdaBelief significantly improves the quality of generated images, while several recent adaptive optimizers fail the training.
+\end{itemize}
+\section{Methods}
+\label{sec:methods}
+%In this section, we first introduce details of AdaBelief, then give an intuition on the benefits of AdaBelief with a series of toy examples, finally we theoretically analyze properties of AdaBelief.
+\subsection{Details of AdaBelief Optimizer}
+\label{subsec:detail}
+\paragraph{Notations} By the convention in \cite{kingma2014adam}, we use the following notations:
+\begin{itemize}[topsep=0pt,parsep=0pt,partopsep=0pt]
+    \item $f(\theta) \in \mathbb{R}, \theta \in \mathbb{R}^d$: $f$ is the loss function to minimize, $\theta$ is the parameter in $\mathbb{R}^d$
+    %\item $t$: Number of iterations
+    \item $g_t$: the gradient and step $t$
+    \item $\alpha, \epsilon$: $\alpha$ is the learning rate, default is $10^{-3}$; $\epsilon$ is a small number, typically set as $10^{-8}$
+    \item $\beta_1, \beta_2$: smoothing parameters, typical values are $\beta_1=0.9, \beta_2=0.999$
+    \item $m_t$: exponential moving average (EMA) of $g_t$
+    \item $v_t, s_t$: $v_t$ is the EMA of $g_t^2$, $s_t$ is the EMA of $(g_t - m_t)^2$
+\end{itemize}
+\begin{minipage}{0.48\textwidth}
+\begin{algorithm}[H]
+\label{algo:adam}
+\SetAlgorithmName{Algorithm}{} \\
+%\TitleOfAlgo { \textbf{Adam Optimizer}} \\
+\textbf{Initialize} $\theta_0$, $m_0 \leftarrow 0$ , $v_0 \leftarrow 0$, $t \leftarrow 0$ \\
+\textbf{While} $\theta_t$ not converged \\
+\hspace{8mm} $t \leftarrow t + 1 $ \\
+\hspace{8mm} $g_t \leftarrow \nabla_{\theta}f_t(\theta_{t-1})$ \\
+\hspace{8mm} $m_t \leftarrow \beta_1 m_{t-1} + (1 - \beta_1) g_t$ \\
+\hspace{8mm} $v_t \leftarrow \beta_2 v_{t-1} + (1 - \beta_2) g_t^2$ \\
+%\hspace{8mm} \textbf{If} AMSGrad: \\
+%\hspace{16mm} $s_t \leftarrow max(s_t, s_{t-1})$ \\
+%\hspace{8mm} \textbf{Bias Correction} \\
+%\hspace{16mm} $\widehat{m_t} \leftarrow m_t / (1 - \beta_1^t)$ \\
+%\hspace{16mm} $\widehat{s_t} \leftarrow s_t/ (1 - \beta_2 ^t)$ \\
+\hspace{8mm} \textbf{Update} \\
+\hspace{16mm} $\theta_t \leftarrow \theta_{t-1} - \frac{\alpha m_t} { \sqrt{v_t} +\epsilon }$
+\caption{Adam Optimizer}
+\end{algorithm}
+\end{minipage}
+\hfill
+\begin{minipage}{0.48\textwidth}
+\begin{algorithm}[H]
+\label{algo:adabelief}
+\SetAlgorithmName{Algorithm }{} \\
+%\TitleOfAlgo { \textbf{AdaBelief}, \textbf{ours}, adaptive variance optimizer} \\
+\textbf{Initialize} $\theta_0$, $m_0 \leftarrow 0$ , $s_0 \leftarrow 0$, $t \leftarrow 0$ \\
+\textbf{While} $\theta_t$ not converged \\
+\hspace{8mm} $t \leftarrow t + 1 $ \\
+\hspace{8mm} $g_t \leftarrow \nabla_{\theta}f_t(\theta_{t-1})$ \\
+\hspace{8mm} $m_t \leftarrow \beta_1 m_{t-1} + (1 - \beta_1) g_t$ \\
+\hspace{8mm} $s_t \leftarrow \beta_2 s_{t-1} + (1 - \beta_2) {\color{blue}(g_t - m_t)^2}$ \\
+%\hspace{8mm} \textbf{If} AMSGrad: \\
+%\hspace{16mm} $v_t \leftarrow max(v_t, v_{t-1})$ \\
+%\hspace{8mm} \textbf{Bias Correction} \\
+%\hspace{16mm} $\widehat{m_t} \leftarrow m_t /( 1 - \beta_1^t)$ \\
+%\hspace{16mm} $\widehat{v_t} \leftarrow (v_t {\color{black}+\epsilon} )/ ( 1 - \beta_2 ^t)$ \\
+\hspace{8mm} \textbf{Update} \\
+\hspace{16mm} $\theta_t \leftarrow \theta_{t-1} - \frac{\alpha m_t} { \sqrt{{\color{black} s_t}} +\epsilon }$
+\caption{AdaBelief Optimizer}
+\end{algorithm}
+\end{minipage}
+\paragraph{Comparison with Adam} Adam and AdaBelief are summarized in Algo.~\ref{algo:adam} and Algo.~\ref{algo:adabelief}, where all operations are element-wise, with differences marked in blue. Note that no extra parameters are introduced in AdaBelief. For simplicity, we omit the bias correction step. A detailed version of AdaBelief is in Appendix A. Specifically, in Adam, the update direction is $m_t/\sqrt{v_t}$, where $v_t$ is the EMA of $g_t^2$; in AdaBelief, the update direction is $m_t/\sqrt{s_t}$, where $s_t$ is the EMA of $(g_t - m_t)^2$. Intuitively, AdaBelief takes a large step when observation $g_t$ is close to prediction $m_t$, and a small step when the observation deviates from the prediction.
+%Intuitively, $m_t$ is the EMA of past gradients $\{g_0, g_1, ... g_t\}$, hence can be viewed as a prediction of the true gradient at step $t$. $g_t - m_t$ is the difference between prediction and measurement, hence $\frac{1}{\sqrt{v_t}} = \frac{1}{\sqrt{ EMA [(g_t - m_t)^2] }}$ can be viewed as "belief": if measurement $g_t$ deviates much from prediction $m_t$, then we have weak belief in $g_t$, and $\frac{1}{\sqrt{v_t}}$ is small, hence we cautiously take a small step; if measurement $g_t$ deviates little from prediction $m_t$, then we have strong belief in $g_t$, and $\frac{1}{\sqrt{v_t}}$ is large, hence we confidently take a large step.
+\subsection{Intuitive explanation for benefits of AdaBelief}
+\label{sec:intuition}
+\paragraph{AdaBelief uses curvature information}
+\label{subsec:curvature}
+%Consider a simple gradient descent (GD) with the following update to minimize loss function $f$ $w.r.t.$ parameter $\theta$:
+%\begin{equation}
+%    \theta_t = \theta_{t-1} - \alpha g(\theta_t) = \theta_{t-1} + \Delta \theta_{t},\ \textit{where\ } \Delta \theta_t = - \alpha g(\theta_t),\ \ g(\theta_t) = \frac{\partial f(\theta_t)}{\partial \theta_t}
+%\end{equation}
+%We name $\alpha$ as the ``learning rate'', and name $\Delta \theta_{t}$ as the ``step''. Note that in GD, the stepsize $\big \vert  \big \vert \Delta \theta_t \big \vert  \big \vert_2$ is proportional to $\big \vert  \big \vert g(\theta_t) \big \vert  \big \vert_2$, which implies GD takes a large (small) step where the gradient is large (small). 
+
+%For simplicity, we assume in cases \circled{1} to \circled{3}, the EMA is very close to current observation (e.g. $m_t$ is close to $g_t$, $s_t$ is close to $g_t^2$, and $v_t$ is close to $(g_t - m_t)^2$), this typically means we 
+\begin{wrapfigure}{L}{0.45\textwidth}
+    \includesvg[width=1.0\linewidth]{figures/1d_curve_v6.svg}
+    \caption{An ideal optimizer considers curvature of the loss function, instead of taking a large (small) step where the gradient is large (small) \cite{toussaint2012lecture}.}
+    \label{fig:curvature}
+\end{wrapfigure}
+Update formulas for SGD, Adam and AdaBelief are:
+\begin{equation}
+\label{eq:update_compare}
+\Delta \theta_t^{SGD} = -\alpha m_t,\ \ \Delta \theta_t^{Adam} = -\alpha m_t / \sqrt{ v_t } ,\ \ \Delta \theta_t^{AdaBelief} = -\alpha m_t /  \sqrt{s_t}     
+\end{equation}
+Note that we name $\alpha$ as the ``learning rate'' and $\Delta \theta_t$ as the ``stepsize''. With a 1D example in Fig.~\ref{fig:curvature}, we demonstrate that AdaBelief uses the curvature of loss functions to improve training as summarized in Table~\ref{table:curvature}, with a detailed description below:
+% \begin{table}[]
+% \caption{Update formula of different optimizers}
+% \label{table:comparison}
+% \centering
+% \scalebox{0.95}{
+% \noindent
+% \begin{tabular}{c|c|c}
+% \hline
+% SGD & Adam & AdaBelief \\ \hline
+%  $\theta_t = \theta_{t-1} - \alpha m_t$    &   $\theta_t = \theta_{t-1} - \alpha \frac{m_t}{\sqrt{s_t} + \epsilon}$    &      $\theta_t = \theta_{t-1} - \alpha \frac{m_t}{\sqrt{v_t} + \epsilon}$     \\ 
+%   $\Big \vert \Delta \theta_t \Big \vert \propto \Big \vert g_t \Big \vert$  &  $\Big \vert \Delta \theta_t \Big \vert \propto \Big \vert \frac{m_t}{\sqrt{s_t} + \epsilon} \Big \vert$    &  $\Big \vert \Delta \theta_t \Big \vert \propto \Big \vert \frac{m_t}{\sqrt{v_t} + \epsilon} \Big \vert$         \\ 
+%  %$m_t = EMA(g_0, g_1, ... g_t)$    &  $m_t = EMA(g_0, g_1, ... g_t)$    &     $m_t = EMA(g_0, g_1, ... g_t)$ \\
+%  & $s_t = EMA \Big(g_0^2, g_1^2, ... g_t^2 \Big)$   & $v_t = EMA \Big((g_0-m_0)^2, ... (g_t-m_t)^2 \Big)$\\ \hline
+% \end{tabular}
+% }
+% \end{table}
+% \begin{table}[]
+% \caption{Comparison of optimizers in various cases in Fig.~\ref{fig:curvature}. ``S'' and ``L'' represent ``small'' and ``large'' stepsize, respectively. $\vert \Delta \theta_t \vert_{ideal}$ is the stepsize of an ideal optimizer. Note that only AdaBelief matches the behaviour of an ideal optimizer in all three cases.}
+% \label{table:curvature}
+% \scalebox{0.88}{
+% \noindent
+% \begin{tabular}{c|ccc|ccc|ccc}
+% \hline
+% %\multirow{2}{*}{} & \multicolumn{3}{c|}{Case 1} & \multicolumn{3}{c|}{Case 2} & \multicolumn{3}{c}{Case 3} \\ \cline{2-10} 
+% %                            & SGD   & Adam   & AdaBelief  & SGD   & Adam   & AdaBelief  & SGD   & Adam   & AdaBelief  \\ \hline
+%  & \multicolumn{3}{c|}{ Case 1} & \multicolumn{3}{c|}{ Case 2} & \multicolumn{3}{c}{ Case 3} \\ \hline
+% $\vert g_t \vert$, $v_t$               &  \multicolumn{3}{c|}{S}  & \multicolumn{3}{c|}{L}   &      \multicolumn{3}{c}{L}               \\ \hline
+% $\vert g_t - g_{t-1} \vert$, $s_t$                           &  \multicolumn{3}{c|}{S}     &  \multicolumn{3}{c|}{ S}        & \multicolumn{3}{c}{L}         \\ \hline
+% $\vert \Delta \theta_t \vert_{ideal}$                     & \multicolumn{3}{c|}{L}       & \multicolumn{3}{c|}{L}       & \multicolumn{3}{c}{S}        \\ \hline
+% \multicolumn{1}{c|}{\multirow{2}{*}{$\vert \Delta \theta_t \vert$}} & SGD & Adam & \multicolumn{1}{c|}{AdaBelief} & SGD & Adam & \multicolumn{1}{c|}{AdaBelief} & SGD & Adam & AdaBelief \\ \cline{2-10} 
+% \multicolumn{1}{c|}{}                            &  S & L  & \multicolumn{1}{c|}{L}  &  L & S  & \multicolumn{1}{c|}{L}  & L   & S  & S  \\ \hline
+
+% %$\vert \Delta \theta_t \vert$                          &   S    & L       &       XL     &    L   &    S    &   XL         &  L     &   S     &  S           \\ \hline
+       
+% \end{tabular}
+% }
+% \end{table}
+\begin{table}[t]
+\caption{Comparison of optimizers in various cases in Fig.~\ref{fig:curvature}. ``S'' and ``L'' represent ``small'' and ``large'' stepsize, respectively. $\vert \Delta \theta_t \vert_{ideal}$ is the stepsize of an ideal optimizer. Note that only AdaBelief matches the behaviour of an ideal optimizer in all three cases.}
+\label{table:curvature}
+\scalebox{0.88}{
+\noindent
+\begin{tabular}{c|ccc|ccc|ccc}
+\hline
+%\multirow{2}{*}{} & \multicolumn{3}{c|}{Case 1} & \multicolumn{3}{c|}{Case 2} & \multicolumn{3}{c}{Case 3} \\ \cline{2-10} 
+%                            & SGD   & Adam   & AdaBelief  & SGD   & Adam   & AdaBelief  & SGD   & Adam   & AdaBelief  \\ \hline
+ & \multicolumn{3}{c|}{ Case 1} & \multicolumn{3}{c|}{ Case 2} & \multicolumn{3}{c}{ Case 3} \\ \hline
+$\vert g_t \vert$, $v_t$               &  \multicolumn{3}{c|}{S}  & \multicolumn{3}{c|}{L}   &      \multicolumn{3}{c}{L}               \\ \hline
+$\vert g_t - g_{t-1} \vert$, $s_t$                           &  \multicolumn{3}{c|}{S}     &  \multicolumn{3}{c|}{ L}        & \multicolumn{3}{c}{S}         \\ \hline
+$\vert \Delta \theta_t \vert_{ideal}$                     & \multicolumn{3}{c|}{L}       & \multicolumn{3}{c|}{S}       & \multicolumn{3}{c}{L}        \\ \hline
+\multicolumn{1}{c|}{\multirow{2}{*}{$\vert \Delta \theta_t \vert$}} & SGD & Adam & \multicolumn{1}{c|}{AdaBelief} & SGD & Adam & \multicolumn{1}{c|}{AdaBelief} & SGD & Adam & AdaBelief \\ \cline{2-10} 
+\multicolumn{1}{c|}{}                            &  S & L  & \multicolumn{1}{c|}{L}  & L & S  & \multicolumn{1}{c|}{S}  & L   & S  & L  \\ \hline
+
+%$\vert \Delta \theta_t \vert$                          &   S    & L       &       XL     &    L   &    S    &   XL         &  L     &   S     &  S           \\ \hline
+       
+\end{tabular}
+}
+\end{table}
+%(1) Adam and AdaBelief scales gradient to boost training. Consider region \circled{1} in Fig.~\ref{fig:curvature}, where the loss function is flat and current stepsize is too small, hence $\vert g_t \vert$, $\vert g_t - g_{t-1} \vert$, $\vert m_t \vert$, $s_t \approx g_t^2$ and $v_t \approx (g_t - g_{t-1})^2$ are small. In this case, an ideal optimizer should take a large stepsize; by Table.~\ref{table:comparison}, $\vert \Delta \theta_t \vert$ is small for SGD because $\vert m_t\vert$ is small, while is large for Adam and AdaBelief; this is because $m_t$ is divided by a small number $\sqrt{s_t}$ and $\sqrt{v_t}$ in Adam and AdaBelief respectively. 
+
+%(2) Consider region \circled{3}, where the loss function is steep and current stepsize is large, and $\vert g_t \vert$, $\vert g_t - g_{t-1} \vert$, $s_t$ and $v_t$ are large. 
+
+%An ideal optimizer should NOT take a large (small) step where the gradient is large (small). 
+(1) In region \circled{1} in Fig.~\ref{fig:curvature}, the loss function is flat, hence the gradient is close to 0. In this case, an ideal optimizer should take a large stepsize. The stepsize of SGD is proportional to the EMA of the gradient, hence is small in this case, while both Adam and AdaBelief take a large stepsize, because the denominator ($\sqrt{v_t}$ and $\sqrt{s_t}$) is a small value.
+
+(2) In region \circled{2}, the algorithm oscillates in a ``steep and narrow'' valley, hence both $\vert g_t \vert$ and $\vert g_t - g_{t-1} \vert$ is large. An ideal optimizer should decrease its stepsize, while SGD takes a large step (proportional to $m_t$). Adam and AdaBelief take a small step because the denominator ($\sqrt{s_t}$ and $\sqrt{v_t}$) is large.
+
+(3) In region \circled{3}, we demonstrate AdaBelief's advantage over Adam in the ``large gradient, small curvature'' case. In this case, $\vert g_t \vert$ and $v_t$ are large, but $\vert g_t - g_{t-1} \vert$ and $s_t$ are small; this could happen because of a small learning rate $\alpha$. In this case, an ideal optimizer should increase its stepsize. SGD uses a large stepsize ($\sim \alpha \vert g_t \vert$); in Adam, the denominator $\sqrt{v_t}$ is large, hence the stepsize is small; in AdaBelief, denominator $\sqrt{s_t}$ is small, hence the stepsize is large.
+
+%We demonstrate that AdaBelief is related to the Hessian of $f$, hence is related to the curvature. Note that the Hessian $H$ of a function $f$ can be approximated as:
+%\begin{equation}
+%    H_{i,j} = \frac{\partial^2 f}{\partial \theta_i \partial \theta_j} \approx \big[ \frac{\partial f (...,\theta_j + \delta,...)}{\partial \theta_i} - \frac{\partial f (..., \theta_j,...)}{\partial \theta_i}\big ] / \delta
+%\end{equation}
+%If we ignore the constant in the denominator, and let $\frac{\partial f (...,\theta_j + \delta,...)}{\partial \theta_i} = g (\theta_t)$, $\frac{\partial f (..., \theta_j,...)}{\partial \theta_i} = m_t$, then $v_{t,i} \approx H_{i,i}^2$, which means the $i$th dimension in $\sqrt{v_t}$ can be viewed as an approximation to the amplitude of $i$th diagonal element in the Hessian. 
+
+To sum up, AdaBelief scales the update direction by the change in gradient, which is related to the Hessian. Therefore, AdaBelief considers curvature information and performs better than Adam.
+% \begin{figure*}
+%     \begin{minipage}{0.49\textwidth}
+%     \centering
+%     \includesvg[width=\linewidth]{figures/oscillation.svg}
+%     \caption{Consider the loss $f(x,y) = \vert x \vert + \vert y \vert$. Gradient is marked as blue vectors, and optimal point $(0,0)$ is marked with cross. The optimization trajectory oscillates around $x$ axis.}
+%     \label{fig:oscillation}
+%     \end{minipage}
+%     \hfill
+%     \begin{minipage}{0.5\textwidth}
+%     \centering
+%     \includesvg[width=\linewidth]{figures/grad_mistmatch.svg}
+%     \caption{Consider loss $f(x,y) = 10 \vert x \vert + \vert y \vert$. The update direction of Adam centers around a sign update, hence mismatches the gradient direction; while AdaBelief matches the gradient direction.}
+%     \label{fig:grad_mismatch}
+%     \end{minipage}
+% \end{figure*}
+\paragraph{AdaBelief considers the sign of gradient in denominator}
+\label{subsec:sign}
+%In this section, we demonstrate the advantage of AdaBelief with a 2D example. Going from 1D to 2D gives us more intuition for high dimensional cases. 
+We show the advantages of AdaBelief with a 2D example in this section, which gives us more intuition for high dimensional cases.
+\begingroup
+\begin{minipage}{0.49\textwidth}
+    \centering
+    \includesvg[width=0.9\linewidth]{figures/oscillation.svg}
+    %\captionof{figure}{Consider $f(x,y)=\vert x \vert + \vert y \vert$. Blue vectors represent the gradient, and the cross represents the optimal point. The optimizer oscillates in the $y$ direction, and keeps moving forward in the $x$ direction.}
+    %\label{fig:oscillation}
+\end{minipage}
+\hfill
+\begin{minipage}{0.48\textwidth}
+\centering
+\scalebox{0.92}{
+    \begin{tabular}{c|c|ccccc}
+\hline
+                          & Step & 1  & 2 & 3  & 4 & 5  \\ \hline
+\multirow{2}{*}{}          & $g_x$   & 1  & 1 & 1  & 1 & 1  \\ \cline{2-7} 
+                          & $g_y$  & -1 & 1 & -1 & 1 & -1 \\ \hline
+\multirow{2}{*}{Adam}      & $v_x$   & 1  & 1 & 1  & 1 & 1  \\ \cline{2-7} 
+                          & $v_y$ & 1  & 1 & 1  & 1 & 1  \\ \hline
+\multirow{2}{*}{AdaBelief} & $s_x$  & 0  & 0 & 0  & 0 & 0  \\ \cline{2-7} 
+                          & $s_y$   & 1  & 1 & 1  & 1 & 1  \\ \hline
+\end{tabular}
+}
+%\captionof{table}{Optimization process for the example in Fig.~\ref{fig:oscillation}. Note that denominator $\sqrt{v_{t,x}} = \sqrt{v_{t,y}}$ for Adam, hence the same stepsize in $x$ and $y$ direction; while $\sqrt{s_{t,x}} < \sqrt{s_{t,y}}$, hence AdaBelief takes a large (small) step in the $x$ ($y$) direction.}
+%\label{table:oscillation}
+\end{minipage}
+\captionof{figure}{ \textit{Left: }Consider $f(x,y)=\vert x \vert + \vert y \vert$. Blue vectors represent the gradient, and the cross represents the optimal point. The optimizer oscillates in the $y$ direction, and keeps moving forward in the $x$ direction. \textit{Right: }
+Optimization process for the example in the left figure. Note that denominator $\sqrt{v_{t,x}} = \sqrt{v_{t,y}}$ for Adam, hence the same stepsize in $x$ and $y$ direction; while $\sqrt{s_{t,x}} < \sqrt{s_{t,y}}$, hence AdaBelief takes a large (small) step in the $x$ ($y$) direction.
+}
+\label{fig:oscillation} 
+\endgroup
+%\vspace{0.2in}
+In Fig.~\ref{fig:oscillation}, we consider the loss function:
+$
+\label{eq:abs_loss1}
+    f(x,y) = \vert x \vert + \vert y \vert
+$. 
+Note that in this simple problem, the gradient in each axis can only take $\{1, -1\}$. Suppose the start point is near the $x-$axis, e.g. $y_0 \approx 0, x_0 \ll 0$. Optimizers will oscillate in the $y$ direction, and keep increasing in the $x$ direction.\\
+Suppose the algorithm runs for a long time, so the EMA is very close to the expected 
+value: 
+\begin{align}
+    m_t &= EMA(g_0, g_1, ...g_t) \approx \mathbb{E}(g_t),\ \ m_{t,x} \approx \mathbb{E}g_{t,x} = 1,\ \ m_{t,y} \approx \mathbb{E}g_{t,y} = 0, \\  v_t &= EMA(g_0^2, g_1^2, ... g_t^2) \approx \mathbb{E} (g_t^2),\ \ v_{t,x} \approx \mathbb{E} g_{t,x}^2 = 1, \ \ v_{t,y} \approx \mathbb{E} g_{t,y}^2 = 1.
+    \label{eq:EMA_s}
+\end{align}
+In practice, the bias correction step will further reduce the error between the EMA and its expectation if $g_t$ is a stationary process \cite{kingma2014adam}. The optimization trajectory is summarized in Table~\ref{fig:oscillation}. Note that:
+\begin{align}
+\label{eq:EMA_v}
+    s_t = EMA \big( (g_0 - m_0)^2, ... (g_t - m_t)^2 \big) \approx \mathbb{E} \big[ (g_t - \mathbb{E}g_t)^2 \big ] = \mathbf{Var} g_t,\ \ s_{t,x} \approx 0, \ \ s_{t,y} \approx 1
+\end{align}
+An example of the analysis above is summarized in Table~\ref{table:oscillation}. From Eq.~\ref{eq:EMA_s} and Eq.~\ref{eq:EMA_v}, note that in Adam, $v_x = v_y$; this is because the update of $v_t$ only uses the amplitude of $g_t$ and ignores its sign, hence the stepsize for the $x$ and $y$ direction is the same  $1/\sqrt{v_{t,x}}  = 1/\sqrt{v_{t,y}} $. On the other hand, in AdaBelief, $1/\sqrt{s_{t,x}}  \gg 1/\sqrt{s_{t,y}}$, hence a large step is taken in the $x$ direction and a small step in the $y$ direction, which matches the behaviour of an ideal optimizer. 
+
+% \begin{figure*}
+%     \begin{minipage}{0.49\textwidth}
+%     \centering
+%     \includesvg[width=\linewidth]{figures/oscillation.svg}
+%     \caption{Consider the loss $f(x,y) = \vert x \vert + \vert y \vert$. Gradient is marked as blue vectors, and optimal point $(0,0)$ is marked with cross. The optimization trajectory oscillates around $x$ axis.}
+%     \label{fig:oscillation}
+%     \end{minipage}
+%     \hfill
+%     \begin{minipage}{0.5\textwidth}
+%     \centering
+%     %\begin{table}
+%     \begin{tabular}{c|c|ccccc}
+% \hline
+%                           & Step & 1  & 2 & 3  & 4 & 5  \\ \hline
+% \multirow{2}{*}{}          & $g_x$   & 1  & 1 & 1  & 1 & 1  \\ \cline{2-7} 
+%                           & $g_y$  & -1 & 1 & -1 & 1 & -1 \\ \hline
+% \multirow{2}{*}{Adam}      & $s_x$   & 1  & 1 & 1  & 1 & 1  \\ \cline{2-7} 
+%                           & $s_y$ & 1  & 1 & 1  & 1 & 1  \\ \hline
+% \multirow{2}{*}{AdaBelief} & $v_x$  & 0  & 0 & 0  & 0 & 0  \\ \cline{2-7} 
+%                           & $v_y$   & 1  & 1 & 1  & 1 & 1  \\ \hline
+% \end{tabular}
+% \caption{caption}
+% %\end{table}
+%     \end{minipage}
+% \end{figure*}
+
+% \begin{table}[]
+% \begin{tabular}{l|l|lllll}
+% \hline
+%                           & Step & 1  & 2 & 3  & 4 & 5  \\ \hline
+% \multirow{2}{*}{}          & gx   & 1  & 1 & 1  & 1 & 1  \\ \cline{2-7} 
+%                           & gy   & -1 & 1 & -1 & 1 & -1 \\ \hline
+% \multirow{2}{*}{Adam}      & sx   & 1  & 1 & 1  & 1 & 1  \\ \cline{2-7} 
+%                           & sy   & 1  & 1 & 1  & 1 & 1  \\ \hline
+% \multirow{2}{*}{AdaBelief} & vx   & 0  & 0 & 0  & 0 & 0  \\ \cline{2-7} 
+%                           & vy   & 1  & 1 & 1  & 1 & 1  \\ \hline
+% \end{tabular}
+% \end{table}
+% \begin{table}[]
+% \caption{Comparison of optimizers in various cases}
+% \begin{tabular}{c|c|c|c}
+% \hline
+%  Optimizer & $\vert g_t \vert$, $ s_t$ & $\vert g_t - g_{t-1} \vert$, $\big( s_t \big)$ & $\vert \Delta \theta_t \vert$ \\ \hline
+%  SGD &     &      &           \\
+%  Adam &     &      &           \\
+%  AdaBelief&     &      &           \\ \hline
+% \end{tabular}
+% \end{table}
+
+% Please add the following required packages to your document preamble:
+% \usepackage{multirow}
+
+% \begin{table}[]
+% \begin{tabular}{c|ccc|ccc|ccc}
+% \hline
+% \multirow{2}{*}{} & \multicolumn{3}{c|}{Case 1: small $\vert g_t\vert$, small $\vert \Delta g_t \vert$} & \multicolumn{3}{c|}{Case 2: large $\vert g_t\vert$, small $\vert \Delta g_t \vert$} & \multicolumn{3}{c}{Case 3: large $\vert g_t\vert$, large $\vert \Delta g_t \vert$} \\ \cline{2-10} 
+%                             & SGD   & Adam   & AdaBelief  & SGD   & Adam   & AdaBelief  & SGD   & Adam   & AdaBelief  \\ \hline
+% $\vert g_t \vert$, $s_t$               &  small          &    small   &     small   &     large       &   large    &     large   &      small      &    small   &    small               \\ \hline
+% $\vert g_t - g_{t-1} \vert$, $v_t$                           &   small    &    small    &   small     &   small    &   small     &   small         &  large     &   large     &  large          \\ \hline
+% $\vert \Delta \theta_t \vert$                          &   small    & large       &       large     &    large   &    small    &   larger         &  large     &   larger     &  small           \\ \hline
+%       $\vert \Delta \theta_t \vert_{ideal}$                     & \multicolumn{3}{c|}{large}       & \multicolumn{3}{c|}{large}       & \multicolumn{3}{c}{large}        \\ \hline
+% \end{tabular}
+% \end{table}
+\paragraph{Update direction in Adam is close to ``sign descent'' in low-variance case}
+\label{subsec:direction}
+%     \caption{Consider loss $f(x,y) = 10 \vert x \vert + \vert y \vert$. The update direction of Adam centers around a sign update, hence mismatches the gradient direction; while AdaBelief matches the gradient direction.}
+%     \label{fig:grad_mismatch}
+In this section, we demonstrate that when the gradient has low variance, the update direction in Adam is close to ``sign descent'', hence deviates from the gradient. This is also mentioned in \cite{balles2017dissecting}. If $ (\mathbb{E}g_t)^2 \gg \mathbf{Var} g_t$, then
+\begin{equation}
+\label{eq:adam_update}
+    \Delta \theta_t^{Adam} = - \alpha \frac{m_t}{\sqrt{s_t} + \epsilon} \approx - \alpha \frac{\mathbb{E} g_t}{ \sqrt{(\mathbb{E}g_t)^2 + \mathbf{Var} g_t } + \epsilon} \approx - \alpha \frac{\mathbb{E} g_t}{ \vert \vert \mathbb{E}g_t \vert \vert } = - \alpha \  \mathrm{sign}( \mathbb{E} g_t )
+\end{equation}
+% \begin{equation}
+% \label{eq:adabelief_update}
+%     \Delta \theta_t^{AdaBelief} = - \alpha \frac{m_t}{ \sqrt{v_t} + \epsilon} \approx \frac{\mathbb{E} g_t}{\sqrt{\mathbf{Var} g_t} + \epsilon}
+% \end{equation}
+
+% \begin{SCfigure}
+% \includesvg[width=0.4\textwidth]{figures/grad_mistmatch.svg}
+% \caption{When gradient follows a stationary distribution with a uniform low variance, the magnitude of update in Adam is the same in all axes (in 2D case the update direction is $\pm 45^{\circ}$); AdaBelief updates in the same direction as gradient.}
+% \label{fig:grad_mismatch}
+% \end{SCfigure}
+
+% When the variance is low, we have $(\mathbb{E}g_t)^2 \gg \mathbf{Var} g_t$, 
+% \begin{equation}
+%     \Delta \theta_t^{Adam} \approx - \alpha \frac{\mathbb{E} g_t}{ \vert \vert \mathbb{E}g_t \vert \vert } = - \alpha \  \mathrm{sign}( \mathbb{E} g_t )
+% \end{equation}
+% \begingroup
+% \setlength{\intextsep}{0pt}%
+% \setlength{\columnsep}{10pt}%
+% \begin{wrapfigure}{L}{0.4\textwidth}
+% \includesvg[width=\linewidth]{figures/grad_mistmatch.svg}
+% \caption{Ignore the mistmatch between $m_t$ and $g_t$. When the variance is low, the magnitude of update in Adam is the same in all axes (in 2D case the update direction is $\pm 45^{\circ}$), which differs from gradient direction. When the variance is the same for all parameters, AdaBelief updates in the same direction as gradient.}
+% \label{fig:grad_mismatch}
+% \end{wrapfigure}
+
+% \begin{SCfigure}
+% \includesvg[width=0.4\linewidth]{figures/grad_mistmatch.svg}
+% \vspace{-0.3cm}
+% \caption{Ignore the mistmatch between $m_t$ and $g_t$. When the variance is low, the magnitude of update in Adam is the same in all axes (in 2D case the update direction is $\pm 45^{\circ}$), which differs from gradient direction. When the variance is the same for all parameters, AdaBelief updates in the same direction as gradient.}
+% \label{fig:grad_mismatch}
+% \end{SCfigure}
+In this case, Adam behaves like a ``sign descent''; in 2D cases the update is $\pm 45^{\circ}$ to the axis, hence deviates from the true gradient direction. 
+The ``sign update'' effect might be the cause of the generalization gap between adaptive methods and SGD (e.g. on ImageNet) \cite{bernstein2018signsgd, wilson2017marginal}.
+%As reported in \cite{bernstein2018signsgd}, ``sign update'' achieves a lower accuracy than SGD on benchmark tasks such as ImageNet classification. 
+For AdaBelief, when the variance of $g_t$ is the same for all parameters, the update direction matches the gradient direction; when the variance is not uniform, AdaBelief takes a small (large) step when variance is large (small). 
+%as shown from a Bayesian perspective in the next section.
+% \paragraph{A Bayesian interpretation of AdaBelief} We analyze AdaBelief from a Bayesian perspective.
+% \label{subsec:natural}
+% %In this section, we demonstrate the connection between AdaBelief and NAG when $\mathbf{Var}g_t$ is not negligible compared to $g_t$.
+
+% %We analyze AdaBelief in a Bayesian setting. 
+% \begin{theorem}
+% \label{theorem:NAG}
+% Assume the gradient follows a Gaussian prior with uniform diagonal covariance, $\Tilde{g} \sim \mathcal{N}(0, \sigma^2 I)$; assume the observed gradient follows a Gaussian distribution, $g \sim \mathcal{N}(\Tilde{g}, C)$, where $C$ is some covariance matrix. Then the posterior is:\ \ 
+% $
+% \label{eq:posterior}
+% \Tilde{g} \big \vert g, C \sim \mathcal{N} \Big( (I + \frac{C}{\sigma^2})^{-1} g, (\frac{I}{\sigma^2} + C^{-1})^{-1} \Big)
+% $
+% \end{theorem}
+% We skip the proof, which is a direct application of the Bayes rule in the Gaussian distribution case as in \cite{roux2008topmoumoute}. If $g$ is averaged across a batch of size $n$, we can replace $C$ with $\frac{C}{n}$.
+% %Note that for AdaBelief, if the learning rate small and the update history is long, after the bias correction as in Adam, we have:
+% % \begin{equation}
+% %     m_t \approx \mathbb{E} g_t, \ \ s_t \approx \mathbb{E}[g_t^2]= (\mathbb{E} g_t)^2 + \mathbf{Var} g_t,\ \ v_t \approx \mathbb{E}[ (g_t - m_t)^2 ] \approx \mathbb{E}[ (g_t - \mathbb{E} g_t)^2 ] = \mathbf{Var} g_t
+% % \end{equation}
+% % hence $v_t$ can be viewed as an approximation to the diagonal elements of $C$.
+
+% According to Theorem~\ref{eq:posterior}, the gradient descent direction with maximum expected gain is:
+% \begin{equation}
+% \label{eq:expectation}
+%     \mathbb{E}\big[ \Tilde{g} \big \vert g, C \big] = (I + \frac{C}{\sigma^2})^{-1} g = \sigma^2 (\frac{1}{\sigma^2} I + C)^{-1} g \propto (\frac{1}{\sigma^2} I + C)^{-1} g
+% \end{equation}
+% Denote $\epsilon = 1 / \sigma^2$, then adaptive optimizers update in the direction $(\epsilon I + C)^{-1/2} g$; considering the noise in $g_t$, in practice most optimizers replace $g_t$ with its EMA $m_t$, hence the update direction is $(\epsilon I + C)^{-1/2} m_t$. Both Adam and AdaBelief take this form, the difference is in estimate of $C$: Adam uses an \textit{uncentered} approximation $C_{Adam}\approx \operatorname{EMA} \operatorname{diag} (g_t g_t^\top)$, while AdaBelief uses a \textit{centered} approximation $C_{AdaBelief} \approx \operatorname{EMA} \operatorname{diag}[ (g_t - \mathbb{E}g_t)(g_t - \mathbb{E}g_t) ^\top]$, note that definition of $C$ is the \textit{covariance} hence is \textit{centered}; note that for $i$th parameter, $\mathbb{E} (g_t^i)^2 = (\mathbb{E}g_t^i)^2 + \operatorname{Var}(g_t^i)$, when $\operatorname{Var}g_t^i \ll \vert \vert \mathbb{E}g_t^i \vert \vert$ is large, we have $C_{AdaBelief}^i < C_{Adam}^i$, and AdaBelief behaves closer to ideal and takes a larger step than Adam.
+
+% % We demonstrate that the update of AdaBelief in Algo.~\ref{algo:adabelief} is an approximation to Eq.~\ref{eq:expectation}:
+% % \begin{enumerate}[topsep=0pt,parsep=0pt,partopsep=0pt, leftmargin=*,noitemsep,nolistsep]
+% %     \item[(a)] approximate the matrix inversion in Eq.~\ref{eq:expectation} with diagonal form (element-wise operation in Algo.~\ref{algo:adabelief}). 
+% % \item[(b)] replace $(\frac{1}{\sigma^2} I + C)^{-1} g$, with $\alpha I (\frac{1}{\sigma^2} I + C)^{-1/2} g$ for numerical stability.
+% % \item[(c)] approximate $\frac{1}{\sigma^2}$ with $\epsilon$,
+% %  and replace $g$ with its EMA $m_t$.
+% % \item[(d)] approximate the covariance matrix $C$ with $\rm{diag} (s_t)$, where $\rm{diag}$ is the operation to create a diagonal matrix using the given elements.
+% % \label{item:covariance}
+% % \end{enumerate}
+
+% % (a) approximate the matrix inversion in Eq.~\ref{eq:expectation} with diagnonal form (element-wise operation in Algo.~\ref{algo:adabelief}). \\ 
+% % (b) approximate $\frac{1}{\sigma^2}$ with $\epsilon$,%; another perspective is to add $\epsilon$ to the denominator in Algo.~\ref{algo:adabelief} for numerical stability.
+% %  and replace $g$ with its EMA $m_t$.\\
+% % (c) replace $(\frac{1}{\sigma^2} I + C)^{-1} g$, with $\alpha I (\frac{1}{\sigma^2} I + C)^{-1/2} g$ for numerical stability. \\
+% % (d) approximate the covariance matrix $C$ with $\rm{diag} (v_t)$, where $\rm{diag}$ is the operation to create a diagonal matrix using given elements.
+
+% % As mentioned in \cite{kingma2014adam}, (a) to (c) is the same for both Adam and AdaBelief. The difference is in (d); Adam uses uncentered second momentum $\rm{diag}(v_t)$ to approximate covariance, while AdaBelief uses a centered estimation $\rm{diag}(s_t)$ (by subtracting $m_t$ from $g_t$).
+
+% % (1) approximate the matrix inversion in Eq.~\ref{eq:expectation} with diagnonal inversion; equivalently, performing element-wise operation in Algo.~\ref{algo:adabelief}. \\
+% % (2) assume $\sigma$ is a large number, and approximate $\frac{1}{\sigma^2}$ with a small number $\epsilon$; another perspective is to add $\epsilon$ to the denominator in Algo.~\ref{algo:adabelief} for numerical stability. \\
+% % (3) approximate $g$ with its EMA $m_t$. \\
+% % (4) since $(\frac{1}{\sigma^2} I + C)^{-1} g = (\frac{1}{\sigma^2} I + C)^{-1/2} (\frac{1}{\sigma^2} I + C)^{-1/2} g$, we take the update direction to be $\alpha I (\frac{1}{\sigma^2} I + C)^{-1/2} g$ for numerical stability, where $\alpha$ is the learning rate. \\
+% % (5) approximate the covariance matrix $C$ with $\rm{diag} (v_t)$, where $\rm{diag}$ is the operation to create a diagonal matrix using given elements. \\
+
+% \begin{figure}
+%     \centering
+%     \includegraphics[width=\linewidth]{figures/toy_2d_1.png}\\
+%     \caption{Trajectories of  {\color{green} SGDM}, {\color{red} Adam} and {\color{blue} AdaBelief} for different losses. Cross is the optimal point.} %{\color{green} green for SGDM}},{\color{red} red for Adam}, {\color{blue} blue for AdaBelief}. 
+%     %The loss function from left to right: $L_1$ loss, rotated and ill-conditioned $L_1$ loss, rotated $L_2$ loss, ill-conditioned $L_1$ loss.
+%     \label{fig:toy_2d}
+% \end{figure}
+% \begin{figure}
+%     \centering
+%     \includegraphics[width=\linewidth]{figures/toy_3d.png}
+%     \caption{Left and right two figures are the trajectories for Beale and Rosenbrock function respectively.}
+%     \label{fig:toy_3d}
+% \end{figure}
+\begin{figure}[t]
+    \begin{subfigure}[b]{0.24\textwidth}
+        \includegraphics[width=\textwidth]{figs_toy/p11.png}
+        \caption {
+        \small{loss function is \\ $f(x,y)=\vert x \vert/10 + \vert y \vert $}
+        }
+    \end{subfigure}
+    \begin{subfigure}[b]{0.24\textwidth}
+        \includegraphics[width=\textwidth]{figs_toy/p12.png}
+        \caption{ 
+        \small{$f(x,y) = \vert x+y \vert + \\ \vert x - y\vert$ / 10}
+        }
+    \end{subfigure}
+    \begin{subfigure}[b]{0.24\textwidth}
+        \includegraphics[width=\textwidth]{figs_toy/p13.png}
+        \caption{
+        \small{$f(x,y) = (x+y)^2+(x-y)^2/10$}
+        }
+    \end{subfigure}
+    \begin{subfigure}[b]{0.245\textwidth}
+        \includegraphics[width=\textwidth]{figs_toy/p14.png}
+        \caption{
+        \small{ $f(x,y)= \vert x \vert/10 + \vert y \vert$ \\ $\beta_1 = \beta_2 = 0.3$}
+        }
+    \end{subfigure}
+    \begin{subfigure}[b]{0.24\textwidth}
+        \includegraphics[width=\textwidth]{figs_toy/p21.png}
+        \caption{
+        \small{ Trajectory for Beale function in 2D.}
+        }
+    \end{subfigure}
+    \begin{subfigure}[b]{0.24\textwidth}
+        \includegraphics[width=\textwidth]{figs_toy/p22.png}
+        \caption{ 
+        \small{ Trajectory for Beale function in 3D.}}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.24\textwidth}
+        \includegraphics[width=\textwidth]{figs_toy/p23.png}
+        \caption{\small{Trajectory for Rosenbrock function in 2D.}}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.24\textwidth}
+        \includegraphics[width=\textwidth]{figs_toy/p24.png}
+        \caption{
+        \small{Trajectory for Rosenbrock function in 3D.}}
+    \end{subfigure}
+    \caption{Trajectories of {\color{green} SGDM}, {\color{red} Adam} and {\color{blue} AdaBelief}. AdaBelief reaches optimal point (marked as blue cross in 2D plots) the fastest in all cases. We refer readers to \textit{supplementary videos}.}
+    \label{fig:toy}
+\end{figure}
+\paragraph{Numerical experiments}
+In this section, we validate intuitions in Sec.~\ref{sec:intuition}. Examples are shown in Fig.~\ref{fig:toy}, and we refer readers to more examples in the \textit{supplementary videos} for better visualization. In all examples, compared with SGD with momentum (SGDM) and Adam, AdaBelief reaches the optimal point at the fastest speed. Learning rate is $\alpha=10^{-3}$ for all optimizers. For all examples except Fig.~\ref{fig:toy}(d), we set the parameters of AdaBelief to be the same as the default in Adam \cite{kingma2014adam}, $\beta_1 = 0.9, \beta_2=0.999, \epsilon = 10^{-8}$, and set momentum as 0.9 for SGDM. For Fig.~\ref{fig:toy}(d), to match the assumption in Sec.~\ref{subsec:direction}, we set $\beta_1 = \beta_2 = 0.3$ for both Adam and AdaBelief, and set momentum as $0.3$ for SGDM. We summarize these experiments as follows:
+%\begin{enumerate}[topsep=0pt,parsep=0pt,partopsep=0pt]
+%\end{enumerate}
+\begin{enumerate}[topsep=0pt,parsep=0pt,partopsep=0pt, noitemsep,nolistsep]
+    \item[(a)] Consider the loss function $f(x,y)=\vert x \vert / 10 + \vert y \vert$, and a starting point near the $x$ axis. This setting corresponds to Fig.~\ref{fig:oscillation}. Under the same setting, AdaBelief takes a large step in the $x$ direction, and a small step in the $y$ direction, validating our analysis.
+    \item[(b)]
+    %The loss function in Fig.~\ref{fig:toy}(a) has separable variables ($f(x,y)=\vert x \vert/10 + \vert y \vert = g(x) + h(y)$). 
+    For an inseparable $L_1$ loss, AdaBelief outperforms other methods under the same setting.
+    \item[(c)] For an inseparable $L_2$ loss, AdaBelief outperforms other methods under the same setting.
+    \item[(d)] We set $\beta_1=\beta_2 = 0.3$ for Adam and AdaBelief, and set momentum as $0.3$ in SGDM. This corresponds to settings of Eq.~\ref{eq:adam_update}.
+    %where the assumption is $m_t \approx \mathbb{E} g_t, \vert \vert \mathbb{E} g_t \vert \vert_2 \gg \mathbf{Var} g_t$ and $\mathbf{Var}g_x \approx \mathbf{Var}g_y$. 
+    For the loss $f(x,y) = \vert x \vert/10 + \vert y \vert$, $g_t$ is a constant for a large region, hence $\vert \vert\mathbb{E}g_t \vert \vert \gg \mathbf{Var}g_t$. As mentioned in \cite{kingma2014adam}, $\mathbb{E} m_t = (1- \beta^t) \mathbb{E} g_t$, hence a smaller $\beta$ decreases $\vert \vert m_t - \mathbb{E}g_t \vert \vert$ faster to 0. Adam behaves like a sign descent ($45^\circ$ to the axis), while AdaBelief and SGDM update in the direction of the gradient.% validating our analysis.
+    \item[(e)-(f)] Optimization trajectory under default setting for the Beale \cite{beale1955minimizing} function in 2D and 3D.
+    \item[(g)-(h)] Optimization trajectory under default setting for the Rosenbrock \cite{rosenbrock1960automatic} function. %in 2D and 3D.
+\end{enumerate}
+\paragraph{Above cases occur frequently in deep learning}
+\label{sec:frequency}
+Although the above cases are simple, they occur frequently in deep learning, hence we expect AdaBelief to outperform Adam in \textit{general cases}.
+%This is different from the literature \cite{reddi2019convergence, luo2019adaptive}, which only demonstrate the advantages of new optimizers over Adam with a  \textit{carefully-constructed example}.
+Other works in the literature \cite{reddi2019convergence, luo2019adaptive} claim advantages over Adam, but are substantiated with \textit{carefully-constructed examples}.
+Note that most deep networks use ReLU activation \cite{glorot2011deep}, which behaves like an absolute value function as in Fig.~\ref{fig:toy}(a); considering the interaction between neurons, most networks behaves like case Fig.~\ref{fig:toy}(b), and typically are ill-conditioned (the weight of some parameters are far larger than others) as in the figure. Considering a smooth loss function such as cross entropy or a smooth activation, this case is similar to Fig.~\ref{fig:toy}(c). The case with Fig.~\ref{fig:toy}(d) requires $\vert m_t \vert \approx \vert \mathbb{E}g_t \vert \gg \mathbf{Var} g_t$, and this typically occurs at the late stages of training, where the learning rate $\alpha$ is decayed to a small value, and the network reaches a stable region.
+\subsection{Convergence analysis in convex and non-convex optimization}
+%We prove convergence of AdaBelief in both convex optimization and noncovex stochastic optimization. 
+Similar to \cite{reddi2019convergence, luo2019adaptive, chen2018convergence}, 
+%we assume $v_t \leq s_{t+1}$, which can be guaranteed with one more step $s_{t+1} = max(s_t, s_{t+1})$ in the update; 
+,for simplicity, we omit the de-biasing step ( analysis applicable to de-biased version). Proof for convergence in convex and non-convex cases is in the appendix.
+%\subsubsection{Convergence in convex optimization}
+%\label{subsec:convex_proof}
+% \begin{lemma}{(Proved in \cite{mcmahan2010adaptive})}
+% \label{lemma:1}
+% For any $Q \in S^d_{+}$ and convex feasible set $\mathcal{F} \subset \mathbb{R}^d$, suppose $u_1 = \operatorname*{min}_{x \in \mathcal{F}} \Big \vert \Big \vert Q^{1/2}(x-z_1) \Big \vert \Big \vert$ and $u_2 = \operatorname*{min}_{x \in \mathcal{F}} \Big \vert \Big \vert Q^{1/2}(x - z_2) \Big \vert \Big \vert$, then we have $ \Big \vert \Big \vert Q^{1/2}(u_1 - u_2)  \Big \vert \Big \vert \leq \Big \vert \Big \vert Q^{1/2} (z_1 - z_2)  \Big \vert \Big \vert$.
+% \end{lemma}
+\begin{theorem}{(Convergence in convex optimization)}
+\label{theorem:1}
+Let $\{\theta_t\}$ and ${s_t}$ be the sequence obtained by AdaBelief, let $0 \leq \beta_2 < 1,\alpha_t = \frac{\alpha}{\sqrt{t}}$, $\beta_{11} = \beta_1$, $0 \leq \beta_{1t} \leq \beta_1 < 1, s_t \leq s_{t+1}, \forall t \in [T]$. % and $\gamma = \frac{\beta_1}{ \sqrt{\beta_2}}<1$. 
+ Let $\theta \in \mathcal{F}$, where $\mathcal{F} \subset \mathbb{R}^d$ is a convex feasible set with bounded diameter $D_{\infty}$. Assume $f(\theta)$ is a convex function and $ \vert  \vert  g_t  \vert  \vert_\infty \leq G_\infty / 2$ (hence $ \vert  \vert  g_t - m_t  \vert  \vert_\infty \leq G_\infty$) and $s_{t,i} \geq c > 0, \forall t \in [T], \theta \in \mathcal{F}$. Denote the optimal point as $\theta^*$. For $\theta_t$ generated with AdaBelief, we have the following bound on the regret: 
+\begin{equation*}
+%\scalebox{1.0}{$
+\sum_{t=1}^T [f_t(\theta_t) - f(\theta^*)] \leq  \frac{D_\infty^2 \sqrt{T}}{2 \alpha (1-\beta_1)} \sum_{i=1}^d s_{T,i}^{1/2}
++  \frac{(1+\beta_1 )\alpha \sqrt{1 + \log T}}{2 \sqrt{c} (1 - \beta_1)^3} \sum_{i=1}^d \Big \vert \Big \vert g_{1:T,i}^2 \Big \vert \Big \vert_2 + \frac{D_\infty^2}{2 (1-\beta_{1})} \sum_{t=1}^T \sum_{i=1}^d \frac{\beta_{1t} s_{t,i}^{1/2} }{\alpha_t}
+%$}
+\end{equation*}
+\end{theorem} 
+\begin{corollary}
+Suppose $\beta_{1,t} = \beta_1 \lambda^t,\ \ 0<\lambda<1$ in Theorem  \eqref{theorem:1}, then we have:
+\begin{align}
+\sum_{t=1}^T [f_t(\theta_t) - f(\theta^*)] \leq  \frac{D_\infty^2 \sqrt{T}}{2 \alpha (1-\beta_1)} \sum_{i=1}^d s_{T,i}^{1/2}
++  \frac{(1+\beta_1 )\alpha \sqrt{1 + \log T}}{2 \sqrt{c} (1 - \beta_1)^3} \sum_{i=1}^d \Big \vert \Big \vert g_{1:T,i}^2 \Big \vert \Big \vert_2 \nonumber
++ \frac{D_\infty^2 \beta_1 G_\infty}{2 (1-\beta_{1}) (1-\lambda)^2 \alpha}
+\end{align}
+\end{corollary}
+% \begin{corollary}
+% Suppose $\beta_{1,t} = \beta_1 \lambda^t,\ \ 0<\lambda<1$ in Theorem  \eqref{theorem:1}, then we have:
+% \begin{equation}
+% \scalebox{0.98}{$
+% \sum_{t=1}^T f_t(\theta_t) - f(\theta^*)  \leq \frac{D_\infty^2 \sqrt{T}}{2 \alpha (1-\beta_1)} \sum_{i=1}^d v_{T,i}^{1/2}
+% +  \frac{(1+\beta_1 )\alpha \sqrt{1 + \log T}}{2 \sqrt{c} (1 - \beta_1)^3} \sum_{i=1}^d \Big \vert \Big \vert g_{1:T,i}^2 \Big \vert \Big \vert_2 \nonumber
+% + \frac{D_\infty^2 \beta_1 G_\infty}{2 (1-\beta_{1}) (1-\lambda)^2 \alpha}
+% $
+% }
+% \end{equation}
+% \end{corollary}
+%\subsubsection{Convergence in non-convex stochastic optimization}
+\begin{theorem}{(Convergence for non-convex stochastic optimization)}
+\label{theorem:adabelief_stochastic}
+Under the assumptions:
+\begin{itemize}[leftmargin=*]
+    \item $f$ is differentiable;  $ \vert  \vert \nabla f(x) - \nabla f(y)  \vert  \vert \leq L  \vert  \vert x-y  \vert  \vert,\ \forall x,y$; $f$ is also lower bounded.
+    \item At step $t$, the algorithm can access a bounded noisy gradient, the true gradient is also bounded. $i.e.\ \  \vert  \vert \nabla f(\theta_t ) \vert  \vert \leq H,\  \vert  \vert g_t \vert  \vert \leq H,\ \ \forall t > 1$.
+    \item The noisy gradient is unbiased, and has independent noise. $i.e.\ g_t = \nabla f(\theta_t ) + \zeta_t, \mathbb{E} \zeta_t = 0, \zeta_t \bot \zeta_j, \ \forall t,j \in \mathbb{N}, t \neq j$
+\end{itemize}
+Assume $\operatorname*{min}_{j \in [d]} (s_1)_j \geq c > 0$, noise in gradient has bounded variance, $\mathrm{Var} (g_t) = \sigma_t^2 \leq \sigma^2, \forall t \in \mathbb{N}$, then the proposed algorithm satisfies: %which is natural because we add $\epsilon$ to $v_t$ to avoid division by 0.
+\begin{align*}
+\operatorname*{min}_{t \in [T]} \mathbb{E} \Big \vert \Big \vert \nabla f(\theta_t ) \Big \vert \Big \vert^2 \leq \frac{H}{\sqrt{T} \alpha} \Big[ \frac{C_1 \alpha^2 (H^2 + \sigma^2)(1+\log T)}{c} + C_2 \frac{d \alpha}{\sqrt{c}} + C_3 \frac{d \alpha^2}{c} + C_4 \Big] \nonumber
+ %= \frac{1}{\sqrt{T}} (Q_1 + Q_2 \log T)
+\end{align*}
+% \begin{align*}
+% Q_1 = \frac{H C_1 \alpha (H^2 + \sigma^2)}{c} + C_2 \frac{d \alpha}{\sqrt{c}} + C_3 \frac{d \alpha^2}{c} + C_4, \ \ 
+% Q_2 = \frac{H C_1 \alpha (H^2 + \sigma^2)}{c}
+% \end{align*}
+as in \cite{chen2018convergence}, $C_1,C_2,C_3$ are constants independent of $d$ and $T$, and $C_4$ is a constant independent of $T$.
+\end{theorem}
+\begin{corollary}
+If $c > C_1 H$ and assumptions for Theorem~\ref{theorem:adabelief_stochastic} are satisfied, we have:
+\begin{equation*}
+\sum_{t=1}^T \mathbb{E} \Big[ \alpha_t^2 \Big \vert \Big \vert \nabla f(\theta_t ) \Big \vert \Big \vert^2 \Big] \leq \frac{1}{\frac{1}{H} - \frac{C_1}{c}} \Big[ \frac{C_1 \alpha^2 \sigma^2}{c} \big(1+\log T \big) + C_2 \frac{d \alpha}{\sqrt{c}} + C_3 \frac{d \alpha^2}{c} + C_4 \Big]
+\end{equation*}
+\end{corollary}
+%We proved the convergence of AdaBelief in both convex optimization and non-convex stochastic optimization. 
+Above theorems imply the convergence rate for AdaBelief in the worst case is $O(1/\sqrt{T})$ in convex optimization, and is $O(\log T / \sqrt{T})$ for non-convex case, which is similar to Adam \cite{reddi2019convergence, chen2018convergence}. Assumptions for Theorem~.\ref{theorem:1} and \ref{theorem:adabelief_stochastic} are weak, and generally are satisfied in deep learning. %Although the convergence rate is similar, AdaBelief performs better than other adaptive methods empirically, which is validated in the next section.
+\begin{figure}
+\begin{subfigure}[b]{0.33\textwidth}
+\includesvg[width=\linewidth]{experiments/Test_cifar10_vgg_conf.svg}
+\caption{\small{
+VGG11 on Cifar10
+}}
+\end{subfigure}
+\begin{subfigure}[b]{0.33\textwidth}
+\includesvg[width=\linewidth]{experiments/Test_cifar10_resnet_conf.svg}
+\caption{\small{
+ResNet34 on Cifar10
+}}
+\end{subfigure}
+\begin{subfigure}[b]{0.33\textwidth}
+\includesvg[width=\linewidth]{experiments/Test_cifar10_densenet_conf.svg}
+\caption{\small{
+DenseNet121 on Cifar10
+}}
+\end{subfigure}
+\\
+\begin{subfigure}[b]{0.33\textwidth}
+\includesvg[width=\linewidth]{experiments/Test_cifar100_vgg_conf.svg}
+\caption{\small{
+VGG11 on Cifar100
+}}
+\end{subfigure}
+\begin{subfigure}[b]{0.33\textwidth}
+\includesvg[width=\linewidth]{experiments/Test_cifar100_resnet_conf.svg}
+\caption{\small{
+ResNet34 on Cifar100
+}}
+\end{subfigure}
+\begin{subfigure}[b]{0.33\textwidth}
+\includesvg[width=\linewidth]{experiments/Test_cifar100_densenet_conf.svg}
+\caption{\small{
+DenseNet121 on Cifar100
+}}
+\end{subfigure}
+\caption{Test accuracy ($[\mu \pm \sigma]$) on Cifar. Code modified from official implementation of AdaBound.}
+\label{fig:cifar}
+\end{figure}
+\begin{table}[]
+\centering
+\caption{Top-1 accuracy of ResNet18 on ImageNet. $\dag$ is reported in \cite{chen2018closing}, $\ddag$ is reported in \cite{liu2019variance}}
+\label{table:imagenet}
+\scalebox{0.93}{
+\begin{tabular}{c|c|c|c|c|c|c|c}
+\hline
+AdaBelief & SGDM                             & AdaBound                 & Yogi                     & Adam                              & MSVAG                    & RAdam  & AdamW                    \\ \hline
+\textbf{70.08}     & 70.23$^\dag$ & 68.13$^\dag$ & 68.23$^\dag$ & 63.79$^\dag$ (66.54$^\ddag$) & 65.99 & 67.62$^\ddag$ & 67.93$^\dag$ \\ \hline
+\end{tabular}
+}
+\end{table}
+\section{Experiments}
+We performed extensive comparisons with other optimizers, including SGDM \cite{sutskever2013importance}, AdaBound \cite{luo2019adaptive}, Yogi \cite{zaheer2018adaptive}, Adam \cite{kingma2014adam}, MSVAG \cite{balles2017dissecting}, RAdam \cite{liu2019variance}, Fromage \cite{bernstein2020distance} and AdamW \cite{loshchilov2017decoupled}. The experiments include: (a) image classification on Cifar dataset \cite{krizhevsky2009learning} with VGG \cite{simonyan2014very}, ResNet \cite{he2016deep} and DenseNet \cite{huang2017densely}; image recognition with ResNet on ImageNet \cite{deng2009imagenet}; (b) language modeling with LSTM \cite{ma2015long} on Penn TreeBank dataset \cite{marcus1993building}; (c) wasserstein-GAN (WGAN) \cite{arjovsky2017wasserstein} on Cifar10 dataset. 
+We emphasize (c) because literatures often focus on the convergence and accuracy, yet neglects the training stability.
+% We add experiment (c) because recently proposed optimizers are typically tested for convergence and accuracy, yet a critical property - training stability is not verified.
+%Recently proposed optimizers are generally tested on image classification and language modeling to verify convergence and accuracy, yet their training stability in complex settings such as GANs are not verified. %Hence we tested different optimizers in the training of a GAN model.
+\paragraph{Hyperparameter tuning} We performed a careful hyperparameter tuning in experiments. On image classification and language modeling we use the following: \\
+% \begin{table}[]
+% \caption{FID score on Cifar10 dataset, lower is better}
+% \label{table:FID}
+% \scalebox{0.72}{
+% \begin{tabular}{c|c|c|c|c|c|c|c}
+% \hline
+% \multicolumn{5}{c|}{Success}                                                          & \multicolumn{3}{c}{Failure}                         \\ \hline
+% AdaBelief       & Adam/AdamW     & RMSProp        & RAdam           & Yogi            & SGDM            & MSVAG            & AdaBound        \\ \hline
+% $\mathbf{82.97\pm 4.13}$ & $96.60\pm4.53$ & $94.70\pm4.92$ & $99.86\pm4.48$ & $102.99\pm8.96$ & $469.28\pm7.99$ & $455.11\pm13.95$ & $460.87\pm7.79$ \\ \hline
+% \end{tabular}
+% }
+% \end{table}
+\begingroup
+{$\bullet$ \textit{AdaBelief:}\ \ \ \ We use default parameters as Adam: $\beta_1=0.9, \beta_2=0.999, \epsilon = 10^{-8}, \alpha = 10^{-3}$. %For experiments with WGAN, we follow the setting in \cite{goodfellow2016nips}, with $\beta_1=0.5, \beta_2=0.999, \epsilon=10^{-12}$ with learning rate $0.0002$. \\
+\\
+$\bullet$ \textit{SGDM, Fromage:}\ \ \ \ We set the momentum as $0.9$, which is the default for many networks such as ResNet \cite{he2016deep} and DenseNet\cite{huang2017densely}. We search learning rate among $\{10.0, 1.0, 0.1, 0.01, 0.001\}$. \\
+$\bullet$ \textit{Adam, Yogi, RAdam, MSVAG, AdaBound:}\ \ We search for optimal $\beta_1$ among $\{0.5, 0.6, 0.7, 0.8, 0.9\}$, search for $\alpha$ the same as SGDM, and set other parameters as their own default values in the literature.\\
+% \textit{AdaBound:}\ \ \ \  We search for optimal $\beta_1$ as in Adam, and search for $final\_lr$ and learning rate $\alpha$ using the grid as SGDM. \\
+$\bullet$ \textit{AdamW:}\ \ \ \ We use the same parameter searching scheme as Adam. For other optimizers, we set the weight decay as $5\times10^{-4}$; for AdamW, since the optimal weight decay is typically larger \cite{loshchilov2017decoupled}, hence we search weight decay among $\{10^{-4},5 \times 10^{-4},10^{-3},10^{-2}\}$.
+}
+\endgroup
+
+
+For the training of a GAN, we set $\beta_1=0.5, \epsilon=10^{-12}$ for AdaBelief; for other methods, we search for $\beta_1$ among $\{0.5, 0.6, 0.7, 0.8,0.9\}$, and search for 
+%optimal learning rate among $\{ 0.001, 0.0005, 0.0002,  0.0001 \}$, and search for 
+$\epsilon$ among $\{10^{-3},10^{-5},10^{-8},10^{-10},10^{-12}\}$.
+We set learning rate as $2\times10^{-4}$ for all methods. Note that the recommended parameters for Adam in \cite{radford2015unsupervised} and for RMSProp \cite{salimans2016improved} are within the search range.
+
+% \begin{wrapfigure}{Lh}{0.66\textwidth}
+%     %\begin{subfloat}[h]{
+%     \includesvg[width=0.33\textwidth]{experiments/Test_lstm_2layer_conf.svg}
+%     %}
+%     %\end{subfloat}
+%     %\begin{subfloat}[h]{
+%     \includesvg[width=0.33\textwidth]{experiments/Test_lstm_3layer_conf.svg}
+%     %}
+%     %\end{subfloat}
+%     \caption{Left to right: perplexity ($[\mu \pm \sigma]$) on Penn Treebank test set for 2,3-layer LSTM. \textbf{Lower} is better.}
+%     \label{fig:LSTM}
+% \end{wrapfigure}
+
+\begin{figure}[t]
+    \begin{subfigure}[b]{0.33\textwidth}
+    \includesvg[width=\linewidth]{experiments/Test_lstm_1layer_conf.svg}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.32\textwidth}
+    \includesvg[width=\linewidth]{experiments/Test_lstm_2layer_conf.svg}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.32\textwidth}
+    \includesvg[width=\linewidth]{experiments/Test_lstm_3layer_conf.svg}
+    \end{subfigure}
+    \caption{Left to right: perplexity ($[\mu \pm \sigma]$) on Penn Treebank for 1,2,3-layer LSTM. \textbf{Lower} is better.}
+     \label{fig:LSTM}
+\end{figure}
+% \begin{figure}[]
+% \centering
+%     \begin{subfigure}[b]{0.36\textwidth}
+%     \includesvg[width=\linewidth]{experiments/FID_wgan.svg}
+%     \caption{FID score (lower is better)}
+%     \end{subfigure}
+%     \begin{subfigure}[b]{0.28\textwidth}
+%     \includegraphics[width=\linewidth]{experiments/fake_samples_epoch_099.png}
+%     \caption{Fake samples}
+%     \end{subfigure}
+%     \begin{subfigure}[b]{0.28\textwidth}
+%     \includegraphics[width=\linewidth]{experiments/real_samples.png}
+%     \caption{Real samples}
+%     \end{subfigure}
+%     \caption{Results in the training of a GAN. (b) shows fake samples by model trained with Adabelief.}
+%     \label{fig:GAN}
+% \end{figure}
+
+%\begin{minipage}{width=0.5\textwidth}
+\begin{figure}
+    \begin{subfigure}[b]{0.5\textwidth}
+    \includesvg[width=0.6\linewidth]{FIDs/fid_wgan1.svg}
+    %\end{subfigure}
+    %\begin{subfigure}[b]{width=0.3\linewidth}
+    \includesvg[width=0.35\linewidth]{FIDs/fid_wgan2.svg}
+    %\vspace{-2mm}
+    \caption{\small{FID score of WGAN.}}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.5\textwidth}
+    \includesvg[width=0.7\linewidth]{FIDs/fid_wgan_gp1.svg}
+    %\end{subfigure}
+    %\begin{subfigure}[b]{width=0.3\linewidth}
+    \includesvg[width=0.25\linewidth]{FIDs/fid_wgan_gp2.svg}
+    %\vspace{-2mm}
+    \caption{\small{FID score of WGAN-GP on Cifar10.}}
+    \end{subfigure}
+    \vspace{-4mm}
+    \caption{FID score of WGAN and WGAN-GP on Cifar10. \textbf{Lower} is better. For each model, success and failure optimizers are shown in the left and right, respectively.}
+    \label{fig:GAN}
+\end{figure}
+%\end{minipage}
+
+% \begin{table}[t]
+% \centering
+% \caption{FID score on Cifar10, \textbf{lower} is better. AdamW reduces to Adam when weight decay is 0.}
+% \label{table:FID}
+% \scalebox{0.75}{
+% \begin{tabular}{c|c|c|c|c|c|c|c|c}
+% \hline
+% \multicolumn{6}{c|}{Success}                                                          & \multicolumn{3}{c}{Failure (Mode collapse)}                         \\ \hline
+% AdaBelief       & Adam/AdamW     & RMSProp        & RAdam           & Yogi  & Fromage          & SGDM            & MSVAG            & AdaBound        \\ \hline
+% $\mathbf{83.0\pm 4.1}$ & $96.6\pm4.5$ & $94.7\pm4.9$ & $99.9\pm4.5$ & $103.0\pm8.9$ & 112.2 $\pm$ 14.4 & $469.3\pm7.9$ & $455.1\pm13.9$ & $460.9\pm7.8$ \\ \hline
+% \end{tabular}
+% }
+% \end{table}
+% }
+\paragraph{CNNs on image classification}
+We experiment with VGG11, ResNet34 and DenseNet121 on Cifar10 and Cifar100 dataset. We use the \textit{ official implementation \footnote{\url{https://github.com/Luolc/AdaBound}}}
+%\footnote{\href{https://github.com/Luolc/AdaBound}{https://github.com/Luolc/AdaBound}}
+of AdaBound, hence achieved an \textit{exact replication} of \cite{luo2019adaptive}. For each optimizer, we search for the optimal hyperparameters, and report the mean and standard deviation of test-set accuracy (under optimal hyperparameters) for 3 runs with random initialization. As Fig.~\ref{fig:cifar} shows, AdaBelief achieves fast convergence as adaptive methods such as Adam, meanwhile achieving better accuracy than SGDM and other methods.
+
+We then train a ResNet18 on ImageNet, and report the accuracy on validation set in Table.~\ref{table:imagenet}. Due to the heavy computation burden, we could not perform extensive hyperparameter search; instead, we report result of AdaBelief with default parameters as Adam ($\beta_1=0.9, \beta_2 =0.999, \epsilon=10^{-8}$) and decoupled weight decay as in \cite{liu2019variance, loshchilov2017decoupled}; for other optimizers, we report the \textit{best result in the literature}. AdaBelief outperforms other adpative methods, and achieves comparable accuracy to SGD (70.08 v.s. 70.23), which closes the generalization gap between adaptive methods and SGD. Experiments validate the fast convergence and good generalization performance of AdaBelief.
+\paragraph{LSTM on language modeling} We experiment with LSTM  %\footnote{\url{https://github.com/salesforce/awd-lstm-lm}} 
+on Penn TreeBank dataset \cite{marcus1993building}, and report the perplexity (lower is better) on test set in Fig.~\ref{fig:LSTM}. We report the mean and standard deviation across 3 runs. For both 2-layer and 3-layer LSTM models, AdaBelief achieves the lowest perplexity, validating its fast convergence as adaptive methods and good accuracy. For 1-layer model, the performance of AdaBelief is close to other optimizers.
+% \begin{wrapfigure}{L}{0.6\textwidth}
+% \centering
+%     \includegraphics[width=0.45\linewidth]{samples/adabelief_wgan.png}
+%     \includegraphics[width=0.45\linewidth]{samples/adabelief_wgangp.png}
+%     \caption{Samples of WGAN (left) and WGAN-GP (right).}
+%     \label{fig:GAN_sample}
+% \end{wrapfigure}
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.25\linewidth]{samples/adabelief_wgan.png}
+    \includegraphics[width=0.25\linewidth]{samples/adabelief_wgangp.png}
+    \includegraphics[width=0.25\linewidth]{experiments/real_samples.png}
+    \caption{Left to right: samples from WGAN, WGAN-GP (both trained by AdaBelief) and real images.}
+    \label{fig:GAN_sample}
+\end{figure}
+\paragraph{Generative adversarial networks} Stability of optimizers is important in practice, yet recently proposed optimizers often lack experimental validations. The training of GAN typically alternates between generator and discriminator in a mini-max game, and is typically unstable\cite{goodfellow2014generative}; SGD typically generates mode collapse, and adaptive methods such as Adam and RMSProp are recommended in practice  \cite{goodfellow2016nips, salimans2016improved, gulrajani2017improved}. Therefore, training of GAN is a good test for the stability of optimizers.
+
+We experiment with one of the most widely used models, the Wasserstein-GAN (WGAN) \cite{arjovsky2017wasserstein} and the improved version with gradient penalty (WGAN-GP) \cite{salimans2016improved}.  
+%\footnote{\url{https://github.com/pytorch/examples/}}. 
+Using each optimizer, we train the model for 100 epochs, then generate 64,000 fake images from noise, and compute the Frechet Inception Distance (FID) \cite{heusel2017gans} between fake images and real dataset (60,000 real images). 
+%Cifar10 dataset consists of 60,000 images, so 64,000 fake images is a large number to measure the quality of a GAN.
+FID score is widely used to assess generative models, which %measures the Frechet distance between the distributions of real and fake images, and
+captures both the quality and diversity of generated images. For each optimizer, under its optimal hyperparameter settings, we perform 5 runs of experiments, and report the results in Fig.~\ref{fig:GAN} and Fig.~\ref{fig:GAN_sample}. AdaBelief significantly outperforms other optimizers, and achieves the lowest FID score.
+% {
+% \begin{wrapfigure}{L}{0.66\textwidth}
+%         % \begin{subfigure}[b]{0.33\textwidth}
+%     % \includesvg[width=\linewidth]{experiments/Test_lstm_1layer_conf.svg}
+%     % \end{subfigure}
+%     \begin{subfigure}[h]{0.33\textwidth}
+%     \includesvg[width=\linewidth]{experiments/Test_lstm_2layer_conf.svg}
+%     \end{subfigure}
+%     \begin{subfigure}[h]{0.33\textwidth}
+%     \includesvg[width=\linewidth]{experiments/Test_lstm_3layer_conf.svg}
+%     \end{subfigure}
+%     \caption{Left to right: perplexity on Penn Treebank test set for 2,3-layer LSTM. \textbf{Lower} is better.}
+% \end{wrapfigure}
+% }
+
+% Please add the following required packages to your document preamble:
+% \usepackage{multirow}
+% Please add the following required packages to your document preamble:
+% \usepackage{multirow}
+\paragraph{Remarks} Recent research on optimizers try to combine the fast convergence of adaptive methods with high accuracy of SGD. AdaBound \cite{luo2019adaptive} achieves this goal on Cifar, yet its performance on ImageNet is still inferior to SGD \cite{chen2018closing}. Padam \cite{chen2018closing} closes this generalization gap on ImageNet; writing the update as $\theta_{t+1}=\theta_t - \alpha m_t / v_t^p$, SGD sets $p=0$, Adam sets $p=0.5$, and Padam searches $p$ between 0 and 0.5 (outside this region Padam diverges \cite{chen2018closing,zhou2018convergence}). Intuitively, compared to Adam, by using a smaller $p$, Padam sacrifices the adaptivity for better generalization as SGD; however, without good adaptivity, Padam loses training stability. As in Table.~\ref{table:padam_compare}, compared with Padam, AdaBelief achieves a much lower FID score in the training of GAN, meanwhile achieving slightly higher accuracy on ImageNet classification. Furthermore, AdaBelief has the same number of parameters as Adam, while Padam has one more parameter, hence is harder to tune.
+\begin{table}
+\caption{Comparison of AdaBelief and Padam. Higher Acc (lower FID) is better. $\ddag$ is from \cite{chen2018closing}. For Padam, $p=1/2$ reduces to Adam, $p=0$ reduces to SGD.}
+\label{table:padam_compare}
+\scalebox{0.7}{
+\begin{tabular}{c|c|ccccccc}
+\hline
+\multirow{2}{*}{} & \multirow{2}{*}{AdaBelief} & \multicolumn{7}{c}{Padam}                                         \\ \cline{3-9} 
+                  &                            & \multicolumn{1}{c|}{p=1/2 (Adam)}                     & \multicolumn{1}{c|}{p=2/5}                     & \multicolumn{1}{c|}{p=1/4}                       & \multicolumn{1}{c|}{p=1/5}                       & \multicolumn{1}{c|}{p=1/8}                          
+                 & \multicolumn{1}{c|}{p=1/16}
+                 
+                 & p = 0 (SGD)
+                  \\ \hline
+ImageNet Acc   & 70.08                      & \multicolumn{1}{c|}{63.79$\ddag$}                         & \multicolumn{1}{c|}{-}                         & \multicolumn{1}{c|}{-}                           & \multicolumn{1}{c|}{-}                           & \multicolumn{1}{c|}{70.07$\ddag$}                       & \multicolumn{1}{c|}{-} & \textbf{70.23} $\ddag$                            \\ \hline
+FID (WGAN)    & \textbf{83.0$\pm$ 4.1} & \multicolumn{1}{c|}{96.6$\pm$4.5} & \multicolumn{1}{c|}{97.5$\pm$2.8} & \multicolumn{1}{c|}{426.4$\pm$49.6} & \multicolumn{1}{c|}{401.5$\pm$33.2} & \multicolumn{1}{c|}{328.1$\pm$37.2} & \multicolumn{1}{c|}{362.6$\pm$43.9} & 469.3 $\pm$ 7.9 \\ \hline
+FID (WGAN-GP)    & \textbf{61.8$\pm$ 7.7} & \multicolumn{1}{c|}{73.5$\pm$8.7} & \multicolumn{1}{c|}{87.1$\pm$6.0} & \multicolumn{1}{c|}{155.1$\pm$23.8} & \multicolumn{1}{c|}{167.3$\pm$27.6} & \multicolumn{1}{c|}{203.6$\pm$18.9} & \multicolumn{1}{c|}{228.5$\pm$25.8}
+& 244.3$\pm$ 27.4\\ \hline
+\end{tabular}
+}
+\end{table}
+\section{Related works}
+This work considers the update step in first-order methods. Other directions include Lookahead \cite{zhang2019lookahead} which updates ``fast'' and ``slow'' weights separately, and is a wrapper that can combine with other optimizers; variance reduction methods \cite{reddi2016stochastic, johnson2013accelerating,ma2018quasi} which reduces the variance in gradient; and LARS \cite{you2017scaling} which uses a layer-wise learning rate scaling. AdaBelief can be combined with these methods to achieve better performance.
+%\section{Related Works}
+
+Besides aforementioned methods, other variants of Adam are proposed, such as NosAdam \cite{huang2018nostalgic}, Sadam \cite{wang2019sadam} and Adax \cite{li2020adax}. Besides first-order methods, second-order methods (e.g. Newton's method \cite{boyd2004convex}, Quasi-Newton method and Gauss-Newton method \cite{wedderburn1974quasi,schraudolph2002fast,wedderburn1974quasi}, L-BFGS \cite{nocedal1980updating}, Natural-Gradient \cite{amari1998natural,pascanu2013revisiting}, Conjugate-Gradient \cite{hestenes1952methods}) are widely used in conventional optimization. 
+Hessian-free optimization (HFO) \cite{martens2010deep} uses second-order methods to train neural networks.
+Compared with first-order gradient methods, second order methods typically use curvature information and are invariant to scaling \cite{battiti1992first}, but have heavy computation burden, hence not widely used in deep learning.
+%however, second order methods are not widely used in deep learning, 
+%mainly because of the high memory consumption and potential numerical instability. 
+
+%, but suffer from heavy computation burden.
+%for large-scale neural network models. Compared with first-order methods, second order methods typically use curvature information, hence are invariant to scaling; however, second order methods have large computation burden or numerical instability \cite{martens2010deep}, hence not widely used in deep learning.
+\section{Conclusion}
+We propose AdaBelief optimizer, which adaptively scales the stepsize by the difference between predicted gradient and measurement gradient. To our knowledge, AdaBelief is the first optimizer to achieve three goals simultaneously: fast convergence as adaptive methods, good generalization as SGD, and training stability in complex settings such as GAN. Furthermore, Adabelief has the same parameters as Adam, hence is easy to tune. We validate the benefits of AdaBelief with extensive intuitive examples, theoretical convergence analysis, and extensive experiments on real-world datasets.
+\section*{Broader Impact}
+This work does not present any foreseeable societal consequence.
+\bibliography{example_paper.bib}
+\bibliographystyle{IEEE}
+\end{document}

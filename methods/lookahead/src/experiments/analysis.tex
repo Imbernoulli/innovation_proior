@@ -1,0 +1,171 @@
+\subsection{Empirical analysis}
+\label{sec:empirical_analysis}
+
+% We present additional sensitivity studies done on the CIFAR dataset. Unless otherwise specified, the hyperparameters follow the same as those before. 
+\begin{figure*}
+        \centering
+        \begin{subfigure}[b]{0.475\textwidth}
+            \centering
+            \includegraphics[width=\textwidth]{images/diff-lr_train_loss3.pdf}
+            \caption[Network2]%
+            {{\small CIFAR-10 Train Loss: Different LR}}    
+            % \label{fig:cifar-lr-ablation}
+        \end{subfigure}
+        \hfill
+        \begin{subfigure}[b]{0.475\textwidth}  
+            \centering 
+            \includegraphics[width=\textwidth]{images/diff-momentum_train_loss.pdf}
+            \caption[]%
+            {{\small CIFAR-10 Train Loss: Different momentum}}    
+            % \label{fig:mean and std of net24}
+        \end{subfigure}
+    \caption{We fix Lookahead parameters and evaluate on different inner optimizers.}
+    \label{fig:robust-lr-momentum}
+\end{figure*}
+
+
+\paragraph{Robustness to inner optimization algorithm, $k$, and $\alpha$} 
+We demonstrate empirically on the CIFAR dataset that Lookahead consistently delivers fast convergence across different hyperparameter settings.
+We fix slow weights step size $\alpha=0.5$ and $k=5$ and run Lookahead on inner SGD optimizers with different learning rates and momentum; results are shown in Figure \ref{fig:robust-lr-momentum}. In general, we observe that Lookahead can train with higher learning rates on the base optimizer with little to no tuning on $k$ and $\alpha$. This agrees with our discussion of variance reduction in Section \ref{sec: noisyquadratic}. 
+We also evaluate robustness to the Lookahead hyperparameters by fixing the inner optimizer and evaluating runs with varying updates $k$ and step size $\alpha$; these results are shown in Figure \ref{fig:kalpha_robust}.
+% An $\alpha$ value of $0.2$ works best with our grid search---we hypothesize that this is because the learning rate of $0.1$ for SGD is highly optimized, which results in instability for larger Lookahead $\alpha$. We observed that both doubling and halving the SGD learning rate hurt the final performance of SGD. In contrast, the performance of Lookahead improves with higher SGD learning rates, as shown in table \ref{tabel:cifar-lookahead-adam-sgd}.
+
+
+
+% \begin{figure}
+% % \label{fig:robustness-all}
+% \centering
+% \hspace{-0.2in}
+% \sbox{\bigimage}{%
+% \begin{subfigure}[b]{0.65 \linewidth}
+%     \centering
+%     \includegraphics[width=1. \textwidth]{images/k_alpha_train_loss2.png}
+%     \caption{CIFAR-100 Train Loss: sensitivity to $k$ and $\alpha$}
+%     \label{fig:kalpha}
+% \end{subfigure}
+% }
+
+% \usebox{\bigimage}\hfill
+% \hspace{-0.4in}
+% \begin{minipage}[b][\ht\bigimage][s]{.3\textwidth}
+% \begin{subfigure}{\linewidth}
+% \vspace{-0.3in}
+% \begin{table}[H]
+% \begin{center}
+% \begin{scriptsize}
+% \begin{sc}
+% \begin{tabular}{l c c}
+% \toprule
+% \diagbox[width=3em]{k}{$\alpha$}& 0.5 & 0.8 \\
+% \midrule
+% 5 &  $78.24 \pm .02$ & $78.27 \pm .04$   \\
+% 10  & $78.19 \pm .22$ & $77.94 \pm .22$ \\ 
+% \bottomrule
+% \end{tabular}
+% \end{sc}
+% \end{scriptsize}
+% \end{center}
+% \caption{CIFAR-100 Test Accuracy with various $k$ and $\alpha$.}
+% \label{tabel:cifar-grid}
+% \end{table}
+% \end{subfigure}
+
+%   \vfill
+% \begin{subfigure}{\linewidth}
+% \vspace{-0.2in}
+% \begin{table}[H]
+% % \vskip 0.1in
+% \begin{center}
+% \begin{scriptsize}
+% \begin{sc}
+% \begin{tabular}{l c c  }
+% \toprule
+% % &  CIFAR100 Test Accuracy &  \\
+% % \midrule 
+% LR & SGD ($\%$) & LA ($\%$) \\
+% \midrule
+% 0.05 & 78.24 $\pm$ .18 & 77.72 $\pm$ .11 \\
+% 0.1 & 77.72 $\pm$ .07 & 78.24 $\pm$ .02 \\
+% 0.2 & 75.45 $\pm$ .25 & 78.13 $\pm$ .05 \\
+% 0.3 & 72.00 $\pm$ .16 & 76.63 $\pm$ .04 \\
+
+% \bottomrule
+% \end{tabular}
+% \end{sc}
+% \end{scriptsize}
+% \end{center}
+% \caption{ CIFAR-100 Test Accuracy }
+% \label{tabel:cifar-lookahead-adam-sgd}
+% \end{table}
+% \end{subfigure}
+% \vspace{0pt}% reference point at the very bottom
+% \end{minipage}
+% \vspace{0.05in}
+
+% \caption{Sensitivity of the Lookahead hyperparameters on CIFAR-100.  In {({c})}, Lookahead hyperparameters are fixed to $k=5$ and $\alpha = 0.5$}
+% \end{figure}
+
+
+
+\begin{figure}
+    \centering
+    \begin{minipage}{0.48 \linewidth}
+    \includegraphics[width=\linewidth]{images/steps_alpha_robust.pdf}
+    \end{minipage} \hfill
+\begin{minipage}{0.48 \linewidth}
+\begin{table}[H]
+\begin{center}
+\begin{scriptsize}
+\begin{sc}
+\begin{tabular}{l c c}
+\toprule
+\diagbox[width=3em]{k}{$\alpha$}& 0.5 & 0.8 \\
+\midrule
+5 &  $78.24 \pm .02$ & $78.27 \pm .04$   \\
+10  & $78.19 \pm .22$ & $77.94 \pm .22$ \\ 
+\bottomrule
+\end{tabular}
+\end{sc}
+\end{scriptsize}
+\end{center}
+\caption{All settings have higher validation accuracy than SGD (77.72\%)}
+\label{tabel:cifar-grid}
+\end{table}
+\end{minipage}
+\caption{CIFAR-100 train loss and final test accuracy with various $k$ and $\alpha$.}
+\label{fig:kalpha_robust}
+\end{figure}
+
+\paragraph{Inner loop and outer loop evaluation}
+
+\begin{figure}[t!]
+    \centering
+    % \vspace{-0.3in}
+    % \includegraphics[width=0.56\textwidth]{images/epoch60updated.png}
+    % \includegraphics[width=0.56 \textwidth]{images/same5epoch70v8.png}
+    % \includegraphics[width=0.8 \textwidth]{images/epoch70_trim.png}
+    % \includegraphics[width=0.6 \textwidth]{images/plot_trim2.png}
+    % \includegraphics[width=0.9 \textwidth]{images/trim_plot3.png}
+    \includegraphics[width=1.0 \textwidth]{images/epoch65_test.pdf}
+    % \vspace{0.1in}
+    \caption{Visualizing Lookahead accuracy for $60$ fast weight updates. We plot the test accuracy after every update (the training accuracy and loss behave similarly). The inner loop update tends to degrade both the training and test accuracy, while the interpolation recovers the original performance.}
+    % \vspace{0.1in}
+    \label{fig:cifar-every-batch}
+\end{figure}
+
+To get a better understanding of the Lookahead update, we also plotted the test accuracy for every update on epoch 65 in Figure~\ref{fig:cifar-every-batch}. We found that within each inner loop the fast weights may lead to substantial degradation in task performance---this reflects our analysis of the higher variance of the inner loop update in section \ref{sec: noisyquadratic}. The slow weights step recovers the outer loop variance and restores the test accuracy.
+
+% \paragraph{Cosine Similarities} To empirically evaluate the validity of the Reptile \citep{nichol2018reptile} argument on gradient similarities, we randomly sampled 20 batches of 128 images from our training set. We then compute the dot product between the normalized gradients of different batches at various checkpoints during training\footnote{There are $\binom{20}{2}$=190 such pairs of gradients.} Taking the average across the 190 pairs gives us an approximate value for the similarity between all batches. We repeat this procedure 5 times and plot the average similarity in Figure~\ref{fig:adam-pairwise}. This notion of similarity has also been hypothesized to be a proxy for generalization by \citet{lopez2017gradient}.
+
+% \begin{figure}
+%     \centering
+%     \includegraphics[width=\linewidth]{images/adamcosinesim.png}
+%     %\includegraphics[width=\linewidth]{images/SGDsim.png} 
+%     \vspace{-0.1in}
+%     \caption{
+%     Average pairwise gradient cosine similarities. We repeat the procedure five times and plot the mean and one standard deviation error bars. Lookahead wraps around Adam.}
+%     \label{fig:adam-pairwise}
+% \end{figure}
+
+
+

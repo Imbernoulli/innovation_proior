@@ -1,0 +1,171 @@
+\subsection{Extended ablation study} 
+
+This section contains the results of ablation experiments referenced from the main text (Section 4.2).
+
+\subsubsection{Importance of positional encoding.}
+There are two kinds of positional encoding in our model: spatial 
+positional encoding and output positional encoding (object queries).
+We experiment with various combinations of fixed and learned encodings for the spatial encodings. The positional encodings are shared between all layers,
+and the output encoding (object queries) is always learned. The
+results are given in Table~\ref{table:pos_enc}.
+The first experiment removes both kinds of positional encoding altogether,
+and, interestingly, the model still achieves 
+more than 31 AP, losing 6 AP to the baseline.
+Then, we add fixed sine spatial positional encoding and output encoding
+to the input, as in the original transformer~\cite{Vaswani2017AttentionIA},
+and find that this leads to 1.1 AP drop compared to passing positional encoding
+at every attention layer. Learned spatial encoding at every attention layers gives
+similar results to fixed sine encodings added to inputs.
+Surprisingly, we find that removing the positional embeddings of the encoder
+only leads to a minor AP drop.
+In all cases, encodings are shared between all layers,
+and output encoding (object queries) is always learned.
+\setlength{\tabcolsep}{0.7em}
+\begin{table}[h!]
+    \centering\small
+    \caption{Results for different positional encodings compared
+    to baseline (last row), which has a fixed sine pos. encoding passed
+    at every attention layer in both the encoder and decoder.
+    Learned embedding is shared in all the layers.
+    Not using positional encoding leads to a significant
+    drop in AP. Interestingly, passing it in decoder only
+    leads to a minor AP drop.\label{table:pos_enc}}
+    \begin{tabular}{lcc|cc|cc}
+        \toprule
+        encoding & encoder & decoder & AP & $\Delta$ & \AP{50} & $\Delta$ \\
+        \midrule
+        none                & &     
+        & 31.0 & -6.4 & 51.6 & -4.8 \\
+        sine at input        & \chk & \chk
+        & 36.2 & -1.1 & 55.1 & -1.3 \\
+        learned at attention & \chk & \chk
+        & 36.1 & -1.2 &	55.8 & -0.6 \\
+        sine at attention & & \chk
+        & 36.8 & -0.5 &	56.2 & -0.1 \\
+        sine at attention & \chk & \chk
+        & \textbf{37.3} & - & \textbf{56.4} & - \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+Interestingly, the model without any positional encoding still achieves 
+more than 31 AP, losing 6 AP to the baseline.
+The model with absolute encoding added to the input only
+loses 1.4 AP vs. baseline. 
+
+\subsubsection{Cost ablations.} 
+To evaluate the importance of different parts of the matching cost,
+we train several models turning them on and off.
+There are two main components to the cost: classification cost and box cost (\ref{eq:bloss}), consisting of GIoU and $\ell_1$ bounding box distance.
+The classification cost is essential for training and cannot be turned off,
+so we train a model without bounding box distance loss, and a model without the GIoU loss,
+setting either $\lambda_{\rm iou}$ or $\lambda_{\rm L1}$ in the cost and in the loss to zero,
+and compare with baseline.
+Results are presented in Table~\ref{table:cost}.
+\setlength{\tabcolsep}{0.7em}
+\begin{table}[h!]
+    \centering\small
+    \caption{Effect of cost parts on AP.
+    We train two models turning off box cost and GIoU cost,
+    and observe that box cost gives better results on large objects,
+    whereas GIoU cost is better on small.
+    \detr (last row) combines both costs.
+    }
+    \begin{tabular}{ccc|cc|cc|ccc}
+        \toprule
+        class & $\ell_1$ & GIoU & AP & $\Delta$ & \AP{50} & $\Delta$ & \AP{S} & \AP{M} & \AP{L} \\
+        \midrule
+        \chk & \chk & &
+        35.4 & -1.8 & 55.3 & -1.1 & 13.7 &	38.9 &	\textbf{56.4} \\
+        \chk & & \chk &
+        35.5 & -1.9 & 55.2 & -1.1 & 16.6 &	39.6 &	51.0 \\
+        \chk & \chk & \chk &
+        \textbf{37.3} & - & \textbf{56.4} & - & \textbf{17.8} &	\textbf{40.5} &	54.3 \\
+        \bottomrule
+    \end{tabular}
+    \label{table:cost}
+\end{table}
+The GIoU cost shows better results on small objects (+2.9 AP difference),
+whereas the bounding box cost improves results on large objects (+5.5 AP difference),
+higher than the baseline. We only studied simple ablations of different costs (adding or removing one, and not retuning their weighting every time),
+but perhaps other means of combining them could achieve different results.
+
+\iffalse
+\setlength{\tabcolsep}{0.7em}
+\begin{table}[h!]
+    \centering\small
+    \begin{tabular}{ccc|cc|cc|ccc}
+        \toprule
+        class & bbox & GIoU & AP & $\Delta$ & \AP{50} & $\Delta$ & \AP{S} & \AP{M} & \AP{L} \\
+        \midrule
+        \chk & \chk & &
+        35.4 & -1.8 & 55.3 & -1.1 & 13.7 &	38.9 &	\textbf{56.4} \\
+        \chk & & \chk &
+        35.5 & -1.9 & 55.2 & -1.1 & 16.6 &	39.6 &	51.0 \\
+        \chk & \chk & \chk &
+        \textbf{37.3} & - & \textbf{56.4} & - & \textbf{17.8} &	\textbf{40.5} &	54.3 \\
+        \bottomrule
+    \end{tabular}
+    \caption{Effect of cost parts on AP.
+    We train two models turning off box cost and GIoU cost,
+    and observe that box cost gives better results on large objects,
+    whereas GIoU cost is better on small.
+    Our baseline (last row) combines both costs.
+    }
+    \label{table:cost}
+\end{table}
+\setlength{\tabcolsep}{0.5em}
+\begin{figure}
+\small
+\begin{subfigure}[t!]{0.46\textwidth}
+    \begin{tabular}{lccc}
+        \toprule
+        encoding & enc. & dec. & AP \\
+        \midrule
+        none                & &     
+        & 31.0  \\
+        sine @ input        & \chk & \chk
+        & 36.2  \\
+        learned @ attn & \chk & \chk
+        & 36.1  \\
+        sine @ attn & & \chk
+        & 36.8  \\
+        sine @ attn & \chk & \chk
+        & \textbf{37.3} \\
+        \bottomrule
+    \end{tabular}
+    \caption{Results for different positional encodings compared
+    to baseline (last row), which has a fixed sine pos. encoding passed
+    at every attention layer in both the encoder and decoder.
+    \label{table:pos_enc}}
+\end{subfigure}
+\begin{subfigure}[t!]{0.52\textwidth}
+    \begin{tabular}{cccccc}
+        \toprule
+        class & bbox & GIoU & AP %
+        & \AP{S} %
+        & \AP{L} \\
+        \midrule
+        \chk & \chk & &
+        35.4 %
+        & 13.7 %
+        &	\textbf{56.4} \\
+        \chk & & \chk &
+        35.5 %
+        & 16.6 %
+        &	51.0 \\
+        \chk & \chk & \chk &
+        \textbf{37.3} %
+        & \textbf{17.8} %
+        &	54.3 \\
+        \bottomrule
+    \end{tabular}
+    \caption{Effect of the parts of the loss on AP.
+    We train two models turning off the box cost and the GIoU cost,
+    and observe that the box cost gives better results on large objects,
+    whereas GIoU cost is better on small.
+    Our baseline (last row) combines both costs.
+    \label{table:cost}}
+\end{subfigure}
+    \caption{TODO TODO TODO\label{fig:posencodingandcostablations}}
+\end{figure}
+\fi

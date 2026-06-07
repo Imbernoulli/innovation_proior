@@ -1,0 +1,172 @@
+\section{Winning Tickets in Fully-Connected Networks}
+\label{sec:fc}
+
+\begin{figure}
+\scriptsize
+\centering
+\begin{tabular}{@{}l@{}c@{~~~}c@{~~}c@{~~}c@{~~}c@{~~}c@{~~}c@{}}\toprule
+\textit{Network} & Lenet & Conv-2 & Conv-4 & Conv-6 & Resnet-18 & 
+%vgg16 & 
+VGG-19 \\ \midrule
+%\textit{Citation} & \multicolumn{2}{c}{\cite{lenet}} & \shortstack{\cite{cifarb-ref1}\\\cite{cifarb-ref2}} & \cite{resnet} \\ \midrule
+\textit{Convolutions} & &
+\shortstack{64, 64, pool}  &
+\shortstack{64, 64, pool\\128, 128, pool}  &
+\shortstack{64, 64, pool\\128, 128, pool\\256, 256, pool}  &
+\shortstack{16, 3x[16, 16]\\3x[32, 32]\\3x[64, 64]} &
+%\shortstack{2x64, pool, 2x128 \\ pool, 3x256, pool\\ 3x512, pool, 3x512}  &
+\shortstack{2x64 pool 2x128\\ pool, 4x256, pool\\ 4x512, pool, 4x512} 
+\\ \midrule
+
+\textit{FC Layers} & 300, 100, 10 & 256, 256, 10 & 256, 256, 10 & 256, 256, 10 &  avg-pool, 10 &
+%avg-pool, 10 &
+avg-pool, 10\\ \midrule
+
+\textit{All/Conv Weights} & 266K & 4.3M / 38K & 2.4M / 260K & 1.7M / 1.1M & 274K / 270K &
+%14.7M &
+20.0M \\ \midrule
+
+\textit{Iterations/Batch} & 50K / 60 & 20K / 60 & 25K / 60 & 30K / 60 & 30K / 128 &
+%112K / 64 &
+112K / 64 \\ \midrule 
+
+\textit{Optimizer} &Adam 1.2e-3 & Adam 2e-4 & Adam 3e-4 & Adam 3e-4 & \multicolumn{2}{c}{$\leftarrow$~SGD 0.1-0.01-0.001 Momentum 0.9~$\rightarrow$} \\  \midrule
+
+\textit{Pruning Rate} & fc20\% & conv10\% fc20\% & conv10\% fc20\% & conv15\% fc20\% & conv20\% fc0\% &
+%conv20\% &
+conv20\% fc0\% \\
+\bottomrule
+\end{tabular}
+\caption{Architectures tested in this paper.
+Convolutions are 3x3. Lenet is from \citet{lenet}. Conv-2/4/6 are variants of VGG \citep{vgg}. Resnet-18 is from \cite{resnet}.  VGG-19 for CIFAR10 is
+adapted from \cite{rethinking-pruning}. Initializations are
+Gaussian Glorot \citep{xavier}. Brackets denote residual connections around layers.}
+\label{fig:convnets}
+\end{figure}
+
+\begin{figure*}
+\centering
+\includegraphics[width=.7\textwidth]{graphs/mnist/lenet/vanilla/legend_run_test_accuracy4}%
+\vspace{-.65em}
+\includegraphics[width=.33\textwidth]{graphs/mnist/lenet/vanilla/run_test_accuracy1}%
+\includegraphics[width=.33\textwidth]{graphs/mnist/lenet/vanilla/run_test_accuracy2}%
+\includegraphics[width=.33\textwidth]{graphs/mnist/lenet/vanilla/run_test_accuracy3}%
+\caption{Test accuracy on Lenet (iterative pruning) as training proceeds.
+Each curve is the average of five trials. Labels are $P_m$---the fraction of weights remaining in the network
+after pruning. Error bars are the minimum
+and maximum of any trial.}
+\label{fig:oneshot_same_init_convergence}
+\end{figure*}
+
+In this Section, we assess the lottery ticket hypothesis as applied to fully-connected networks trained on MNIST.
+We use the Lenet-300-100 architecture~\citep{lenet} as described in Figure \ref{fig:convnets}.
+We follow the outline from Section 1: after randomly initializing and training a network,
+we prune the network and reset the remaining
+connections to their original initializations.
+%\begin{enumerate}
+%\item Randomly initialize the network.
+%\item Train for 50,000 iterations on 100-sample mini-batches from the training data
+%\item Prune percentage of the weights in each layer, removing those with the lowest magnitudes.
+%\item To extract the {\kernel}, reset the values of the weights of the pruned network to their original initializations from before training.
+%\end{enumerate}
+%The pruning strategy we follow for MNIST removes individual weights rather than entire units.
+%In preliminary experiments, we found this strategy to be more effective.
+We use a simple layer-wise pruning heuristic: remove a percentage of the weights with the lowest magnitudes within each layer (as in~\citet{han-pruning}). Connections
+to outputs are pruned at half of the rate of the rest of the network. We explore other hyperparameters in
+Appendix \ref{app:mnist}, including learning rates, optimization strategies (SGD, momentum), initialization schemes, and 
+network sizes.
+
+\textbf{Notation.} $P_m  = \frac{\lVert m \rVert_0}{|\theta|}$ is the sparsity of mask $m$, e.g.,
+$P_m = 25\%$ when 75\% of weights are pruned.
+
+\textbf{Iterative pruning.}
+The winning tickets we find learn faster than the original network.
+Figure
+\ref{fig:oneshot_same_init_convergence} plots the average test accuracy when training {\kernels}
+iteratively pruned to various
+extents. Error bars are the minimum and maximum of five runs.
+For the first pruning rounds, networks learn faster and reach higher test accuracy the more they are pruned
+(left graph in Figure \ref{fig:oneshot_same_init_convergence}).
+A {\kernel} comprising 51.3\% of the weights from the original network (i.e., $P_m = 51.3\%$) reaches higher test accuracy faster than the original network but slower
+than when $P_m = 21.1\%$.
+When $P_m < 21.1\%$, learning slows (middle graph). When $P_m = 3.6\%$, a {\kernel} regresses to the performance of the original network. A similar
+pattern repeats throughout this paper.
+
+Figure \ref{fig:rand_init}a summarizes this behavior for all pruning levels when iteratively pruning by 20\% per iteration (blue).
+On the left is the iteration at which each network reaches minimum validation loss (i.e., when the early-stopping criterion would halt training)
+in relation to the percent of weights remaining after pruning; in the middle is test accuracy at that iteration. We use the iteration at which
+the early-stopping criterion is met as a proxy for how quickly the network learns.
+
+The winning tickets learn faster as $P_m$ decreases from 100\% to 21\%, at which point
+early-stopping occurs $38\%$ earlier than for the original network. Further pruning causes
+learning to slow, returning to the early-stopping performance of the original network when $P_m = 3.6\%$.
+Test accuracy increases with pruning, improving by more than 0.3 percentage points when $P_m = 13.5\%$; after this point, accuracy decreases, returning to the level of the original network when $P_m = 3.6\%$.
+
+At early stopping, training accuracy (Figure \ref{fig:rand_init}a, right) increases with pruning in a similar pattern to test accuracy, seemingly implying that winning tickets
+optimize more effectively but do not generalize better.  However, at iteration 50,000 (Figure \ref{fig:rand_init}b),
+iteratively-pruned winning tickets still see a test accuracy improvement of up to 0.35 percentage points in spite of the fact that
+training accuracy reaches 100\% for nearly all networks (Appendix \ref{app:train}, Figure \ref{fig:rand_init2}). This means that the gap between
+training accuracy and test accuracy is smaller for winning tickets, pointing to improved generalization.
+
+\textbf{Random reinitialization.} To measure the importance of a winning ticket's
+initialization, we retain the structure of a winning ticket (i.e., the mask $m$) but randomly sample a new initialization $\theta'_0 \sim \mathcal{D}_\theta$.
+We randomly reinitialize each winning ticket three times, making 15 total per point in Figure \ref{fig:rand_init}. We find
+that initialization is crucial for the efficacy of a winning ticket.
+The right graph in Figure \ref{fig:oneshot_same_init_convergence} shows this experiment for iterative pruning.
+In addition to the original network and {\kernels} at $P_m = 51\%$ and $21\%$ are the random reinitialization experiments.
+Where the winning tickets learn faster as they are pruned, they learn progressively slower when randomly reinitialized.
+
+The broader results of this experiment
+are orange line
+in Figure \ref{fig:oneshot_conv_graphs}a.
+Unlike {\kernels}, the reinitialized networks learn increasingly slower than the original network and lose test accuracy after little pruning. 
+The average
+reinitialized iterative winning ticket's test accuracy drops off from the original accuracy when $P_m = 21.1\%$, compared to
+2.9\% for the {\kernel}. When $P_m = 21\%$, the winning ticket reaches minimum validation loss
+2.51x faster than when reinitialized and is half a percentage point more accurate. All networks reach 100\% training
+accuracy for $P_m \geq 5\%$; Figure \ref{fig:oneshot_conv_graphs}b therefore shows that the winning tickets generalize substantially better than when randomly reinitialized.
+This experiment supports the lottery ticket hypothesis' emphasis
+on initialization: the original initialization withstands and benefits from pruning, while
+the random reinitialization's performance immediately suffers and diminishes steadily.
+
+\textbf{One-shot pruning.}
+Although iterative pruning extracts smaller {\kernels}, repeated training means they are costly
+to find.
+One-shot pruning makes it possible to identify winning tickets without this repeated training.
+Figure \ref{fig:oneshot_conv_graphs}c shows the results of one-shot pruning (green) and randomly reinitializing (red); one-shot pruning does indeed find winning tickets.
+When $67.5\% \geq P_m \geq 17.6\%$, the average {\kernels}
+reach minimum validation accuracy earlier than the original network. When $95.0\% \geq P_m \geq 5.17\%$, test accuracy is higher than the original network.
+However, iteratively-pruned winning tickets learn faster and reach higher
+test accuracy at smaller network sizes.
+The green and red lines in Figure \ref{fig:oneshot_conv_graphs}c are reproduced on the logarithmic axes of Figure \ref{fig:oneshot_conv_graphs}a,
+making this performance gap clear.
+Since our goal is to identify the smallest possible winning tickets, we focus on iterative pruning throughout the rest of the paper.
+
+\begin{figure}
+\centering
+\includegraphics[width=.8\textwidth]{graphs/mnist/lenet/all/legend}%
+\vspace{-.5em}
+\begin{subfigure}{\textwidth}
+\vspace{-.5em}
+\includegraphics[width=.33\textwidth]{graphs/mnist/lenet/all/iteration}%
+\includegraphics[width=.33\textwidth]{graphs/mnist/lenet/all/accuracy}%
+\includegraphics[width=.33\textwidth]{graphs/mnist/lenet/all/train_accuracy}%
+\vspace{-.5em}
+\caption{Early-stopping iteration and accuracy for all pruning methods.}
+\end{subfigure}
+\begin{subfigure}{.33\textwidth}
+\includegraphics[width=\textwidth]{graphs/mnist/lenet/50k/accuracy}%
+\vspace{-.5em}
+\caption{Accuracy at end of training.}
+\end{subfigure}%
+\begin{subfigure}{.66\textwidth}
+\includegraphics[width=.5\textwidth]{graphs/mnist/lenet/oneshot/iteration}%
+\includegraphics[width=.5\textwidth]{graphs/mnist/lenet/oneshot/accuracy}%
+\vspace{-.5em}
+\caption{Early-stopping iteration and accuracy for one-shot pruning.}
+\end{subfigure}
+\caption{Early-stopping iteration and accuracy of Lenet under one-shot and iterative pruning. Average of five trials; error
+bars for the minimum and maximum values. At iteration 50,000, training accuracy $\approx 100\%$ for $P_m \geq 2\%$ for iterative winning tickets (see Appendix \ref{app:train}, Figure \ref{fig:rand_init2}).}
+\label{fig:oneshot_conv_graphs}
+\label{fig:rand_init}
+\end{figure}

@@ -1,0 +1,224 @@
+% !TEX encoding = UTF-8
+% !TEX Root = 0_main.tex
+
+
+
+\section{Proof of Theorem~\ref{theorem: variance_mono}}\label{app:proof_mono}
+
+For ease of notation, we refer $\psi^2(.)$ as $x$ and $\frac{1}{\sigma^2}$ as $\tau^2$. 
+Thus, $x \sim \sics(\rho, \tau^2)$ and:
+\begin{align}
+\vspace{-0.3in}
+p(x) = \frac{(\tau^2\rho/2)^{\rho/2}}{\Gamma(\rho/2)}\frac{\exp[\frac{-\rho\tau^2}{2x}]}{x^{1 + \rho/2}}
+\quad\mbox{and}\quad
+\E[x] = \frac{\rho}{(\rho - 2) \sigma^2} \;(\forall\, \rho > 2)
+\label{eqn:inv-chi-sq-pdf-mean}
+\vspace{-0.3in}
+\end{align}
+where $\Gamma(.)$ is the gamma function. Therefore, we have:
+\begin{align}
+\vspace{-0.3in}
+    \E[\sqrt{x}] = \int_{0}^{\infty} \sqrt{x}\, p(x)\,dx = \frac{\tau \sqrt{\rho} \,\Gamma( (\rho - 1)/2)}{\sqrt{2} \,\Gamma(\rho/2)}\; (\forall\, \rho > 4).
+    \label{eqn:expect-sqrt-x}
+\vspace{-0.3in}
+\end{align}
+Based on Equation~\ref{eqn:inv-chi-sq-pdf-mean} and \ref{eqn:expect-sqrt-x}, for $\forall\, \rho > 4$, we have:
+\begin{align}
+\vspace{-0.5in}
+\Var[\psi(.)] = \Var[\sqrt{x}] = \E[x] - \E[\sqrt{x}]^2 = \tau^2 (\frac{\rho}{\rho-2} - \frac{\rho \,2^{2\rho - 5}}{\pi}\gB(\frac{\rho-1}{2}, \frac{\rho-1}{2})^2),
+\vspace{-0.5in}
+\end{align}
+where $\gB(.)$ is the beta function. To prove the monotonic property of $\Var[\psi(.)]$, we need to show:
+
+\begin{lemma}
+for $t \geq 4$, $\frac{\partial }{\partial t} (\frac{t}{t-2} - \frac{t \,2^{2t - 5}}{\pi}\gB(\frac{t-1}{2}, \frac{t-1}{2})^2) < 0$
+\end{lemma}
+
+\begin{proof}
+The target inequality can be re-wrote as 
+\begin{align*}
+    &  \frac{\partial }{\partial t} (\frac{t}{t-2} - \frac{t \,2^{2t - 5}}{\pi}\gB(\frac{t-1}{2}, \frac{t-1}{2})^2) \\
+    &= \frac{-2}{(t-2)^2} 
+    - \frac{2^{2t - 5}}{\pi}\gB(\frac{t-1}{2},
+    \frac{t-1}{2})^2
+    - \frac{t \,2^{2t - 5} \ln 4}{\pi}\gB(\frac{t-1}{2}, \frac{t-1}{2})^2
+    \\
+    & - \frac{2t \,2^{2t - 5}}{\pi}\gB(\frac{t-1}{2}, \frac{t-1}{2})^2 (\Psi(\frac{t-1}{2})-\Psi(t-1)), \quad \left( \Psi(x) = \frac{\Gamma'(x)}{\Gamma(x)} \right)
+    \\ & < 0
+    \\
+\end{align*}
+This inequality is equivalent to:
+\begin{align*}
+    \frac{64 \pi }{(t-2)^2 4^t \cB(\frac{t-1}{2},\frac{t-1}{2})^2} + 1 + t \ln 4+2t\Psi(\frac{t-1}{2}) \\
+    > 2t\Psi(t-1) \stackrel{(i)}{=} t[\Psi(\frac{t-1}{2}) + \Psi(\frac{t}{2})+ \ln 4],
+\end{align*}
+where $(i)$ is derived from Legendre duplication formula.
+Simplify the above inequality, we get:
+\begin{align*}
+    \frac{64 \pi }{(t-2)^2 4^t \cB(\frac{t-1}{2},\frac{t-1}{2})^2} + 1 + t \Psi(\frac{t-1}{2}) - t\Psi(\frac{t}{2}) > 0,
+\end{align*}
+
+We only need to show 
+\begin{align*}
+    &\frac{64 \pi }{(t-2)^2 4^t \cB(\frac{t-1}{2},\frac{t-1}{2})^2} + 1 + t \Psi(\frac{t-1}{2}) - t\Psi(\frac{t}{2})
+    \\
+    &\geq \frac{64 \pi }{(t-2)^2 4^t \cB(\frac{t-1}{2},\frac{t-1}{2})^2} + 2 + t ( \ln(t/2)-1/(t/2-0.5) ) - t\ln (t/2)
+    \\
+    &= \frac{64 \pi }{(t-2)^2 4^t \cB(\frac{t-1}{2},\frac{t-1}{2})^2} - \frac{2}{t-1}
+    \\
+    &> \frac{64 \pi }{(t-2)^2 4^t \cB(\frac{t-1}{2},\frac{t-1}{2})^2} - \frac{2}{t-2} \geq 0 ,
+\end{align*}
+where the first inequality is from $\ln(x)-1/(2x)>\Psi(x) > \ln(x+0.5)-1/x$.
+
+Therefore, we only need to show 
+\begin{align*}
+32 \pi \geq (t-2) 4^t \cB(\frac{t-1}{2},\frac{t-1}{2})^2,
+\end{align*}
+
+which is equivalent to  
+\begin{align*}
+&(t-2) 4^t \cB(\frac{t-1}{2},\frac{t-1}{2})^2
+= (t-2) 4^t \frac{\Gamma(\frac{t-1}{2})^4}{\Gamma(t-1)^2}
+% = (t-2) 4^t \frac{\Gamma(\frac{t-1}{2})^4}{\Gamma(t-1)^2} 
+\\ &\stackrel{(i)}{=} (t-2) 4^t \frac{\Gamma(\frac{t-1}{2})^2}{\Gamma(t/2)^2} 4^{2-t} \pi = 16 \pi (t-2)  \frac{\Gamma(\frac{t-1}{2})^2}{\Gamma(t/2)^2} \leq 32 \pi,
+\end{align*}
+where $(i)$ is from Legendre duplication formula.
+
+So we only need to show 
+\begin{align}
+(t-2)  \frac{\Gamma(\frac{t-1}{2})^2}{\Gamma(t/2)^2} \leq 2
+\end{align}
+
+Using Gautschi's inequality ($\frac{\Gamma(x+1)}{\Gamma(x+s)} < (x+1)^{1-s}$), we have 
+\begin{align}
+(t-2)  \frac{\Gamma(\frac{t-1}{2})^2}{\Gamma(t/2)^2}  \leq (t-2) (\frac{t-1}{2})^{-1} = \frac{2(t-2)}{t-1} < 2
+\end{align}
+\end{proof}
+
+\section{Implementation Details} \label{app:implement}
+\subsection{Language Modeling}
+Our implementation is based on the previous work~\citep{liu2018efficient}.
+Specifically, we use two-layer LSTMs with 2048 hidden states with adaptive softmax to conduct experiments on the one billion words dataset.
+Word embedding (random initialized) of 300 dimensions is used as the input and the adaptive softmax is incorporated with a default setting (cut-offs are set to $[4000,40000,200000]$). 
+Additionally, as pre-processing, we replace all tokens occurring equal or less than 3 times with as UNK. 
+Dropout is applied to each layer with a ratio of $0.1$, gradients are clipped at 5.0.
+We use the default hyper-parameters to update moving averages, \ie $\beta_1=0.9$ and $\beta_2=0.999$.
+The learning rate is set to start from 0.001, and decayed at the start of 10th epochs. 
+LSTMs are unrolled for 20 steps without resetting the LSTM states and the batch size is set to 128.
+All models are trained on one NVIDIA Tesla V100 GPU. 
+
+\subsection{Imageine Classification}
+We use the default ResNet architectures~\citep{he2016deep} in a public pytorch re-implementation\footnote{\url{https://github.com/bearpaw/pytorch-classification}}.
+Specifically, we use $20$-layer ResNet ($9$ Basic Blocks) for CIFAR-10 and 18-layer ResNet ($8$ Basic Blocks) for ImageNet.
+Batch size is $128$ for CIFAR-10 and $256$ for ImageNet. The model is trained for $186$ epoches and the learning rate decays at the $81$-th and the $122$-th epoches by $0.1$ on CIFAR-10, while the model is trained for $90$ epoches and the learning rate decays at the $31$-th and the $61$-th epoch by $0.1$ on ImageNet.  
+For Adam and RAdam, we set $\beta_1=0.9, \beta_2=0.999$. For SGD, we set the momentum factor as $0.9$. The weight decay rate is $10^{-4}$. Random cropping and random horizontal flipping are applied to training data.
+
+\subsection{Neural Machine Translation}
+Our experiments are based on the default Transformers~\citep{vaswani2017attention} implementation from the fairseq package~\citep{ott2019fairseq}. 
+Specifically, we use word embedding with 512 dimensions and 6-layer encoder / decoder with 4 head and 1024 feedforward dimensions on the IWSLT14' dataset; use word embedding with 512 dimension and 6-layer encoder/decoder with 8 heads and 2048 feedforward dimensions on the WMT14' dataset. 
+Label smoothed cross entropy is used as the objective function with an uncertainty $= 0.1$~\citep{szegedy2016rethinking}. 
+We use linear learning rate decay starting from $3e^{-4}$, and the checkpoints of the last $20$ epoches are averaged before evaluation. 
+As to the wamrup strategy, we use a linear warmup for Adam in the first $4000$ updates, and set $\beta_2$ to satisfy $\nu=4000$ ($\beta_2 = 0.9995$).
+In the IWSLT'14 dataset, we conduct training on one NVIDIA Tesla V100 GPU, set maximum batch size as $4000$, apply dropout with a ratio $0.3$, using weight decay of $0.0001$ and clip the gradient norm at $25$. 
+In the WMT'16 dataset, we conduct training on four NVIDIA Quadro R8000 GPUs and set maximum batch size as $8196$. 
+
+
+\section{Downgrading to SGDM} \label{app:foursteps}
+
+As a byproduct determined by math derivations, we degenerated RAdam to SGD with momentum in the first several updates. 
+Although this stage only contains several gradient updates, these updates could be quite damaging (e.g., in our Figure~\ref{fig:histogram_2}, the gradient distribution is distorted within 10 gradient updates). 
+Intuitively, updates with divergent adaptive learning rate variance could be more damaging than the ones with converged variance, as divergent variance implies more instability. 
+As a case study, we performed experiments on the CIFAR10 dataset. 
+Five-run average results are summarized in Table~\ref{tab:foursteps}. 
+The optimizer fails to get an equally reliably model when changing the first 4 updates to Adam, yet the influence of switching is less deleterious when we change 5-8 updates instead. 
+This result verifies our intuition and is in agreement with our theory — the first few updates could be more damaging than later updates. 
+By saying that, we still want to emphasize that this part (downgrading to SGDM) is only a minor part of our algorithm design whereas our main focus is on the mechanism of warmup and the derivation of the rectification term.
+
+\begin{table}[h]
+\caption{Performance on CIFAR10 (lr = 0.1).}
+\begin{center}
+\begin{tabularx}{\columnwidth}{l l l *{3}{Y}}
+% \hline
+\toprule
+1-4 steps & 5-8 steps & 8+ steps & test acc & train loss & train error\\
+\midrule
+% \multicolumn{3}{c}{RAdam}
+RAdam & RAdam & RAdam & 91.08 & 0.021 & 0.74 \\
+\midrule
+Adam (w. divergent var.) & RAdam & RAdam & 89.98 & 0.060 & 2.12 \\
+\midrule
+SGD & Adam (w. convergent var.) & RAdam & 90.29 & 0.038 & 1.23\\
+\bottomrule
+\end{tabularx}
+\end{center}
+\label{tab:foursteps}
+\end{table}
+
+% \section{Simulation of Exploding Variance}
+
+% \subsection{Adaptive Learning Rate}
+% We show the simulation result of the variance of gradient update by assuming $g_i \sim \cN(\mu,\sigma^2)$. In our previous analysis, we simply assume $\mu=0$ to derive our conclusion. In this section, we verify that the exploding variance of the adaptive learning rate ($\frac{1}{v_t} = \sqrt{\frac{1-\beta_2^t}{(1 - \beta_2)\sum_{i = 1}^t \beta_2^{t-i}g_i^2}}$) exists for a large range of $\mu$. $\beta_2=0.999$ in the following experiments. The number of sampled trajectories $5000$, the number of iterations is  $6000$.
+
+% \begin{figure}[h]
+% \centering
+% \begin{tabular}{ ccc } 
+%  \includegraphics[width=0.3\textwidth]{fig/simu_var/0_1_var.pdf} & 
+%  \includegraphics[width=0.3\textwidth]{fig/simu_var/0001_1_var.pdf} & 
+%  \includegraphics[width=0.3\textwidth]{fig/simu_var/001_1_var.pdf}  \\
+%  $\mu=0$ & $\mu=0.001$  & $\mu=0.01$ \\ 
+%  \includegraphics[width=0.3\textwidth]{fig/simu_var/01_1_var.pdf} & 
+%  \includegraphics[width=0.3\textwidth]{fig/simu_var/1_1_var.pdf}& 
+%  \includegraphics[width=0.3\textwidth]{fig/simu_var/10_1_var.pdf} \\
+%  $\mu=0.1$ & $\mu=1$ & $\mu=10$ \\
+% \end{tabular}
+
+% \caption{The simulation of $\Var[\sqrt{\frac{t}{\sum_{i=1}^t g_i^2}}]$. The y-axis is log scaled.}
+%     \label{fig:vt_var_simulation}
+% \end{figure}
+
+% \subsection{Adaptive Update}
+% We also evaluate the variance and mean of the update $v_t m_t$, where $m_t= \frac{(1 - \beta_1)\sum_{i = 1}^t \beta_1^{t-i}g_t}{1 - \beta_1^t}$. As can be seen, the variance of the update is also large at the beginning stage for some $\mu$. 
+
+
+% \begin{figure}[h]
+% \centering
+% \begin{tabular}{ ccc } 
+%  \includegraphics[width=0.2\textwidth]{fig/simu_var/0_1_u_var.pdf} & 
+%  \includegraphics[width=0.2\textwidth]{fig/simu_var/0001_1_u_var.pdf} & 
+%  \includegraphics[width=0.2\textwidth]{fig/simu_var/001_1_u_var.pdf}  \\
+%  $\mu=0$ & $\mu=0.001$  & $\mu=0.01$ \\ 
+%  \includegraphics[width=0.2\textwidth]{fig/simu_var/01_1_u_var.pdf} & 
+%  \includegraphics[width=0.2\textwidth]{fig/simu_var/1_1_u_var.pdf}& 
+%  \includegraphics[width=0.2\textwidth]{fig/simu_var/10_1_u_var.pdf} \\
+%  $\mu=0.1$ & $\mu=1$ & $\mu=10$ \\
+% \end{tabular}
+
+% \caption{The simulation of $\Var[v_t m_t]$. The y-axis is log scaled.}
+%     \label{fig:ut_var_simulation}
+% \end{figure}
+
+
+
+% \section{Proof of Theorem~\ref{theorem: variance_lowbound}}
+
+% \begin{proof}
+%  We divide the proof of $\Var[\sqrt{\frac{1-\beta^t}{(1 - \beta)\sum_{i = 1}^t \beta^{t-i}g_i^2}}] \leq \Var[\sqrt{\frac{t}{\sum_{i=1}^t g_i^2}}]$  into two parts. We first show that $\Var[\sqrt{\frac{1-\beta^t}{(1 - \beta)\sum_{i = 1}^t \beta^{t-i}g_i^2}}]$ decreases as $\beta$ increases. Next, we show when $\beta \rightarrow 1$, $\Var[\sqrt{\frac{1-\beta^t}{(1 - \beta)\sum_{i = 1}^t \beta^{t-i}g_i^2}}] = \Var[\sqrt{\frac{t}{\sum_{i=1}^t g_i^2}}]$.
+ 
+ 
+% \textbf{Part I.} 
+
+% \begin{align*}
+%     \frac{\partial}{\partial \beta}\Var[\sqrt{\frac{1-\beta^t}{(1 - \beta)\sum_{i = 1}^t \beta^{t-i}g_i^2}}] \leq 0
+% \end{align*}
+
+% \textbf{Part II.}
+
+% \begin{align*}
+%     &\lim_{\beta \rightarrow 1} \Var[\sqrt{\frac{1-\beta^t}{(1 - \beta)\sum_{i = 1}^t \beta^{t-i}g_i^2}}] \\
+%     &= \lim_{\beta \rightarrow 1} \E[\frac{1-\beta^t}{(1 - \beta)\sum_{i = 1}^t \beta^{t-i}g_i^2}]  - \E[\sqrt{\frac{1-\beta^t}{(1 - \beta)\sum_{i = 1}^t \beta^{t-i}g_i^2}}]^2 \\
+%     &\stackrel{(i)}{=}  \E[\lim_{\beta \rightarrow 1} \frac{1-\beta^t}{(1 - \beta)\sum_{i = 1}^t \beta^{t-i}g_i^2}] - \E[\sqrt{ \lim_{\beta \rightarrow 1}  \frac{1-\beta^t}{(1 - \beta)\sum_{i = 1}^t \beta^{t-i}g_i^2}}]^2 \\
+%     &\stackrel{(ii)}{=} \E[ \frac{t}{\sum_{i = 1}^t g_i^2}] - \E[\sqrt{ \frac{t}{\sum_{i = 1}^t g_i^2}}]^2 \\
+%     &= \Var[\sqrt{\frac{t}{\sum_{i=1}^t g_i^2}}],
+% \end{align*}
+% where $(i)$ is based on Lebesgue's dominated convergence theorem and $(ii)$ is based on L'Hospital's Rule.
+% \end{proof}

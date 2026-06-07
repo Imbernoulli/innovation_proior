@@ -1,0 +1,40 @@
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{hyperref}       % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{xcolor}         % colors
+
+\usepackage{tikz,pgfplots}
+\pgfplotsset{compat=newest}
+\pgfplotsset{/pgfplots/error bars/error bar style={very thick}}
+
+\usepackage{multirow}
+\usepackage{graphicx}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{pifont}
+\usepackage{wrapfig}
+\newcommand{\pmr}[1]{\scriptsize$\pm$#1}
+
+% Notes
+\usepackage{etoolbox}
+\newtoggle{release}
+\togglefalse{release}
+% \toggletrue{release}
+\iftoggle{release}{
+\newcommand{\alex}[1]{}
+\newcommand{\gab}[1]{}
+\newcommand{\adios}[1]{}
+\newcommand{\jade}[1]{}
+}
+{
+\newcommand{\alex}[1]{{\color{blue} A: #1}}
+\newcommand{\gab}[1]{{\color{red} G: #1}}
+\newcommand{\adios}[1]{{\color{magenta}Y: #1}}
+\newcommand{\jade}[1]{{\color{cyan}J: #1}}
+\newcommand{\comment}[1]{{\color{cyan} #1}}
+}

@@ -1,0 +1,48 @@
+\section{Winning Tickets in Convolutional Networks}
+\label{sec:conv}
+
+Here, we apply the lottery ticket hypothesis to convolutional networks on CIFAR10,
+increasing both the complexity of the learning problem and the size of the networks.
+We consider the Conv-2, Conv-4, and Conv-6 architectures in Figure \ref{fig:convnets}, which are scaled-down variants
+of the VGG \citep{vgg} family. The networks have two, four, or six convolutional layers followed by
+two fully-connected layers; max-pooling occurs after every two convolutional layers. The networks cover a range from near-fully-connected to
+traditional convolutional networks, with less than 1\% of parameters
+in convolutional layers in Conv-2 to nearly two thirds in Conv-6.%
+\footnote{Appendix \ref{app:conv} explores other hyperparameters, including learning rates, optimization strategies (SGD, momentum),
+and the relative rates at which to prune convolutional and fully-connected layers.}
+%In this Section, we investigate how these small convolutional networks behave under the lottery ticket experiment.
+
+\begin{figure}
+\centering
+\includegraphics[width=.8\textwidth]{graphs/cifar10/conv/conv_paperall_w/legend}%
+\vspace{-1em}
+\includegraphics[width=.5\textwidth]{graphs/cifar10/conv/conv_paperall_w/iteration}%
+\includegraphics[width=.5\textwidth]{graphs/cifar10/conv/conv_paperall_w/accuracy}%
+\vspace{-1em}
+\includegraphics[width=.5\textwidth]{graphs/cifar10/conv/conv_paperall_w/train_accuracy}%
+\includegraphics[width=.5\textwidth]{graphs/cifar10/conv/conv_paperall_w_last_iteration/accuracy}%
+\vspace{-.5em}
+\caption{Early-stopping iteration and test and training accuracy of the Conv-2/4/6 architectures when iteratively pruned and when
+randomly reinitialized.
+Each solid line is the average of five trials; each dashed line is the average of fifteen reinitializations
+(three per trial). The bottom right graph plots test accuracy of winning tickets at iterations corresponding to the last iteration of training for the original network (20,000 for Conv-2, 25,000 for Conv-4, and 30,000 for Conv-6); at this iteration, training accuracy $\approx 100\%$ for $P_m \geq 2\%$ for winning tickets (see Appendix \ref{app:train}).}
+\label{fig:question-1}
+\end{figure}
+
+\textbf{Finding winning tickets.} The solid lines in Figure \ref{fig:question-1} (top) show the iterative lottery ticket experiment on
+Conv-2 (blue), Conv-4 (orange), and Conv-6 (green) at the per-layer pruning rates from Figure \ref{fig:convnets}. The pattern
+from Lenet in Section \ref{sec:fc} repeats: as the network is pruned, it learns faster and test accuracy rises as compared to the original network.
+In this case, the results are more pronounced.
+Winning tickets reach minimum validation loss at best 3.5x faster for Conv-2 ($P_m = 8.8\%$), 3.5x for Conv-4 ($P_m = 9.2\%$), and
+2.5x for Conv-6 ($P_m = 15.1\%$). Test accuracy improves at best 3.4 percentage points for Conv-2 ($P_m = 4.6\%$), 3.5
+for Conv-4 ($P_m = 11.1\%$), and 3.3 for Conv-6 ($P_m = 26.4\%$). All three networks remain above their original average test accuracy when $P_m > 2\%$.
+
+As in Section \ref{sec:fc}, training accuracy at the early-stopping iteration rises with test accuracy.
+However,  at iteration 20,000 for Conv-2, 25,000 for Conv-4, and 30,000 for Conv-6 (the iterations corresponding to the final training iteration for the original network), training accuracy reaches 100\% for all networks when $P_m \geq 2\%$ (Appendix \ref{app:train}, Figure \ref{fig:question-12})
+and winning tickets still maintain higher test accuracy (Figure \ref{fig:question-1} bottom right). This means that the gap between
+test and training accuracy is smaller for winning tickets, indicating they generalize better.
+
+\textbf{Random reinitialization.} We repeat the random reinitialization experiment from Section \ref{sec:fc}, which appears as the dashed lines in Figure \ref{fig:question-1}. 
+These networks again take increasingly longer to learn upon continued pruning. Just as with Lenet on MNIST (Section \ref{sec:fc}), test accuracy drops off more
+quickly for the random reinitialization experiments. However, unlike Lenet, test accuracy at early-stopping time initially remains steady and even
+improves for Conv-2 and Conv-4, indicating that---at moderate levels of pruning---the structure of the winning tickets alone may lead to better accuracy.

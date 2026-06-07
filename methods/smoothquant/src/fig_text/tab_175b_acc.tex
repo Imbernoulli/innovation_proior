@@ -1,0 +1,22 @@
+\renewcommand \arraystretch{0.93}
+\begin{table*}[t]
+    \setlength{\tabcolsep}{2.5pt}
+    \small
+    \centering
+    \caption{\method maintains the accuracy of OPT-175B model after INT8 quantization, even with the most aggressive and most efficient O3 setting (Table \ref{tab:settings}). We extensively benchmark the performance on 7 zero-shot benchmarks (by reporting the average accuracy) and 1 language modeling benchmark (perplexity). {*}For ZeroQuant, we also tried leaving the input activation of self-attention in FP16 and quantizing the rest to INT8, which is their solution to the GPT-NeoX-20B. But this does not solve the accuracy degradation of OPT-175B.}
+    \label{tab:175b_acc}
+    \begin{tabular}{lccccccccc}
+        \toprule
+        \emph{OPT-175B}     & {LAMBADA} & {HellaSwag} & {PIQA} & {WinoGrande} & {OpenBookQA} & {RTE}  & {COPA} & \textbf{Average$\uparrow$} & \textbf{WikiText$\downarrow$} \\
+        \midrule
+        FP16                & 74.7\%    & 59.3\%      & 79.7\% & 72.6\%       & 34.0\%       & 59.9\% & 88.0\% & 66.9\%                     & 10.99                         \\ \midrule
+        W8A8                & 0.0\%     & 25.6\%      & 53.4\% & 50.3\%       & 14.0\%       & 49.5\% & 56.0\% & 35.5\%                     & 93080                         \\
+        ZeroQuant           & 0.0\%{*}  & 26.0\%      & 51.7\% & 49.3\%       & 17.8\%       & 50.9\% & 55.0\% & 35.8\%                     & 84648                         \\
+        \texttt{LLM.int8()}          & 74.7\%    & 59.2\%      & 79.7\% & 72.1\%       & 34.2\%       & 60.3\% & 87.0\% & 66.7\%                     & 11.10                         \\
+        Outlier Suppression & 0.00\%    & 25.8\%      & 52.5\% & 48.6\%       & 16.6\%       & 53.4\% & 55.0\% & 36.0\%                     & 96151                         \\ \midrule
+        \method-O1 & 74.7\% & 59.2\% & 79.7\% & 71.2\% & 33.4\% & 58.1\% & 89.0\% & 66.5\% & 11.11  \\
+        \method-O2 & 75.0\% & 59.0\% & 79.2\% & 71.2\% & 33.0\% & 59.6\% & 88.0\% & 66.4\% & 11.14  \\
+        \method-O3 & 74.6\% & 58.9\% & 79.7\% & 71.2\% & 33.4\% & 59.9\% & 90.0\% & 66.8\% & 11.17 \\
+        \bottomrule
+    \end{tabular}
+\end{table*}

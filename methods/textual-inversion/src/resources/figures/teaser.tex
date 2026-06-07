@@ -1,0 +1,70 @@
+\begin{figure}[!hbt]
+    \centering
+    \setlength{\abovecaptionskip}{6.5pt}
+    \setlength{\belowcaptionskip}{-3.5pt}
+    \setlength{\tabcolsep}{0.55pt}
+    \renewcommand{\arraystretch}{1.0}
+    {
+    \fontsize{8pt}{8pt}\selectfont %
+    
+    \begin{tabular}{c@{\hskip 5pt} c@{\hskip 5pt} c c c c}
+    
+        \begin{tabular}{c c}
+            \includegraphics[width=0.09\linewidth,height=0.09\linewidth]{resources/images/training_sets/headless_statue/1.jpeg} & 
+            \includegraphics[width=0.09\linewidth,height=0.09\linewidth]{resources/images/training_sets/headless_statue/2.jpeg} \\
+            \includegraphics[width=0.09\linewidth,height=0.09\linewidth]{resources/images/training_sets/headless_statue/3.jpeg} & 
+            \includegraphics[width=0.09\linewidth,height=0.09\linewidth]{resources/images/training_sets/headless_statue/4.jpeg}
+        \end{tabular}
+        
+        &
+        $\rightarrow$
+        &
+        \begin{tabular}{c}
+        \includegraphics[width=0.184\linewidth]{resources/images/generation/headless_statue/oil.jpg}
+        \end{tabular} &
+        \begin{tabular}{c}
+        \includegraphics[width=0.184\linewidth]{resources/images/generation/headless_statue/app_icons.jpg} 
+        \end{tabular} &
+        \begin{tabular}{c}
+        \includegraphics[width=0.184\linewidth]{resources/images/generation/headless_statue/elmo.jpg} 
+        \end{tabular} &
+        \begin{tabular}{c}
+        \includegraphics[width=0.184\linewidth]{resources/images/generation/headless_statue/crochet.jpg}
+        \end{tabular} \\
+        
+        { %
+        \fontsize{8pt}{8pt}\selectfont %
+        Input samples $\xrightarrow{invert} ``\mathpholdercolor"$} & & {\begin{tabular}{c@{}c@{}c@{}c@{}} ``An oil painting of \pholdercolor" \end{tabular}} & {\begin{tabular}{c@{}c@{}c@{}c@{}} ``App icon of \pholdercolor" \end{tabular}} & 
+        {\begin{tabular}{c@{}c@{}c@{}c@{}} ``Elmo sitting in \\ the same pose as \pholdercolor" \end{tabular}} &
+        {\begin{tabular}{c@{}c@{}c@{}c@{}} ``Crochet \pholdercolor" \end{tabular}} \\ \\
+        
+        \begin{tabular}{c c}
+            \includegraphics[width=0.09\linewidth,height=0.09\linewidth]{resources/images/training_sets/rainbow_cat/2.jpeg} & 
+            \includegraphics[width=0.09\linewidth,height=0.09\linewidth]{resources/images/training_sets/rainbow_cat/3.jpeg} \\
+            \multicolumn{2}{c}{\includegraphics[width=0.09\linewidth,height=0.09\linewidth]{resources/images/training_sets/rainbow_cat/6.jpeg}}
+        \end{tabular}
+        &
+        $\rightarrow$
+        &
+        \begin{tabular}{c}
+        \includegraphics[width=0.184\linewidth]{resources/images/generation/rainbow_cat/fishing2.jpg} 
+        \end{tabular} &
+        \begin{tabular}{c}
+        \includegraphics[width=0.184\linewidth]{resources/images/generation/rainbow_cat/backpack.jpg} 
+        \end{tabular} &
+        \begin{tabular}{c}
+        \includegraphics[width=0.184\linewidth]{resources/images/generation/rainbow_cat/banksy.jpg} 
+        \end{tabular} &
+        \begin{tabular}{c}
+        \includegraphics[width=0.184\linewidth]{resources/images/generation/rainbow_cat/lunchbox.jpg} 
+        \end{tabular} \\
+        
+        { %
+        \fontsize{8pt}{8pt}\selectfont %
+        Input samples $\xrightarrow{invert} ``\mathpholdercolor"$} & & {\begin{tabular}{c@{}c@{}c@{}c@{}} ``Painting of two \pholdercolor \\ fishing on a boat" \end{tabular}} & {\begin{tabular}{c@{}c@{}c@{}c@{}} ``A \pholdercolor{} backpack" \end{tabular}} & {\begin{tabular}{c@{}c@{}c@{}c@{}} ``Banksy art of \pholdercolor" \end{tabular}} & {\begin{tabular}{c@{}c@{}c@{}c@{}} ``A \pholdercolor{} themed lunchbox" \end{tabular}} \\
+
+    \end{tabular}}
+    \caption{(left) We find new pseudo-words in the embedding space of a pre-trained text-to-image model which describe specific concepts. (right) These pseudo-words can be composed into new sentences, placing our targets in new scenes, changing their style or composition, or ingraining them into new products.}
+    \label{fig:teaser} 
+    \vspace{-5pt}
+\end{figure}

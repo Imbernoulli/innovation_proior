@@ -1,0 +1,67 @@
+\begin{algorithm}[H]
+    \caption{Token rounding routing}\label{alg:token_rounding}
+    \DontPrintSemicolon
+    \SetKwInOut{Input}{Input}\SetKwInOut{Output}{Output}
+    
+    % \fontsize{7pt}{9pt}\selectfont
+    \fontsize{8pt}{10pt}\selectfont
+    
+    \Input{
+    $X \in \mathbb{R}^{T \times d}$; number of experts $E$ and expected activated number of experts $K$ per token; tile size $\tileM$; router scores $S \in [0,1]^{T \times E}$. $\mathrm{round\_and\_sparsify}$ that determines rounding up or down. 
+    }
+    \Output{
+    $\tileM$-rounded routed token list and scores $\{\pi_e',\ s_e'\}_{e\in[E]}$
+    }
+
+    \BlankLine
+    \textbf{(1) Top-$K$ token choice sorting}\;
+    
+    $(S_\text{topK},\, I_\text{topK}) \leftarrow \mathrm{TopK}(S,\ K)$ 
+    
+    
+    \BlankLine
+    \textbf{(2) Calculate each expert's received token frequencies and its $\tileM$-rounded multiples}\;
+    
+    $f_e \leftarrow \sum_{t} \mathbf{1}_{\{e \in I_\text{topK, t}\}}$ \;
+    
+    $\roundup{f_e} \leftarrow \lceil f_e / \tileM \rceil \cdot \tileM$ \; 
+    
+    $\rounddown{f_e} \leftarrow \lfloor f_e/\tileM \rfloor \cdot \tileM$ \;
+    
+    % \BlankLine
+    % \textbf{(3) Optional renormalization of Top-$K$ weights}\;
+    % \If{\texttt{renorm}}{
+    %   \For{$t \in [T]$ \& $k \in [K]$ in parallel}{  
+    %   $S_{\text{topK}, t, k} \leftarrow S_{\text{topK},t,k}\,/\,\sum_{j=1}^{K}S_{\text{topK}, t, j}$; \quad
+    %   $S_{t, I_\text{topK}(t,k)} \leftarrow S_{\text{topK}, t, k}$ \;
+    % }
+    % }
+    
+    \BlankLine
+    \textbf{(3) Build Top-$K$-preferred $S'$ for expert-wise ranking}\;
+
+    \note{// ensure non-top-$K$ entries are smaller}
+    
+    $S_e' \leftarrow S_e - 1$ \;
+    
+    \For{$t \in [T]$ \& $k \in [K]$ in parallel}{  
+      $S_{t,I_\text{topK}(t,k)}' \gets S_{\text{topK}, t, k}$ 
+    }
+    
+    
+    \BlankLine
+    \textbf{(4) Token rounding per expert}\;
+    
+    \For{$e \in [E]$}{  
+    
+      \note{// token ordering and sorted scores}
+    
+      $\pi_e,\  s_e \leftarrow \mathrm{sort}(S'_{e})$  \;
+    
+      \note{// token rounding for expert $e$}
+      
+      $\pi_e',\ s_e'\leftarrow \mathrm{round\_and\_sparsify}(\pi_e, s_e, f_e, \roundup{f_e}, \rounddown{f_e})$  % \tcp*[f]{token rounding for expert $e$} \;
+      
+      % $\lfloor S \rceil_{\tileM, e} \gets \mathrm{Gather}(S,\ \pi_e)$
+    }
+\end{algorithm}

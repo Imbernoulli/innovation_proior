@@ -1,0 +1,71 @@
+
+\section{Introduction}
+
+Unsupervised representation learning has been highly successful in the domain of natural language processing~\cite{dai2015semi,mccann2017learned,peters2018deep,radford2018improving,devlin2018bert}.
+Typically, these methods first pretrain neural networks on large-scale unlabeled text corpora, and then finetune the models or representations on downstream tasks.
+Under this shared high-level idea, different unsupervised pretraining objectives have been explored in literature.
+Among them, autoregressive (AR) language modeling and autoencoding (AE) have been the two most successful pretraining objectives.
+
+% With a deep root in density estimation\footnote{The problem of language modeling is fundamentally density estimation for text data.} \cite{bengio2000modeling,uria2016neural,oord2016pixel},  
+AR language modeling seeks to estimate the probability distribution of a text corpus with an autoregressive model~\cite{dai2015semi,peters2018deep,radford2018improving}.
+Specifically, given a text sequence $\mathbf{x} = (x_1, \cdots, x_T)$, AR language modeling factorizes the likelihood into a forward product $p(\mathbf{x}) = \prod_{t=1}^{T} p(x_t \mid \mathbf{x}_{<t})$ or a backward one $p(\mathbf{x}) = \prod_{t=T}^{1} p(x_t \mid \mathbf{x}_{>t})$.
+A parametric model (e.g. a neural network) is trained to model each conditional distribution.
+Since an AR language model is only trained to encode a uni-directional context (either forward or backward), it is not effective at modeling deep bidirectional contexts.
+On the contrary, downstream language understanding tasks often require bidirectional context information. This results in a gap between AR language modeling and effective pretraining.
+
+In comparison, AE based pretraining does not perform explicit density estimation but instead aims to reconstruct the original data from corrupted input.
+A notable example is BERT \cite{devlin2018bert}, which has been the state-of-the-art pretraining approach.
+Given the input token sequence, a certain portion of tokens are replaced by a special symbol \texttt{[MASK]}, and the model is trained to recover the original tokens from the corrupted version.
+Since density estimation is not part of the objective, BERT is allowed to utilize bidirectional contexts for reconstruction.
+As an immediate benefit, this closes the aforementioned bidirectional information gap in AR language modeling, leading to improved performance.
+However, the artificial symbols like \texttt{[MASK]} used by BERT during pretraining are absent from real data at finetuning time, resulting in a pretrain-finetune discrepancy.
+Moreover, since the predicted tokens are masked in the input, BERT is not able to model the joint probability using the product rule as in AR language modeling. In other words, BERT assumes the predicted tokens are independent of each other given the unmasked tokens, which is oversimplified as high-order, long-range dependency is prevalent in natural language \cite{dai2019transformer}.
+
+Faced with the pros and cons of existing language pretraining objectives, in this work, we propose XLNet, a generalized autoregressive method that leverages the best of both AR language modeling and AE while avoiding their limitations.
+\begin{itemize}[leftmargin=*,topsep=0em,itemsep=0em,parsep=0.2em]
+\item Firstly, instead of using a fixed forward or backward factorization order as in conventional AR models, XLNet maximizes the expected log likelihood of a sequence w.r.t. \textbf{all possible permutations of the factorization order}.
+Thanks to the permutation operation, the context for each position can consist of tokens from both left and right.
+In expectation, each position learns to utilize contextual information from all positions, i.e., capturing bidirectional context.
+
+\item Secondly, as a generalized AR language model, XLNet does not rely on data corruption. 
+Hence, XLNet does not suffer from the pretrain-finetune discrepancy that BERT is subject to.
+Meanwhile, the autoregressive objective also provides a natural way to use the product rule for factorizing the joint probability of the predicted tokens, eliminating the independence assumption made in BERT.
+\end{itemize}
+
+In addition to a novel pretraining objective, XLNet improves architectural designs for pretraining.
+\begin{itemize}[leftmargin=*,topsep=0em,itemsep=0em,parsep=0.2em]
+\item Inspired by the latest advancements in AR language modeling, XLNet integrates the segment recurrence mechanism and relative encoding scheme of Transformer-XL~\cite{dai2019transformer} into pretraining, which empirically improves the performance especially for tasks involving a longer text sequence.
+\item Naively applying a Transformer(-XL) architecture to permutation-based language modeling does not work because the factorization order is arbitrary and the target is ambiguous. As a solution, we propose to reparameterize the Transformer(-XL) network to remove the ambiguity.
+\end{itemize}
+
+
+Empirically, under comparable experiment setting, XLNet consistently outperforms BERT \cite{devlin2018bert} on a wide spectrum of problems including GLUE language understanding tasks, reading comprehension tasks like SQuAD and RACE, text classification tasks such as Yelp and IMDB, and the ClueWeb09-B document ranking task.
+
+
+% For fair comparison with BERT \cite{devlin2018bert}, we pretrain XLNet using the same data and model sizes in our first set of experiments. We show that XLNet consistently improves over BERT on multiple benchmarks and outperforms BERT by 5 F1 points on SQuAD2.0. In our second set of experiments, to further advance the state of the art for language understanding, we collect a larger dataset for pretraining XLNet. Our final model achieves state-of-the-art results on 13 tasks, often outperforming the second best by a large margin. Notably, XLNet single models are able to beat all the previous ensembles on GLUE, RACE, and SQuAD1.1.
+
+
+\textbf{Related Work~} The idea of permutation-based AR modeling has been explored in \cite{uria2016neural,germain2015made}, but there are several key differences.
+Firstly, previous models aim to improve density estimation by baking an ``orderless'' inductive bias into the model while XLNet is motivated by enabling AR language models to learn bidirectional contexts.
+Technically, to construct a valid target-aware prediction distribution, XLNet incorporates the target position into the hidden state via two-stream attention while previous permutation-based AR models relied on implicit position awareness inherent to their MLP architectures.
+Finally, for both orderless NADE and XLNet, we would like to emphasize that ``orderless'' does not mean that the input sequence can be randomly permuted but that the model allows for different factorization orders of the distribution.
+
+%Secondly, XLNet emphasizes the necessity of being order-aware with (relative) positional encodings, because an orderless model is degenerated to bag-of-words, lacking basic expressiveness.
+%Moreover, none of previous permutation-based models identifies or deals with the target aware distribution problem. 
+%Previous models are orderless, while XLNet is essentially order-aware with positional encodings.
+%This is important for language understanding because an orderless model is degenerated to bag-of-words, lacking basic expressiveness. The above difference results from the fundamental difference in motivation---previous models aim to improve density estimation by baking an ``orderless'' inductive bias into the model while XLNet is motivated by enabling AR language models to learn bidirectional contexts.
+
+Another related idea is to perform autoregressive denoising in the context of text generation~\cite{fedus2018maskgan}, which only considers a fixed order though.
+
+% Language representation pretraining \cite{dai2015semi,mccann2017learned,peters2018deep,radford2018improving,devlin2018bert} has been demonstrated to be massively successful for natural language tasks. These methods pretrain neural networks on large-scale unlabeled text corpora and finetune the models on downstream tasks.
+
+% Pretraining methods can be roughly divided into two categories, autoencoding (AE) models and autoregressive (AR) models. AE models like BERT \cite{devlin2018bert} employ a denoising autoencoding objective \cite{vincent2010stacked}. Given the input token sequence, a certain portion of tokens are masked and replaced by a special symbol \texttt{[MASK]} or other noise, and the model is trained to recover the original tokens. BERT is the dominant approach but has certain limitations: 1) it makes an oversimplified assumption that the masked positions are independent; 2) the mask symbols are not present in real data, which might cause inconsistency between pretraining and finetuning.
+
+% In comparison, AR models \cite{dai2015semi,peters2018deep,radford2018improving} subsume the input tokens one by one, in the forward or backward direction, and predicts the next token given the past tokens. AR models have a potential of overcoming the BERT limitations: 1) they do not rely on the independence assumption but instead use a universal product rule; 2) they do not introduce artificial noise to the inputs. More importantly, AR models are deeply rooted in density estimation\footnote{The problem of density estimation for text is often called language modeling.}, which is a long-standing and fast-developing field in unsupervised learning \cite{dai2019transformer,al2018character,child2019generating,parmar2018image,oord2016pixel,bengio2003neural}. As a result, if AR modeling and pretraining are unified, it is likely that advancement in AR density estimation will benefit pretraining. However, despite the above benefits, existing AR models are not able to model bidirectional contexts because only uni-directional inputs are seen during pretraining.
+
+% We propose XLNet to address the challenge of modeling bidirectional contexts for AR models. Instead of using a fixed forward or backward direction, XLNet maximizes the expected log likelihood of a sequence w.r.t. all possible permutations. Due to the permutation operation, the context for each position consists of tokens from both the left and the right. As a result, XLNet is able to learn bidirectional contexts in the AR framework and bridges the gap between AR modeling and pretraining. This brings a few benefits: 1) XLNet overcomes the limitations of BERT, including the independence assumption and the mismatch between pretraining and finetuning; 2) XLNet is able to integrate latest advancements in AR density estimation. As an example, we show that integrating the latest AR progress Transformer-XL improves pretraining. Moreover, the standard architectures of Transformer-XL or Transformer are not applicable with permutations, so we further make necessary architectural changes to accommodate our new objective function.
+
+% 
+
+% Our key contributions are as follows. First, we unify AR modeling and pretraining with a novel objective function that uses permuted inputs. Second, we show that integrating latest AR progress benefits pretraining. Thrid, we make necessary architectural changes to Transformer-XL to accommodate our new objective function. Fourth, we advance state-of-the-art results on a diverse set of benchmarks with XLNet.
+

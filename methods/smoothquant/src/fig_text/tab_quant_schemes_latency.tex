@@ -1,0 +1,23 @@
+\begin{table}[t]
+    \setlength{\tabcolsep}{6pt}
+    \small
+    \centering
+    \caption{GPU Latency (ms) of different quantization schemes. The coarser the quantization scheme (from per-token to per-tensor, dynamic to static, O1 to O3, defined in Table \ref{tab:settings}), the lower the latency. \method achieves lower latency compared to FP16 under all settings, while \texttt{LLM.int8()} is mostly slower.
+        The batch size is 4.}
+    \label{tab:quant_schemes_latency}
+    \begin{tabular}{lcccc}
+        \toprule
+        \multicolumn{1}{c}{Model} & \multicolumn{2}{c}{OPT-13B} & \multicolumn{2}{c}{OPT-30B}                 \\
+        \cmidrule(lr){2-3}\cmidrule(lr){4-5}
+        Sequence Length           & 256                         & 512                         & 256   & 512   \\
+        \midrule
+        FP16                      & 152.6                       & 296.3                       & 343.0 & 659.9 \\
+        \texttt{LLM.int8()}                & 237.1                       & 371.5                       & 387.9 & 654.9 \\
+        \midrule
+        \method-O1                & 124.5                       & 243.3                       & 246.7 & 490.7 \\
+        \method-O2                & 120.5                       & 235.1                       & 240.2 & 478.3 \\
+        \method-O3                & 112.1                       & 223.1                       & 227.6 & 458.4 \\
+        \bottomrule
+    \end{tabular}
+    \vspace{-5pt}
+\end{table}

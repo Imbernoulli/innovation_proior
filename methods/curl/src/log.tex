@@ -1,0 +1,11 @@
+\section{Document changelog}
+
+This document tracks the progress and changes of CURL. In order to help readers be aware of and understand the changes, here is a brief summary:
+
+{\bf v1} Initial version.
+
+{\bf v2} Minor changes to DMControl to account for frame skip factor when evaluating data-efficiency of CURL and baselines. Changed action repeat for the Walker-walk task from 4 to 2 to match baseline implementations.       
+
+{\bf v3} ICML 2020 Camera Ready. For our Atari experiments, we moved to the \url{https://github.com/Kaixhin/Rainbow} codebase for easy and clean benchmarking that directly builds on top of Efficient Rainbow without other changes. We also run 20 seeds as opposed to 3 seeds earlier given the high variance nature of the benchmark.  
+
+{\bf v4} Added in Section~\ref{noaug} - an ablation investigating whether contrastive representations alone, with no augmentations passed to the policy during training, improve the baseline SAC policy.

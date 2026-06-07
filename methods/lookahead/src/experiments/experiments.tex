@@ -1,0 +1,14 @@
+\section{Experiments}
+\label{sec:experiments}
+
+We completed a thorough evaluation of the Lookahead optimizer on a variety of deep learning tasks against well-calibrated baselines. We explored image classification on CIFAR-10/CIFAR-100 \citep{krizhevsky2009learning} and ImageNet \citep{deng2009imagenet}. We also trained LSTM language models on the Penn Treebank dataset \citep{marcus1993building} and Transformer-based \citep{vaswani2017attention} neural machine translation models on the WMT 2014 English-to-German dataset. For all of our experiments, every algorithm consumed the same amount of training data. 
+
+% We perform minimal tuning on the hyperparameters for Lookahead, wrapping it around the inner optimizers that achieve the highest validation accuracy. Despite the inner optimizer hyperparameters being optimized for performance of the inner optimizer, Lookahead still performs well on well-calibrated baselines. 
+% \MZ{I think this last sentence is important, to emphasize that we don't just tune hyperparameters}
+
+\input{experiments/classification.tex}
+\input{experiments/imagenet.tex}
+\input{experiments/lm.tex}
+\input{experiments/nmt.tex}
+\input{experiments/analysis.tex}
+% \input{experiments/rl.tex}

@@ -1,0 +1,114 @@
+\input{tables/retrieval-accuracy.tex}
+
+\section{Experiments: Passage Retrieval}
+\label{sec:exp-psg}
+
+In this section, we evaluate the retrieval performance of our Dense Passage Retriever (\model/), along with analysis on
+how its output differs from traditional retrieval methods, the effects of different training schemes and the run-time efficiency.
+
+The \model/ model used in our main experiments is trained using the in-batch negative setting (Section~\ref{sec:training}) with a batch size of $128$ and one additional BM25 negative passage per question.
+We trained the question and passage encoders for up to $40$ epochs for large datasets (NQ, TriviaQA, SQuAD) and $100$ epochs for small datasets (TREC, WQ), with a learning rate of $10^{-5}$ using Adam, linear scheduling with warm-up and dropout rate~$0.1$.
+
+While it is good to have the flexibility to adapt the retriever to each dataset, it would also be desirable to obtain a single retriever that works well across the board. To this end, we train a \emph{multi}-dataset encoder by combining training data from all datasets excluding SQuAD.\footnote{SQuAD is limited to a small set of Wikipedia documents and thus introduces unwanted bias. We will discuss this issue more in Section~\ref{sec:retrieval_main_results}.} %
+In addition to \model/, we also present the results of BM25, the traditional retrieval method\footnote{\href{https://lucene.apache.org/}{Lucene} implementation. BM25 parameters $b=0.4$ (document length normalization) and $k_1=0.9$ (term frequency scaling) are tuned using development sets.} and BM25+\model/, using a linear combination of their scores as the new ranking function. 
+Specifically, we obtain two initial sets of top-2000 passages based on BM25 and DPR, respectively, and rerank the union of them using BM25($q$,$p$) + $\lambda \cdot \mathrm{sim}(q,p)$ as the ranking function. We used $\lambda=1.1$ based on the retrieval accuracy in the development set.
+
+
+
+
+
+\subsection{Main Results}
+\label{sec:retrieval_main_results}
+
+Table~\ref{tab:qa_ir} compares different passage retrieval systems on five QA datasets, using the top-$k$ accuracy ($k \in \{20,100\}$).
+With the exception of SQuAD, \model/ performs consistently better than BM25 on all datasets.  The gap is especially large when $k$ is small (e.g., 78.4\% vs. 59.1\% for top-20 accuracy on Natural Questions).
+When training with multiple datasets, TREC, the smallest dataset of the five, benefits greatly from more training examples.  In contrast, Natural Questions and WebQuestions improve modestly and TriviaQA degrades slightly.
+Results can be improved further in some cases by combining \model/ with BM25 in both single- and multi-dataset settings.
+
+We conjecture that the lower performance on SQuAD is due to two reasons. First, the annotators wrote questions after seeing the passage.  As a result, there is a high lexical overlap between passages and questions, which gives BM25 a clear advantage.  Second, the data was collected from only 500+ Wikipedia articles and thus
+the distribution of training examples is extremely biased, as argued previously by~\newcite{lee2019latent}.
+
+\input{figures/ir_training_examples.tex}
+
+\subsection{Ablation Study on Model Training}
+\label{subsec:ablation-retrieval}
+
+To understand further how different model training options affect the results, we conduct several additional experiments and discuss our findings below.
+
+\paragraph{Sample efficiency}
+
+We explore how many training examples are needed to achieve good passage retrieval performance. %
+Figure~\ref{fig:ir-training-examples} illustrates the top-$k$ retrieval accuracy with respect to different numbers of training examples,
+measured on the development set of Natural Questions.
+As is shown, a dense passage retriever trained using only 1,000 examples already outperforms BM25. 
+This suggests that with a general pretrained language model, it is possible to train a high-quality dense retriever with a small number of question--passage pairs.
+Adding more training examples (from 1k to 59k) further improves the retrieval accuracy consistently.
+
+\paragraph{In-batch negative training}
+\label{sec:ir_ablation}
+We test different training schemes on the development set of Natural Questions and summarize the results in Table~\ref{tab:ir-ablation}. 
+The top block is the standard 1-of-$N$ training setting, where each question in the batch is paired with a positive passage and its own set of $n$ negative passages~(Eq.~\eqref{eq:training}).
+We find that the choice of negatives --- random, BM25 or gold passages (positive passages from other questions) --- does not impact the top-$k$ accuracy much in this setting when $k \ge 20$.%
+
+
+
+
+The middle bock is the in-batch negative training (Section~\ref{sec:training}) setting.
+We find that using a similar configuration (7 gold negative passages), in-batch negative training improves the results substantially.
+The key difference between the two is whether the gold negative passages come from the same batch or from the whole training set.
+Effectively, in-batch negative training is an easy and memory-efficient way to reuse the negative examples already in the batch rather than creating new ones.
+It produces more pairs and thus increases the number of training examples, which might contribute to the good model performance. 
+As a result, accuracy consistently improves as the batch size grows.
+
+Finally, we explore in-batch negative training with additional ``hard" negative passages that have high BM25 scores given the question, but do not contain the answer string (the bottom block). These additional passages are used as negative passages for all questions in the same batch.
+We find that adding a single BM25 negative passage improves the result substantially while adding two does not help further.
+
+\input{tables/ir-ablation.tex}
+
+\paragraph{Impact of gold passages} %
+\label{sec:pos_pass}
+We use passages that match the gold contexts in the original datasets (when available) as positive examples (Section~\ref{sec:qa-datasets}).
+Our experiments on Natural Questions show that switching to distantly-supervised passages (using the highest-ranked BM25 passage that contains the answer), has only a small impact: 1 point lower top-$k$ accuracy for retrieval. %
+Appendix~\ref{sec:distant} contains more details.
+
+
+
+\paragraph{Similarity and loss}
+\label{sec:sim_loss}
+Besides dot product, cosine and Euclidean L2 distance are also commonly used as decomposable similarity functions.
+We test these alternatives and find that L2 performs comparable to dot product, and both of them are superior to cosine.
+Similarly, in addition to negative log-likelihood, a popular option for ranking is triplet loss, which compares a positive passage and a negative one directly with respect to a question~\cite{burges2005learning}.
+Our experiments show that using triplet loss does not affect the results much.
+More details can be found in Appendix~\ref{sec:alt-sim}. %
+
+
+\paragraph{Cross-dataset generalization}
+One interesting question regarding \model/'s discriminative training is how much performance degradation it may suffer from a non-iid setting. In other words, can it still generalize well when directly applied to a different dataset without additional fine-tuning? To test the cross-dataset generalization, we train \model/ on Natural Questions only and test it directly on the smaller WebQuestions and CuratedTREC datasets. We find that \model/ generalizes well, with 3-5 points loss from the best performing fine-tuned model in top-20 retrieval accuracy (69.9/86.3 vs. 75.0/89.1 for WebQuestions and TREC, respectively), while still greatly outperforming the BM25 baseline (55.0/70.9).
+
+
+
+
+
+
+
+
+
+\subsection{Qualitative Analysis}
+
+Although \model/ performs better than BM25 in general, passages retrieved by these two methods differ qualitatively. 
+Term-matching methods like BM25 are sensitive to highly selective keywords and phrases, while \model/ captures lexical variations or semantic relationships better.
+See Appendix~\ref{sec:qual_ana} for examples and more discussion.
+
+
+\subsection{Run-time Efficiency}
+\label{sec:efficiency}
+
+The main reason that we require a retrieval component for open-domain QA is to reduce the number of candidate passages that the reader needs to consider, which is crucial for answering user's questions in real-time.
+We profiled the passage retrieval speed on a server with Intel Xeon CPU E5-2698 v4 @ 2.20GHz and 512GB memory.
+With the help of FAISS in-memory index for real-valued vectors\footnote{FAISS configuration: we used HNSW index type on CPU, neighbors to store per node = 512, construction time search depth = 200,  search depth = 128.}, \model/ can be made incredibly efficient, processing 995.0 questions per second, returning top 100 passages per question.
+In contrast, BM25/Lucene (implemented in Java, using file index) processes 23.7 questions per second per CPU thread.
+
+On the other hand, the time required for building an index for dense vectors is much longer.
+Computing dense embeddings on 21-million passages is resource intensive, but can be easily parallelized, taking roughly 8.8 hours on 8 GPUs.
+However, building the FAISS index on 21-million vectors on a single server takes 8.5 hours.
+In comparison, building an inverted index using Lucene is much cheaper and takes only about 30 minutes in total.

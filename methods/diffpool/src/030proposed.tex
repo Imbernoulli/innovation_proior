@@ -1,0 +1,240 @@
+\section{Proposed Method}
+\label{sec:proposed}
+
+The key idea of \name is that it enables the construction of deep, multi-layer GNN models by providing a differentiable module to hierarchically pool graph nodes. 
+%To provide this heirarchical scaffolding, we learn an end-to-end differentiable soft assignment of nodes in a graph to a set of clusters at each layer in a deep GNN model.%, and we hierarchically pool over node embeddings in each cluster. 
+In this section, we outline the \name module and show how it is applied in a deep GNN architecture.
+
+%stacking graph convolutional network (GCN) layers. We discuss the use of \name in other graph neural network architectures, such as Structure2Vec \cite{dai2016discriminative}. Moreover, we propose additional techniques to ensure that the learned cluster assignment is meaningful and generalizable across different graphs.
+
+\subsection{Preliminaries}
+\label{sec:setting}
+
+% Graph classification 
+We represent a graph $G$ as $(A,F)$, where $A\in \{0, 1\}^{n\times n}$ is the adjacency matrix, and $F \in \mathbb{R}^{n\times d}$ is the node feature matrix assuming each node has $d$ features.\footnote{We do not consider edge features, although one can easily extend the algorithm to support edge features using techniques introduced in \cite{simonovsky2017dynamic}.}
+Given a set of labeled graphs $\mathcal{D}=\{(G_1,y_1),(G_2,y_2),...\}$ where $y_i \in \mathcal{Y}$ is the label corresponding to graph $G_i \in \mathcal{G}$, the goal of graph classification is to learn a mapping $f : \mathcal{G} \to \mathcal{Y}$ that maps graphs to the set of labels. 
+The challenge---compared to standard supervised machine learning setup---is that we need a way to extract useful feature vectors from these input graphs.
+That is, in order to apply standard machine learning methods for classification, e.g., neural networks, we need a procedure to convert each graph to an finite dimensional vector in $\mathbb{R}^D$.
+
+%\chris{I am not sure why we use GCN here, why not stick to a more general variant similiar to Gilmer}
+
+\xhdr{Graph neural networks}
+In this work, we build upon graph neural networks in order to learn useful representations for graph classification in an end-to-end fashion. 
+In particular, we consider GNNs that employ the following general ``message-passing'' architecture:
+\begin{equation}\label{eq:gnn}
+     H^{(k)} = M(A,H^{(k-1)};\theta^{(k)}),
+\end{equation}
+where $H^{(k)} \in \mathbb{R}^{n \times d}$ are the node embeddings (i.e., ``messages'') computed after $k$ steps of the GNN and $M$ is the message propagation function, which depends on the adjacency matrix, trainable parameters $\theta^{(k)}$, and the node embeddings $H^{(k-1)}$ generated from the previous message-passing step.\footnote{For notational convenience, we assume that the embedding dimension is $d$ for all $H^{(k)}$; however, in general this restriction is not necessary.}
+The input node embeddings $H^{(0)}$ at the initial message-passing iteration $(k=1)$, are initialized using
+the node features on the graph, $H^{(0)} = F$. 
+
+There are many possible implementations of the propagation function $M$ \cite{Gil+2017,hamilton2017inductive}.
+For example, one popular variant of GNNs---Kipf's \etal \cite{kipf2017semi} Graph Convolutional Networks (GCNs)---implements $M$ using a combination of linear transformations and ReLU non-linearities:
+\begin{equation}
+    \label{eq:gcn}
+    H^{(k)} =  M(A,H^{(k-1)};W^{(k)}) = \textrm{ReLU}(\tilde{D}^{-\frac{1}{2}}\tilde{A}\tilde{D}^{-\frac{1}{2}} H^{(k-1)} W^{(k-1)}),
+\end{equation}
+where $\tilde{A}=A+I$, $\tilde{D}=\sum_j\tilde{A}_{ij}$ and $W^{(k)} \in \mathbb{R}^{d \times d}$ is a trainable weight matrix.
+The differentiable pooling model we propose can be applied to any GNN model implementing Equation \eqref{eq:gnn}, and is agnostic with regards to the specifics of how $M$ is implemented. 
+
+A full GNN module will run $K$ iterations of Equation \eqref{eq:gnn} to generate the final output node embeddings $Z=H^{(K)} \in \mathbb{R}^{n \times d}$, where $K$ is usually in the range 2-6.
+For simplicity, in the following sections we will abstract away the internal structure of the GNNs and use $Z = \gnn(A, X)$ to denote an arbitrary GNN module implementing $K$ iterations of message passing according to some adjacency matrix $A$ and initial input node features $X$. 
+
+\xhdr{Stacking GNNs and pooling layers}
+GNNs implementing Equation \eqref{eq:gnn} are inherently flat, as they only propagate information across edges of a graph.
+The goal of this work is to define a general, end-to-end differentiable strategy that allows one to {\em stack} multiple GNN modules in a hierarchical fashion. 
+Formally, given $Z = \gnn(A, X)$, the output of a GNN module, and a graph adjacency matrix $A \in \mathbb{R}^{n \times n}$, we seek to define a strategy to output a new coarsened graph containing $m<n$ nodes, with weighted adjacency matrix $A^{'} \in \R^{m \times m}$ and node embeddings $Z^{'} \in \mathbb{R}^{m\times d}$.
+This new coarsened graph can then be used as input to another GNN layer, and this whole process can be repeated $L$ times, generating a model with $L$ GNN layers that operate on a series of coarser and coarser versions of the input graph (Figure~\ref{fig:illustration}).
+Thus, our goal is to learn how to cluster or pool together nodes using the output of a GNN, so that we can use this coarsened graph as input to another GNN layer.
+What makes designing such a pooling layer for GNNs especially challenging---compared to the usual graph coarsening task---is that our goal is not to simply cluster the nodes in one graph, but to provide a general recipe to hierarchically pool nodes across a broad set of input graphs. 
+That is, we need our model to learn a pooling strategy that will generalize across graphs with different nodes, edges, and that can adapt to the various graph structures during inference. 
+
+\cut{
+\chris{I think the paragraph below repeats some of the points of the prev. paragraph}
+The key challenge for graph pooling with GNNs is designing a pooling layer that respects the hierarchical structure of the input graph.
+Similar to how CNNs on images stack filters with increasingly large receptive fields, the pooling layers in a GNN should be stacked hierarchically, extracting coarser and coarser subgraph structures to allow the GNN to obtain a more global view of the graph at the final layers. 
+%Firstly, the pooling layer should respect the hierarchical structure of graph.
+%In the context of ConvNets for images, a deep neural network is only effective if the architecture allows a larger and larger receptive field.
+%Similarly, it is desirable to have graph pooling layers to be stacked hierarchically, extracting larger subgraph structures and allow GNN to obtain a more global view at higher level.
+%At the same time, the pooling layer should retain the structural information of the graph.
+%Intuitively, each pooling results in a more coarsened graph representation, where another layer of graph convolution can be applied.
+%There are several key ingredients for an effective pooling strategy. 
+%Thus, in terms of graph structure, the pooling layer should effectively partition the graph into modular components . 
+%As a result, a good pooling strategy should generally comply with the property of homophily on graphs,
+%\emph{i.e.} the idea that nodes that are close to each other in graph should be pooled.
+Moreover, what makes designing a pooling layer for GNNs especially challenging---compared to the usual graph coarsening task---is that our goal is not to simply cluster the nodes in one graph, but to provide a general recipe to hierarchically pool nodes across a broad set of input graphs. 
+That is, we need our model to encode a pooling strategy that will generalize across graphs with different nodes, edges, and that can adapt to the various graph structures during inference. 
+Finally, a key desideratum of a pooling module is that we want it to be able to {\em learn} a good strategy from the training data, rather than relying on deterministic graph coarsening functions. 
+For instance, one could simply use edge contractions or non-negative matrix factorization to assign nodes to clusters, but these approaches are incapable of adapting their pooling strategy based on training data. 
+}
+
+%Many other variants of GNN \cite{Gil+2017} exist, with the differences in the use of aggregation function, recurrent units, bias terms and embedding normalization. Here we propose a general diffrentiable pooling strategy that can be applied to all the variants. Without loss of generality, we use $M$ to denote the GNN model that outputs a node embedding matrix $H^{(l)}$. 
+%The $l$-th GCN layer can be written as a function $M(A,H^{(l)};W^{(l)})$ that maps the node embedding matrix $H^{(l)}$ at layer $l$ to the node embedding matrix of the currrent layer
+
+\subsection{Differentiable Pooling via Learned Assignments}
+\cut{
+\jure{This is our main contribution. We need to discuss why our approach is sound and what is the intuition behind it.
+It would be good to talk about possible strategies to learn this (factorization, etc.) but why our approach of learning to assign nodes to clusters is appropriate one.
+We need a model that can for any network structure learn what is the right hierarchical pooling structure in order to aggregate information. 
+I think such discussion is important as it let's reader to think and appreciate the problem. If we simply introduce the solution too quickly people won't appreciate it.}
+\will{I tried to add more motivation in the paragraph above, and Rex and I are trying to add in more intuition behind the method in the paragraphs below.}
+}
+
+Our proposed approach, \name, addresses the above challenges by learning a cluster assignment matrix over the nodes using the output of a GNN model.
+The key intuition is that we stack $L$ GNN modules and learn to assign nodes to clusters at layer $l$ in an end-to-end fashion, using embeddings generated from a GNN at layer $l-1$.
+Thus, we are using GNNs to both extract node embeddings that are useful for graph classification, as well to extract node embeddings that are useful for hierarchical pooling.
+Using this construction, the GNNs in \name learn to encode a general pooling strategy that is useful for a large set of training graphs. 
+We first describe how the \name\ module pools nodes at each layer given an assignment matrix; following this, we discuss how we generate the assignment matrix using a GNN architecture. 
+
+\xhdr{Pooling with an assignment matrix}
+We denote the learned cluster assignment matrix at layer $l$ as $S^{(l)} \in \mathbb{R}^{n_l \times n_{l+1}}$. 
+Each row of $S^{(l)}$ corresponds to one of the $n_l$ nodes (or clusters) at layer $l$, and each column of $S^{(l)}$ corresponds to one of the $n_{l+1}$ clusters at the next layer $l+1$. 
+%\name learns to assign each node (in a soft way) to a distribution of clusters.
+Intuitively, $S^{(l)}$ provides a soft assignment of each node at layer $l$ to a cluster in the next coarsened layer $l+1$.
+
+Suppose that $S^{(l)}$ has already been computed, i.e., that we have computed the assignment matrix at the $l$-th layer of our model.
+We denote the input adjacency matrix at this layer as $A^{(l)}$ and denote the input node embedding matrix at this layer as $Z^{(l)}$.
+Given these inputs, the \name layer $(A^{(l+1)},X^{(l+1)}) = \textsc{DiffPool}(A^{(l)},Z^{(l)})$ coarsens the input graph, generating a new coarsened adjacency matrix $A^{(l+1)}$ and a new matrix of embeddings $X^{(l+1)}$ for each of the nodes/clusters in this coarsened graph.
+In particular, we apply the two following equations:
+\begin{align}
+\label{eq:4}
+&X^{(l+1)} = {S^{(l)}}^T Z^{(l)}\in \mathbb{R}^{n_{l+1} \times d},\\
+\label{eq:5}
+&A^{(l+1)} = {S^{(l)}}^T A^{(l)}{S^{(l)}} \in \mathbb{R}^{n_{l+1} \times n_{l+1}}.
+\end{align}
+Equation \eqref{eq:4} takes the node embeddings $Z^{(l)}$ and aggregates these embeddings according to the cluster assignments $S^{(l)}$, generating embeddings for each of the $n_{l+1}$ clusters.
+Similarly, Equation \eqref{eq:5} takes the adjacency matrix $A^{(l)}$ and generates a coarsened adjacency matrix denoting the connectivity strength between each pair of clusters. 
+
+Through Equations \eqref{eq:4} and \eqref{eq:5}, the \name layer coarsens the graph: the next layer adjacency matrix $A^{(l+1)}$ represents a coarsened graph with $n_{l+1}$ nodes or {\em cluster nodes}, where each individual cluster node in the new coarsened graph corresponds to a cluster of nodes in the graph at layer $l$.
+Note that $A^{(l+1)}$ is a real matrix and represents a fully connected edge-weighted  graph; each entry $A^{(l+1)}_{ij}$ can be viewed as the connectivity strength between cluster $i$ and cluster $j$. 
+Similarly, the $i$-th row of $X^{(l+1)}$ corresponds to the embedding of cluster $i$. 
+Together, the coarsened adjacency matrix $A^{(l+1)}$ and cluster embeddings $X^{(l+1)}$ can be used as input to another GNN layer, a process which we describe in detail below.  
+%We will show the effectiveness and flexibility of this learned assignment matrix in Section \ref{sec:ex}.
+
+\xhdr{Learning the assignment matrix}
+In the following we describe the architecture of \name, i.e., how \name\ generates the assignment matrix $S^{(l)}$ and embedding matrices $Z^{(l)}$ that are used in Equations \eqref{eq:4} and \eqref{eq:5}.
+We generate these two matrices using two separate GNNs that are both applied to the input cluster node features $X^{(l)}$ and coarsened adjacency matrix $A^{(l)}$.
+The {\em embedding GNN} at layer $l$ is a standard GNN module applied to these inputs:
+\begin{align}\label{eq:embedgnn}
+   Z^{(l)} = \gnn_{l, \textrm{embed}}(A^{(l)}, X^{(l)}),
+\end{align}
+i.e., we take the adjacency matrix between the cluster nodes at layer $l$ (from Equation \ref{eq:5}) and the pooled features for the clusters (from Equation \ref{eq:4}) and pass these matrices through a standard GNN to get new embeddings $Z^{(l)}$ for the cluster nodes. 
+In contrast, the {\em pooling GNN} at layer $l$, uses the input cluster features $X^{(l)}$ and cluster adjacency matrix $A^{(l)}$ to generate an assignment matrix:
+\begin{align}\label{eq:poolgnn}
+    S^{(l)} = \textrm{softmax}\left(\gnn_{l,\text{pool}}(A^{(l)}, X^{(l)})\right),
+\end{align}
+where the softmax function is applied in a row-wise fashion.
+The output dimension of $\gnn_{l,\text{pool}}$ corresponds to a pre-defined maximum number of clusters in layer $l$, and is a hyperparameter of the model.
+
+Note that these two GNNs consume the same input data but have distinct parameterizations and play separate roles:
+The embedding GNN generates new embeddings for the input nodes at this layer, while the pooling GNN generates a probabilistic assignment of the input nodes to $n_{l+1}$ clusters.
+
+In the base case, the inputs to Equations \eqref{eq:embedgnn} and Equations \eqref{eq:poolgnn} at layer $l=0$ are simply the input adjacency matrix $A$ and the node features $F$ for the original graph.
+At the penultimate layer $L-1$ of a deep GNN model using \name, we set the assignment matrix $S^{(L-1)}$ be a vector of $1$'s, i.e., all nodes at the final layer $L$ are assigned to a single cluster, generating a final embedding vector corresponding to the entire graph.
+This final output embedding can then be used as feature input to a differentiable classifier (e.g., a softmax layer), and the entire system can be trained end-to-end using stochastic gradient descent. 
+%Note that this end-to-end training is distinct from all other previous . After rounds of training, the model is able to \textit{learn} a generalized node assignment mechanism that is specific for the task, without hand engineering. 
+
+%\subsection{Training Hierarchical Pooling}
+%The defined \name layer is very flexible  and can be inserted into any GNN network, in similar fashion to the pooling layer of CNN. 
+%A user may directly feed the output $(A^{(l+1)},H^{(l+1, T)})$ of \name layer into the next \name layer, or feed it to another GNN layer.
+
+\xhdr{Permutation invariance}
+Note that in order to be useful for graph classification, the pooling layer should be invariant under node permutations. For \name we get the following positive result, which shows that any deep GNN model based on \name\ is permutation invariant, as long as the component GNNs are permutation invariant. 
+\begin{proposition}
+\label{prop:permute}
+Let $P\in \{0,1\}^{n\times n}$ be any permutation matrix, then $\text{\sc \name}(A, Z) = \text{\sc \name}(PAP^T,PX)$ as long as $\gnn(A, X) = \gnn(PAP^T, X)$ (i.e., as long as the GNN method used is permutation invariant).
+\end{proposition}
+\begin{proof}
+Equations \eqref{eq:embedgnn} and \eqref{eq:poolgnn} are permutation invariant by the assumption that the GNN module is permutation invariant. 
+And since any permutation matrix is orthogonal, applying $P^T P=I$ to Equation (\ref{eq:4}) and (\ref{eq:5}) finishes the proof.
+\end{proof}
+
+
+\subsection{Auxiliary Link Prediction Objective and Entropy Regularization}
+
+In practice, it can be difficult to train the pooling GNN (Equation \ref{eq:5}) using only gradient signal from the graph classification task.
+Intuitively, we have a non-convex optimization problem and it can be difficult to push the pooling GNN away from spurious local minima early in training.
+To alleviate this issue, we train the pooling GNN with an auxiliary link prediction objective, which encodes the intuition that nearby nodes should be pooled together. 
+\cut{
+Controlling input features and representation dimension is still insufficient for $g_\phi$ to learn and extract meaningful cluster information from a graph. We additionally supply side objectives as regularizations for $g_\phi$. 
+Intuitively, $g_\phi$ should learn to assign nodes that are close together in terms of connectivity into the same clusters. 
+Hence, we use a link prediction objective to further encourage similarity of cluster assignments.}
+In particular, at each layer $l$, we minimize
+$L_{\text{LP}} = ||A^{(l)}, S^{(l)} S^{{(l)}^T}||_F$, where $||\cdot||_F$ denotes the Frobenius norm. 
+Note that the adjacency matrix $A^{(l)}$ at deeper layers is a function of lower level assignment matrices, and changes during training. 
+
+Another important characteristic of the pooling GNN (Equation \ref{eq:5})  is that the output cluster assignment for each node should generally be close to a one-hot vector, so that the membership for each cluster or subgraph is clearly defined. %except in rare cases where a node serves as a bridge between multiple clusters. 
+We therefore regularize the entropy of the cluster assignment by minimizing $L_{\text{E}} = \frac{1}{n} \sum_{i=1}^n H(S_i)$, where $H$ denotes the entropy function, and $S_i$ is the $i$-th row of $S$.
+
+During training, $L_{\text{LP}}$ and $L_{\text{E}}$ from each layer are added to the classification loss.
+In practice we observe that training with the side objective takes longer to converge, but nevertheless achieves better performance and more interpretable cluster assignments.
+
+\cut{
+\subsection{Behavior on sparse and dense graphs}
+\label{sec:sparse_dense}
+The sparsity of (sub)graphs has a large impact on the behavior of the assignment layer  $M(A^{(l)},H^{(l)};\phi^{(l)})$.
+In particular, we find that \name\ is most effective in sparse graphs that exhibit hierarchical partitions, whereas in very dense (sub)graphs \name\ simply learns to map all nodes to a single cluster.
+Moreover, within a particular layer of a deep GNN model, \name\ will tend to collapse densely-connected connected subgraphs into a single hyper-node. 
+This trend is supported by our empirical studies (Section \ref{sec:ex})---e.g., where \name\ leads to state-of-the-art results on all data sets except \textsc{Collab}, which involves exceptionally dense graphs---and this trend can be understood based on the following theoretical intuitions. 
+
+First, note that if a subgraph of the input graph is dense, then the entries of the corresponding subgraph adjacency matrix will be mostly ones. 
+And since  $\mathbf{1} \mathbf{1}^T$ is a matrix of all ones, an assignment matrix for the subgraph, where one column is a vector of ones and the others are zero vectors, will be close to a minimum of the link prediction auxiliary objective.
+Thus, the objective will tend to group all nodes of a dense subgraph into one cluster.
+
+\rex{formalizing: for a graph with n cliques, the network with linkpred objective will almost deterministically assign all nodes in each clique to a distinct cluster}
+
+Moreover, in terms of GNN computation, collapsing dense subgraphs in this way is intuitively an optimal pooling (or partitioning) strategy.
+In particular, it is known that GNNs can efficiently perform message-passing on dense, clique-like subgraphs (due to their small diameter) \cite{liao2018graph}, and hence \name\ can pool together nodes in such a dense subgraph without losing any significant structural information.
+In contrast, sparse subgraphs may contain many interesting structures, including path-, cycle- and tree-like structures, and given the high-diameter induced by sparsity, GNN message-passing may fail to capture these structures. 
+Thus, by separately pooling distinct parts of a sparse subgraph, \name can learn to capture the meaningful structures present 
+in sparse graph regions. 
+}
+
+\cut{
+This interpretation matches our pooling objective well. Intuitively, a clique-like subgraph contains very little interesting structure, and message passing is efficient due to small graph diameter, and hence it could be directly pooled together without losing much structural information in the pooled embedding matrix $Z$. However, a sparse subgraph may contain many interesting structures, including path-, cycle- and tree-like ones. Therefore, message passing may miss these fine-grained structures. Subsequently, each part of the subgraph should be assigned and pooled differently, to capture these meaningful structures. }
+
+\cut{
+Hence the objective will tend to group all nodes into one cluster. \chris{We could also formalize it and prove it.}This  implies that all nodes in the dense subgraph are clustered into a single hyper-node. In contrast, when a subgraph is sparse, the resulting assignment tends to have higher entropy, and nodes could be assigned to different clusters, so that the elements of $S S^T$ are small.}
+\cut{
+\subsection{Learning to Pool with Side Information}
+\label{sec:pooling}
+
+Although the assignment matrix $S$ and the embedding matrix $Z$ are both computed using the GCN architecture, they have distinct interpretations. In particular, the embedding matrix at each layer is used as an intermediate representations of nodes and subgraphs at different coarsening scales. In comparison, the assignment matrix at each layer is used to determine the clustering assignment, and determines which nodes and subgraphs should be pooled together. Therefore it is important to create asymmetry in the computation of both $S$ and $Z$, in order to differentiate their purposes. We achieve this in three ways.
+
+\xhdr{Input Features}
+\note{note to rex himself: more experim - identity feat input?}
+The goal of $Z$ is to learn node and subgraph representations such that when pooled together, subsequent classifier can easily map the representations to labels. 
+Since the labels might be a complex function of all node features, e.g., homophily and structural properties of the input graph, we use a variety of features as inputs to $f_\theta$ to compute $Z$, including structural features such as degree and clustering coefficient features, or node features.
+In comparison, the assignment network should learn to predict cluster indices mainly based on homophily property. Therefore structural features such as degree and clustering coefficients are removed from the input features, which is essential in obtaining meaningful clusters that also benefit the classification task.
+
+\xhdr{Representation dimension}
+At deeper layers, the embedding matrix $Z$ provides representations for hyper-nodes corresponding to larger subgraphs. Therefore, more dimensions should be used when encoding larger subgraphs. This is analogous to CNNs for images~\cite{?}, where the number of channels increases after each convolutional layer.  In contrast, the assignment matrix $S$ aims to map hyper-nodes into a fewer number of clusters, allowing hyper-nodes to gain a more global \rex{what is better wording?} \chris{higher-order?} view of connectivities between subgraphs. Therefore, at deeper layers, the output dimension of $g_\phi$ decreases exponentially. Here the dimension reduction ratio $\alpha$ is a hyper-parameter. In practice, we discover that performance is insensitive for $0.1 < \alpha < 0.5$. The network outputs a sparse $S$ if the number of intuitive clusters are much less than the output dimension.
+
+\xhdr{Auxiliary objectives}
+Controlling input features and representation dimension is still insufficient for $g_\phi$ to learn and extract meaningful cluster information from a graph. We additionally supply side objectives as regularizations for $g_\phi$. 
+Intuitively, $g_\phi$ should learn to assign nodes that are close together in terms of connectivity into the same clusters. 
+Hence, we use a link prediction objective to further encourage similarity of cluster assignments.
+Particularly, at each layer $l$, we minimize
+$L_{\text{LP}} ||A^{(l)}, S^{(l)} S^{{(l)}^T}||_F$, where $||\cdot||_F$ denotes the Frobinus norm. 
+Note that the (soft) adjacency matrix $A^{(l)}$ at deeper layers is a function of lower level assignment matrices, and changes during training. 
+
+Another important characteristic of $g_\phi$ is that the output cluster assignment for each node should generally be close to a one-hot vector, so that the membership for each cluster or subgraph is clearly defined, except in rare cases where a node serves as a bridge between multiple clusters. We therefore regularize the entropy of the cluster assignment by minimizing $L_{\text{E}} = \frac{1}{n} \sum_{i=1}^n H(S_i)$, where $H$ denotes the entropy function, and $S_i$ is the $i$-th row of $S$.
+
+During training, $L_{\text{LP}}$ and $L_{\text{E}}$ from each layer are added to the classification loss, in order to obtain meaningful assignment matrices at all layers. In practice we observe that training with the side objective takes longer to converge, but nevertheless achieves better performance and more interpretable cluster assignment.
+
+\note{Note to Rex himself: try curriculum training}
+\chris{Where is $g_\phi$ and $f_\theta$ defined}
+
+\xhdr{Relation to low rank matrix factorization}
+We note that by approximating $A$ with $S S^T$, the link prediction auxiliary objective bears close resemblance to a low rank matrix factorization of $A$, and well-separated pair decomposition (WSPD). 
+Similar to matrix factorization, we require that at each layer, $S$ is able to capture most of the distance information between nodes, while using less dimensions than that of $A$. However, low rank matrix factorization is non-convex and has many local minimums. When trained end-to-end in the graph classification task, \name tends to find local minimum that is better suited for the task. This explains our observation that DiffPool consistently out-performs a two-step procedure of graph clustering followed by GCN that pools over these clusters.
+$\mathrm{WSPD}$ computes small number of pairs of clusters, such that for any pair of points $(p, q)$, we can find a pair of clusters $(A, B)$ such that $p\in A, q\in B$, and $d(p, q) \approx d(A, B)$. In the case of \name, the goal of the auxiliary objective is to let the connectivity strength between any node pair $(p, q)$ to be reflected by the connectivity strength between their corresponding clusters. However, unlike WSPD, the assignment in \name is soft to allow differentiability, which enables end-to-end training and avoids the high computation cost of WSPD in high dimensions.
+
+
+\xhdr{Behavior on sparse and dense networks}
+The sparsity of graphs also affects the behavior of the assignment network $g_\phi$.
+Suppose a subgraph of the input graph is dense, therefore the entries of the corresponding subgraph adjacency matrix are mostly ones. Since  $\mathbf{1} \mathbf{1}^T$ is a matrix of all ones, an assignment matrix for the subgraph, where one column is a vector of ones and the others are zero vectors, will be close to a minimum of the link prediction auxiliary objective. Hence the objective will tend to group all nodes into one cluster. \chris{We could also formalize it and prove it.}This  implies that all nodes in the dense subgraph are clustered into a single hyper-node. In contrast, when a subgraph is sparse, the resulting assignment tends to have higher entropy, and nodes could be assigned to different clusters, so that the elements of $S S^T$ are small.
+
+This interpretation matches our pooling objective well. Intuitively, a clique-like subgraph contains very little interesting structure, and message passing is efficient due to small graph diameter, and hence it could be directly pooled together without losing much structural information in the pooled embedding matrix. However, a sparse subgraph may contain many interesting structures, including path-, cycle- and tree-like ones. Therefore, message passing may miss these fine-grained structures. Subsequently, each part of the subgraph should be assigned and pooled differently, to capture these meaningful structures. 
+
+}

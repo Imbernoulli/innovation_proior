@@ -1,0 +1,23 @@
+\begin{table*}
+    \setlength{\tabcolsep}{12pt}
+    \small
+    \centering
+    \begin{tabular}{llccccccc}
+        \toprule
+          \multirow{2}{*}{\textbf{PPL}$\downarrow$} & & \multicolumn{3}{c}{\textbf{Llama-2}} & \multicolumn{4}{c}{\textbf{LLaMA}}  \\  \cmidrule(lr){3-5} \cmidrule(lr){6-9}
+          & & 7B & 13B & 70B & 7B  & 13B & 30B & 65B\\ \midrule
+        FP16 & - & 5.47 & 4.88 & 3.32 & 5.68 &	5.09 & 4.10	& 3.53\\ \midrule
+        \multirow{4}{*}{\shortstack{INT3\\g128}} & RTN & 6.66 &	5.52 & 3.98 & 7.01 &	5.88 & 4.88	& 4.24  \\
+        & GPTQ &  6.43	& 5.48 & 3.88 & 8.81 & 5.66 & 4.88 & 4.17\\
+         & GPTQ-R &  6.42	& 5.41 & 3.86 & 6.53 & 5.64 & 4.74 & 4.21\\
+         & \methodshort  & \textbf{6.24} & \textbf{5.32} & \textbf{3.74} & \textbf{6.35} & \textbf{5.52} & \textbf{4.61} & \textbf{3.95} \\ \midrule
+         \multirow{4}{*}{\shortstack{INT4\\g128}} & RTN & 5.73 & 4.98 & 3.46& 5.96 & 5.25 & 4.23 & 3.67\\
+         & GPTQ &  5.69	& 4.98 & 3.42 & 6.22 & 5.23 & 4.24 & 3.66\\
+         & GPTQ-R & 5.63 & 4.99 & 3.43 & 5.83 & 5.20 & 4.22 & 3.66\\
+         & \methodshort & \textbf{5.60} & \textbf{4.97} & \textbf{3.41}  & \textbf{5.78} & \textbf{5.19} & \textbf{4.21} & \textbf{3.62}\\
+        \bottomrule
+    \end{tabular}
+    \caption{\methodshort improves over round-to-nearest quantization (RTN) for different model sizes and different bit-precisions. It consistently achieves better perplexity than GPTQ (w/ and w/o reordering) on LLaMA \& Llama-2 models.
+    }
+    \label{tab:llama_opt_ppl}
+\end{table*}

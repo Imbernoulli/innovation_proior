@@ -1,0 +1,173 @@
+\section{Experiments}\label{sec:experiments}
+
+We name the algorithm using the Hutchinson's estimator and the GNB estimator Sophia-H and Sophia-G, respectively. We evaluate \ours~on auto-regressive language modeling with GPT-2~\citep{radford2019language} of model sizes ranging from 125M to 770M, and GPT NeoX~\citep{black2022gpt} of sizes 1.5B and 6.6B. Results indicate that \ours~is 2x faster than AdamW~\citep{loshchilov2017decoupled} in number of steps, total compute, and wall-clock time across all model sizes. Moreover, the scaling law is in favor of \ours~over AdamW. 
+
+\subsection{Experimental Setup} \label{sec:exp_setup}
+
+
+\textbf{Language modeling.} We train autoregressive models on OpenWebText~\citep{Gokaslan2019OpenWeb} and the Pile~\citep{gao2022pile}. Following standard protocol, we set the context length of GPT-2 to 1024, and the context length of GPT-2 NeoX~\citep{black2022gpt} to 2048. We consider GPT-2 with 125M (small), 355M (medium), and 770M (large) parameters, and GPT NeoX with 1.5B and 6.6B parameters, respectively. Detailed model configurations are deferred to Section~\ref{sec:imp_detail}.
+
+\textbf{Baselines.} We mainly compare {\ours} and Adam with decoupled weight decay (AdamW)~\citep{loshchilov2017decoupled} which is the dominantly used optimizer on language modeling tasks, AdaHessian~\citep{yao2021adahessian} which uses the EMA of the square of the diagonal Hessian estimate in its denominator, and Lion~\citep{chen2023symbolic}, which is an first-order adaptive optimizer discovered by symbolic search. For the 30M model, all hyperparameters are tuned with grid search. 
+For other models, all hyperparmeters but the peak learning rate are configured as identical to those found on the 30M model. For models with size 125M and 355M, the peak learning rates are obtained through grid search. 
+For larger models, we gradually increase the peak learning rate to search for the largest possible peak learning rate such that the training does not blow up, and ensure that the chosen learning rate is approximately the largest in the sense that 1.25 times the chosen learning rate will lead to a blow-up. For AdamW we found the well-established practice ($\beta_1 = 0.9$ and $\beta_2 = 0.95$) works consistently better than other choices~\citep{radford2019language,mistral}. For Lion, we use $\beta_1 = 0.95$ and $\beta_2 = 0.98$ following \citet{chen2023symbolic}. Although~\citet{chen2023symbolic} suggests using $0.1$ times the learning rate (LR) of AdamW for vision tasks, we find out the LR should be larger on LMs from the grid search. For AdaHessian, we found $\beta_1 = 0.92$ and $\beta_2 = 0.99$ works the best in the grid search. Details on hyperparameter tuning are deferred to Section~\ref{sec:hyper_param}.
+
+
+\textbf{Implementation.} We set batch size to 480 for GPT-2 and 2048 for GPT NeoX. We use cosine LR schedule with the final LR equal to 0.05 times the peak LR,  following~\citet{rae2021scaling}. We use the standard gradient clipping (by norm) threshold 1.0. We adopt a fixed 2k steps of LR warm-up. For \ours, we use $\beta_1 = 0.96$, $\beta_2 = 0.99$, $\epsilon=$1e-12 and update diagonal Hessian every 10 steps. For Sophia-H, we use only a subset of 32 examples from the mini-batch to calculate the diagonal Hessian to further reduce overhead. For Sophia-G, we use a subset of 240 examples from the mini-batch to calculate the diagonal Gauss-Newton. We implement the algorithms in PyTorch~\citep{pytorch2019} and JAX~\citep{jax2018github} and train all the models in bfloat16. The 125M and 355M models are trained on A5000 GPUs, while the 770M models are trained on A100 GPUs. We use a TPU v3-128 slice to train the 1.5B and 6.6B GPT NeoX.
+
+
+\paragraph{Hyperparamter tuning strategy.} We refer to Section~\ref{sec:hyper_param} for the details on hyperparameters and only discuss two key hyperparameters, $\gamma$ and the peak learning rate $\eta$ in the main text. Similar to the protocol of baselines, all other hyperparameters are tuned on a 30M model and remain fixed for all the model sizes. For the peak learning rate and $\gamma$, we found the following strategy general works well, and delivers almost the same performance as those found by grid search. 
+\begin{itemize}
+    \item On a small model, tune $\gamma$ to make the proportion of coordinates where the update is not clipped (i.e., $|m_t / \max\{\gamma \cdot h_t,\epsilon\}| < 1$) in the range of $10\%-50\%$. If the proportion is too large (or too small), multiply $\gamma$ by $0.5$ (or $2$) and restart. The same $\gamma$ likely can be transferred to models with the same architecture and data but different number of parameters. We use $\gamma = 0.01$ for Sophia-H and $\gamma=0.05$ for Sophia-G in this paper.
+    \item Suppose we already find a suitable $\gamma$ following the above procedure. We can then set the learning rate of Sophia to be either 3-5 times the learning rate that one would have used for Lion, or 0.8 times the learning rate that one would have used for AdamW. 
+\end{itemize}
+
+
+\subsection{Evaluation} \label{sec:evaluation}
+
+
+\paragraph{Methodology for comparing the optimizers for LLMs.} This paper argues that one correct (and arguably preferred) way of claiming optimizer $O_2$ is 2x faster than optimizer $O_1$ is  comparing the following two experiments (for a reasonable variety of $T$):
+\begin{itemize}
+    \item[1.] running optimizer $O_1$ (e.g. Adam) with $T$ steps, with the optimal learning rate and learning rate schedule (tuned for running for $T$ steps),
+    \item[2.] running optimizer $O_2$ (e.g., Sophia) with $T/2$ steps, with any learning rate schedule.
+\end{itemize}
+If Experiment 2 achieves a loss that is smaller than or equal to the loss of Experiment 1 (for a reasonable sets of choices of $T$), then we say optimizer $O_2$ is 2x faster than optimizer $O_1$.
+
+\newcommand{\eval}{\textup{Eval}}
+In more formal language, suppose the loss (or any minimization metric) of an optimizer $O$ with runtime budget $T$ and hypeparameter $H$ (excluding the runtime $T$) is denoted by $\eval(O, T, H)$. Then, we say optimizer $O_2$ is $k$-times faster than $O_1$ if 
+\begin{align}
+    \exists H_2, ~~\min_{H_1} ~\eval(O_1, T, H_1) \ge \eval(O_2, T/k, H_2) \,. \label{eq:compare}
+\end{align}
+Note that the equation above implies $\min_{H_1}\eval(O_1, T, H_1) \ge \min_{H_2} \eval(O_2, T/k, H_2)$, but is simpler to verify than the latter. 
+We note that many modern learning rate schedulers such as cosine learning rate~\citep{loshchilov2016sgdr} are highly sensitive to a pre-specific total number of steps. The optimal hyperparameters are also sensitive to the total budget $T$. Thus, tuning the hyperparameters of the baseline $O_1$ with a pre-specified budget $T$ (aka, minimizing $H_1$ given $T$) is critical to ensure fair comparison. (On the other hand, the tuning strategy for $H_2$ is less important because we just need to show the existence of a good $H_2$.)
+
+Moreover, we note that, in equation~\eqref{eq:compare}, we need to insist $\ge$ without any approximations. The difference in losses of various experiments might be seemingly small--- $\eval(\textup{Adam}, T/2, H)$ is likely to be only slightly higher than $\eval(\textup{Adam}, T, H)$ (assuming the peak learning rate is a hyperparameter), and thus allowing any approximation in the criterion~\eqref{eq:compare} may lead to the fallacy statement that ``Adam is 2x faster than Adam''. In fact, Figure~\ref{fig:gpt2-1} (a) shows that even with the same peak learning rate, the learning rate in a run with $T/2$ steps decays faster than the learning rate in a run with $T$ steps. Moreover, the $T/2$-steps run tends to have a initial faster decay of loss than the $T$-steps run but stop at a higher final loss, and the latter is not a continuation of the former.  
+
+Finally, a tempting comparison would be comparing the following experiment with Experiment 1:
+\begin{itemize}
+    \item[2'.] running optimizer $O_2$ (e.g., Sophia) with $T$ steps, with any learning rate schedule, and recording the performance of the $T/2$-th checkpoint. 
+\end{itemize}
+
+We note that if one were able to find an optimizer $O_2$ that is 2x faster than $O_1$ under the proposed criterion (comparing 1\&2), then one can also design another optimizer $O_2'$ (which run for $T$ steps) that is 2x faster than $O_1$ under the second criterion (comparing 1\&2'): first running optimizer $O_2$ for $T/2$ steps and do nothing for the rest of the $T/2$ steps. 
+Therefore, even though we will also provide comparison between Experiment 1\&2' in Figure~\ref{fig:gpt2} as an alternative, we use the comparison between Experiment 1\&2 quantitatively in most of the paper. 
+
+
+\paragraph{Technical details.} Following the methodology above, we train baselines and Sophia for 100K, 200K, or 400K, and mainly compare 400k-steps baseline vs 200K-steps Sophia, and 200k-steps baseline vs 100k-steps Sophia. 
+We primarily evaluate the models with their log perplexity and plot the loss curves. We also report in-context learning results (with 2-shot exemplars and greedy decoding) on SuperGLUE~\citep{wang2019superglue}. We average the results of 5 prompts (Section~\ref{sec:eval}).
+
+
+\begin{figure}[t]
+\begin{center}
+\includegraphics[width=0.235\textwidth]{figures/LR_0923.pdf}
+\includegraphics[width=0.235\textwidth]{figures/medium_2x_100k_new_flops_0923_all.pdf}
+\includegraphics[width=0.235\textwidth]{figures/large_2x_plusp_2309_all.pdf}
+\includegraphics[width=0.235\textwidth]{figures/1.5B_2x_200k_full_0923.pdf}
+\caption{ Comparison of numbers of steps to reach the same validation loss. (a) Learning rate schedules. (b) GPT-2 Medium (355M). (c) GPT-2 Large (770M). (d) GPT NeoX 1.5B. Across all model sizes, {\ours} achieves a 2x speedup. \label{fig:gpt2-1} 
+}
+\end{center}
+\end{figure}
+
+
+\begin{figure}[t]
+\begin{center}
+\includegraphics[width=0.19\textwidth]{figures/small_100k_plus_0923.pdf}
+\includegraphics[width=0.19\textwidth]{figures/medium_100k_plus_0923.pdf}
+\includegraphics[width=0.19\textwidth]{figures/large_100k_plus_0923.pdf}
+\includegraphics[width=0.19\textwidth]{figures/1.5B_200k_new_0923.pdf}
+\includegraphics[width=0.19\textwidth]{figures/7B_200k_0923.pdf}
+\caption{ (a) (b) (c) Validation loss on OpenWebText. (a) GPT-2 Small (125M). AdamW: 2.921, Lion: 2.924, \ours-H: 2.901, Sophia-G: 2.875 (b) GPT-2 Medium (355M). Adam: 2.691, Lion: 2.678, \ours-H: 2.645, Sophia-G: 2.627. (c) GPT-2 Large (770M). AdamW: 2.613, \ours-H: 2.554, \ours-G: 2.524. (d) (e) Validation loss on the Pile (d) GPT NeoX 1.5B. AdamW: 2.250, \ours-G: 2.218.(e) GPT NeoX 6.6B. AdamW: 1.992, \ours-G: 1.969. \label{fig:gpt2}}
+\end{center}
+\end{figure}
+
+
+\begin{figure}[t]
+\begin{center}
+\includegraphics[width=0.32\textwidth]{figures/few_shot_medium_0923.pdf}
+\includegraphics[width=0.32\textwidth]{figures/few_shot_large_0923.pdf}
+\includegraphics[width=0.32\textwidth]{figures/few_shot_xl_0923.pdf}
+\caption{{Few-shot evaluation on SuperGLUE. With the same number of steps, models pre-trained with \ours~outperforms models pre-trained with AdamW and Lion on most tasks. Models pre-trained with \ours~for 200K steps have comparable performance as models pre-trained with AdamW for 400K steps.\label{fig:fewshot}}
+}
+\end{center}
+\end{figure}
+
+
+
+
+\subsection{Results}\label{sec:results}
+
+Figure~\ref{fig:gpt2} illustrates the validation loss curve (token-level log perplexity) on OpenWebText or the Pile with the same number of steps. Sophia-H and Sophia-G
+consistently achieve better validation loss than AdamW, Lion, and AdaHessian, while Sophia-G is better than Sophia-H. As the model size grows, the gap between \ours~and baselines also becomes larger. Note that the cost of each step AdaHessian is more than 2x that of AdamW, while Sophia only introduces a per step compute overhead of less than 5$\%$. Sophia-H and Sophia-G both achieve a 0.04 smaller validation loss on the 355M model (Figure~\ref{fig:gpt2} (b)). Sophia-G and Sophia-H achieve a 0.05 smaller validation loss on the 770M model (Figure~\ref{fig:gpt2} (c)), with the same 100K steps. This is a significant improvement since according to scaling laws in this regime~\citep{kaplan2020scaling,hoffmann2022training} and results in Figure~\ref{fig:gpt2-1}, an improvement in loss of 0.05 is equivalent to 2x improvement in terms of number of steps or total compute to achieve the same validation loss. 
+
+\textbf{\ours~is 2x faster in terms of number of steps, total compute and wall-clock time.} The improvement in validation loss brought by \ours~can be translated into reduction of number of steps or total compute. In Figure~\ref{fig:head} (a)(b)(c) and Figure~\ref{fig:gpt2-1}, we evaluate the optimizers by comparing the number of steps or total compute needed to achieve \textit{the same validation loss level}. As can be observed in Figure~\ref{fig:head} (a)(b)(c), Sophia-H and Sophia-G achieve a 2x speedup compared with AdamW and Lion across different model sizes. 
+
+
+
+\textbf{The scaling law is in favor of \ours~over AdamW.} In Figure~\ref{fig:head} (d), we plot the validation loss on OpenWebText of models of different sizes pre-trained for 100K steps. The gap between \ours~and AdamW grows as we scale up the models. Moreover, the 540M model trained by \ours-H has smaller loss than the 770M model trained by AdamW. The 355M model trained by \ours-H has comparable loss as the 540M model trained by AdamW. 
+
+\textbf{Few-shot Evaluation on Downstream Tasks (SuperGLUE).} As shown in Figure~\ref{fig:fewshot}, as expected, the improvement in validation loss transfers to an improvement in downstream task accuracy. 
+With the same number of steps in pre-training, GPT-2 medium, GPT-2 large and GPT NeoX 1.5B pre-trained with {\ours} have better few-shot accuracy on most subtasks. Also, models pre-trained with {\ours} have comparable few-shot accuracy as models pre-trained with AdamW for 2x number of steps. 
+
+\subsection{Analysis}\label{sec:analysis}
+\begin{wraptable}{r}{7.5cm}
+%\vspace{-15pt}
+	\centering
+	%\vspace{-18pt}
+	\caption{\small Wall-clock time and compute.}
+	\label{table2}
+	\begin{small}
+ \addtolength{\tabcolsep}{-5pt} 
+	\begin{tabular}{l|c|c|c|c}
+	\toprule
+	Algorithm & Model Size  & T(step) & T(Hessian) & Compute \\
+	\midrule
+	AdamW & 770M  & 3.25s & -- & 2550 \\
+	\ours-H & 770M  & 3.40s & 0.12s & 2708\\
+        Sophia-G & 770M  & 3.42s & 0.17s & 2678\\
+        AdamW & 355M  & 1.77s & -- & 1195\\
+	\ours-H & 355M  & 1.88s & 0.09s & 1249\\
+        Sophia-G & 355M  & 1.86s & 0.09s & 1255\\
+ \bottomrule
+	\end{tabular}
+	\end{small}
+\end{wraptable}
+\textbf{Comparison of wall-clock time and amount of compute.} We compare the total compute (TFLOPs) per step and the wall-clock time on A100 GPUs in Table~\ref{table2}. We report the average time per step (T(step)), the time spent in Hessian computation (T(Hessian)) and the total compute following~\citet{chowdhery2022palm}. Since we calculate the diagonal Hessian estimate with a reduced batch size every 10 steps, the computation of the Hessian accounts for 6$\%$ of the total compute, and the overall wall-clock time overhead is less than 5$\%$ compared with AdamW. In terms of memory usage, our optimizer has two states, $m$ and $h$, which results in the same memory cost as AdamW.  
+
+
+
+
+\begin{figure}[t]
+\begin{center}
+\includegraphics[width=0.31\textwidth]{figures/small_100k_clip.pdf}
+\includegraphics[width=0.31\textwidth]{figures/medium_100k_trick.pdf}
+\includegraphics[width=0.33\textwidth]{figures/sensitivity_arxiv.pdf}
+\caption{\ours~improves pre-training stability and is insensitive to hyperparameters. (a) With AdamW and Lion, gradient clipping is triggered frequently. With \ours, gradient clipping rarely happens. (b) AdamW and Lion require the trick of re-parameterizing the attention with a temperature that is the inverse of the layer index~\citep{mistral}. The plot shows the largest LR that AdamW and Lion without the trick can use to be stable, which is much smaller than with the trick. 
+In contrast, \ours~does not need this trick. (c) \ours~is not sensitive to hyperparameter choice. \label{fig:stability}}
+\end{center}
+\end{figure}
+
+\textbf{Sensitivity to $\rho$ and $\beta_2$, and transferability of hyperparameters.} On a 30M model, we perform a grid search to test the sensitivity of \ours-H to hyperparamters (Figure~\ref{fig:stability} (c)). All combinations have a similar performance, while $\beta_2=0.99$ and $\gamma=0.01$ performs the best. Moreover, this hyperparameter choice is transferable across model sizes. For all the experiments on 125M, 355M and 770M, we use the hyperparameters searched on the 30M model, which is $\gamma=0.01$, $\beta_2=0.99$. 
+
+
+\textbf{Training Stability.} \ours-H has better stability in pre-training compared to AdamW and Lion. Gradient clipping (by norm) is an important technique in language model pre-training as it avoids messing up the moment of gradients with one mini-batch gradient computed from rare data~\citep{zhang2020adaptive}. In practice, the frequency that gradients clipping is triggered is related to the training stability---if the gradient is frequently clipped, the iterate can be at a very instable state. We compare the proportion of steps where gradient clipping is triggered on GPT-2 small (125M) in Figure~\ref{fig:stability} (a). Although all methods use the same clipping threshold 1.0, \ours-H seldomly triggers gradient clipping, while AdamW and Lion trigger gradient clipping in more than 10$\%$ of the steps. 
+
+
+
+Another common trick of pre-training deep Transformers is scaling the product of keys and values by the inverse of the layer index as implemented by Mistral~\citep{mistral} and Huggingface~\citep{wolf-etal-2020-transformers}. This stabilizes training and increases the largest possible learning rate. Without this trick, the maximum learning rate of AdamW and Lion on GPT-2 medium (355M) can only be 1.5e-4, which is much smaller than 3e-4 with the trick (the loss will blow up with 3e-4 without the trick). Moreover, the loss decreases much slower without the trick as shown in Figure~\ref{fig:stability} (b). In all the experiments, \ours-H does not require scaling the product of keys and values by the inverse of the layer index.
+
+\begin{figure}[t]
+\begin{center}
+\includegraphics[width=0.315\textwidth]{figures/k_0923.pdf}
+\includegraphics[width=0.315\textwidth]{figures/hessian_0923.pdf}
+\includegraphics[width=0.323\textwidth]{figures/clipping_0923.pdf}
+\caption{Ablation study. (a) Hessian update frequency $k$. (b) Diagonal Hessian pre-conditioners. (c) Element-wise Update clipping. \label{fig:ablation}}
+\end{center}
+\end{figure}
+
+\subsection{Ablation Study}\label{sec:ablation}
+
+\textbf{Choices of Hessian update frequency $k$.} We study the effect of Hessian update frequency $k$ of Sophia-G on computational overhead and validation loss on a 30M GPT-2 model. We consider $k=1,10,100$ and run each method for 100k, 200k, and 400k steps. All other hyperparameters are fixed, and we tune the peak learning rate with a grid search. We plot the amount of compute spent and the validation loss of each run in Figure~\ref{fig:ablation} (a). While $k=1$ has better validation loss with the same number of steps, the computational overhead is 50$\%$ and the convergence speed with respect to amount of compute is worse than $k=10$. The choice of $k=100$ still outperforms AdamW, but is not as good as $k=10$.
+
+\textbf{Diagonal Hessian pre-conditioners.} We compare different diagonal Hessian pre-conditioners (with the same $k=10$ and $\gamma$ found by grid search): Empirical Fisher (E-F+clip), AdaHessian (AH+clip), Hutchinson (Sophia-H), and GNB (Sophia-G). Note that empirical Fisher is the EMA of squared gradients, which differs from GNB in label sampling. We run each method for 100k, 200k, and 400k steps and plot the results in Figure~\ref{fig:ablation} (b). Results indicate that GNB is better than Empirical Fisher, which is consistent with \citet{kunstner2019limitations}. Sophia-H is also consistently better than AdaHessian. We hypothesize that the difference stems from that the EMA of the diagonal Hessian estimates (used in Sophia-H ) has more denoising effect than the EMA of the second moment of Hessian estimates (used in AdaHessian). 
+
+\textbf{Element-wise Clipping.} We compare the role of different update clipping strategy in Figure~\ref{fig:ablation} (c). We include element-wise clipping without pre-conditioners (Clip), update normalization without pre-conditioners (Normalize), AdaHessian and Sophia-G without clipping (GNB). The learning rate is found by grid search. Note that clipping without pre-conditioner is essentially the same as sign momentum, or Lion with a single $\beta$. Without element-wise clipping, we find that AdaHessian will diverge with $k=2$ and GNB will diverge with $k=5$, thus we use $k=1$ for AdaHessian and $k=2$ for GNB. Results indicate that per-coordinate clipping itself is already better than AdamW. Further adding the GNB pre-conditioner makes Sophia-G much better than baselines.
+
+

@@ -1,0 +1,71 @@
+\renewcommand{\tmpwidth}{15mm}
+\newcommand{\tmpheight}{30mm}
+\setlength{\tabcolsep}{4pt}
+\begin{figure*}[!ht]
+    \centering
+    %\renewcommand{\arraystretch}{2}
+    \begin{tabular}{m{10mm}c c}
+
+% (A) & \parbox[c]{\tmpwidth}{\includegraphics[ height=\tmpheight]{figures/supp_failure/chelsea-gates-0653_wY0nRc-unsplash.jpg_input.jpeg}} &
+% \parbox[c]{9\tmpwidth}{\includegraphics[ height=\tmpheight]{figures/supp_failure/chelsea-gates-0653_wY0nRc-unsplash.jpg_output0006_1.jpeg}}
+% \\ 
+
+& Input & \parbox[c]{8\tmpwidth}{Our Outpainting Samples}  \\
+
+~~~~~(A) & \parbox[c]{\tmpwidth}{\includegraphics[ height=\tmpheight]{figures/supp_failure/christoph-schulz-7tb-b37yHx4-unsplash.jpg}}  & 
+\parbox[c]{9\tmpwidth}{\includegraphics[ height=\tmpheight]{figures/supp_failure/christoph-schulz-7tb-b37yHx4-unsplash.jpg_output0006_1.jpeg}}
+ \\ 
+ 
+ 
+%  & Input & \parbox[c]{8\tmpwidth}{Our outpainting samples} \\ 
+ 
+~~~~~(B) & \parbox[c]{\tmpwidth}{\includegraphics[ height=\tmpheight]{figures/panorama/janosch-diggelmann-qXzNdOfGnbw-unsplash.jpg}}  & 
+\parbox[c]{9\tmpwidth}{\includegraphics[ height=\tmpheight]{figures/supp_failure/janosch-diggelmann-qXzNdOfGnbw-unsplash.jpg_input.jpeg}}
+ \\ 
+%  (C) & \parbox[c]{\tmpwidth}{\includegraphics[ height=\tmpheight]{figures/panorama/damiano-baschiera-hFXZ5cNfkOk-unsplash.jpg}}  & 
+% \parbox[c]{9\tmpwidth}{\includegraphics[ height=\tmpheight]{figures/supp_failure/damiano-baschiera-hFXZ5cNfkOk-unsplash.jpg_output0001_1.jpeg}}
+%  \\ 
+ \end{tabular}
+ \setlength{\tabcolsep}{1pt}
+ \begin{tabular}{m{7mm}c c c c c }
+    & Input & \multicolumn{3}{c}{------ Our Outpainting Samples ------} & Groundtruth
+    \\
+ (C) & 
+     \parbox[c]{\tmpheight}{\includegraphics[height=\tmpheight]{figures/uncrop/2982_input.jpeg}}&
+    % \parbox[c]{\tmpheight}{\includegraphics[height=\tmpheight]{figures/uncrop/2982_boundless.jpeg}}&
+    % \parbox[c]{\tmpheight}{\includegraphics[height=\tmpheight]{figures/uncrop/2982_inf.jpeg}}&
+    \parbox[c]{\tmpheight}{\includegraphics[height=\tmpheight]{figures/uncrop/2982_output5.jpeg}} &
+    % \parbox[c]{\tmpheight}{\includegraphics[height=\tmpheight]{figures/uncrop/2982_output0.jpeg}} &
+    \parbox[c]{\tmpheight}{\includegraphics[height=\tmpheight]{figures/uncrop/2982_output9.jpeg}} &
+    \parbox[c]{\tmpheight}{\includegraphics[height=\tmpheight]{figures/uncrop/2982_output3.jpeg}} &
+    % \parbox[c]{\tmpheight}{\includegraphics[height=\tmpheight]{figures/uncrop/2982_output10.jpeg}} &
+   \parbox[c]{\tmpheight}{ \includegraphics[height=\tmpheight]{figures/uncrop/2982_gt.jpeg}}
+  \\
+   & Input & \multicolumn{3}{c}{------Our Inpainting Samples ------} & Groundtruth 
+   \\
+  (D) & 
+     \parbox[c]{\tmpheight}{\includegraphics[height=\tmpheight]{figures/uncrop/2142_003_input.jpeg}}&
+    % \parbox[c]{\tmpheight}{\includegraphics[height=\tmpheight]{figures/uncrop/2982_boundless.jpeg}}&
+    % \parbox[c]{\tmpheight}{\includegraphics[height=\tmpheight]{figures/uncrop/2982_inf.jpeg}}&
+    \parbox[c]{\tmpheight}{\includegraphics[height=\tmpheight]{figures/uncrop/2142_003_output6.jpeg}} &
+    % \parbox[c]{\tmpheight}{\includegraphics[height=\tmpheight]{figures/uncrop/2982_output0.jpeg}} &
+    \parbox[c]{\tmpheight}{\includegraphics[height=\tmpheight]{figures/uncrop/2142_003_output9.jpeg}} &
+    \parbox[c]{\tmpheight}{\includegraphics[height=\tmpheight]{figures/uncrop/2142_003_output14.jpeg}} &
+    % \parbox[c]{\tmpheight}{\includegraphics[height=\tmpheight]{figures/uncrop/2982_output10.jpeg}} &
+   \parbox[c]{\tmpheight}{ \includegraphics[height=\tmpheight]{figures/uncrop/2142_003_gt.jpeg}}
+  \\
+   & \multicolumn{5}{c}{------Our Class-conditional Samples ------} \\
+(E) & \parbox[c]{\tmpheight}{\includegraphics[height=\tmpheight]{figures/supp_failure/000417_0010_output.jpeg}} & 
+%  \parbox[c]{\tmpheight}{\includegraphics[height=\tmpheight]{figures/supp_failure/000967_0009_output.jpeg}} & 
+\parbox[c]{\tmpheight}{\includegraphics[height=\tmpheight]{figures/supp_failure/000454_0004_output.jpeg}} & 
+\parbox[c]{\tmpheight}{\includegraphics[height=\tmpheight]{figures/supp_failure/000918_0031.jpeg}} &
+\parbox[c]{\tmpheight}{\includegraphics[height=\tmpheight]{figures/supp_failure/000661_0006.jpeg}} &
+\parbox[c]{\tmpheight}{\includegraphics[height=\tmpheight]{figures/supp_failure/000831_0036_output.jpeg}}
+  
+ \\
+   \end{tabular}
+    \caption{Limitations and Failure Cases. }
+    \vspace{-6mm}
+    \label{fig:supp_failure}
+\end{figure*}
+

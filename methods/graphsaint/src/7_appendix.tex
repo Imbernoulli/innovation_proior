@@ -1,0 +1,515 @@
+\appendix
+\section{Proofs\label{appendix: proof}}
+
+\begin{proof}[Proof of Proposition \ref{prop: norm}]
+Under the condition that $v$ is sampled in a subgraph:
+\begin{align}
+\mathbb{E}\paren{\zeta_v^{\paren{\ell+1}}}=&\mathbb{E}\paren{\sum_{u\in\V}\frac{\Anorm_{v,u}}{\alpha_{u,v}}\Tilde{\bm{x}}_u^{\paren{\ell}}\mathbbm{1}_{u|v}}\nonumber\\
+    =& \sum_{u\in\V}\frac{\Anorm_{v,u}}{\alpha_{u,v}}\Tilde{\bm{x}}_u^{\paren{\ell}}\mathbb{E}\paren{\mathbbm{1}_{u|v}}\nonumber\\
+    =& \sum_{u\in\V}\frac{\Anorm_{v,u}}{\alpha_{u,v}}\Tilde{\bm{x}}_u^{\paren{\ell}}P\paren{\paren{u,v}\text{ sampled}|v\text{ sampled}}\nonumber\\
+    =& \sum_{u\in\V}\frac{\Anorm_{v,u}}{\alpha_{u,v}}\Tilde{\bm{x}}_u^{\paren{\ell}}\frac{P\paren{\paren{u,v}\text{ sampled}}}{P\paren{v\text{ sampled}}}\nonumber\\
+    =& \sum_{u\in\V}\frac{\Anorm_{v,u}}{\alpha_{u,v}}\Tilde{\bm{x}}_u^{\paren{\ell}}\frac{p_{u,v}}{p_v}
+\end{align}
+where the second equality is due to linearity of expectation, and the third equality (conditional edge probability) is due to the initial condition that $v$ is sampled in a subgraph.
+
+It directly follows that, when $\alpha_{u,v}=\frac{p_{u,v}}{p_v}$,
+
+\begin{align}
+    \mathbb{E}\paren{\zeta_v^{\paren{\ell+1}}}=\sum_{u\in\V}\Anorm_{v,u}\Tilde{\bm{x}}_u^{\paren{\ell}}\nonumber
+\end{align}
+\end{proof}
+
+\begin{proof}[Proof of Theorem \ref{thm: var}]
+Below, we use $\text{Cov}\paren{\cdot}$ to denote covariance and $\text{Var}\paren{\cdot}$ to denote variance. 
+For independent edge sampling as defined in Section \ref{sec: var}, $\text{Cov}\paren{\mathbbm{1}_{e_1}^{\paren{\ell_1}}, \mathbbm{1}_{e_2}^{\paren{\ell_2}}} = 0, \forall e_1 \neq e_2$. And for a full GCN on the subgraph, $\text{Cov}\paren{\mathbbm{1}_{e}^{\paren{\ell_1}}, \mathbbm{1}_{e}^{\paren{\ell_2}}} = p_e - p_e^2$. To start the proof, we first assume that the $\bm{b}_e^{(\ell)}$ is one dimensional (i.e., a scalar) and denote it by $b_e^{(\ell)}$.
+Now,
+\begin{align}
+    \mbox{Var}\paren{\zeta} &= \sum_{e, \ell} \left(\frac{b_e^{(\ell)}}{p_e}\right)^2 \text{Var}\paren{\mathbbm{1}_{e}^{\paren{\ell}}} + 2\sum_{e, \ell_1 < \ell_2} \frac{b_{e}^{\paren{\ell_1}}b_{e}^{\paren{\ell_2}}}{p_e^2}\text{Cov}\paren{\mathbbm{1}_{e}^{\paren{\ell_1}}, \mathbbm{1}_{e}^{\paren{\ell_2}}} \nonumber \\
+    &= \sum_{e, \ell} \frac{\paren{b_{e}^{\paren{\ell}}}^2}{p_e} - \sum_{e,\ell} \paren{b_{e}^{\paren{\ell}}}^2 + 2 \sum_{e, \ell_1 < \ell_2} \frac{b_{e}^{\paren{\ell_1}}b_{e}^{\paren{\ell_2}}}{p_e^2}\left(p_e - p_e^2\right) \nonumber \\
+    &= \sum_e\frac{\paren{\sum_\ell b_e^{(\ell)}}^2}{p_e} - \sum_e \left(\sum_\ell b_e^{(\ell)}\right)^2
+\end{align}
+Let a given constant $m = \sum_e p_e$ be the expected number of sampled edges.
+By Cauchy-Schwarz inequality: $\sum_e\frac{\paren{\sum_\ell b_e^{\paren{\ell}}}^2}{p_e}m=\sum_e \left(\frac{\sum_\ell b_e^{(\ell)}}{\sqrt{p_e}}\right)^2 \sum_e \paren{\sqrt{p_e}}^2\geq \left(\sum_{e, \ell} b_e^{(\ell)}\right)^2$. 
+The equality is achieved when $\size{\frac{\sum_\ell b_e^{(\ell)}}{\sqrt{p_e}}} \propto \sqrt{p_e}$. i.e., variance is minimized when
+$p_e \propto \size{\sum_\ell b_e^{(\ell)}}$.
+
+It directly follows that:
+\begin{align}
+    p_e = \frac{m}{\sum_{e'}\size{\sum_{\ell}b_{e'}^{\paren{\ell}}}}\size{\sum_{\ell}b_e^{\paren{\ell}}} \nonumber
+\end{align}
+For the multi-dimensional case of $\bm{b}_e^{\paren{\ell}}$, following similar steps as above, it is easy to show that the optimal edge probability to minimize $\sum_i \text{Var}\paren{\zeta_i}$ (where $i$ is the index for $\zeta$'s dimensions) is:
+\begin{align}
+    p_e = \frac{m}{\sum_{e'}\left\|\sum_{\ell}\bm{b}_{e'}^{\paren{\ell}}\right\|}\left\|\sum_{\ell}\bm{b}_e^{\paren{\ell}}\right\| \nonumber
+\end{align}
+\end{proof}
+
+\section{Sampling Algorithm}
+\label{sec: sampler algo}
+
+\begin{algorithm}
+\caption{Graph sampling algorithms by {\graphsaint}}
+\label{algo: gsaint sampler}
+\begin{algorithmic}[1]
+\renewcommand{\algorithmicrequire}{\textbf{Input:}}
+\renewcommand{\algorithmicensure}{\textbf{Output:}}
+\Require Training graph $\G\paren{\V,\E}$; Sampling parameters: node budget $n$; edge budget $m$; number of roots $r$; random walk length $h$
+\Ensure Sampled graph $\G[s]\paren{\V[s],\E[s]}$
+
+\Function{Node}{$\G$,$n$}{\color{blue}\Comment{Node sampler}\color{black}}
+\State $P\paren{v}\coloneqq \norm{\Anorm_{:,v}}^2/\sum_{v'\in\V}\norm{\Anorm_{:,v'}}^2$
+\State $\V[s]\gets $ $n$ nodes randomly sampled (with replacement) from $\V$ according to $P$
+\State $\G[s]\gets $ Node induced subgraph of $\G$ from $\V[s]$
+\EndFunction
+
+\Function{Edge}{$\G$,$m$}{\color{blue}\Comment{Edge sampler (approximate version)}\color{black}}
+\State $P\paren{\paren{u,v}}\coloneqq \paren{\frac{1}{\text{deg}\paren{u}}+\frac{1}{\text{deg}\paren{v}}}/\sum_{\paren{u',v'}\in\E}\paren{\frac{1}{\text{deg}\paren{u'}}+\frac{1}{\text{deg}\paren{v'}}}$
+\State $\E[s]\gets $ $m$ edges randomly sampled (with replacement) from $\E$ according to $P$
+\State $\V[s]\gets$ Set of nodes that are end-points of edges in $\E[s]$
+\State $\G[s]\gets$ Node induced subgraph of $\G$ from $\V[s]$
+\EndFunction
+
+\Function{RW}{$\G$,$r$,$h$}{\color{blue}\Comment{Random walk sampler}\color{black}}
+\State $\mathcal{V}_\text{root}\gets$ $r$ root nodes sampled uniformly at random (with replacement) from $\V$
+\State $\V[s]\gets \mathcal{V}_\text{root}$
+\For{$v\in \mathcal{V}_\text{root}$}
+    \State $u\gets v$
+    \For{$d=1$ to $h$}
+        \State $u\gets $ Node sampled uniformly at random from $u$'s neighbor
+        \State $\V[s]\gets \V[s]\cup\set{u}$
+    \EndFor
+\EndFor
+\State $\G[s]\gets$ Node induced subgraph of $\G$ from $\V[s]$
+\EndFunction
+
+\Function{MRW}{$\G$,$n$,$r$}{\color{blue}\Comment{Multi-dimensional random walk sampler}\color{black}}
+\State $\mathcal{V}_\text{FS}\gets$ $r$ root nodes sampled uniformly at random (with replacement) from $\V$
+\State $\V[s]\gets \mathcal{V}_\text{FS}$
+\For{$i=r+1$ to $n$}
+    %\State $P\paren{v}\coloneqq \text{deg}\paren{v}/\sum_{v'\in\mathcal{V}_\text{FS}}\text{neigh}\paren{v',k}$
+    %\State $u\gets$ Node sampled from $\mathcal{V}_\text{FS}$ according to $P$ 
+    \State Select $u\in \V_\text{FS}$ with probability $\text{deg}(u)/\sum_{v\in \V_\text{FS}}\text{deg}(v)$
+    \State $u'\gets $ Node randomly sampled from $u$'s neighbor 
+    \State $\mathcal{V}_\text{FS}\gets \paren{\mathcal{V}_\text{FS}\setminus \set{u}}\cup \set{u'}$
+    \State $\V[s] \gets \V[s] \cup \set{u}$
+\EndFor
+\State $\G[s]\gets$ Node induced subgraph of $\G$ from $\V[s]$
+\EndFunction
+\end{algorithmic} 
+\end{algorithm}
+
+Algorithm \ref{algo: gsaint sampler} lists the four graph samplers we have integrated into {\graphsaint}. The naming of the samplers follows that of Table \ref{tab: exp-sota}. 
+Note that the sampling parameters $n$ and $m$ specify a budget rather than the actual number of nodes and edges in the subgraph $\G[s]$. 
+Since certain nodes or edges in the training graph $\G$ may be repeatedly sampled under a single invocation of the sampler, we often have $\size{\V[s]}<n$ for node and MRW samplers, $\size{\V[s]}<2m$ for edge sampler, and $\size{\V[s]}<r\cdot h$ for RW sampler. 
+
+Also note that the edge sampler presented in Algorithm \ref{algo: gsaint sampler} is an approximate version of the independent edge sampler defined in Section \ref{sec: sampler}. 
+Complexity (excluding the subgraph induction step) of the original version in Section \ref{sec: sampler} is $\mathcal{O}\paren{\size{\E}}$, while  complexity of the approximate one is $\mathcal{O}\paren{m}$. 
+When $m\ll \size{\E}$, the approximate version leads to identical accuracy as the original one, for a given $m$. 
+
+\section{Detailed Experimental Setup}
+
+\subsection{Hardware Specification and Environment}
+\label{appendix: hw}
+
+We run our experiments on a single machine with Dual Intel Xeon CPUs (E5-2698 v4 @ 2.2Ghz), one NVIDIA Tesla P100 GPU (16GB of HBM2 memory) and 512GB DDR4 memory. The code is written in Python 3.6.8 (where the sampling part is written with Cython 0.29.2). We use Tensorflow 1.12.0 on CUDA 9.2 with CUDNN 7.2.1 to train the model on GPU. Since the subgraphs are sampled independently, we run the sampler in parallel on 40 CPU cores. 
+
+\subsection{Additional Dataset Details}
+\label{appendix: data}
+
+\begin{figure}
+    \centering
+    \input{plots/degree.tex}
+    \caption{Degree Distribution}
+    \label{fig:deg}
+\end{figure}
+
+
+Here we present the detailed procedures to prepare the Flickr, Yelp and Amazon datasets.
+
+The Flickr dataset originates from NUS-wide\footnote{\url{http://lms.comp.nus.edu.sg/research/NUS-WIDE.htm}}. The SNAP website\footnote{\url{https://snap.stanford.edu/data/web-flickr.html}} collected Flickr data from four different sources including NUS-wide, and generated an un-directed graph. 
+One node in the graph represents one image uploaded to Flickr. If two images share some common properties (e.g., same geographic location, same gallery, comments by the same user, etc.), there is an edge between the nodes of these two images. %We remove the nodes of \cite{snap_flickr} that do not appear in the NUS-wide dataset. 
+We use as the node features the 500-dimensional bag-of-word representation of the images provided by NUS-wide. For labels, we scan over the 81 tags of each image and manually merged them to 7 classes. Each image belongs to one of the 7 classes. %, formed a single-class label for each node.
+
+
+The Yelp dataset is prepared from the raw \texttt{json} data of businesses, users and reviews provided in the open challenge website\footnote{\url{https://www.yelp.com/dataset}}. For nodes and edges, we scan the friend list of each user in the raw \texttt{json} file of users. If two users are friends, we create an edge between them. We then filter out all the reviews by each user and separate the reviews into words. Each review word is converted to a 300-dimensional vector using the Word2Vec model pre-trained on GoogleNews\footnote{\url{https://code.google.com/archive/p/word2vec/}}. The word vectors of each node are added and normalized to serve as the node feature (i.e., $\bm{x}_v$). As for the node labels, we scan the raw \texttt{json} file of businesses, and use the categories of the businesses reviewed by a user $v$ as the multi-class label of $v$. %If the number of categories of the businesses that a user reviewed is more than a given threshold, we assign this category as the label to the node of this user, which collectively form a multi-class label for each node.
+
+
+For the Amazon dataset, a node is a product on the Amazon website and an edge $\paren{u,v}$ is created if products $u$ and $v$ are bought by the same customer. 
+Each product contains text reviews (converted to 4-gram) from the buyer. We use SVD to reduce the dimensionality of the 4-gram representation to 200, and use the obtained vectors as the node feature. The labels represent the product categories (e.g., books, movies, shoes).  
+
+
+
+Figure \ref{fig:deg} shows the degree distribution of the five graphs. 
+A point $\paren{k,p}$ in the plot means the probability of a node having degree at least $k$ is $p$. 
+
+\subsection{Additional Details in Experimental Configuration}
+\label{appendix: config}
+
+\begin{table}[!ht]
+\caption{URLs and commit number to run baseline codes}
+    \centering
+    \resizebox{\textwidth}{!}{
+    \begin{tabular}{rcc}
+        \toprule
+        Baseline & URL & Commit\\
+        \midrule
+        \midrule
+        Vanilla GCN & \url{github.com/williamleif/GraphSAGE} & a0fdef\\
+        GraphSAGE & \url{github.com/williamleif/GraphSAGE} & a0fdef\\
+        FastGCN & \url{github.com/matenure/FastGCN} & b8e6e6\\
+        S-GCN & \url{github.com/thu-ml/stochastic_gcn} & da7b78\\
+        AS-GCN & \url{github.com/huangwb/AS-GCN} & 5436ec\\
+        ClusterGCN & \url{github.com/google-research/google-research/tree/master/cluster_gcn} & 99021e\\
+        \bottomrule
+    \end{tabular}}
+    \label{tab: url}
+\end{table}
+
+
+Table \ref{tab: url} summarizes the URLs to download the baseline codes. 
+
+
+
+% Hidden dimension for the four datasets.
+% Termination criteria
+% Batch size of baselines; sampler parameters of graphsaint
+% List a table to show our sampler parameter corresponding to table 2 results.
+% Baseline configs (e.g., sgcn cvd pp)
+% Number of runs to get average.
+% Learning rate, dropout
+
+The optimizer for {\graphsaint} and all baselines is Adam \citep{adam}. 
+For all baselines and datasets, we perform grid search on the hyperparameter space defined by:
+\begin{itemize}
+    \item Hidden dimension: $\set{128,256,512}$
+    \item Dropout: $\set{0.0,0.1,0.2,0.3}$
+    \item Learning rate: $\set{0.1,0.01,0.001,0.0001}$
+\end{itemize}
+%For the 4-layer curves on GAT and JK-net (Figure \ref{fig: jk-gat-saint}), we test dropout of $\set{0.0,0.05,0.1,0.15,0.2,0.25,0.3,0.35}$, since deeper models tend to be more sensitive to this parameter. 
+The hidden dimensions used for Table \ref{tab: exp-sota}, Figure \ref{fig: 2 layer convergence}, Figure \ref{fig: sensitivity} and Figure \ref{fig: jk-gat-saint} are: 512 for PPI, 256 for Flickr, 128 for Reddit, 512 for Yelp and 512 for Amazon. 
+
+% We sweep the hidden dimensions for all baselines and datasets from 128 to 512. We find out that hidden dimensions of 512 (PPI), 256 (Flickr), 128 (Reddit) and 512 (Yelp) lead to the best accuracy for most baselines. To make fair comparison, {\graphsaint} also uses the same dimensions for these datasets. We also test dropout of 0, 0.1, 0.2 and 0.3 for {\graphsaint} and each baseline separately and report results corresponding to the configuration with better accuracy. All accuracy and training time results are averaged from three runs without fixing random seed.
+
+%Note that we report execution time rather than number of epochs. The reason is that in graph sampling based minibatch training, there lacks a clear definition of ``one epoch'' --- there is no guarantee that certain number of subgraphs will cover all the training nodes exactly once. 
+
+All methods terminate after a fixed number of epochs based on convergence.
+We save the model producing the highest validation set F1-micro score, and reload it to evaluate the test set accuracy. 
+
+\begin{table*}
+\caption{Training configuration of {\graphsaint} for Table \ref{tab: exp-sota}}
+    \centering
+    \resizebox{1.0\textwidth}{!}{
+    \begin{tabular}{rccccccc}
+        \toprule
+        \multirow{2}{*}{Sampler} & \multirow{2}{*}{Dataset} & \multicolumn{2}{c}{Training} & \multicolumn{4}{c}{Sampling}\\
+        \cmidrule(lr){3-4} \cmidrule(lr){5-8}
+         & & Learning rate & Dropout & Node budget & Edge budget & Roots & Walk length\\
+        \midrule
+        \midrule
+        \multirow{4}{*}{Node} & PPI & 0.01 & 0.0 & 6000 & --- & --- & ---\\
+         & Flickr & 0.01 & 0.2 & 8000 & --- & --- & ---\\
+         & Reddit & 0.01 & 0.1 & 8000 & --- & --- & ---\\
+         & Yelp & 0.01 & 0.1 & 5000 & --- & --- & ---\\
+         & Amazon & 0.01 & 0.1 & 4500 & --- & --- & ---\\
+        \midrule
+        \multirow{4}{*}{Edge} & PPI & 0.01 & 0.1 & --- & 4000 & --- & ---\\
+         & Flickr & 0.01 & 0.2 & --- & 6000 & --- & ---\\
+         & Reddit & 0.01 & 0.1 & --- & 6000 & --- & ---\\
+         & Yelp & 0.01 & 0.1 & --- & 2500 & --- & ---\\
+         & Amazon & 0.01 & 0.1 & --- & 2000 & --- & ---\\
+        \midrule
+        \multirow{4}{*}{RW} & PPI & 0.01 & 0.1 & --- & --- & 3000 & 2\\
+         & Flickr & 0.01 & 0.2 & --- & --- & 6000 & 2\\
+         & Reddit & 0.01 & 0.1 & --- & --- & 2000 & 4\\
+         & Yelp & 0.01 & 0.1 & --- & --- & 1250 & 2\\
+         & Amazon & 0.01 & 0.1 & --- & --- & 1500 & 2\\
+        \midrule
+        \multirow{4}{*}{MRW} & PPI & 0.01 & 0.1 & 8000 & --- & 2500 & ---\\
+         & Flickr & 0.01 & 0.2 & 12000 & --- & 3000 & ---\\
+         & Reddit & 0.01 & 0.1 & 8000 & --- & 1000 & ---\\
+         & Yelp & 0.01 & 0.1 & 2500 & --- & 1000 & ---\\
+         & Amazon & 0.01 & 0.1 & 4500 & --- & 1500 & ---\\
+        \bottomrule
+    \end{tabular}}
+    \label{tab: config}
+\end{table*}
+
+
+For vanilla GCN and AS-GCN, we set the batch size to their default value 512. For GraphSAGE, we use the mean aggregator with the default batch size 512. For S-GCN, we set the flag \texttt{--cv --cvd} (which stand for ``control variate'' and ``control variate dropout'') with pre-computation of the first layer aggregation. According to the paper \citep{s-gcn}, such pre-computation significantly reduces training time without affecting accuracy. 
+For S-GCN, we use the default batch size 1000, and for FastGCN, we use the default value 400.
+For ClusterGCN, its batch size is determined by two parameters: the cluster size and the number of clusters per batch. We sweep the cluster size from $500$ to $10000$ with step $500$, and the number of clusters per batch from $\set{1,10,20,40}$ to determine the optimal configuration for each dataset / architecture. 
+Considering that for ClusterGCN, the cluster structure may be sensitive to the cluster size, and for FastGCN, the minibatch connectivity may increase with the sample size, we present additional experimental results to reveal the relation between accuracy and batch size in Appendix \ref{appendix: batch size}.
+% In addition, we are aware of the following:
+% \begin{enumerate*}
+% \item Accuracy of FastGCN may improve under larger batch sizes, due to better connectivity among sampled nodes, and
+% \item Training time of S-GCN may decrease under larger batch sizes due to higher GPU utilization.
+% \end{enumerate*}
+% Therefore, we conduct additional experiments on these two baselines with larger batch sizes. See Table \ref{tab: exp-fastgcn-batch} in the next section for details. 
+
+Configuration of {\graphsaint} to reproduce Table \ref{tab: exp-sota} results is shown in Table \ref{tab: config}.
+Configuration of {\graphsaint} to reproduce Table \ref{tab: compare clustergcn} results is shown in Table \ref{tab: config cluster compare}.%For PPI, we have an alternative configuration, which uses smaller subgraphs in the initial iterations as ``warm-up phases''. Such configuration empirically speeds up convergence, and the final F1-micro score remains the same as that in Table \ref{tab: exp-sota}.
+%In Section \ref{sec: sampler}, analysis suggests that we set the random walk length to be GCN depth when using ``RW'' sampler. In practice, we observe that sometimes increasing the walk length may lead to slightly better accuracy.
+
+
+
+\begin{table*}
+\caption{Training configuration of {\graphsaint} for Table \ref{tab: compare clustergcn}}
+    \centering
+    \resizebox{1.0\textwidth}{!}{
+    \begin{tabular}{ccccccccc}
+        \toprule
+        \multirow{2}{*}{Arch.} &\multirow{2}{*}{Sampler} & \multirow{2}{*}{Dataset} & \multicolumn{2}{c}{Training} & \multicolumn{4}{c}{Sampling}\\
+        \cmidrule(lr){4-5} \cmidrule(lr){6-9}
+         & & & Learning rate & Dropout & Node budget & Edge budget & Roots & Walk length\\
+        \midrule
+        \midrule
+        $2\times 512$ & {MRW} & PPI (large) & 0.01 & 0.1 & 1500 & --- & 300 & ---\\
+        $5\times 2048$ & RW & PPI (large) & 0.01 & 0.1 & --- & --- & 3000 & 2\\
+        $2\times 128$ & Edge & Reddit & 0.01 & 0.1 & --- & 6000 & --- & ---\\
+        $4\times 128$ & Edge & Reddit & 0.01 & 0.2 & --- & 11000 & --- & ---\\
+        \bottomrule
+    \end{tabular}}
+    \label{tab: config cluster compare}
+\end{table*}
+
+
+
+
+Below we describe the configuration for Figure \ref{fig: jk-gat-saint}. 
+
+The major difference between a normal GCN and a JK-net \citep{jk-net} is that JK-net has an additional final layer that aggregates all the output hidden features of graph convolutional layers $1$ to $L$. 
+Mathematically, the additional aggregation layer outputs the final embedding $\bm{x}_\text{JK}$ as follows:
+
+\begin{equation}
+    \bm{x}_\text{JK} = \sigma\paren{\bm{W}_\text{JK}^{\trans}\cdot \bigoplus\limits_{\ell=1}^L\bm{x}_v^{\paren{\ell}}}
+\end{equation}
+
+where based on \cite{jk-net}, $\bigoplus$ is the vector aggregation operator: max-pooling, concatenation or LSTM \citep{lstm} based aggregation.
+
+The graph attention of GAT \citep{gat} calculates the edge weights for neighbor aggregation by an additional neural network. With multi-head ($K$) attention, the layer-$\paren{\ell-1}$ features propagate to layer-$\paren{\ell}$ as follows:
+
+\begin{equation}
+    \bm{x}_v^{\paren{\ell}}=\Bigg\|_{k=1}^K\sigma\paren{\sum_{u\in\text{neighbor}\paren{v}}\alpha_{u,v}^k \bm{W}^k\bm{x}_v^{\paren{\ell-1}}}
+\end{equation}
+
+where $\|$ is the vector concatenation operation, and the coefficient $\alpha$ is calculated with the attention weights $\bm{a}^k$ by:
+
+\begin{equation}
+    \alpha_{u,v}^k = \text{LeakyReLU}\paren{\paren{\bm{a}^k}^\trans\left[\bm{W}^k\bm{x}_u\|\bm{W}^k\bm{x}_v\right]}
+\end{equation}
+
+Note that the $\alpha$ calculation is slightly different from the original equation in \cite{gat}. Namely, GAT-{\saint} does not normalize $\alpha$ by softmax across all neighbors of $v$. 
+We make such modification since under the minibatch setting, node $v$ does not see all its neighbors in the training graph. The removal of softmax is also seen in the attention design of \cite{as-gcn}. 
+Note that during the minibatch training, GAT-{\saint} further applies another edge coefficient on top of attention for aggregator normalization. 
+
+
+Table \ref{tab: jk config} shows the configuration of the GAT-{\saint} and JK-{\saint} curves in Figure \ref{fig: jk-gat-saint}. %For the 2-layer curve, we use the same training and sampling parameters, and network architecture as those for the Table \ref{tab: exp-sota} experiment (Reddit, Edge). For the 4-layer curve, we use the same training parameters (learning rate, dropout)
+
+\begin{table*}
+\caption{Training configuration of {\graphsaint} for Figure \ref{fig: jk-gat-saint} (Reddit)}
+    \centering
+    \resizebox{1.0\textwidth}{!}{
+    \begin{tabular}{rcccc}
+    \toprule
+    & 2-layer GAT-{\saint} & 4-layer GAT-{\saint} & 2-layer JK-{\saint} & 4-layer JK-{\saint} \\
+    \midrule
+    \midrule
+    Hidden dimension & 128 & 128 & 128 & 128\\
+    Attention $K$ & 8 & 8 & --- & ---\\
+    Aggregation $\bigoplus$ & --- & --- & Concat. & Concat.\\
+    \multirow{2}{*}{Sampler} & RW & RW & Edge  & Edge \\
+    & (root: 3000; length: 2) & (root: 2000; length: 4) & (budget: 6000) & (budget: 11000)\\
+    Learning rate & 0.01 & 0.01 & 0.01 & 0.01\\
+    Dropout & 0.2 & 0.2 & 0.1 & 0.2\\
+    \bottomrule
+    \end{tabular}}
+    \label{tab: jk config}
+\end{table*}
+
+\section{Additional Experiments}
+\label{appendix: add-exp}
+
+
+
+\begin{figure}
+\centering
+\begin{minipage}[b]{.48\textwidth}
+  \centering
+  \input{./plots/sota_depth.tex}
+  %\vspace{-.3cm}
+  \caption{Comparison of training efficiency}
+  \label{fig: exp sota depth}
+\end{minipage}
+\hfill
+\begin{minipage}[b]{.48\textwidth}
+  \centering
+  \input{./plots/preproc.tex}
+  %\vspace{-.3cm}
+  \caption{Fraction of training time on sampling\label{fig: preproc cost}}
+\end{minipage}
+\end{figure}
+
+\subsection{Training Efficiency on Deep Models}
+\label{appendix: depth}
+We evaluate the training efficiency for deeper GCNs. 
+We only compare with S-GCN, since implementations for other layer sampling based methods have not yet supported arbitrary model depth. 
+The batch size and hidden dimension are the same as Table \ref{tab: exp-sota}. 
+On the two large graphs (Reddit and Yelp), we increase the number of layers and measure the average time per minibatch execution. In Figure \ref{fig: exp sota depth}, training cost of {\graphsaint} is approximately linear with GCN depth. Training cost of S-GCN grows dramatically when increasing the depth. This reflects the ``neighbor explosion'' phenomenon (even though the expansion factor of S-GCN is just 2). On Yelp, S-GCN gives ``out-of-memory'' error for models beyond 5 layers.
+
+
+\subsection{Cost of Sampling and Pre-Processing}
+\label{appendix: sampler cost}
+
+\paragraph{Cost of graph samplers of {\graphsaint}} Graph sampling introduces little training overhead.
+Let $t_s$ be the average time to sample one subgraph on a multi-core machine. Let $t_t$ be the average time to perform the forward and backward propagation on one minibatch on GPU. 
+Figure \ref{fig: preproc cost} shows the ratio $t_s/t_t$ for various datasets. The parameters of the samplers are the same as Table \ref{tab: exp-sota}. For Node, Edge and RW samplers, we observe that time to sample one subgraph is in most cases less than 25\% of the training time. 
+The MRW sampler is more expensive to execute. 
+Regarding the complete pre-processing procedure, we repeatedly run the sampler for $N=50\cdot \size{\V}/\overline{\size{\V[s]}}$ times before training, to estimate the node and edge probability as discussed in Section \ref{sec: bias} (where $\overline{\size{\V[s]}}$ is the average subgraph size). These sampled subgraphs are reused as training minibatches. Thus, if training runs for more than $N$ iterations, the pre-processing is nearly zero-cost. 
+Under the setting of Table \ref{tab: exp-sota}, pre-processing on PPI and Yelp and Amazon does not incur any overhead in training time. Pre-processing on Flickr and Reddit (with RW sampler) takes less than 40\% and 15\% of their corresponding total training time. 
+
+\paragraph{Cost of layers sampler of AS-GCN}
+AS-GCN uses an additional neural network to estimate the conditional sampling probability for the previous layer. For a node $v$ already sampled in layer $\ell$, features of layer-$\paren{\ell-1}$ corresponding to all $v$'s neighbors need to be fed to the sampling neural network to obtain the node probability. For sake of analysis, assume the sampling network is a single layer MLP, whose weight $\bm{W}_\text{MLP}$ has the same shape as the GCN weights $\bm{W}^{\paren{\ell}}$. 
+Then we can show, for a $L$-layer GCN on a degree-$d$ graph, per epoch training complexity of AS-GCN is approximately $\gamma=\paren{d\cdot L}/\sum_{\ell=0}^{L-1}d^\ell$ times that of vanilla GCN. For $L=2$, we have $\gamma\approx 2$. This explains the observation that AS-GCN is slower than vanilla GCN in Figure \ref{fig: 2 layer convergence}. Additional, Table \ref{tab: asgcn breakdown} shows the training time breakdown for AS-GCN. Clearly, its sampler is much more expensive than the graph sampler of {\graphsaint}. 
+
+\begin{table*}[!ht]
+\caption{Per epoch training time breakdown for AS-GCN}
+    \centering
+    %\resizebox{1.0\textwidth}{!}{
+    \begin{tabular}{rcc}
+        \toprule
+        \multirow{2}{*}{Dataset} & \multirow{2}{*}{Sampling time (sec)} & {Forward / Backward}\\
+        & & propagation time (sec)\\
+        \midrule
+        \midrule
+        PPI & 1.1 & 0.2 \\
+        Flickr & 5.3 & 1.1\\
+        Reddit & 20.7 & 3.5 \\
+        \bottomrule
+    \end{tabular}%}
+    \label{tab: asgcn breakdown}
+\end{table*}
+
+
+\paragraph{Cost of clustering of ClusterGCN}
+ClusterGCN uses the highly optimized METIS software\footnote{\url{http://glaros.dtc.umn.edu/gkhome/metis/metis/download}} to perform clustering. Table \ref{tab: cluster cost} summarizes the time to obtain the clusters for the five graphs. On the large and dense Amazon graph, the cost of clustering increase dramatically. The pre-processing time of ClusterGCN on Amazon is more than $4\times$ of the total training time. On the other hand, the sampling cost of {\graphsaint} does not increase significantly for large graphs (see Figure \ref{fig: preproc cost}). 
+
+\begin{table*}[!ht]
+\caption{Clustering time of ClusterGCN}
+    \centering
+    %\resizebox{1.0\textwidth}{!}{
+    \begin{tabular}{rccccc}
+        \toprule
+        & PPI & Flickr & Reddit & Yelp & Amazon\\
+        \midrule
+        \midrule
+        Time (sec) & 2.2 & 11.6 & 40.0 & 106.7 & 2254.2\\
+        \bottomrule
+    \end{tabular}%}
+    \label{tab: cluster cost}
+\end{table*}
+
+
+Taking into account the pre-processing time, sampling time and training time altogether, we summarize the total convergence time of {\graphsaint} and ClusterGCN in Table \ref{tab: appendix-tot-time-saint-cluster} (corresponding to Table \ref{tab: exp-sota} configuration). 
+On graphs that are large and dense (e.g., Amazon), {\graphsaint} achieves significantly faster convergence. 
+Note that both the sampling of {\graphsaint} and clustering of ClusterGCN can be performed offline. 
+
+\begin{table*}[!ht]
+\caption{Comparison of total convergence time (pre-processing + sampling + training, unit: second)}
+    \centering
+    %\resizebox{1.0\textwidth}{!}{
+    \begin{tabular}{rccccc}
+        \toprule
+        & PPI & Flickr & Reddit & Yelp & Amazon\\
+        \midrule
+        \midrule
+        {\graphsaint}-{\small Edge} & 91.0 & 7.0 & 16.6 & 273.9 & 401.0\\
+        {\graphsaint}-{\small RW} & 103.6 & 7.5 & 17.2 & 310.1 & 425.6 \\
+        ClusterGCN & 163.2 & 12.9 & 55.3 & 256.0 & 2804.8\\
+        \bottomrule
+    \end{tabular}%}
+    \label{tab: appendix-tot-time-saint-cluster}
+\end{table*}
+
+
+
+\subsection{Effect of Batch Size}
+\label{appendix: batch size}
+\begin{table*}[!ht]
+\caption{Test set F1-micro for the baselines under various batch sizes}
+    \centering
+    %\resizebox{1.0\textwidth}{!}{
+    \begin{tabular}{rcccccc}
+        \toprule
+        {Method} & {Batch size} & {PPI} & {Flickr} & {Reddit} & {Yelp} & Amazon\\
+        \midrule
+        \midrule
+        \multirow{4}{*}{GraphSAGE} & 256 & 0.600 & 0.474 & 0.934 & 0.563 & 0.428\\
+         & 512\footnotemark[1] & 0.637 & 0.501 & 0.953 & 0.634 & 0.758\\
+         & 1024 & 0.610 & 0.482 & 0.935 & 0.632 & 0.705\\
+         & 2048 & 0.625 & 0.374 & 0.936 & 0.563 & 0.447\\
+         \midrule
+        \multirow{3}{*}{FastGCN} & 400\footnotemark[1] & 0.513 & 0.504 & 0.924 & 0.265 & 0.174\\
+        & 2000 & 0.561 & 0.506  & 0.934 & 0.255 & 0.196\\
+        & 4000 & 0.564 & 0.507  & 0.934 & 0.260 & 0.195\\
+        \midrule
+        % S-GCN-{\small{500}} \cite{s-gcn} & 0.519 & 12 & 0.462 & 6 & 0.224 & 80 & 0.000 & 80\\
+        % \multirow{4}{*}{S-GCN} & 1000 & 0.963 & 40 & 0.464 & 8 & 0.964 & 119 & 0.640 & 117\\
+        % & 2000 & 0.646 & 12 & 0.485 & 12 & 0.949 & 86 & 0.614 & 69\\
+        % & 4000 & 0.804 & 30 & 0.482 & 4 & 0.949 & 86 & 0.594 & 60\\
+        % & 8000 & 0.694 & 16 & 0.483 & 13 & 0.950 & 96 & 0.613 & 76\\
+        \multirow{5}{*}{S-GCN} & 500 & 0.519 & 0.462 & ---\footnotemark[5] & ---\footnotemark[5] & ---\footnotemark[3]\\
+         & 1000\footnotemark[1] & 0.963 & 0.482 & 0.964 & 0.640 & ---\footnotemark[3] \\
+         & 2000 & 0.646 & 0.482 & 0.949 & 0.614 & ---\footnotemark[3] \\
+         & 4000 & 0.804 & 0.482 & 0.949 & 0.594 & ---\footnotemark[3] \\
+         & 8000 & 0.694 & 0.481 & 0.950 & 0.613 & ---\footnotemark[3] \\
+        \midrule
+        \multirow{4}{*}{AS-GCN} & 256 & 0.682 & 0.504 & 0.950 & ---\footnotemark[3] & ---\footnotemark[3] \\
+         & 512\footnotemark[1] & 0.687 & 0.504 & 0.958 & ---\footnotemark[3] & ---\footnotemark[3]\\
+         & 1024 & 0.687 & 0.502 & 0.951 & ---\footnotemark[3] & ---\footnotemark[3]\\
+         & 2048 & 0.670 & 0.502 & 0.952 & ---\footnotemark[3] & ---\footnotemark[3]\\
+        \midrule
+        \multirow{8}{*}{ClusterGCN} & 500 & 0.875 & 0.481 & 0.942 & 0.604 & 0.752\\
+         & 1000 & 0.831 & 0.478 & 0.947 & 0.602 & 0.756 \\
+         & 1500 & 0.865 & 0.480 & 0.954 & 0.602 & 0.752\\
+         & 2000 & 0.828 & 0.469 & 0.954 & 0.609 & 0.759\\
+         & 2500 & 0.849 & 0.476 & 0.954 & 0.598 & 0.745\\
+         & 3000 & 0.840 & 0.473 & 0.954 & 0.607 & 0.754\\
+         & 3500 & 0.846 & 0.473 & 0.952 & 0.602 & 0.754\\
+         & 4000 & 0.853 & 0.472 & 0.949 & 0.605 & 0.756\\
+        \bottomrule
+    \end{tabular}%}
+    \label{tab: exp-fastgcn-batch}
+\end{table*}
+
+\footnotetext[1]{Default batch size}
+\footnotetext[5]{The training does not converge.}
+\footnotetext[3]{The codes throw runtime error on the large datasets (Yelp or Amazon).}
+
+
+% \begin{figure}
+% \centering
+% \resizebox{\textwidth}{!}{\input{plots/converge.pgf}}
+% \caption{Convergence curve for 3 layer GCNs\label{fig: 3layer}}
+% \end{figure}
+
+
+Table \ref{tab: exp-fastgcn-batch} shows the change of test set accuracy with batch sizes.
+For each row of Table \ref{tab: exp-fastgcn-batch}, we fix the batch size, tune the other hyperparameters according to Appendix \ref{appendix: config}, and report the highest test set accuracy achieved. 
+For GraphSAGE, S-GCN and AS-GCN, their default batch sizes (512,1000 and 512, respectively) lead to the highest accuracy on all datasets. For FastGCN, increasing the default batch size (from 400 to 4000) leads to noticeable accuracy improvement. For ClusterGCN, different datasets correspond to different optimal batch sizes. Note that the accuracy in Section \ref{sec: sota} is already tuned by identifying the optimal batch size on a per graph basis.
+
+For FastGCN, intuitively, increasing batch size may help with accuracy improvement since the minibatches may become better connected. 
+Such intuition is verified by the rows of 400 and 2000. However, increasing the batch size from 2000 to 4000 does not further improve accuracy significantly. 
+For ClusterGCN, the optimal batch size depends on the cluster structure of the training graph. For PPI, small batches are better, while for Amazon, batch size does not have significant impact on accuracy. 
+For GraphSAGE, overly large batches may have negative impact on accuracy due to neighbor explosion. Approximately, GraphSAGE expand $10\times$ more neighbors per layer. For a 2-layer GCN, a size $2\times 10^3$ minibatch would then require the support of $2\times 10^5$ nodes from the input layer. Note that the full training graph size of Reddit is just around $1.5\times 10^5$. Thus, no matter which nodes are sampled in the output layer, GraphSAGE would almost always propagate features within the full training graph for initial layers. We suspect this would lead to difficulties in learning.
+For S-GCN, with batch size of 500, it fails to learn properly on Reddit and Yelp. The accuracy fluctuates in a region of very low value, even after appropriate hyperparameter tuning. 
+For AS-GCN, its accuracy is not sensitive to the batch size, since AS-GCN addresses neighbor explosion and also ensures good inter-layer connectivity within the minibatch. 
+% shows additional experimental results on FastGCN and S-GCN \cite{s-gcn}. Except batch size, all other configurations are the same as those in Table \ref{tab: exp-sota}. For FastGCN, while increasing the batch size may lead to better connected minibatches, such hyper-parameter tuning does not significantly help with accuracy improvement. When increasing batch size from 400 to 2000, we observe accuracy improvement on PPI, Flickr and Reddit, and accuracy degradation on Yelp. When further increasing the batch from 2000 to 4000, the accuracy stabilizes. 
+% For S-GCN, as expected, increasing batch size from the default value of 1000 shortens the GPU training time for some datasets. However, larger batch sizes also result in significant accuracy degradation. 
+% Therefore, we conclude that the default batch size of S-GCN still leads to the best overall performance. 
+
+% On the other hand, using proper graph sampling algorithm, accuracy of {\graphsaint} is not sensitive to the subgraph size, as shown in Figure \ref{fig: sampler param}.
+
+% Figure \ref{fig: 3layer} shows the convergence curve of three methods on the four datasets.
+% The hyperparameters and model architecture are the same as that in Table \ref{tab: exp-sota}, except that here we add one more graph convolutional layer (of the same hidden dimension). Clearly, for 3-layer GCNs, {\graphsaint} outperforms the other two baselines in both accuracy and training time. 
+% We are also aware that training of deeper GCNs may require additional techniques. Thus, detailed hyper-parameter tuning for the 3-layer models may be necessary for a more thorough evaluation. We leave this as future work. 
+% We do not include the training curves of FastGCN \cite{fastgcn} and AS-GCN \cite{as-gcn}, since their public implementation does not support GCN models deeper than two layers. 
+

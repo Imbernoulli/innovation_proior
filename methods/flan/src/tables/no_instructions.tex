@@ -1,0 +1,25 @@
+\begingroup
+\setlength{\tabcolsep}{4.5pt}
+\begin{table}[h]
+    \centering
+    \begin{tabular}{ll cccc c}
+    \toprule
+     & & \multicolumn{5}{c}{Zero-shot performance on unseen task cluster} \\
+     \cmidrule(lr){3-7} 
+     
+    \makecell[l]{Finetuning prompt} & \makecell[l]{Inference prompt} & \makecell[c]{NLI} & \makecell[c]{\footnotesize{Read.}\vspace{-0.5mm}\\\footnotesize{Comp.}} &  \makecell[c]{\footnotesize{Closed-}\vspace{-0.5mm}\\\footnotesize{Book QA}} & \makecell[c]{Translation} & \makecell[c]{\footnotesize{\underline{Four-Task}}\vspace{-0.2mm}\\\footnotesize{\underline{Average}}}  \\
+     \midrule
+    \makecell[l]{Natural instructions \\(= \flan{})} & Natural instructions & 56.2 & 77.4 & 56.6 & 30.7 & 55.2 \\
+     \midrule
+     No template & Natural instructions & 50.5 & 58.2 & 25.5 & 15.0 & 37.3 \\
+     Task/dataset name & Natural instructions & 52.8 & 63.0 & 44.8 & 25.9 & 46.6 \\
+     Task/dataset name & Task/dataset name & 60.2 & 64.9 & 40.8 & 21.9 & 47.0 \\
+    \bottomrule
+    \end{tabular}
+    \caption{
+    Ablation study result using models where instructions are removed from the finetuning process. In ``no template,'' only inputs and outputs are given, which does not distinguish among tasks during multi-task finetuning. In ``task/dataset name'', inputs during multi-task finetuning are prepended with the name of the task and dataset (e.g., \textit{``[Translation: WMT'14 to French] The dog runs''}) NLI datasets: ANLI R1--R3, CB, and RTE; reading comprehension datasets: BoolQ, MultiRC, and OpenbookQA; closed-book QA datasets: ARC-c, ARC-e, NQ, and TQA; translation datasets: WMT'14 Fr$\leftrightarrow$En, WMT'16 De$\leftrightarrow$En, and WMT'16 Ro$\leftrightarrow$En. 
+    Notably, training with task/dataset name achieved a high NLI score largely because it achieved a score of 83.9 on the CB dataset, for which the validation set only has 56 examples (\flan{} also gets 83.9 with the best dev template, but the average template was only 64.1).
+    }
+    \label{tab:no_instructions}
+\end{table}
+\endgroup

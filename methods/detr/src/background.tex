@@ -1,0 +1,47 @@
+\section{Background}
+\label{sec:background}
+
+In this section we briefly describe the transformer architecture~\cite{Vaswani2017AttentionIA}.
+We describe our modifications enabling set prediction in sec.~\ref{sec:method}, to which a reader familiar with
+transformer architecture can skip directly.
+
+\textit{Multi-head attention} is the core operation of the transformer.
+We apply scaled dot-product multi-head attention, defined as:
+\[\text{Attention}(\mQ, \mK, \mV) = \text{softmax}(\frac{\mQ\mK^T}{\sqrt{d}})\mV,\]
+where $\mQ$, $\mK$ and $\mV$ are input matrices called query, key and value respectively,
+and $d$ is number of channels in $\mK$.
+In self-attention query, key and value matrices are obtained by projecting
+the same input $\mX$ with different weights $W_{q,k,v}$:
+$\mQ = \mW_q\mX$, $\mK = \mW_k\mX$, $\mV = \mW_v\mX$.
+In inter-attention query is a different input.
+Additionally, the multi-head aspect is achieved by doing attention multiple times with different weights on the same
+inputs, and concatenating the outputs.
+
+Let's define self-attention for 2D inputs, corresponding to activations of a convolutional network.
+In this case input $\mX$ has shape $NHWC$, where $N$ is batch size,
+$HW$ is activation height and width, and $C$ is the number of channels.
+Query, key and value is then the same matrix, thus the name of the function.
+An \textit{attention map} is a product of $\mX$ projected into $\mQ$ and $\mK$ after softmax,
+computed for each sample in a minibatch and has $HW\times HW$ shape.
+Self-attention thus has ability to `attend' to specific regions in the image, given the whole scene,
+and utilize context.
+Current region-based detectors lack this ability due to local region-detection relationship assumption.
+In decoder inter-attention the size of the attention map computed is $H\times W$.
+
+We adopt a common encoder-decoder architecture.
+Encoder consists of multiple multi-head self-attention layers followed by a feed-forward network (FFN, or MLP) and layer normalization:
+\begin{align}
+    \mQ_\text{MHA} &= \text{layernorm}\Big(\mQ + \text{dropout}\big(\text{Attention}(\mQ, \mK, \mV)
+        \big)\Big),\\
+    \mQ &= \text{layernorm}(\mQ_\text{MHA} + \text{dropout}(\mW_2\text{relu}(\mW_1\mQ_\text{MHA}))),
+    \label{eq:mha}
+\end{align}
+$\mW_1$ and $\mW_2$ are FFN weights.
+We pass CNN activations through a single $1\times1$ convolutional layer and flatten
+before feeding it to encoder as $\mQ$, $\mK$ and $\mV$.
+Self-attention in encoder allows learning the regions of interest for classifying and localizing the object given the whole image.
+Encoder output is called memory, which is fed into decoder together with $N$ query embeddings.
+For each query embedding decoder outputs an object, or none, in parallel, as described later.
+Decoder constists of multiple self-attention layers on query outputs,
+inter-attention between query outputs and encoder memory, followed by FFN.
+In inter-attention, $\mK$ and $\mQ$ are query outputs, and $\mV$ is encoder memory.

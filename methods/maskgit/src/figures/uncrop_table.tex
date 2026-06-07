@@ -1,0 +1,96 @@
+\setlength{\tabcolsep}{4pt}
+\begin{table}[t]
+\small
+    \centering
+    {\small
+    \begin{tabular}{llc ccc}
+    \toprule
+    {Task} & {Model} &
+    & {FID}  $\downarrow$ & {IS} $\uparrow$ & %{L1} $\downarrow$ 
+   % {Fool Rate} $\uparrow$ 
+    \\
+    \midrule
+    \textit{\textbf{Outpainting}}
+    & 
+    Boundless \cite{teterwak2019boundless}$^{\square}$ & 
+    & 35.02 & 6.15 & 
+    %.064%
+    \\
+        
+    % NS-Outpaint \cite{}$^{\square}$ &
+    % & 50.68 & 4.70 &   \\   
+    
+     {\footnotesize Right 50\%} & In\&Out \cite{cheng2021inout}$^{\square}$ &
+    & 23.57 & 7.18 &  \\
+    
+
+    & InfinityGAN \cite{lin2021infinitygan} &
+    & 10.60 & 5.57 &
+    \\
+    
+    & Boundless \cite{teterwak2019boundless} TF $^{\blackdiamond}$ & 
+    & 7.80 & 5.99 &
+    %.064% 
+    \\
+     
+    & \textbf{\model (Ours)} $^{512}$& 
+    & \textbf{6.78} & \textbf{11.69} &  \\[2pt]
+    \midrule
+    \textit{\textbf{Inpainting}} & 
+     DeepFill \cite{yu2019free} &
+    & 11.51 & 22.55 & \\
+    
+ {\footnotesize Center 50\%$\times$50\%} & HiFill \cite{yi2020contextual}$^{512}$ & 
+    & 16.60 & 19.93 &  \\
+    
+    & \textbf{\model (Ours)$^{512}$} &
+    & \textbf{7.92} & \textbf{22.95} & \\
+    \bottomrule
+    \end{tabular}
+    }
+    % \vspace*{0.35cm}
+    \caption{Quantitative Comparison for Inpainting and Outpainting on the Places2 dataset. \footnotesize{$^{512}$ evaluated on 512$\times$512 samples while other work evaluated on the corresponding 256$\times$256 ones, consistent with their training; $^\square$ taken from the prior work. $^\blackdiamond$ evaluated using the TFHub model\cite{boundless_tfhub}.} }
+    \label{tab:inpaint_uncrop}
+\vspace{-6cm}
+\end{table}
+
+
+
+
+
+% \setlength{\tabcolsep}{3pt}
+% \begin{table}[h]
+% \small
+%     \centering
+%     {\small
+%     \begin{tabular}{llc cccc}
+%     \toprule
+%     {Task} & {Model} &
+%     & {FID}  $\downarrow$ & {Lpips}  $\downarrow$ & {User Study} $\uparrow$ \\
+%     \midrule
+%     \textit{Outpainting} & Boundless \cite{teterwak2019boundless} & 
+%     & 20.8 & 0.29 & ??  \\
+    
+%     & InfinityGAN \cite{lin2021infinitygan} &
+%     & 18.5 &\textbf{0.28} & ??  \\
+    
+%     & \textbf{\model (Ours)}& 
+%     & \textbf{7.3} & 0.32 & \textbf{??} \\
+%     \midrule
+%     \textit{Inpainting} & DeepFill \cite{yu2019free} &
+%     & 14.3 & ?? & ?? \\
+    
+%     & HiFill \cite{yi2020contextual} & 
+%     & 15.9 & 0.21 & ?? \\
+    
+%     & \textbf{\model (Ours)} &
+%     & \textbf{10.9} &\textbf{0.25} & \textbf{??} \\
+    
+%     \bottomrule
+%     \end{tabular}
+%     }
+%     % \vspace*{0.35cm}
+%     \caption{Quantitative Comparison for Inpainting and Outpainting.}
+%     \label{tab:inpaint_uncrop}
+% \vspace{-.2cm}
+% \end{table}

@@ -1,0 +1,23 @@
+Our basic setup follows SA-GAN \citep{zhang2018sagan}, and is implemented in TensorFlow \citep{Abadi2016tf}. We employ the architectures detailed in Appendix~\ref{appendix_architecture}, with non-local blocks inserted at a single stage in each network. Both \gen{} and \discr{} networks are initialized with Orthogonal Initialization \citep{saxe2014ortho}.  
+We use Adam optimizer \citep{kingma2014adam} with $\beta_1=0$ and $\beta_2=0.999$ and a constant learning rate. 
+For BigGAN models at all resolutions, we use $2\cdot10^{-4}$ in \discr{} and $5\cdot10^{-5}$ in \gen{}.
+For BigGAN-deep, we use the learning rate of $2\cdot10^{-4}$ in \discr{} and $5\cdot10^{-5}$ in \gen{} for $128\times 128$ models, and $2.5\cdot10^{-5}$ in both \discr{} and \gen{} for $256\times 256$ and $512\times 512$ models.
+We experimented with the number of \discr{} steps per \gen{} step (varying it from $1$ to $6$) and found that two \discr{} steps per \gen{} step gave the best results. 
+
+We use an exponential moving average of the weights of \gen{} at sampling time, with a decay rate set to 0.9999. We employ cross-replica BatchNorm \citep{ioffe2015batchnorm} in \gen{}, where batch statistics are aggregated across all devices, rather than a single device as in standard implementations. Spectral Normalization \citep{miyato2018spectral} is used in both \gen{} and \discr{}, following SA-GAN \citep{zhang2018sagan}. We train on a Google TPU v3
+Pod, with the number of cores proportional to the resolution: 128 for 128$\times$128, 256 for 256$\times$256, and 512 for 512$\times$512. Training takes between 24 and 48 hours for most models. We increase $\epsilon$ from the default $10^{-8}$ to $10^{-4}$ in BatchNorm and Spectral Norm to mollify low-precision numerical issues.
+We preprocess data by cropping along the long edge and rescaling to a given resolution with area resampling. 
+% As the ImageNet dataset has many low-resolution images, directly training at 512$\times$512 produces aliased results, so we filter out all images with a short edge length less than 400 pixels. Similar to the CelebA-HQ dataset employed by \citet{karras2018progan}, this reduces the dataset size to around 200,000 instances.
+
+\subsection{BatchNorm Statistics and Sampling}
+The default behavior with batch normalized classifier networks is to use a running average of the activation moments at test time. Previous works \citep{radford2016dcgan} have instead used batch statistics when sampling images. While this is not technically an invalid way to sample, it means that results are dependent on the test batch size (and how many devices it is split across), and further complicates reproducibility.
+
+We find that this detail is extremely important, with changes in test batch size producing drastic changes in performance. This is further exacerbated when one uses exponential moving averages of \gen{}'s weights for sampling, as the BatchNorm running averages are computed with non-averaged weights and are poor estimates of the activation statistics for the averaged weights.
+
+To counteract both these issues, we employ ``standing statistics,'' where we compute activation statistics at sampling time by running the \gen{} through multiple forward passes (typically 100) each with different batches of random noise, and storing means and variances aggregated across all forward passes. Analogous to using running statistics, this results in \gen{}'s outputs becoming invariant to batch size and the number of devices, even when producing a single sample.
+
+\subsection{CIFAR-10}
+We run our networks on CIFAR-10 \citep{krizhevsky2009cifar} using the settings from Table~\ref{ablation_table}, row 8, and achieve an IS of 9.22 and an FID of 14.73 without truncation.
+
+\subsection{Inception Scores of ImageNet Images}
+We compute the IS for both the training and validation sets of ImageNet. At 128$\times$128 the training data has an IS of 233, and the validation data has an IS of 166. At 256$\times$256 the training data has an IS of 377, and the validation data has an IS of 234. At 512$\times$512 the training data has an IS of 348, and the validation data has an IS of 241. The discrepancy between training and validation scores is due to the Inception classifier having been trained on the training data, resulting in high-confidence outputs that are preferred by the Inception Score.

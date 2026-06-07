@@ -1,0 +1,132 @@
+%
+% File acl2019.tex
+%
+%% Based on the style files for ACL 2018, NAACL 2018/19, which were
+%% Based on the style files for ACL-2015, with some improvements
+%%  taken from the NAACL-2016 style
+%% Based on the style files for ACL-2014, which were, in turn,
+%% based on ACL-2013, ACL-2012, ACL-2011, ACL-2010, ACL-IJCNLP-2009,
+%% EACL-2009, IJCNLP-2008...
+%% Based on the style files for EACL 2006 by 
+%%e.agirre@ehu.es or Sergi.Balari@uab.es
+%% and that of ACL 08 by Joakim Nivre and Noah Smith
+
+\documentclass[11pt,a4paper]{article}
+\usepackage[hyperref]{acl2019}
+\usepackage{times}
+\usepackage{latexsym}
+
+\usepackage[T1]{fontenc}  
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel} 
+
+\usepackage{longtable}
+\usepackage{caption}
+
+\usepackage{placeins}
+
+\usepackage{url}
+\usepackage{changepage}
+
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{graphicx}
+\usepackage{multirow}
+\usepackage{booktabs}
+\usepackage[inline]{enumitem}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{xcolor}
+\usepackage{nccmath}
+
+% Optional math commands from https://github.com/goodfeli/dlbook_notation.
+\input{math_commands.tex}
+\newcommand{\rulesep}{\unskip\ \vrule\ }
+\usepackage{amssymb}% http://ctan.org/pkg/amssymb
+\usepackage{pifont}% http://ctan.org/pkg/pifont
+\newcommand{\cmark}{\ding{51}}%
+\newcommand{\xmark}{\ding{55}}%
+
+\usepackage{mathtools}
+
+\newcommand{\red}[1]{{\color{red}#1}}
+\newcommand{\blue}[1]{{\color{blue}#1}}
+\newcommand{\green}[1]{{\color{green}#1}}
+\newcommand{\brown}[1]{{\color{brown}#1}}
+\newcommand{\cyan}[1]{{\color{cyan}#1}}
+\newcommand{\purple}[1]{{\color{purple}#1}}
+\newcommand{\orange}[1]{{\color{orange}#1}}
+\newcommand{\magenta}[1]{{\color{magenta}#1}}
+
+\aclfinalcopy % Uncomment this line for the final submission
+%\def\aclpaperid{***} %  Enter the acl Paper ID here
+
+%\setlength\titlebox{5cm}
+% You can expand the titlebox if you need extra space
+% to show all the authors. Please do not make the titlebox
+% smaller than 5cm (the original size); we will check this
+% in the camera-ready version and ask you to change it back.
+
+\newcommand\BibTeX{B\textsc{ib}\TeX}
+
+\title{Transformer-XL: Attentive Language Models \\ Beyond a Fixed-Length Context}
+
+\author{Zihang Dai$^{*12}$, Zhilin Yang$^{*12}$, Yiming Yang$^1$, Jaime Carbonell$^1$, \\
+	{\bf Quoc V. Le$^2$, Ruslan Salakhutdinov$^1$ }\\
+	$^1$Carnegie Mellon University, $^2$Google Brain \\
+	{\small \texttt{\{dzihang,zhiliny,yiming,jgc,rsalakhu\}@cs.cmu.edu, qvl@google.com} } 
+}
+
+%\author{First Author \\
+%  Affiliation / Address line 1 \\
+%  Affiliation / Address line 2 \\
+%  Affiliation / Address line 3 \\
+%  \texttt{email@domain} \\\And
+%  Second Author \\
+%  Affiliation / Address line 1 \\
+%  Affiliation / Address line 2 \\
+%  Affiliation / Address line 3 \\
+%  \texttt{email@domain} \\}
+
+\date{}
+
+\begin{document}
+\maketitle
+%\begin{abstract}
+%  This document contains the instructions for preparing a camera-ready
+%  manuscript for the proceedings of ACL 2019. The document itself
+%  conforms to its own specifications, and is therefore an example of
+%  what your manuscript should look like. These instructions should be
+%  used for both papers submitted for review and for final versions of
+%  accepted papers.  Authors are asked to conform to all the directions
+%  reported in this document.
+%\end{abstract}
+
+\renewcommand{\thefootnote}{\fnsymbol{footnote}}
+\footnotetext[1]{Equal contribution. Order determined by swapping the one in \citet{yang2017breaking}.}
+\renewcommand{\thefootnote}{\arabic{footnote}}
+
+\input{abstract}
+\input{intro}
+\input{related}
+\input{method}
+\input{exp}
+\input{conc}
+
+\subsubsection*{Acknowledgments}
+ZD and YY were supported in part by National Science Foundation (NSF) under the grant IIS-1546329 and by the DOE-Office of Science under the grant ASCR \#KJ040201.
+ZY and RS were supported in part by the Office of Naval Research grant N000141812861, the NSF grant IIS1763562, the Nvidia fellowship, and the Siebel scholarship.
+
+
+
+\FloatBarrier
+
+\bibliography{acl2019}
+\bibliographystyle{acl_natbib}
+
+\FloatBarrier
+
+\appendix
+\input{appendix}
+
+\end{document}

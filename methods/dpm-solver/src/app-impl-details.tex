@@ -1,0 +1,100 @@
+
+\section{Implementation Details of DPM-Solver}
+\label{appendix:implementation}
+
+
+\subsection{End Time of Sampling}
+Theoretically, we need to solve diffusion ODEs from time $T$ to time $0$ to generate samples. Practically, the training and evaluation for the noise prediction model $\epsilonv_\theta(\x_t,t)$ usually start from time $T$ to time $\epsilon$ to avoid numerical issues for $t$ near to $0$, where $\epsilon>0$ is a hyperparameter~\citep{song2020score}.
+
+In contrast to the sampling methods based on diffusion SDEs~\citep{ho2020denoising,song2020score}, We don't add the ``denoising'' trick at the final step at time $\epsilon$ (which is to set the noise variance to zero), and we just solve diffusion ODEs from $T$ to $\epsilon$ by DPM-Solver, since we find it performs well enough.
+
+For discrete-time DPMs, we firstly convert the model to continuous time (see Appendix~\ref{appendix:discrete}), and then solver it from time $T$ to time $t$.
+
+\subsection{Sampling from Discrete-Time DPMs}
+\label{appendix:discrete}
+In this section, we discuss the more general case for discrete-time DPMs, in which we consider the 1000-step DPMs~\citep{ho2020denoising} and the 4000-step DPMs~\citep{nichol2021improved}, and we also consider the end time $\epsilon$ for sampling.
+
+Discrete-time DPMs~\citep{ho2020denoising} train the noise prediction model at $N$ fixed time steps $\{t_n\}_{n=1}^N$. In practice, $N=1000$ or $N=4000$, and the implementation of the 4000-step DPMs~\citep{nichol2021improved} converts the time steps of 4000-step DPMs to the range of 1000-step DPMs. Specifically, the noise prediction model is parameterized by $\tilde\epsilonv_\theta(\x_n, \frac{1000n}{N})$ for $n=0,\dots,N-1$, where each $\x_n$ is corresponding to the value at time $t_{n+1}$. In practice, these discrete-time DPMs usually choose uniform time steps between $[0,T]$, thus $t_{n}=\frac{nT}{N}$, for $n=1,\dots,N$.
+
+However, the discrete-time noise prediction model cannot predict the noise at time less than the smallest time $t_1$. As the smallest time step $t_1=\frac{T}{N}$ and the corresponding discrete-time noise prediction model at time $t_1$ is $\tilde\epsilonv_\theta(\x_0, 0)$, we need to ``scale'' the discrete time steps $[t_1, t_N]=[\frac{T}{N}, T]$ to the continuous time range $[\epsilon, T]$. We propose two types of scaling as following.
+
+\textbf{Type-1.}\quad Scale the discrete time steps $[t_1, t_N]=[\frac{T}{N}, T]$ to the continuous time range $[\frac{T}{N}, T]$, and let $\epsilonv_\theta(\cdot, t)=\epsilonv_\theta(\cdot, \frac{T}{N})$ for $t\in[\epsilon, \frac{T}{N}]$. In this case, we can define the continuous-time noise prediction model by
+\begin{equation}
+    \epsilonv_\theta(\x, t) = \tilde\epsilonv_\theta\left(\x, 1000 \cdot \max\left(t - \frac{T}{N}, 0\right)\right),
+\end{equation}
+where the continuous time $t\in [\epsilon, \frac{T}{N}]$ maps to the discrete input $0$, and the continuous time $T$ maps to the discrete input $\frac{1000(N-1)}{N}$.
+
+\textbf{Type-2.}\quad Scale the discrete time steps $[t_1, t_N]=[\frac{T}{N}, T]$ to the continuous time range $[0, T]$. In this case, we can define the continuous-time noise prediction model by
+\begin{equation}
+    \epsilonv_\theta(\x, t) = \tilde\epsilonv_\theta\left(\x, 1000 \cdot \frac{(N-1)t}{NT}\right),
+\end{equation}
+where the continuous time $0$ maps to the discrete input $0$, and the continuous time $T$ maps to the discrete input $\frac{1000(N-1)}{N}$.
+
+Note that the input time of $\tilde\epsilonv_\theta$ may not be integers, but we find that the noise prediction model can still work well, and we hypothesize that it is because of the smooth time embeddings (e.g., position embeddings~\citep{ho2020denoising}). By such reparameterization, the noise prediction model can adopt the continuous-time steps as input, and thus we can also use DPM-Solver for fast sampling.
+
+In practice, we have $T=1$, and the smallest discrete time $t_1=10^{-3}$. For fixed $K$ number of function evaluations, we empirically find that for small $K$, the Type-1 with $\epsilon=10^{-3}$ may have better sample quality, and for large $K$, the Type-2 with $\epsilon=10^{-4}$ may have better sample quality. We refer to Appendix~\ref{appendix:experiment} for detailed results.
+
+
+\subsection{DPM-Solver in 20 Function Evaluations}
+\label{appendix:dpm-solver-fast}
+Given a fixed budget $K\leq 20$ of the number of function evaluations, we uniformly divide the interval $[\lambda_T, \lambda_\epsilon]$ into $M = (\lfloor K / 3\rfloor + 1)$ segments, and take $M$ steps to generate samples. The $M$ steps are dependent on the remainder $R$ of $K$ mod $3$ to make sure the total number of function evaluations is exactly $K$.
+
+\begin{itemize}
+\item 
+If $R = 0$, we firstly take $M - 2$ steps of DPM-Solver-3, and then take $1$ step of DPM-Solver-2 and 1 step of DPM-Solver-1. The total number of function evaluations is $3\cdot(\frac{K}{3} - 1) + 2 + 1 = K$.
+
+    \item 
+If $R = 1$, we firstly take $M - 1$ steps of DPM-Solver-3 and then take $1$ step of DPM-Solver-1. The total number of function evaluations is $3\cdot(\frac{K-1}{3}) + 1=K$.
+
+    \item 
+If $R = 2$, we firstly take $M - 1$ steps of DPM-Solver-3 and then take $1$ step of DPM-Solver-2. The total number of function evaluations is $3\cdot(\frac{K-2}{3}) + 2 = K$.
+\end{itemize}
+
+We empirically find that this design of time steps can greatly improve the generation quality, and DPM-Solver can generate comparable samples in 10 steps and high-quality samples in 20 steps.
+
+
+
+\subsection{Analytical Formulation of the function $t_\lambda(\cdot)$ (the inverse function of $\lambda(t)$)}
+The costs of computing $t_\lambda(\cdot)$ is negligible, because for the noise schedules of $\alpha_t$ and $\sigma_t$ used in previous DPMs (``linear'' and ``cosine'')~\citep{ho2020denoising,nichol2021improved}, both $\lambda(t)$ and its inverse function $t_\lambda(\cdot)$ have analytic formulations. We mainly consider the variance preserving type here, since it is the most widely-used type. The functions of other types (variance exploding and sub-variance preserving type) can be similarly derived.
+
+\textbf{Linear Noise Schedule~\citep{ho2020denoising}.}\quad We have
+\begin{equation*}
+    \log\alpha_t = -\frac{(\beta_1-\beta_0)}{4}t^2 - \frac{\beta_0}{2}t,
+\end{equation*}
+where $\beta_0=0.1$ and $\beta_1=20$, following~\citep{song2020score}. As $\sigma_t=\sqrt{1-\alpha_t^2}$, we can compute $\lambda_t$ analytically. Moreover, the inverse function is
+\begin{equation*}
+    t_\lambda(\lambda) = \frac{1}{\beta_1-\beta_0}\left(\sqrt{\beta_0^2 + 2(\beta_1-\beta_0)\log\left(e^{-2\lambda}+1\right)} - \beta_0\right).
+\end{equation*}
+To reduce the influence of numerical issues, we can compute $t_\lambda$ by the following equivalent formulation:
+\begin{equation*}
+    t_\lambda(\lambda) = \frac{2\log\left(e^{-2\lambda}+1\right)}{\sqrt{\beta_0^2 + 2(\beta_1-\beta_0)\log\left(e^{-2\lambda}+1\right)} + \beta_0}.
+\end{equation*}
+And we solve diffusion ODEs between $[\epsilon, T]$, where $T=1$.
+
+\textbf{Cosine Noise Schedule~\citep{nichol2021improved}.}\quad Denote
+\begin{equation*}
+    \log\alpha_t = \log\left(\cos\left( \frac{\pi}{2}\cdot\frac{t+s}{1+s} \right)\right) - \log\left(\cos\left( \frac{\pi}{2}\cdot\frac{s}{1+s} \right)\right),
+\end{equation*}
+where $s=0.008$, following~\citep{nichol2021improved}. As~\citep{nichol2021improved} clipped the derivatives to ensure the numerical stability, we also clip the maximum time $T=0.9946$.
+As $\sigma_t=\sqrt{1-\alpha_t^2}$, we can compute $\lambda_t$ analytically. Moreover, given a fixed $\lambda$, let
+\begin{equation*}
+    f(\lambda) = -\frac{1}{2}\log\left(e^{-2\lambda} + 1\right),
+\end{equation*}
+which computes the corresponding $\log\alpha$ for $\lambda$. Then the inverse function is
+\begin{equation*}
+    t_{\lambda}(\lambda) = 
+        \frac{2(1+s)}{\pi}\arccos\left(e^{f(\lambda) + \log\cos\left(\frac{\pi s}{2(1+s)}\right)}\right) - s.
+\end{equation*}
+And we solve diffusion ODEs between $[\epsilon, T]$, where $T=0.9946$.
+
+
+
+
+\subsection{Conditional Sampling by DPM-Solver}
+DPM-Solver can also be used for conditional sampling, with a simple modification. The conditional generation needs to sample from the conditional diffusion ODE~\citep{song2020score, dhariwal2021diffusion} which includes the conditional noise prediction model. We follow the classifier guidance method~\citep{dhariwal2021diffusion} to define the conditional noise prediction model as $\epsilonv_\theta(\x_t,t,y)\coloneqq \epsilonv_\theta(\x_t,t) - s \cdot \sigma_t\nabla_{\x}\log p_t(y|\x_t;\theta)$, where $p_t(y|\x_t;\theta)$ is a pre-trained classifier and $s$ is the classifier guidance scale (default is 1.0). Thus, we can use DPM-Solver to solve this diffusion ODE for fast conditional sampling, as shown in Fig.~\ref{fig:intro}.
+
+
+
+
+\subsection{Numerical Stability}
+As we need to compute $e^{h_i} - 1$ in the algorithm of DPM-Solver, we follow~\citep{kingma2021variational} to use \texttt{expm1($h_i$)} instead of \texttt{exp($h_i$)-1} to improve numerical stability.

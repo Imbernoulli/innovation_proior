@@ -1,0 +1,152 @@
+\label{sec:contrast}
+We present ablations on \algo to give an intuition of its behavior and performance. For reproducibility, we run each configuration of parameters over three seeds, and report the average performance. We also report the half difference between the best and worst runs when it is larger than $0.25$. Although previous works perform ablations at $100$ epochs~\cite{SimCLR,Tian2020WhatMF}, we notice that relative improvements at $100$ epochs do not always hold over longer training. For this reason, we run ablations over $300$ epochs on $64$ TPU v$3$ cores, which yields consistent results compared to our baseline training of $1000$ epochs. For all the experiments in this section, we set the initial learning rate to $0.3$ with batch size $4096$, the weight decay to $10^{-6}$ as in \simclr~\cite{SimCLR} and the base target decay rate $\tau_\text{base}$ to $0.99$. In this section we report results in top-$1$ accuracy on ImageNet under the linear evaluation protocol as in \Cref{app:linear_eval_details}.
+
+
+\paragraph{Batch size}
+Among contrastive methods, the ones that draw negative examples from the minibatch suffer  performance drops when their batch size is reduced. \algo does not use negative examples and we expect it to be 
+more robust to smaller batch sizes. To empirically verify this hypothesis, we train both \algo and \simclr using different batch sizes from $128$ to $4096$. To avoid re-tuning other hyperparameters, we average gradients over $N$ consecutive steps before updating the online network when reducing the batch size by a factor $N$. The target network is updated once every $N$ steps, after the update of the online network; we accumulate the $N$-steps in parallel in our runs.
+
+As shown in \Cref{fig:batchsize}, the performance of \simclr rapidly deteriorates with batch size, likely due to the decrease in the number of negative examples. In contrast, the performance of \algo remains stable over a wide range of batch sizes from $256$ to $4096$, and only drops for smaller values due to batch normalization layers in the encoder.\footnote{The only dependency on batch size in our training pipeline sits within the batch normalization layers.}
+
+\begin{figure}[h]
+    \centering
+    \begin{subfigure}{0.48\linewidth}
+        \centering
+        \vskip 0.1em
+        %\includegraphics[width=0.85\linewidth]{img/batchsize-ablation.pdf}
+        \includegraphics[width=0.85\linewidth,bb=0 0 895 812]{img/batchsize-ablation.pdf}
+        \caption{Impact of batch size}
+        \label{fig:batchsize}
+    \end{subfigure}%
+    \hfill
+    \begin{subfigure}{0.48\linewidth}
+        \centering
+        %\includegraphics[width=0.85\linewidth]{img/transfo-ablations.pdf}
+        \includegraphics[width=0.85\linewidth,bb=0 0 926 853]{img/transfo-ablations.pdf}
+        \caption{Impact of progressively removing transformations}
+        \label{fig:transfo}
+    \end{subfigure}
+    \captionsetup{width=.95\linewidth}
+    \caption{\label{fig:ablations}Decrease in top-$1$ accuracy (in \% points) of \algo and our own reproduction of \simclr at $300$ epochs, under linear evaluation on ImageNet.}
+    \vspace{-0.7em}
+\end{figure}
+
+\paragraph{\Imageaugmentation s}
+\label{subsec:robustness_tranfo}
+Contrastive methods are sensitive to the choice of \imageaugmentation s. For instance, \simclr does not work well when removing color distortion from its \imageaugmentation s. As an explanation, \simclr shows that crops of the same image mostly share their color histograms. At the same time, color histograms vary across images. 
+Therefore, when a contrastive task only relies on random crops as \imageaugmentation s, it can be mostly solved by focusing on color histograms alone. As a result the representation is not incentivized to retain information beyond color histograms.
+To prevent that, \simclr adds color distortion to its set of \imageaugmentation s. Instead, \algo is incentivized to keep any information captured by the target representation into its online network, to improve its predictions. Therefore, even if \augview s of a same image share the same color histogram, \algo is still incentivized to retain additional features in its representation. For that reason, we believe that \algo is more robust to the choice of \imageaugmentation s than contrastive methods.
+
+Results presented in \Cref{fig:transfo} support this hypothesis: the performance of \algo is much less affected than the performance of \simclr when removing color distortions from the set of \imageaugmentation s ($-9.1$ accuracy points for \algo, $-22.2$ accuracy points for \simclr). 
+When \imageaugmentation s are reduced to mere random crops, \algo still displays good performance ($59.4\%$, \emph{i.e.} $-13.1$ points from $72.5\%$ ), while \simclr loses more than a third of its performance ($40.3\%$, \emph{i.e.}  $-27.6$ points from $67.9\%$). We report additional ablations in \Cref{app:imageaugment}.
+
+\paragraph{Bootstrapping}
+
+\algo uses the projected representation of a target network, whose weights are an exponential moving average of the weights of the online network, as target for its predictions. This way, the weights of the target network represent a delayed and more stable version of the weights of the online network. When the target decay rate is $1$, the target network is never updated, and remains at a constant value corresponding to its initialization. When the target decay rate is $0$, the target network is instantaneously updated to the online network at each step. 
+There is a trade-off between updating the targets too often and updating them too slowly, as illustrated in \Cref{tab:ablation_bootstrap}. 
+Instantaneously updating the target network ($\tau = 0$) destabilizes training, yielding very poor performance while never updating the target ($\tau = 1$) makes the training stable but prevents iterative improvement, ending with low-quality final representation. All values of the decay rate between $0.9$ and $0.999$ yield performance above $68.4\%$ top-$1$ accuracy at $300$ epochs. 
+
+\newcommand{\misovspace}{\vspace{0.685em}}
+\begin{table}[h]
+\begin{subtable}{.49\linewidth}
+    \small
+    \centering
+    \begin{tabular}{l r r}
+            \toprule
+              Target  & $\tau_\text{base}$ & Top-$1$  \\
+                \midrule
+                Constant random network & $1$ & $18.8 {\scriptstyle \pm 0.7}$ \\ 
+                Moving average of online  & $0.999$ & $69.8$ \\
+                Moving average of online  & $0.99$  & $\bf{72.5}$ \\
+                Moving average of online  & $0.9$   & $68.4$ \\
+                Stop gradient of online$^{\color{red}\dagger}$  & $0$ & $0.3$ \\
+            \bottomrule
+    \end{tabular}
+    \caption{Results for different target modes.~$^\dagger$In the \emph{stop gradient of online}, $\tau = \tau_\text{base} = 0$ is kept constant throughout training. }
+    \label{tab:ablation_bootstrap}
+\end{subtable}
+\hfill
+\begin{subtable}{.49\linewidth}
+    \centering
+    \small
+    \begin{tabular}{l c c c r}
+    \toprule
+    Method & Predictor & Target network & $\beta$ & Top-$1$  \\
+    \midrule
+    \algo    & \checkmark & \checkmark &  0 & $\bf{72.5}$ \\
+      $-$    & \checkmark & \checkmark & 1 & $70.9$ \\
+      $-$    &            & \checkmark & 1 & $70.7$\\
+    \simclr  &            &            & 1 & $69.4$\\
+      $-$    & \checkmark &            & 1 & $69.1$\\
+      $-$    & \checkmark &            & 0 & $0.3$  \\
+      $-$    &            & \checkmark & 0 & $0.2$  \\
+      $-$    &            &            & 0 & $0.1$   \\
+    \bottomrule
+    \end{tabular}
+     \caption{Intermediate variants between \algo and \simclr. }
+     \label{tab:simclr_to_pbl}
+\end{subtable}
+\caption{Ablations  with top-$1$ accuracy (in \%) at $300$ epochs under linear evaluation on ImageNet.}
+\label{table:ablation_bs_and_pbl_to_simclr}
+\vspace{-0.8em}
+%\vspace{-1.25em}
+\end{table}
+
+\paragraph{Ablation to contrastive methods}
+\label{subsec:simclr_to_pbl}
+In this subsection, we recast \simclr and \algo using the same formalism to better understand  where the improvement of \algo over \simclr comes from. Let us consider the following objective that extends the InfoNCE objective \cite{CPC, poole2019variational} (see \Cref{app:neg-examples}),
+
+\begin{align}
+\text{InfoNCE}^{\alpha, \beta}_{\netparams} \eqdef
+\label{eq:infonce}
+ \frac{2}{B}\sum_{i=1}^B S_\netparams(v_i, v'_i)\!- \beta \cdot \frac{2\alpha}{B}\sum_{i=1}^B \ln\pa{\sum\limits_{j \neq i} \exp \frac{S_\netparams(v_i, v_j)}{\alpha} + \sum\limits_{j} \exp \frac{S_\netparams(v_i, v'_j)}{\alpha}}\CommaBin
+\end{align}
+
+where $\alpha>0$ is a fixed temperature, $\beta \in [0, 1]$ a weighting coefficient, $B$ the batch size, $v$ and $v'$ are batches of \augview s where for any batch index $i$, $v_i$ and $v'_i$ are \augview s from the same image; the real-valued function $S_\netparams$ quantifies pairwise similarity between \augview s. For any \augview~$u$ we denote $z_\netparams(u) \triangleq f_\netparams(g_\netparams(u))$ and $z_\targetparams(u) \triangleq f_\targetparams(g_\targetparams(u))$. For given $\phi$ and~$\psi$, we consider the normalized dot product
+
+\begin{equation}
+    S_\netparams(u_1, u_2) \eqdef \frac{\langle \phi(u_1), \psi(u_2) \rangle }{\|\phi(u_1)\|_2\cdot \|\psi(u_2)\|_2}\cdot
+\end{equation}
+
+Up to minor details (cf.\,\Cref{app:simclr_baseline}), we recover the \simclr loss with $\phi(u_1) = z_\netparams(u_1)$ (no predictor), $\psi(u_2) = z_\netparams(u_2)$ (no target network) and $\beta=1$. We recover the \algo loss when using a predictor and a target network, \emph{i.e.,} $\phi(u_1) = p_\netparams\pa{z_\netparams(u_1)}$ and $\psi(u_2) = z_\targetparams(u_2)$ with $\beta=0$. To evaluate the influence of the target network, the predictor and the coefficient~$\beta$, we perform an ablation over them. Results are presented in \Cref{tab:simclr_to_pbl} and more details are given in \Cref{app:neg-examples}.
+ 
+The only variant that performs well without negative examples (i.e., with $\beta = 0$) is \algo, using \textit{both} a bootstrap target network \textit{and} a predictor. 
+Adding the negative pairs to \algo's loss without re-tuning the temperature parameter hurts its performance. 
+In \Cref{app:neg-examples}, we show that we can add back negative pairs and still match the performance of \algo with proper tuning of the temperature.
+
+Simply adding a target network to \simclr already improves performance ($+1.6$ points). This sheds new light on the use of the target network in \moco~\cite{MOCO}, where the target network is used to provide more negative examples. Here, we show that by mere stabilization effect, even when using the same number of negative examples, using a target network is beneficial. 
+Finally, we observe that modifying the architecture of $S_\netparams$ to include a predictor only mildly affects the performance of \simclr.
+
+\paragraph{Network hyperparameters} In Appendix~\ref{sec:additional_ablation_results}, we explore how other network parameters may impact \algo's performance.
+We iterate over multiple weight decays, learning rates, and projector/encoder architectures to observe that small hyperparameter changes do not drastically alter the final score. We note that removing the weight decay in either \algo or \simclr leads to network divergence, emphasizing the need for weight regularization in the self-supervised setting. Furthermore, we observe that changing the scaling factor in the network initialization~\cite{he2015delving} did not impact the performance (higher than $72\%$ top-$1$ accuracy).
+
+
+\paragraph{Relationship with \meanteacher}\label{sec:mean_teacher} Another  semi-supervised approach, \meanteacher (MT)~\cite{tarvainen2017mean},  complements a supervised loss on few labels with an additional consistency loss. In~\cite{tarvainen2017mean}, this consistency loss is the $\ell_2$ distance between the logits from a \textit{student} network, and those of a temporally averaged version of the student network, called \textit{teacher}. 
+Removing the predictor in \algo results in an unsupervised version of MT with no classification loss that uses image augmentations instead of the original architectural noise (e.g., dropout).
+This variant of \algo collapses (Row 7 of~\Cref{table:ablation_bs_and_pbl_to_simclr}) which suggests that the additional predictor is critical to prevent collapse in an unsupervised scenario.
+
+
+\paragraph{Importance of a near-optimal predictor}
+\Cref{tab:simclr_to_pbl} already shows the importance of combining a predictor and a target network: the representation does collapse when either is removed. 
+We further found that we can remove the target network without collapse by making the predictor near-optimal, either by (i) using an optimal \emph{linear} predictor (obtained by linear regression on the current batch) before back-propagating the error through the network ($52.5\%$ top-1 accuracy), or (ii) increasing the learning rate of the predictor ($66.5\%$ top-1). By contrast, increasing the learning rates of both projector \emph{and} predictor (without target network) yields poor results ($\approx 25\%$ top-1). See \Cref{app:importance_no_pred} for more details. 
+This seems to indicate that keeping the predictor near-optimal at all times is important to preventing collapse, which may be one of the roles of \algo's target network. %These experiments will be added to the paper.
+
+
+
+
+
+% d to zero, the network start learning for a few dozens epoches before that the predictor/projectors weight start diverving to infinity.
+
+
+% the netwo BYOL required specific optimisation to behave correctly.  \color{red} Add paragraph? cf comments}
+
+%{\color{red} \paragraph{Ablation to Mean Teacher}\label{sec:mean_teacher} We also reproduce the setting close to \meanteacher (MT)~\cite{tarvainen2017mean} in the unsupervised learning scenario by removing the predictor and the negative samples. To do so, we first remove the consistency loss which relied on labels, we replace architectural noise (e.g. dropout) by using different view of images, and we remove the predictor ($7^{th}$ line in ). We observe that this combination yields to a degenerate case which results in a uninformative representation. This suggests that the predictor is critical to apply the bootstrapping procedure in the unsupervised scenario. We assume that this asymmetry naturally creates a learning signal which is necessary to prevent \algo from collapsing to non-informative representations. On the other side, MT needs to carefully balance the classification loss and the consistency loss to stabilize the training.}
+
+
+%{\color{red} \paragraph{Ablation to Mean Teacher} We also reproduce the setting close to \meanteacher (MT)~\cite{tarvainen2017mean} in the unsupervised learning scenario by removing the predictor, the consistency and replacing architectural noise (e.g. dropout) by using different view of images ($7^{th}$ line in ). 
+
+%We observe that this combination yields to a degenerate case which results in a uninformative representation. This suggests that the predictor is critical to apply the bootstrapping procedure in the unsupervised scenario. We assume that this asymmetry naturally creates a learning signal which is necessary to prevent \algo from collapsing to non-informative representations. On the other side, MT needs to carefully balance the classification loss and the consistency loss to stabilize the training.}
+
+
+% @florian wdyt : Removing the predictor in \algo ($7^{th}$ row of \Cref{table:ablation_bs_and_pbl_to_simclr}) yields to an unsupervised version of MT with no supervised loss, which uses different views of an image instead of architectural noise (dropout).
+%In $7^{th}$ line thus reproduces a MT-like setting in the unsupervised learning scenario by removing the predictor, removing the consistency loss and using different view of images instead of architectural noise (e.g. dropout) as in \cite{tarvainen2017mean}. 

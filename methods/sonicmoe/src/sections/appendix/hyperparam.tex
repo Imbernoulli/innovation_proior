@@ -1,0 +1,13 @@
+We use the OLMoE codebase and its downstream tasks in the default configuration\footnote{\scriptsize \url{https://github.com/allenai/OLMoE/blob/357454f4f647385839c0ff6b99a688dc7cd9c13f/configs/OLMoE-1B-7B-0924.yml}} except for MMLU: WinoGrande (``wino'')~\citep{sakaguchi2020winogrande}, Social IQA (``SIQA'')~\citep{sap2019socialiqa}, SciQ~\citep{SciQ}, PIQA~\citep{piqa}, OpenBookQA (``OBQA'')~\citep{OpenBookQA2018}, HellaSwag (``HS'')~\citep{zellers2019hellaswag}, COPA~\citep{roemmele2011choice}, CommonsenseQA (``CSQA'')~\citep{csqa}, BoolQ~\citep{boolq}, Arc-Easy and Arc-Challenge (``ArcE'' and ``ArcC'')~\citep{arc} datasets. We use a deduplicated version of FineWeb-Edu \citep{benallal2024smollmcorpus}\footnote{\scriptsize \url{https://huggingface.co/datasets/HuggingFaceTB/smollm-corpus}} as the pretraining corpus, and train all models with a context length of 4096 tokens.
+
+We always use MoE with SwiGLU for the MoE layers and we use an auxiliary load balancing loss \citep{shazeer2017outrageouslylargeneuralnetworks} with coefficient 0.01 but we do not use the router Z loss \citep{zoph2022st}. Our attention block architecture is identical to OLMoE's attention block. We always tie the weight of the LM head with the weight of the token embedding matrix. 
+
+\input{Table/hyperparam}
+
+% For the top-$P$ baseline, we determine the $P$ by profiling the total consumed tokens across all experts during training and ensure that roughly matches or surpasses the top-$K$ routing numbers as $T \cdot K$. We perform a binary search with 0.05 as grid shape and identify the closed $P$ that satisfies this constraint.
+
+For all EC with finetuned TC router experiments in Table~\ref{tab:exp-sparse}, we use an additional 4B tokens and we only finetune the router weights with TC top-$K$ routing (all other parameters are frozen). We always use a learning rate of 2e-4, weight decay of 0.01 and cosine learning rate scheduler with 10\% warmup steps. The number of tokens per minibatch during finetuning is 1M. We disable auxiliary load balancing loss during TC finetuning. 
+
+For all EC with auxiliary router experiments, we use a 2-layer MLP (each linear layer has size $E\times E$ with SiLU activation) which takes as input the raw router logits and makes $E$ independent binary predictions for all experts. We compute the averaged binary cross entropy loss over $E$ labels using the multi-label prediction loss, and scale the loss by 0.01. During the evaluation, we will let the EC router compute the raw logits and raw scores and let the auxiliary router mask the token-expert pair with its own confidence score.
+
+We implement ``TC (token drop)'' by discarding tokens selected from the TC top-$K$ sorting.

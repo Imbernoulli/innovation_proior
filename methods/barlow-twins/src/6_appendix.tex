@@ -1,0 +1,137 @@
+%\pagebreak
+%\pagebreak
+\newpage
+\appendix
+
+%\section{Implementation Details}
+
+
+
+\section{Connection between \AlgoName{} and the Information Bottleneck Principle}
+
+\begin{figure}[ht]
+\vskip 0.2in
+\begin{center}
+%\columnwidth
+ \centerline{\includegraphics[width=6cm]{fig_IB.png}}
+\caption{The information bottleneck principle applied to self-supervised learning (SSL) posits that the objective of SSL is to learn a representation $Z_\theta$ which is informative about the image sample, but invariant (i.e. uninformative) to the specific distortions that are applied to this sample. \AlgoName{} can be viewed as a specific instanciation of the information bottleneck objective.}
+\label{fig:fig_IB}
+\end{center}
+\vskip -0.2in
+\end{figure}
+
+We explore in this appendix the connection between \AlgoName{}' loss function and the \emph{Information Bottleneck} (IB) principle \cite{tishby_deep_2015,tishby_information_2000}. 
+
+As a reminder, \AlgoName{}' loss function is given by:
+
+\begin{equation}
+\mathcal{L_{BT}} \triangleq  \underbrace{\sum_i  (1-\mathcal{C}_{ii})^2}_\text{invariance term}  + ~~\lambda \underbrace{\sum_{i}\sum_{j \neq i} {\mathcal{C}_{ij}}^2}_\text{redundancy reduction term}
+\label{eq:lossBarlow_app}
+\end{equation}
+
+where $\lambda$ is a positive constant trading off the importance of the first and second terms of the loss, and where $\mathcal{C}$ is the cross-correlation matrix computed between the outputs of the two identical networks along the batch dimension :
+
+\begin{equation}
+\mathcal{C}_{ij} \triangleq \frac{
+\sum_b z^A_{b,i} z^B_{b,j}}
+{\sqrt{\sum_b {(z^A_{b,i})}^2} \sqrt{\sum_b {(z^B_{b,j})}^2}}
+\label{eq:crosscorr_app}
+\end{equation}
+
+where $b$ indexes batch samples and $i,j$ index the vector dimension of the networks' outputs. $\mathcal{C}$ is a square matrix with size the dimensionality of the network's output, and with values comprised between -1 (i.e. perfect anti-correlation) and 1 (i.e. perfect correlation). 
+
+Applied to self-supervised learning, the IB principle posits that a desirable representation should be as informative as possible about the sample represented while being as invariant (i.e. non-informative) as possible to distortions of that sample (here the data augmentations used) (Fig. \ref{fig:fig_IB}). This trade-off is captured by the following loss function:
+
+\begin{equation}
+   \mathcal{IB_{ \theta}} \triangleq I(Z_{\theta}, Y) - \beta I(Z_{\theta}, X)
+    \label{eq:lossIB}
+\end{equation}
+
+where $I(.,.)$ denotes mutual information and $\beta$ is a positive scalar trading off the desideratas of preserving information and being invariant to distortions.
+
+Using a classical identity for mutual information, we can rewrite equation \ref{eq:lossIB} as:
+
+\begin{equation}
+   \mathcal{IB_{ \theta}} = [H(Z_{\theta}) - \cancelto{0}{H(Z_{\theta}|Y)}] - \beta [H(Z_{\theta}) - H(Z_{\theta}|X)] 
+    \label{eq:lossIB2}
+\end{equation}
+
+where $H(.)$ denotes entropy. The conditional entropy $H(Z_{\theta}|Y)$ ---the entropy of the representation conditioned on a specific distorted sample--- cancels to 0 because the function $f_{\theta}$ is deterministic, and so the representation $Z_{\theta}$ conditioned on the input sample $Y$ is perfectly known and has zero entropy. Since the overall scaling factor of the loss function is not important, we can rearrange equation \ref{eq:lossIB2} as: 
+
+\begin{equation}
+   \mathcal{IB_{ \theta}} =  H(Z_{\theta}|X) + \frac{1-\beta}{\beta}  H(Z_{\theta})
+    \label{eq:lossIB3}
+\end{equation}
+
+Measuring the entropy of a high-dimensional signal generally requires vast amounts of data, much larger than the size of a single batch. In order to circumvent this difficulty, we make the simplifying assumption that the representation $Z$ is distributed as a Gaussian. The entropy of a Gaussian distribution is simply given by the logarithm of the determinant of its covariance function (up to a constant corresponding to the assumed discretization level that we ignore here) \cite{cai_law_2015}. The loss function becomes:  
+
+\begin{equation}
+   \mathcal{IB_{ \theta}} =  ~\mathbb{E}_{X} log ~|\mathcal{C}_{Z_\theta|X}| + \frac{1-\beta}{\beta} ~log ~|\mathcal{C}_{Z_\theta}|
+    \label{eq:lossIB4}
+\end{equation}
+
+This equation is still not exactly the one we optimize for in practice (see eqn. \ref{eq:lossBarlow_app} and \ref{eq:crosscorr_app}). Indeed, our loss function is only connected to the IB loss given by eqn. \ref{eq:lossIB4} through the following simplifications and approximations:
+\begin{itemize}
+  \item In the case where $\beta<=1$, it is easy to see from eqn. \ref{eq:lossIB4} that the best solution to the IB trade-off is to set the representation to a constant that does not depend on the input. This trade-off thus does not lead to interesting representations and can be ignored. When $\beta>1$, we note that the second term of eqn. \ref{eq:lossIB4} is preceded by a negative constant. We can thus simply replace $\frac{1-\beta}{\beta}$ by a new positive constant $\lambda$, preceded by a negative sign.
+  
+  \item In practice, we find that directly optimizing the determinant of the covariance matrices does not lead to SoTA solutions. Instead, we replace the second term of the loss in eqn. \ref{eq:lossIB4} (maximizing the information about samples), by the proxy which consist in simply minimizing the Frobenius norm of the cross-correlation matrix. If the representations are assumed to be re-scaled to 1 along the batch dimension before entering the loss (an assumption we are free to make since the cross-correlation matrix is invariant to this re-scaling), this minimization only affects the off-diagonal terms of the covariance matrix
+  (the diagonal terms being fixed to 1 by the re-scaling) and encourages them to be as close to 0 as possible. It is clear that this surrogate objective, which consists in decorrelating all output units, has the same global optimum than the original information maximization objective. 
+  
+  \item For consistency with eqn. \ref{eq:lossIB4}, the second term in \AlgoName' loss should be computed from the auto-correlation matrix of one of the twin networks, instead of the cross-correlation matrix between twin networks. In practice, we do not see a strong difference in performance between these alternatives.
+  
+  \item Similarly, it can easily be shown that the first term of eqn. \ref{eq:lossIB4} (minimizing the information the representation contains about the distortions) has the same global optimum than the first term of eqn. \ref{eq:lossBarlow_app}, which maximizes the alignment between representations of pairs of distorted samples.  
+\end{itemize}
+
+%Alternatively, this second term can be computed from the auto-correlation matrix of one of the twin networks, instead of the cross-correlation matrix between twin networks. In practice, we do not see strong difference in performance between this alternative and the proposed loss function, and only report results for the objective function presented above.
+
+
+
+
+%Many empirical works are motivated by the InfoMax principle, i.e., maximizing I(f(x); f(y)) for (x, y)  ppos. However, the interpretation of Lcontrastive as a lower bound of I(f(x); f(y)) is known to be inconsistent with its actual behavior in pratice (Tschannen et al., 2019). @REF@ have revealed that the commonly used estimators have strong inductive biases and—perhaps surprisingly—looser bounds can lead to better representations. Furthermore, they have demonstrated that the connection of recent approaches to MI maximization might vanish if negative samples are not drawn independently (as done by some approaches in the literature). As a result, it is unclear whether the connection to MI is a sufficient (or necessary) component for designing powerful unsupervised representation learning algorithms. Here we argue that the information interpretation of contrastive methods as well as our method can be kept, as long as the information bottleneck principle is used.
+
+
+
+%\paragraph{Hyperparameters}
+
+
+
+
+%max_steps=int(1000 1281167 / 4096),  epochs batch_size=4096,
+%mlp_hidden_size=4096,
+%projection_size=256,
+%base_target_ema=4e-3,
+%optimizer_config=dict(
+%optimizer_name=lars, beta=0.9, trust_coef=1e-3, weight_decay=1.5e-6,
+%As in SimCLR and official implementation of LARS, we exclude bias  and batchnorm weight from the Lars adaptation and weightdecay exclude_bias_from_adaption=True),
+%learning_rate_schedule=dict(
+%The learning rate is linearly increase up to
+% its base value  batchisze 256 after warmup steps  global steps and then anneal with a cosine schedule base_learning_rate=0.2,
+%warmup_steps=int(10 1281167 / 4096), anneal_schedule=cosine),
+%batchnorm_kwargs=dict( decay_rate=0.9,
+%eps=1e-5), seed=1337,
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Evaluations on ImageNet}
+
+\subsection{Linear evaluation on ImageNet}
+\label{sec:linear_evaluation}
+The linear classifier is trained for 100 epochs with a learning rate of $0.3$ and a cosine learning rate schedule. We minimize the cross-entropy loss with the SGD optimizer with momentum and weight decay of $10^{-6}$. We use a batch size of $256$. At training time we augment an input image by taking a random crop, resizing it to $224 \times 224$, and optionally flipping the image horizontally. At test time we resize the image to $256 \times 256$ and center-crop it to a size of $224 \times 224$.
+
+\subsection{Semi-supervised training on ImageNet}
+\label{sec:semisupervised_evaluation}
+We train for $20$ epochs with a learning rate of $0.002$ for the ResNet-50 and $0.5$ for the final classification layer. The learning rate is multiplied by a factor of $0.2$ after the 12th and 16th epoch. We minimize the cross-entropy loss with the SGD optimizer with momentum and do not use weight decay. We use a batch size of $256$. The image augmentations are the same as in the linear evaluation setting.
+
+\section{Transfer Learning}
+
+\subsection{Linear evaluation} We follow the exact settings from PIRL~\cite{misra2019self} for evaluating linear classifiers on the Places-205, VOC07 and iNaturalist2018 datasets. For Places-205 and iNaturalist2018 we train a linear classifier with SGD (14 epochs on Places-205, 84 epochs on iNaturalist2018) with a learning rate of $0.01$ reduced by a factor of $10$ at two equally spaced intervals, a weight decay of $5\times10^{-4}$ and SGD momentum of $0.9$. We train SVM classifiers on the VOC07 dataset where the $C$ values are computed using cross-validation.
+
+\subsection{Object Detection and Instance Segmentation}
+We use the detectron2 library~\cite{wu2019detectron2} for training the detection models and closely follow the evaluation settings from~\cite{he2019momentum}. The backbone ResNet50 network for Faster R-CNN~\cite{ren2015faster} and Mask R-CNN~\cite{he2017mask} is initialized using our \AlgoName{} pretrained model.
+
+\par \noindent \textbf{VOC07+12} We use the VOC07+12 \texttt{trainval} set of $16K$ images for training a Faster R-CNN~\cite{ren2015faster} C-4 backbone for $24K$ iterations using a batch size of $16$ across $8$ GPUs using SyncBatchNorm. The initial learning rate for the model is $0.1$ which is reduced by a factor of $10$ after $18K$ and $22K$ iterations. We use linear warmup~\cite{goyal2017accurate} with a slope of $0.333$ for $1000$ iterations.
+\par \noindent \textbf{COCO} We train Mask R-CNN~\cite{he2017mask} C-4 backbone on the COCO 2017 \texttt{train} split and report results on the \texttt{val} split. We use a learning rate of $0.03$ and keep the other parameters the same as in the $1\times$ schedule in detectron2.
+
+
+

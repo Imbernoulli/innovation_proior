@@ -1,0 +1,518 @@
+\appendix
+\section{Appendix}
+
+\subsection{Complexity for Deformable Attention}
+\label{sec:complexity}
+Supposes the number of query elements is $N_q$, in the deformable attention module (see Equation~\ref{eq:single_deform_attn_fun}), the complexity for calculating the sampling coordinate offsets $\Delta\vp_{mqk}$ and attention weights $\emA_{mqk}$ is of $O(3N_qCMK)$.
+Given the sampling coordinate offsets and attention weights, the complexity of computing Equation~\ref{eq:single_deform_attn_fun} is $O(N_qC^2 + N_qKC^2 + 5N_qKC)$, where the factor of $5$ in $5N_qKC$ is because of bilinear interpolation and the weighted sum in attention. On the other hand, we can also calculate $\mW'_m \vx$ before sampling, as it is independent to query, and the complexity of computing Equation~\ref{eq:single_deform_attn_fun} will become as $O(N_qC^2 + HWC^2 + 5N_qKC)$. So the overall complexity of deformable attention is  $O(N_qC^2 + \min(HWC^2, N_qKC^2) + 5N_qKC + 3N_qCMK)$. In our experiments, $M = 8$, $K \leq 4$ and $C = 256$ by default, thus $5K + 3MK < C$ and the complexity is of $O(2N_qC^2 + \min(HWC^2, N_qKC^2))$.
+
+\subsection{Constructing Mult-scale Feature Maps for Deformable DETR}
+\label{sec:build_ms_feature}
+
+As discussed in Section~\ref{sec:deform_attn} and illustrated in Figure~\ref{fig:build_ms_feature}, the input multi-scale feature maps of the encoder $\{\vx^l\}_{l=1}^{L-1}$ ($L = 4$) are extracted from the output feature maps of stages $C_3$ through $C_5$ in ResNet~\citep{he2016deep} (transformed by a $1\times 1$ convolution). The lowest resolution feature map $\vx^L$ is obtained via a $3\times 3$ stride $2$ convolution on the final $C_5$ stage. Note that FPN~\citep{lin2017feature} is not used, because our proposed multi-scale deformable attention in itself can exchange information among multi-scale feature maps.
+
+\begin{figure}[ht]
+\begin{center}
+  \includegraphics[width=0.8\linewidth]{fig/input_multiscale_feature_maps.pdf}
+\end{center}
+\caption{Constructing mult-scale feature maps for Deformable DETR.}
+\label{fig:build_ms_feature}
+\end{figure}
+
+\subsection{Bounding Box Prediction in Deformable DETR}
+\label{sec:bbox_pred}
+
+Since the multi-scale deformable attention module extracts image features around the reference point, we design the detection head to predict the bounding box as relative offsets w.r.t. the reference point to further reduce the optimization difficulty. The reference point is used as the initial guess of the box center. The detection head predicts the relative offsets w.r.t. the reference point $\hat{\vp}_q = (\hat{p}_{qx}, \hat{p}_{qy})$, i.e., $\hat{\vb}_q = \{\sigmoid\big({b}_{qx} + \sigmoid^{-1}(\hat{p}_{qx})\big), \sigmoid\big({b}_{qy} + \sigmoid^{-1}(\hat{p}_{qy})\big), \sigmoid({b}_{qw}), \sigmoid({b}_{qh})\}$, where ${b}_{q\{x,y,w,h\}} \in \sR $ are predicted by the detection head. $\sigmoid$ and $\sigmoid^{-1}$ denote the $\mathrm{sigmoid}$ and the $\mathrm{inverse~sigmoid}$ function, respectively. The usage of $\sigmoid$ and $\sigmoid^{-1}$ is to ensure $\hat{\vb}$ is of normalized coordinates, as $\hat{\vb}_q \in [0, 1]^4$.
+In this way, the learned decoder attention will have strong correlation with the predicted bounding boxes, which also accelerates the training convergence.
+
+
+\subsection{More Implementation Details}
+\label{sec:imp_details}
+
+\textbf{Iterative Bounding Box Refinement.~}
+Here, each decoder layer refines the bounding boxes based on the predictions from the previous layer. Suppose there are $D$ number of decoder layers (e.g., $D = 6$), given a normalized bounding box $\hat{\vb}_q^{d-1}$ predicted by the $(d-1)$-th decoder layer, the $d$-th decoder layer refines the box as 
+\begin{equation*}
+\hat{\vb}^d_q = \{\sigmoid(\Delta b^d_{qx} + \sigmoid^{-1}(\hat{b}^{d-1}_{qx})), \sigmoid(\Delta b^d_{qy} + \sigmoid^{-1}(\hat{b}^{d-1}_{qy})), \sigmoid(\Delta b^d_{qw} + \sigmoid^{-1}(\hat{b}^{d-1}_{qw})), \sigmoid(\Delta b^d_{qh} + \sigmoid^{-1}(\hat{b}^{d-1}_{qh}))\},
+\end{equation*}
+where $d \in \{1, 2, ..., D\}$, $\Delta b^d_{q\{x,y,w,h\}} \in \sR$ are predicted at the $d$-th decoder layer. Prediction heads for different decoder layers do not share parameters. The initial box is set as $\hat{b}^0_{qx} = \hat{p}_{qx}$, $\hat{b}^0_{qy} = \hat{p}_{qy}$, $\hat{b}^0_{qw} = 0.1$, and $\hat{b}^0_{qh} = 0.1$. The system is robust to the choice of $b^0_{qw}$ and $b^0_{qh}$. We tried setting them as 0.05, 0.1, 0.2, 0.5, and achieved similar performance. To stabilize training, similar to \citet{teed2020raft}, the gradients only back propagate through $\Delta b^d_{q\{x,y,w,h\}}$, and are blocked at $\sigmoid^{-1}(\hat{b}^{d-1}_{q\{x,y,w,h\}})$.
+
+In iterative bounding box refinement, for the $d$-th decoder layer, we sample key elements respective to the box $\hat{\vb}_q^{d-1}$ predicted from the $(d-1)$-th decoder layer. For Equation~\ref{eq:deform_attn_fun} in the cross-attention module of the $d$-th decoder layer, $(\hat{b}^{d-1}_{qx}, \hat{b}^{d-1}_{qy})$ serves as the new reference point. The sampling offset $\Delta\vp_{mlqk}$ is also modulated by the box size, as $({\Delta p_{mlqkx}~\hat{b}^{d-1}_{qw}}, \Delta p_{mlqky}~\hat{b}^{d-1}_{qh})$.
+Such modifications make the sampling locations related to the center and size of previously predicted boxes.
+
+\textbf{Two-Stage Deformable DETR.~}
+In the first stage, given the output feature maps of the encoder, a detection head is applied to each pixel. 
+The detection head is of a 3-layer FFN for bounding box regression, and a linear projection for bounding box binary classification (i.e., foreground and background), respectively.
+Let $i$ index a pixel from feature level $l_i \in \{1, 2, ..., L\}$ with 2-d normalized coordinates $\hat{\vp}_i = (\hat{p}_{ix}, \hat{p}_{iy}) \in [0,1]^2$, its corresponding bounding box is predicted by
+\begin{equation*}
+\hat{\vb}_i = \{\sigmoid(\Delta b_{ix} + \sigmoid^{-1}(\hat{p}_{ix})), \sigmoid(\Delta b_{iy} + \sigmoid^{-1}(\hat{p}_{iy})), \sigmoid(\Delta b_{iw} + \sigmoid^{-1}(2^{l_i - 1}s)), \sigmoid(\Delta b_{ih} + \sigmoid^{-1}(2^{l_i - 1}s))\},
+\end{equation*}
+where the base object scale $s$ is set as 0.05, $\Delta b_{i\{x,y,w,h\}} \in \sR$ are predicted by the bounding box regression branch. The Hungarian loss in DETR is used for training the detection head.
+
+Given the predicted bounding boxes in the first stage, top scoring bounding boxes are picked as region proposals. In the second stage, these region proposals are fed into the decoder as initial boxes for the \textit{iterative bounding box refinement}, where the positional embeddings of object queries are set as positional embeddings of region proposal coordinates.
+
+
+\textbf{Initialization for Multi-scale Deformable Attention.~}
+In our experiments, the number of attention heads is set as $M = 8$.
+In multi-scale deformable attention modules, $\mW'_m \in \sR^{C_v \times C}$ and $\mW_m \in \sR^{C \times C_v}$ are randomly initialized.
+Weight parameters of the linear projection for predicting $\emA_{mlqk}$ and $\Delta\vp_{mlqk}$ are initialized to zero. 
+Bias parameters of the linear projection are initialized to make $\emA_{mlqk} = \frac{1}{LK}$ and $\{\Delta\vp_{1lqk} = (-k, -k), \Delta\vp_{2lqk} = (-k, 0), \Delta\vp_{3lqk} = (-k, k), \Delta\vp_{4lqk} = (0, -k), \Delta\vp_{5lqk} = (0, k), \Delta\vp_{6lqk} = (k, -k), \Delta\vp_{7lqk} = (k, 0), \Delta\vp_{8lqk} = (k, k)\}$ ($k \in \{1, 2, ... K\}$) at initialization.
+
+For \emph{iterative bounding box refinement}, the initialized bias parameters for $\Delta\vp_{mlqk}$ prediction in the decoder are further multiplied with $\frac{1}{2K}$, so that all the sampling points at initialization are within the corresponding bounding boxes predicted from the previous decoder layer.
+
+
+\subsection{What Deformable DETR looks at?}
+\label{sec:look_at}
+
+ For studying what Deformable DETR looks at to give final detection result, we draw the gradient norm of each item in final prediction (i.e., x/y coordinate of object center, width/height of object bounding box, category score of this object) with respect to each pixel in the image, as shown in Fig.~\ref{fig:look_at}. According to Taylor's theorem, the gradient norm can reflect how much the output would be changed relative to the perturbation of the pixel, thus it could show us which pixels the model mainly relys on for predicting each item. 
+
+ The visualization indicates that Deformable DETR looks at extreme points of the object to determine its bounding box, which is similar to the observation in DETR~\citep{carion2020end}. More concretely, Deformable DETR attends to left/right boundary of the object for x coordinate and width, and top/bottom boundary for y coordinate and height. Meanwhile, different to DETR~\citep{carion2020end}, our Deformable DETR also looks at pixels inside the object for predicting its category.
+
+
+\begin{figure}[ht]
+\begin{center}
+% \hspace{0.005\linewidth}
+\subfigure{
+\hspace{-3mm}
+\begin{minipage}[t]{0.07\linewidth}
+\vspace{-17mm}
+\centering
+$\norm{\frac{\partial x}{\partial I}}$
+\end{minipage}%
+}%
+\subfigure{
+\begin{minipage}[t]{0.27\linewidth}
+\centering
+\includegraphics[width=1.0\linewidth]{fig/viz_look_at/grad_bx_000000077396_00_8_infnorm.jpg}
+%\caption{fig1}
+\end{minipage}%
+}%
+\subfigure{
+\begin{minipage}[t]{0.305\linewidth}
+\centering
+\includegraphics[width=1.0\linewidth]{fig/viz_look_at/grad_bx_000000011760_00_8_infnorm.jpg}
+%\caption{fig1}
+\end{minipage}%
+}%
+\subfigure{
+\begin{minipage}[t]{0.27\linewidth}
+\centering
+\includegraphics[width=1.0\linewidth]{fig/viz_look_at/grad_bx_000000084170_00_8_infnorm.jpg}
+%\caption{fig1}
+\end{minipage}%
+}%
+% \subfigure{
+% \begin{minipage}[t]{0.051\linewidth}
+% \centering
+% \includegraphics[width=1.0\linewidth]{fig/red_blue_color_bar.pdf}
+% %\caption{fig1}
+% \end{minipage}%
+% }%
+
+\vspace{-3mm}
+% \hspace{0.005\linewidth}
+\subfigure{
+\hspace{-3mm}
+\begin{minipage}[t]{0.07\linewidth}
+\vspace{-17mm}
+\centering
+$\norm{\frac{\partial y}{\partial I}}$
+\end{minipage}%
+}%
+\subfigure{
+\begin{minipage}[t]{0.27\linewidth}
+\centering
+\includegraphics[width=1.0\linewidth]{fig/viz_look_at/grad_by_000000077396_00_3_infnorm.jpg}
+\end{minipage}%
+}%
+\subfigure{
+\begin{minipage}[t]{0.305\linewidth}
+\centering
+\includegraphics[width=1.0\linewidth]{fig/viz_look_at/grad_by_000000011760_00_8_infnorm.jpg}
+\end{minipage}%
+}%
+\subfigure{
+\begin{minipage}[t]{0.27\linewidth}
+\centering
+\includegraphics[width=1.0\linewidth]{fig/viz_look_at/grad_by_000000084170_00_8_infnorm.jpg}
+\end{minipage}%
+}%
+% \subfigure{
+% \begin{minipage}[t]{0.047\linewidth}
+% \centering
+% \includegraphics[width=1.0\linewidth]{fig/red_blue_color_bar.pdf}
+% %\caption{fig1}
+% \end{minipage}%
+% }%
+
+\vspace{-3mm}
+% \hspace{0.005\linewidth}
+\subfigure{
+\hspace{-3mm}
+\begin{minipage}[t]{0.07\linewidth}
+\vspace{-17mm}
+\centering
+$\norm{\frac{\partial w}{\partial I}}$
+\end{minipage}%
+}%
+\subfigure{
+\begin{minipage}[t]{0.27\linewidth}
+\centering
+\includegraphics[width=1.0\linewidth]{fig/viz_look_at/grad_bw_000000077396_00_3_infnorm.jpg}
+\end{minipage}%
+}%
+\subfigure{
+\begin{minipage}[t]{0.305\linewidth}
+\centering
+\includegraphics[width=1.0\linewidth]{fig/viz_look_at/grad_bw_000000011760_00_8_infnorm.jpg}
+\end{minipage}%
+}%
+\subfigure{
+\begin{minipage}[t]{0.27\linewidth}
+\centering
+\includegraphics[width=1.0\linewidth]{fig/viz_look_at/grad_bw_000000084170_00_8_infnorm.jpg}
+\end{minipage}%
+}%
+% \subfigure{
+% \begin{minipage}[t]{0.050\linewidth}
+% \centering
+% \includegraphics[width=1.0\linewidth]{fig/red_blue_color_bar.pdf}
+% %\caption{fig1}
+% \end{minipage}%
+% }%
+
+\vspace{-3mm}
+% \hspace{0.005\linewidth}
+\subfigure{
+\hspace{-3mm}
+\begin{minipage}[t]{0.07\linewidth}
+\vspace{-17mm}
+\centering
+$\norm{\frac{\partial h}{\partial I}}$
+\end{minipage}%
+}%
+\subfigure{
+\begin{minipage}[t]{0.27\linewidth}
+\centering
+\includegraphics[width=1.0\linewidth]{fig/viz_look_at/grad_bh_000000077396_00_3_infnorm.jpg}
+\end{minipage}%
+}%
+\subfigure{
+\begin{minipage}[t]{0.305\linewidth}
+\centering
+\includegraphics[width=1.0\linewidth]{fig/viz_look_at/grad_bh_000000011760_00_8_infnorm.jpg}
+\end{minipage}%
+}%
+\subfigure{
+\begin{minipage}[t]{0.27\linewidth}
+\centering
+\includegraphics[width=1.0\linewidth]{fig/viz_look_at/grad_bh_000000084170_00_8_infnorm.jpg}
+\end{minipage}%
+}%
+% \subfigure{
+% \begin{minipage}[t]{0.050\linewidth}
+% \centering
+% \includegraphics[width=1.0\linewidth]{fig/red_blue_color_bar.pdf}
+% %\caption{fig1}
+% \end{minipage}%
+% }%
+
+\vspace{-3mm}
+% \hspace{0.005\linewidth}
+\subfigure{
+\hspace{-3mm}
+\begin{minipage}[t]{0.07\linewidth}
+\vspace{-17mm}
+\centering
+$\norm{\frac{\partial c}{\partial I}}$
+\end{minipage}%
+}%
+\subfigure{
+\begin{minipage}[t]{0.27\linewidth}
+\centering
+\includegraphics[width=1.0\linewidth]{fig/viz_look_at/grad_cs_000000077396_00_8_infnorm.jpg}
+\end{minipage}%
+}%
+\subfigure{
+\begin{minipage}[t]{0.305\linewidth}
+\centering
+\includegraphics[width=1.0\linewidth]{fig/viz_look_at/grad_cs_000000011760_00_8_infnorm.jpg}
+\end{minipage}%
+}%
+\subfigure{
+\begin{minipage}[t]{0.27\linewidth}
+\centering
+\includegraphics[width=1.0\linewidth]{fig/viz_look_at/grad_cs_000000084170_00_8_infnorm.jpg}
+\end{minipage}%
+}%
+% \subfigure{
+% \begin{minipage}[t]{0.050\linewidth}
+% \centering
+% \includegraphics[width=1.0\linewidth]{fig/red_blue_color_bar.pdf}
+% %\caption{fig1}
+% \end{minipage}%
+% }%
+
+\end{center}
+
+\vspace{-0.5em}
+\caption{The gradient norm of each item (coordinate of object center $(x, y)$, width/height of object bounding box $w/h$, category score  $c$ of this object) in final detection result with respect to each pixel in input image $I$. }
+\vspace{-0.5em}
+\label{fig:look_at}
+\end{figure}
+
+
+\subsection{Visualization of Multi-scale Deformable Attention}
+\label{sec:viz}
+
+For better understanding learned multi-scale deformable attention modules, we visualize sampling points and attention weights of the last layer in encoder and decoder, as shown in Fig.~\ref{fig:attn_viz}. For readibility, we combine the sampling points and attention weights from feature maps of different resolutions into one picture.
+
+Similar to DETR~\citep{carion2020end}, the instances are already separated in the encoder of Deformable DETR. While in the decoder, our model is focused on the whole foreground instance instead of only extreme points as observed in DETR~\citep{carion2020end}. Combined with the visualization of $\norm{\frac{\partial c}{\partial I}}$ in Fig.~\ref{fig:look_at}, we can guess the reason is that our Deformable DETR needs not only extreme points but also interior points to detemine object category. The visualization also demonstrates that the proposed multi-scale deformable attention module can adapt its sampling points and attention weights according to different scales and shapes of the foreground object.
+
+\clearpage
+
+\begin{figure}[ht]
+% \begin{center}
+\hspace{0.005\linewidth}
+\subfigure{
+\begin{minipage}[t]{0.30\linewidth}
+\centering
+\includegraphics[width=1.0\linewidth]{fig/viz_encoder_attention/tv_laptop_cat_1.jpg}
+%\caption{fig1}
+\end{minipage}%
+}%
+\subfigure{
+\begin{minipage}[t]{0.30\linewidth}
+\centering
+\includegraphics[width=1.0\linewidth]{fig/viz_encoder_attention/tv_laptop_cat_2.jpg}
+%\caption{fig1}
+\end{minipage}%
+}%
+\subfigure{
+\begin{minipage}[t]{0.30\linewidth}
+\centering
+\includegraphics[width=1.0\linewidth]{fig/viz_encoder_attention/tv_laptop_cat_3.jpg}
+%\caption{fig1}
+\end{minipage}%
+}%
+\subfigure{
+\begin{minipage}[t]{0.051\linewidth}
+\centering
+\includegraphics[width=1.0\linewidth]{fig/red_blue_color_bar.pdf}
+%\caption{fig1}
+\end{minipage}%
+}%
+
+\vspace{-3mm}
+\hspace{0.005\linewidth}
+\subfigure{
+\begin{minipage}[t]{0.30\linewidth}
+\centering
+\includegraphics[width=1.0\linewidth]{fig/viz_encoder_attention/three_zebra_1.jpg}
+\end{minipage}%
+}%
+\subfigure{
+\begin{minipage}[t]{0.30\linewidth}
+\centering
+\includegraphics[width=1.0\linewidth]{fig/viz_encoder_attention/three_zebra_2.jpg}
+\end{minipage}%
+}%
+\subfigure{
+\begin{minipage}[t]{0.30\linewidth}
+\centering
+\includegraphics[width=1.0\linewidth]{fig/viz_encoder_attention/three_zebra_3.jpg}
+\end{minipage}%
+}%
+% \subfigure{
+% \begin{minipage}[t]{0.047\linewidth}
+% \centering
+% \includegraphics[width=1.0\linewidth]{fig/red_blue_color_bar.pdf}
+% %\caption{fig1}
+% \end{minipage}%
+% }%
+
+\vspace{-3mm}
+\hspace{0.005\linewidth}
+\subfigure{
+\begin{minipage}[t]{0.30\linewidth}
+\centering
+\includegraphics[width=1.0\linewidth]{fig/viz_encoder_attention/two_sofa_and_tv_1.jpg}
+\end{minipage}%
+}%
+\subfigure{
+\begin{minipage}[t]{0.30\linewidth}
+\centering
+\includegraphics[width=1.0\linewidth]{fig/viz_encoder_attention/two_sofa_and_tv_2.jpg}
+\end{minipage}%
+}%
+\subfigure{
+\begin{minipage}[t]{0.30\linewidth}
+\centering
+\includegraphics[width=1.0\linewidth]{fig/viz_encoder_attention/two_sofa_and_tv_3.jpg}
+\end{minipage}%
+}%
+% \subfigure{
+% \begin{minipage}[t]{0.050\linewidth}
+% \centering
+% \includegraphics[width=1.0\linewidth]{fig/red_blue_color_bar.pdf}
+% %\caption{fig1}
+% \end{minipage}%
+% }%
+
+% \end{center}
+
+% \vspace{-0.5em}
+% \caption{Visualization of multi-scale deformable self-attention in encoder. }
+% \vspace{-0.5em}
+% \label{fig:enc_attn_viz}
+% \end{figure}
+
+\centerline{(a) multi-scale deformable self-attention in encoder}
+
+\vspace{0.2em}
+
+% \begin{figure}[ht]
+% % \begin{center}
+\hspace{0.005\linewidth}
+\subfigure{
+\begin{minipage}[t]{0.30\linewidth}
+\centering
+\includegraphics[width=1.0\linewidth]{fig/viz_decoder_attention/bus_and_two_car_1.jpg}
+%\caption{fig1}
+\end{minipage}%
+}%
+\subfigure{
+\begin{minipage}[t]{0.30\linewidth}
+\centering
+\includegraphics[width=1.0\linewidth]{fig/viz_decoder_attention/bus_and_two_car_2.jpg}
+%\caption{fig1}
+\end{minipage}%
+}%
+\subfigure{
+\begin{minipage}[t]{0.30\linewidth}
+\centering
+\includegraphics[width=1.0\linewidth]{fig/viz_decoder_attention/bus_and_two_car_3.jpg}
+%\caption{fig1}
+\end{minipage}%
+}%
+\subfigure{
+\begin{minipage}[t]{0.051\linewidth}
+\centering
+\includegraphics[width=1.0\linewidth]{fig/red_blue_color_bar.pdf}
+%\caption{fig1}
+\end{minipage}%
+}%
+
+\vspace{-3mm}
+\hspace{0.005\linewidth}
+\subfigure{
+\begin{minipage}[t]{0.30\linewidth}
+\centering
+\includegraphics[width=1.0\linewidth]{fig/viz_decoder_attention/moto_and_two_person_1.jpg}
+\end{minipage}%
+}%
+\subfigure{
+\begin{minipage}[t]{0.30\linewidth}
+\centering
+\includegraphics[width=1.0\linewidth]{fig/viz_decoder_attention/moto_and_two_person_2.jpg}
+\end{minipage}%
+}%
+\subfigure{
+\begin{minipage}[t]{0.30\linewidth}
+\centering
+\includegraphics[width=1.0\linewidth]{fig/viz_decoder_attention/moto_and_two_person_3.jpg}
+\end{minipage}%
+}%
+% \subfigure{
+% \begin{minipage}[t]{0.050\linewidth}
+% \centering
+% \includegraphics[width=1.0\linewidth]{fig/red_blue_color_bar.pdf}
+% %\caption{fig1}
+% \end{minipage}%
+% }%
+
+\vspace{-3mm}
+\hspace{0.005\linewidth}
+\subfigure{
+\begin{minipage}[t]{0.30\linewidth}
+\centering
+\includegraphics[width=1.0\linewidth]{fig/viz_decoder_attention/tv_and_two_cat_1.jpg}
+\end{minipage}%
+}%
+\subfigure{
+\begin{minipage}[t]{0.30\linewidth}
+\centering
+\includegraphics[width=1.0\linewidth]{fig/viz_decoder_attention/tv_and_two_cat_2.jpg}
+\end{minipage}%
+}%
+\subfigure{
+\begin{minipage}[t]{0.30\linewidth}
+\centering
+\includegraphics[width=1.0\linewidth]{fig/viz_decoder_attention/tv_and_two_cat_3.jpg}
+\end{minipage}%
+}%
+% \subfigure{
+% \begin{minipage}[t]{0.050\linewidth}
+% \centering
+% \includegraphics[width=1.0\linewidth]{fig/red_blue_color_bar.pdf}
+% %\caption{fig1}
+% \end{minipage}%
+% }%
+
+\centerline{(b) multi-scale deformable cross-attention in decoder}
+
+\vspace{-0.3em}
+\caption{Visualization of multi-scale deformable attention. For readibility, we draw the sampling points and attention weights from feature maps of different resolutions in one picture. Each sampling point is marked as a filled circle whose color indicates its correspoinding attention weight. The reference point is shown as green cross marker, which is also equivalent to query point in encoder. In decoder, the predicted bounding box is shown as a green rectangle and the category and confidence score are texted just above it. }
+\vspace{-0.5em}
+\label{fig:attn_viz}
+% \end{center}
+\end{figure}
+
+\clearpage
+
+\subsection{Notations}
+
+\begin{table}[ht]
+\caption{Lookup table for notations in the paper.}
+\label{notations_lookup}
+\begin{center}
+\begin{tabular}{ll}
+\Xhline{2\arrayrulewidth}
+Notation           & Description \\
+\hline
+$m$                & index for attention head \\
+$l$                & index for feature level of key element \\
+$q$                & index for query element \\
+$k$                & index for key element \\
+$N_q$              & number of query elements \\
+$N_k$              & number of key elements \\
+$M$                & number of attention heads \\
+$L$                & number of input feature levels \\
+$K$                & number of sampled keys in each feature level for each attention head \\
+$C$                & input feature dimension \\
+$C_v$              & feature dimension at each attention head \\
+$H$                & height of input feature map \\
+$W$                & width of input feature map \\
+$H^l$              & height of input feature map of $l^{th}$ feature level \\
+$W^l$              & width of input feature map of $l^{th}$ feature level \\
+$\emA_{mqk}$       & attention weight of $q^{th}$ query to $k^{th}$ key at $m^{th}$ head \\
+$\emA_{mlqk}$      & attention weight of $q^{th}$ query to $k^{th}$ key in $l^{th}$ feature level at $m^{th}$ head \\
+$\vz_q$            & input feature of $q^{th}$ query \\
+$\vp_q$            & 2-d coordinate of reference point for $q^{th}$ query \\
+$\hat \vp_q$       & normalized 2-d coordinate of reference point for $q^{th}$ query \\
+$\vx$              & input feature map (input feature of key elements) \\
+$\vx_k$            & input feature of $k^{th}$ key \\
+$\vx^l$            & input feature map of $l^{th}$ feature level \\
+$\Delta\vp_{mqk}$  & sampling offset of $q^{th}$ query to $k^{th}$ key at $m^{th}$ head \\
+$\Delta\vp_{mlqk}$ & sampling offset of $q^{th}$ query to $k^{th}$ key in $l^{th}$ feature level at $m^{th}$ head \\
+$\mW_m$            & output projection matrix at $m^{th}$ head \\
+$\mU_m$            & input query projection matrix at $m^{th}$ head \\
+$\mV_m$            & input key projection matrix at $m^{th}$ head \\
+$\mW'_m$           & input value projection matrix at $m^{th}$ head \\
+$\phi_l(\hat{\vp})$& unnormalized 2-d coordinate of $\hat{\vp}$ in $l^{th}$ feature level \\
+$\exp$             & exponential function \\
+$\sigmoid$         & sigmoid function \\
+$\sigmoid^{-1}$    & inverse sigmoid function \\
+\Xhline{2\arrayrulewidth}
+\end{tabular}
+\end{center}
+\end{table}

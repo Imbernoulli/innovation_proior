@@ -1,0 +1,28 @@
+\newcommand{\tmpwidth}{0.24\linewidth}
+\setlength{\tabcolsep}{2pt}
+\begin{figure*}[!ht]
+    \centering
+    \begin{tabular}{c c c c}
+     \includegraphics[width=\tmpwidth]{figures/diversity4x4/000_4x4_biggan.png}&
+    \includegraphics[width=\tmpwidth]{figures/diversity4x4/000_4x4_vqvae2.png}&
+    \includegraphics[width=\tmpwidth]{figures/diversity4x4/000_4x4_ours8.png}&
+    \includegraphics[width=\tmpwidth]{figures/diversity4x4/000_4x4_ours64.png} \\
+     \includegraphics[width=\tmpwidth]{figures/diversity4x4/001_4x4_biggan.png}&
+    \includegraphics[width=\tmpwidth]{figures/diversity4x4/001_4x4_vqvae2.jpg}&
+    \includegraphics[width=\tmpwidth]{figures/diversity4x4/001_4x4_ours8.png}&
+    \includegraphics[width=\tmpwidth]{figures/diversity4x4/001_4x4_ours64.png} \\
+     \includegraphics[width=\tmpwidth]{figures/diversity4x4/009_4x4_biggan.png}&
+    \includegraphics[width=\tmpwidth]{figures/diversity4x4/009_4x4_vqvae2.jpg}&
+    \includegraphics[width=\tmpwidth]{figures/diversity4x4/009_4x4_ours8.png}&
+    \includegraphics[width=\tmpwidth]{figures/diversity4x4/009_4x4_ours64.png} \\
+    BigGAN-deep (FID=$6.95$) & VQVAE-2 (FID=31.11) &  \model-8 (FID=\bestfid) &  \model-64 (FID=5.14) \\
+    \end{tabular}
+    \vspace{-2mm}
+    
+    \caption{Sample Diversity Comparison between BigGAN-deep~\cite{biggan}, VQVAE-2\cite{Razavi19vqvae2}, and our proposed method \model on ImageNet 256$\times$256.
+    %BigGAN was sampled with $1.0$ truncation to yield the maximum diversity. In contrast to BigGAN's samples, our proposed method generate more diverse samples such as varied lighting, poses, scales and context, which are visually closer to the training set.
+    The class ids of the samples from top to bottom are {\footnotesize{ \texttt{000}}, \footnotesize{\texttt{001}}, and \footnotesize{\texttt{009}}} respectively. VQVAE-2 and BigGAN
+samples are taken from VQVAE-2\cite{Razavi19vqvae2}. Please refer to appendix for more comparisons.}
+    \vspace{-4mm}
+    \label{fig:diversity}
+\end{figure*}

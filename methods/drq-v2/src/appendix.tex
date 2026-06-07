@@ -1,0 +1,95 @@
+\appendix
+\section*{Appendix}
+
+
+
+\section{Benchmarks}
+\label{section:benchmarks}
+We classify a set of $24$ continuous control tasks from DMC~\citep{tassa2018dmcontrol} into \textit{easy}, \textit{medium}, and \textit{hard} benchmarks and provide a summary for each task in~\cref{table:benchamrks}.
+
+
+\begin{table}[!h]
+\centering
+\begin{tabular}{lccccc}
+\hline
+Task & Traits &  Difficulty & Allowed Steps &$\mathrm{dim}(\gS)$ & $\mathrm{dim}(\gA)$   \\
+
+\hline
+Cartpole Balance & balance, dense & easy & $1\times 10^6$  & $4$ & $1$  \\
+Cartpole Balance Sparse & balance, sparse & easy & $1\times 10^6$  & $4$ & $1$  \\
+Cartpole Swingup & swing & dense & $1\times 10^6$  & $4$ & $1$ \\
+Cup Catch & swing, catch, sparse & easy & $1\times 10^6$  & $8$ & $2$ \\
+Finger Spin & rotate, dense & easy & $1\times 10^6$  & $6$ & $2$ \\
+Hopper Stand & stand, dense & easy & $1\times 10^6$  & $14$ & $4$ \\
+Pendulum Swingup & swing, sparse & easy & $1\times 10^6$  & $2$ & $1$ \\
+Walker Stand  & stand, dense & easy & $1\times 10^6$  & $18$ & $6$\\
+Walker Walk  & walk, dense & easy & $1\times 10^6$  & $18$ & $6$ \\
+\hline 
+Acrobot Swingup & diff. balance, dense & medium & $3\times 10^6$  & $4$ & $1$  \\
+Cartpole Swingup Sparse & swing, sparse & medium & $3\times 10^6$  & $4$ & $1$  \\
+Cheetah Run & run, dense & medium & $3\times 10^6$  & $18$ & $6$  \\
+Finger Turn Easy & turn, sparse & medium & $3\times 10^6$  & $6$ & $2$  \\
+Finger Turn Hard & turn, sparse & medium & $3\times 10^6$  & $6$ & $2$  \\
+Hopper Hop & move, dense & medium & $3\times 10^6$  & $14$ & $4$  \\
+Quadruped Run & run, dense & medium & $3\times 10^6$  & $56$ & $12$  \\
+Quadruped Walk & walk, dense & medium & $3\times 10^6$  & $56$ & $12$  \\
+Reach Duplo & manipulation, sparse & medium & $3\times 10^6$  & $55$ & $9$  \\
+Reacher Easy & reach, dense & medium & $3\times 10^6$  & $4$ & $2$  \\
+Reacher Hard & reach, dense & medium & $3\times 10^6$  & $4$ & $2$  \\
+Walker Run & run, dense & medium & $3\times 10^6$  & $18$ & $6$  \\
+\hline
+Humanoid Stand & stand, dense & hard & $30\times 10^6$  & $54$ & $21$  \\
+Humanoid Walk & walk, dense & hard & $30\times 10^6$  & $54$ & $21$  \\
+Humanoid Run & run, dense & hard & $30\times 10^6$  & $54$ & $21$  \\
+
+
+\hline
+\end{tabular}
+\caption{\label{table:benchamrks} A detailed description of each tasks in our \textit{easy}, \textit{medium}, and \textit{hard} benchmarks.}
+\end{table}
+
+
+
+
+
+
+\newpage
+
+\section{Hyper-parameters}
+\label{section:hyperparams}
+
+The full list of hyper-parameters is presented in~\cref{table:hyper_params}. While we tried to keep the settings identical for each of the task, there are a few specific deviations for some tasks.\\
+\textbf{Walker Stand/Walk/Run} For all three  tasks we use mini-batch size of $512$ and $n$-step return of $1$.\\
+\textbf{Quadruper Run} We set the replay buffer size to $10^5$.\\
+\textbf{Humanoid Stand/Walk} We set learning rate to $8\times 10^{-5}$ and increase features dim. to $100$.
+
+
+\begin{table}[hb!]
+\caption{\label{table:hyper_params} A default set of hyper-parameters used in our experiments.}
+\centering
+\begin{tabular}{lc}
+\hline
+Parameter        & Setting \\
+\hline
+Replay buffer capacity & $10^6$ \\
+Action repeat & $2$ \\
+Seed frames & $4000$ \\
+Exploration steps & $2000$ \\
+$n$-step returns & $3$ \\
+Mini-batch size & $256$ \\
+Discount $\gamma$ & $0.99$ \\
+Optimizer & Adam \\
+Learning rate & $10^{-4}$ \\
+Agent update frequency & $2$ \\
+Critic Q-function soft-update rate $\tau$ & $0.01$ \\
+Features dim. & $50$ \\
+Hidden dim. & $1024$ \\
+Exploration stddev. clip & $0.3$ \\
+\multirow{3}{*}{Exploration stddev. schedule}& easy: $\mathrm{linear}(1.0, 0.1, 100000)$\\ & medium: $\mathrm{linear}(1.0, 0.1, 500000)$\\& hard: $\mathrm{linear}(1.0, 0.1, 2000000)$\\
+
+
+\hline
+\end{tabular}
+
+\end{table}
+

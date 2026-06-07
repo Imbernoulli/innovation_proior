@@ -1,0 +1,17 @@
+\begin{wraptable}{r}{0.5\textwidth}
+\centering
+\setlength{\tabcolsep}{2pt}
+\small
+\vspace{-2em}
+\caption{\small Comparison of vanilla attention with prepending a zero token and a learnable sink token during pre-training. To ensure stable streaming perplexity, the vanilla model requires several initial tokens. While Zero Sink shows a slight improvement, it still needs other initial tokens. Conversely, the model trained with a learnable Sink Token shows stable streaming perplexity with only the sink token added. Cache config $x$+$y$ denotes adding $x$ initial tokens with $y$ recent tokens. Perplexity is evaluated on the first sample in the PG19 test set.}
+\label{tab:pretrain_fix}
+\begin{tabular}{lcccc}
+\toprule
+Cache Config     & 0+1024 & 1+1023 & 2+1022 & 4+1020  \\
+\midrule
+Vanilla        & 27.87                      & 18.49  & 18.05  & 18.05   \\
+Zero Sink      & 29214                   & 19.90  & 18.27  & 18.01   \\
+Learnable Sink & 1235                    & \textbf{18.01}  & 18.01  & 18.02   \\
+\bottomrule
+\end{tabular}
+\end{wraptable}

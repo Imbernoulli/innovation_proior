@@ -1,0 +1,96 @@
+\newcommand{\eat}[1]{}
+
+% Optional math commands from https://github.com/goodfeli/dlbook_notation.
+%\input{math_commands.tex}
+
+\usepackage{microtype} % Better typography
+
+\usepackage{amssymb}   % AMS math symbols
+\usepackage{amsmath}   % AMS math
+\usepackage{amsfonts}  % AMS fonts
+\usepackage{amsthm}    % AMS theorem
+\usepackage{latexsym}  % Other math symbols
+\usepackage{stmaryrd}  % Theoretical CS symbols
+\usepackage{graphicx}  % Graphics
+\usepackage{color}     % Colored text
+\usepackage{xcolor}    % Custom colors
+
+\usepackage{url}       % \url{..} command
+\usepackage{xspace}    % Reclaim the eaten space in macros
+\usepackage{etoolbox}  % Logical macros (used in \pts)
+\usepackage{hyperref}  % Hyperlinks
+
+\usepackage{booktabs}  % professional-quality tables
+\usepackage{array}     % Improve tables
+\usepackage{multirow}  % Columns spanning multiple rows
+\usepackage{multicol}  % Rows spanning multiple columns
+\usepackage{hhline}    % Double border for table
+\usepackage{dcolumn}   % Decimal-align table columns
+\usepackage{makecell}
+
+\usepackage{tikz}      % Drawing
+\usepackage{tikz-qtree}
+\usepackage{pgfplots}  % Plot
+\pgfplotsset{compat=1.14}
+
+\newcommand{\todo}[1]{\textcolor{red}{\footnotesize[TODO: #1]}}
+\newcommand{\mw}[1]{\textcolor{orange}{\footnotesize[mw: #1]}}
+\newcommand{\kl}[1]{\textcolor{green!60!black}{\footnotesize[kl: #1]}}
+\newcommand{\kv}[1]{\textcolor{magenta}{\footnotesize[kv: #1]}}
+\newcommand{\ice}[1]{\textcolor{cyan}{\footnotesize[ice: #1]}}
+\newcommand{\zo}[1]{\textcolor{blue}{\footnotesize[zo: #1]}}
+\newcommand\qqq{\textbf{\color{red}{???}}\xspace}
+
+% \newcommand{\todo}[1]{}
+% \newcommand{\mw}[1]{}
+% \newcommand{\kl}[1]{}
+% \newcommand{\kv}[1]{}
+% \newcommand{\ice}[1]{}
+% \newcommand{\zo}[1]{}
+% \newcommand\qqq{}
+
+\newcommand\openqa{Open-QA\xspace}
+%\newcommand\dual{Dual-Encoder\xspace}
+%\newcommand\dualc{Dual-Encoder}
+\newcommand\thename{REALM\xspace}
+\newcommand\thefullname{Retrieval-Augmented Language Model\xspace}
+\newcommand\bertbase{BERT$_{\small \textsc{BASE}}$\xspace}
+\newcommand\bertlarge{BERT$_{\small \textsc{LARGE}}$\xspace}
+\newcommand\ccnews{\textsc{CC-News}\xspace}
+\newcommand\blank{$\rule{0.5cm}{0.15mm}$}
+\newcommand\nl[1]{``\texttt{\small #1}''}
+
+\newcommand{\znull}{\varnothing}
+\newcommand\fInput{f_\text{input}}
+\newcommand\fDoc{f_\text{doc}}
+\newcommand\fRead{f_\text{read}}
+\newcommand\cls{\texttt{[CLS]}\xspace}
+\newcommand\sep{\texttt{[SEP]}\xspace}
+\newcommand\mask{\texttt{[MASK]}\xspace}
+\newcommand\bert{\mathtt{BERT}\xspace}
+\newcommand\bertsub[1]{\mathtt{BERT_{#1}}\xspace}
+\newcommand\joinbert{\mathtt{join}_\bert}
+
+\newcommand{\inputembed}{\mathtt{Embed_{input}}}
+\newcommand{\docembed}{\mathtt{Embed_{doc}}}
+
+\newcommand\cZ{\mathcal{Z}}
+\newcommand\unlabeled{$\cZ$\xspace}
+\newcommand\cX{\mathcal{X}}
+\newcommand\target{$\cX$\xspace}
+\DeclareMathOperator*{\argmax}{arg\,max}
+\DeclareMathOperator*{\argmin}{arg\,min}
+
+\newcommand\nq{{\small\textsc{NaturalQuestions-Open}\xspace}}
+\newcommand\wq{{\small\textsc{WebQuestions}\xspace}}
+\newcommand\trec{{\small\textsc{CuratedTrec}\xspace}}
+
+% The original space for mid is too freaking large
+\renewcommand{\mid}{\,|\,}
+
+\definecolor{g-red}{HTML}{DB4437}
+\definecolor{g-blue}{HTML}{4285F4}
+\definecolor{g-green}{HTML}{0F9D58}
+\definecolor{g-yellow}{HTML}{F4B400}
+\definecolor{g-orange}{HTML}{FF9800}
+\definecolor{g-grey}{HTML}{9E9E9E}

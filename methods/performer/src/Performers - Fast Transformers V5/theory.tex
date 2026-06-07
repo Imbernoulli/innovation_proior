@@ -1,0 +1,77 @@
+\section{Theoretical results}
+\label{sec:theory}
+
+We present here the theory of positive orthogonal random features for softmax-kernel estimation. All these results can be applied also to the Gaussian kernel, since as explained in the previous section, one can be obtained from the other by renormalization (see: Section \ref{howto}).
+All proofs and additional more general theoretical results with a discussion
+are given in the Appendix.
+
+\begin{lemma}[positive (hyperbolic) versus trigonometric random features]
+\label{mse-lemma}
+The following is true:
+\begin{align}
+\begin{split}
+\mathrm{MSE}(\widehat{\mathrm{SM}}^{\mathrm{trig}}_{m}(\mathbf{x}, \mathbf{y})) =
+\frac{1}{2m} \exp(\|\mathbf{x}+\mathbf{y}\|^{2})\mathrm{SM}^{-2}(\mathbf{x},\mathbf{y})
+(1-\mathrm{exp}(-\|\mathbf{x}-\mathbf{y}\|^{2}))^{2}, \\ 
+\mathrm{MSE}(\widehat{\mathrm{SM}}^{\mathrm{+}}_{m}(\mathbf{x}, \mathbf{y})) = \frac{1}{m}\exp(\|\mathbf{x}+\mathbf{y}\|^{2})\mathrm{SM}^{2}(\mathbf{x},\mathbf{y})(1-\exp(-\|\mathbf{x}+\mathbf{y}\|^{2})),\\
+\mathrm{MSE}(\widehat{\mathrm{SM}}^{\mathrm{hyp}+}_{m}(\mathbf{x}, \mathbf{y})) =
+\frac{1}{2}(1-\exp(-\|\mathbf{x}+\mathbf{y}\|^{2}))\mathrm{MSE}(\widehat{\mathrm{SM}}^{\mathrm{+}}_{m}(\mathbf{x}, \mathbf{y})),
+\end{split}
+\end{align}
+for independent random samples $\omega_{i}$, and where $\mathrm{MSE}$ stands for the mean squared error.
+\end{lemma}
+Thus, for $\mathrm{SM}(\mathbf{x}, \mathbf{y}) \rightarrow 0$ we have: $\mathrm{MSE}(\widehat{\mathrm{SM}}^{\mathrm{trig}}_{m}(\mathbf{x}, \mathbf{y})) \rightarrow \infty$ and $\mathrm{MSE}(\widehat{\mathrm{SM}}^{\mathrm{+}}_{m}(\mathbf{x}, \mathbf{y})) \rightarrow 0$. Furthermore, the hyperbolic estimator provides additional accuracy improvements that are strictly better than those from $\widehat{\mathrm{SM}}_{2m}^{\mathrm{+}}(\mathbf{x}, \mathbf{y})$ with twice as many random features. The next result shows that the regularized softmax-kernel is in practice an accurate proxy of the softmax-kernel in attention.
+
+\begin{theorem}[regularized versus softmax-kernel]
+\label{reg-theorem}
+Assume that the $L_{\infty}$-norm of the attention matrix for the softmax-kernel satisfies: $\|\mathbf{A}\|_{\infty} \leq C$ for some constant $C \geq 1$. Denote by $\mathbf{A}^{\mathrm{reg}}$ the corresponding attention matrix for the regularized softmax-kernel. The following holds:
+\begin{equation}
+\inf_{i,j} \frac{\mathbf{A}^{\mathrm{reg}}(i,j)}{\mathbf{A}(i, j)} \geq 1 - \frac{2}{d^{\frac{1}{3}}} + o\left(\frac{1}{d^{\frac{1}{3}}}\right), \textrm{ and } \sup_{i,j} \frac{\mathbf{A}^{\mathrm{reg}}(i,j)}{\mathbf{A}(i, j)} \leq 1. 
+\end{equation}
+Furthermore, the latter holds for $d \geq 2$ even if the $L_{\infty}$-norm condition is not satisfied, i.e. the regularized softmax-kernel is a universal lower bound for the softmax-kernel. 
+\end{theorem}
+Consequently, positive random features for $\mathrm{SMREG}$ can be used to approximate the softmax-kernel.
+Our next result shows that orthogonality provably reduces mean squared error of the estimation with positive random features \textbf{for any dimensionality $d>0$} and we explicitly provide the gap.
+\begin{theorem}
+\label{var-theorem}
+If $\widehat{\mathrm{SM}}_{m}^{\mathrm{ort+}}(\mathbf{x}, \mathbf{y})$ stands for the modification of
+$\widehat{\mathrm{SM}}_{m}^{+}(\mathbf{x}, \mathbf{y})$ with orthogonal random features (and thus for $m \leq d$), then the following holds for any $d >0$:
+\begin{equation}
+\mathrm{MSE}(\widehat{\mathrm{SM}}_{m}^{\mathrm{ort+}}(\mathbf{x}, \mathbf{y})) \leq 
+\mathrm{MSE}(\widehat{\mathrm{SM}}_{m}^{+}(\mathbf{x}, \mathbf{y})) - \frac{2 (m - 1)}{m(d+2)}\left(\mathrm{SM}(\mathbf{x}, \mathbf{y}) - \exp\left(- \frac{\| \*x \|^2 + \| \*y \|^2}{2}\right) \right)^2.
+\end{equation}
+Furthermore, completely analogous result holds for the regularized softmax-kernel $\mathrm{SMREG}$.
+\end{theorem}
+For the regularized softmax-kernel, orthogonal features provide additional concentration results - the first exponentially small bounds for probabilities of estimators' tails that are strictly better than for non-orthogonal variants for every $d>0$. Our next result enables us to explicitly estimate the gap.
+
+\begin{theorem}
+\label{ort-theorem}
+Let $\mathbf{x}, \mathbf{y} \in \mathbb{R}^{d}$. The following holds for any $a > \mathrm{SMREG}(\mathbf{x},\mathbf{y})$, $\theta > 0$ and $m \leq d$:
+\begin{gather*}
+    \mathbb{P}[\widehat{\mathrm{SMREG}}^{+}_{m}(\mathbf{x}, \mathbf{y}) > a] \leq \exp(-\theta m a) M_Z (\theta)^m, \quad \mathbb{P}[\widehat{\mathrm{SMREG}}^{\mathrm{ort+}}_{m}(\mathbf{x}, \mathbf{y}) > a] \\
+    \leq \exp(-\theta m a) \biggl( M_Z (\theta)^m - \exp\left(-\frac{m}{2} (\| \*x \|^2 + \| \*y \|^2)\right) \frac{\theta^4 m (m - 1)}{4 (d + 2)} \| \*x + \*y \|^4 \biggr)
+\end{gather*}
+where $\widehat{\mathrm{SMREG}}^{\mathrm{ort+}}_{m}(\mathbf{x}, \mathbf{y})$ stands for the modification of $\widehat{\mathrm{SMREG}}^{\mathrm{+}}_{m}(\mathbf{x}, \mathbf{y})$ with ORFs, $X = \Lambda \exp(\sqrt{d}\frac{\omega^{\top}}{\|\omega\|_{2}}(\mathbf{x}+\mathbf{y}))$, $\omega \sim \mathcal{N}(0,\mathbf{I}_{d})$, $\Lambda$ is as in Lemma \ref{pos_random_features_lemma} and
+$M_{Z}$ is the moment generating function of $Z$.
+\end{theorem}
+
+We see that ORFs provide exponentially small and sharper bounds for critical regions where the softmax-kernel is small. 
+Below we show that even for the $\mathrm{SM}^{\mathrm{trig}}$ mechanism with ORFs, it suffices to take $m=\Theta(d\log(d))$ random projections to accurately approximate the attention matrix (thus if not attention renormalization, PRFs would not be needed). In general, $m$ depends on the dimensionality $d$ of the embeddings, radius $R$ of the ball where all queries/keys live and precision parameter $\epsilon$ (see: Appendix~\ref{sec:ball} for additional discussion), but does not depend on input sequence length $L$.
+
+%So for a fixed maximum length $R$ of %queries/keys (see Appendix~\ref{sec:ball} %for a discussion of this restriction), the number of random projections $m$ required is a %function of data dimensionality $d$ and %precision parameter $\epsilon$. 
+
+%PRFs improve on that by robustifying approximation of the renormalizer $\mathbf{D}^{-1}$ %from Eq. \ref{eq:attnorm}
+\begin{theorem}[uniform convergence for attention approximation]
+\label{thm:uniform}
+Assume that $L_{2}$-norms of queries/keys are upper-bounded by $R>0$. Define $l=Rd^{-\frac{1}{4}}$ and take 
+$h^{*} = \exp(\frac{l^{2}}{2})$.
+Then for any $\epsilon>0$, $\delta=\frac{\epsilon}{(h^{*})^{2}}$
+and the number of random projections $m=\Theta(\frac{d}{\delta^{2}}\log(\frac{4d^{\frac{3}{4}} R}{\delta}))$ the following holds for the attention approximation mechanism leveraging estimators $\widehat{\mathrm{SM}}^{\mathrm{trig}}$ with ORFs:
+$\|\widehat{\mathbf{A}}-\mathbf{A}\|_{\infty} \leq \epsilon$ with any constant probability, where $\widehat{\mathbf{A}}$ approximates the attention matrix $\mathbf{A}$.
+\end{theorem}
+
+
+
+
+
+

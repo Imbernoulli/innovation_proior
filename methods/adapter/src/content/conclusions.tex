@@ -1,0 +1,9 @@
+\section{Conclusion}
+
+We propose a transfer strategy for large text models using bottleneck adapter modules.
+Adapter tuning yields models that are competitive with state-of-the-art fine-tuning, whilst using only small number of task-specific parameters.
+This strategy is designed for an online setting, where tasks arrive in series, and one wants to solve them with a single model.
+For future work, adapters could be applied in multi-task training, where tasks are available simultaneously.
+Adapter modules could learn task-specific features while the main network learns generalizable representations.
+Unlike traditional approaches that use a task specific network ``head'',
+adapters allow task-dependent modulation at any layer.

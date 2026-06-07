@@ -1,0 +1,1104 @@
+
+\appendix
+\onecolumn
+
+
+\setlength{\abovedisplayskip}{2pt}
+\setlength{\belowdisplayskip}{2pt}
+\setlength{\abovedisplayshortskip}{2pt}
+\setlength{\belowdisplayshortskip}{2pt}
+\setlength{\belowcaptionskip}{2pt}
+\setlength{\abovecaptionskip}{1pt}
+
+\section*{{Appendix to}}
+\section*{{\Large \change{``Discovering Latent Causal Graph from Spatiotemporal Data"}}}
+
+\section{Theory}
+
+\subsection{ELBO Derivation}
+
+\input{figures/spacy_pgm}
+
+\label{section:elbo_derivation}
+\setcounter{proposition}{0}
+
+\begin{proposition}
+    The data generation model described in Figure \ref{fig:spacy_pgm_main} admits the following evidence lower bound (ELBO):
+    % \begin{align*}
+    % & \log p_{\theta}\left( \mathbf{X}^{(1:T), 1:N} \right) \geq
+    % \sum_{n=1}^N \Bigg\{ \mathbb{E}_{q_{\phi}(\mathbf{Z}^{(1:T), n}|\mathbf{X}^{(1:T), n}) q_{\phi}(G) q_{\phi}(\mathbf{F})} \Big[ \underbrace{\log p_{\theta}\left( \mathbf{X}^{(1:T), n} | \mathbf{Z}^{(1:T), n}, G, \mathbf{F} \right)}_{\text{Conditional Likelihood}} \\
+    % & + \underbrace{\mathbb{E}_{q_{\phi}(\mathbf{Z}^{(1:T), n})} \left[ \log p_{\theta}\left(\mathbf{Z}^{1:T} | G \right) - \log q_{\phi}(\mathbf{Z}^{1:T} | G) \right]}_{\text{Latent Representation}} \Bigg\} + \underbrace{\left[ \log p_{\theta}(G) - \log q_{\phi}(G) \right]}_{\text{Causal Graph}} \\
+    % & + \underbrace{\left[ \log p_{\theta}(\mathbf{F}) - \log q_{\phi}(F) \right]}_{\text{Spatial Factors}} \Big]
+    % = \text{ELBO}(\theta,\phi)
+    % \end{align*}
+    
+    % \begin{align*}
+    % & \log p_{\theta}\left( \mathbf{X}^{(1:T), 1:N} \right) \geq
+    % \sum_{n=1}^N \Bigg\{ \mathbb{E}_{q_{\phi}(\mathbf{Z}^{(1:T), n}|\mathbf{X}^{(1:T), n}) q_{\phi}(\mathbf{G}) q_{\phi}(\mathbf{F})} \Bigg[ {\log p_{\theta}\left( \mathbf{X}^{(1:T), n} | \mathbf{Z}^{(1:T), n}, \mathbf{F} \right)} \\
+    % & + \left[ \log p_{\theta}\left(\mathbf{Z}^{(1:T), n} | \mathbf{G} \right) - \log q_{\phi}\left(\mathbf{Z}^{(1:T), n} | \mathbf{X}^{(1:T), n} \right) \right] \Bigg] \Bigg\} + \mathbb{E}_{q_\phi(\mathbf{G})} {\left[ \log p(\mathbf{G}) - \log q_{\phi}(\mathbf{G}) \right]} \\
+    % & + \mathbb{E}_{q_\phi(\mathbf{F})} {\left[ \log p(\mathbf{F}) - \log q_{\phi}(\mathbf{F}) \right]} 
+    % = \text{ELBO}(\theta,\phi)
+    % \end{align*}
+
+    \begin{small}
+    \begin{equation}
+    \begin{aligned}
+        \log p_{\theta}\left( \mathbf{X}^{(1:T), 1:N} \right) \geq & \sum_{n=1}^N \Bigg\{ \mathbb{E}_{q_{\phi}(\mathbf{Z}^{(1:T), n}|\mathbf{X}^{(1:T), n}) q_{\phi}(\mathbf{G}) q_{\phi}(\mathbf{F})} \Bigg[ {\log p_{\theta}\left( \mathbf{X}^{(1:T), n} | \mathbf{Z}^{(1:T), n}, \mathbf{F} \right)} \nonumber \\
+        & + \left[ \log p_{\theta}\left(\mathbf{Z}^{(1:T), n} | \mathbf{G} \right) - \log q_{\phi}(\mathbf{Z}^{(1:T), n} | \mathbf{X}^{(1:T), n}) \right] \Bigg] \Bigg\} + \mathbb{E}_{q_\phi(\mathbf{G})} {\left[ \log p(\mathbf{G}) - \log q_{\phi}(\mathbf{G}) \right]} \nonumber \\
+        & + \mathbb{E}_{q_\phi(\mathbf{F})} {\left[ \log p(\mathbf{F}) - \log q_{\phi}(\mathbf{F}) \right]} 
+        = \text{ELBO}(\theta,\phi) 
+    \end{aligned}
+    \end{equation}
+    \end{small}
+\end{proposition}
+
+\begin{proof}
+
+We begin with the log-likelihood of the observed data:
+\begin{align*}
+    \log p_{\theta} \left( \mathbf{X}^{(1:T), 1:N} \right)
+    &= \log \int p_{\theta}\left( \mathbf{X}^{(1:T), 1:N}, \mathbf{Z}^{(1:T), 1:N}, \mathbf{G}, \mathbf{F} \right) \, d\mathbf{Z} \, d\mathbf{G} \, d\mathbf{F}
+\end{align*}
+
+We multiply and divide by the variational distribution $q_{\phi} \left( \mathbf{Z}^{(1:T), 1:N} | \mathbf{X}^{(1:T), 1:N} \right) q_{\phi} \left(\mathbf{G}\right) q_{\phi} \left( \mathbf{F}\right)$ to create an evidence lower bound (ELBO) using Jensen's inequality:
+\begin{align}
+    &\log p_{\theta} \left( \mathbf{X}^{(1:T), 1:N} \right) \nonumber \\ &= \log \int \frac{q_{\phi} \left( \mathbf{Z}^{(1:T), 1:N} | \mathbf{X}^{(1:T), 1:N} \right) q_{\phi} \left(\mathbf{G}\right) q_{\phi} \left( \mathbf{F}\right)}{q_{\phi} \left( \mathbf{Z}^{(1:T), 1:N} | \mathbf{X}^{(1:T), 1:N} \right) q_{\phi} \left(\mathbf{G}\right) q_{\phi} \left( \mathbf{F}\right)}  p_{\theta} \left( \mathbf{X}^{(1:T), 1:N}, \mathbf{Z}^{(1:T), 1:N}, \mathbf{G}, \mathbf{F} \right) \, d\mathbf{Z} \, d\mathbf{G} \, d\mathbf{F} \nonumber \\
+    & \geq \mathbb{E}_{q_{\phi} \left( \mathbf{Z}^{(1:T), 1:N} | \mathbf{X}^{(1:T), 1:N} \right) q_{\phi} \left(\mathbf{G}\right) q_{\phi} \left( \mathbf{F}\right)} \left[ \log \frac{ p_{\theta} \left( \mathbf{X}^{(1:T), 1:N}, \mathbf{Z}^{(1:T), 1:N}, \mathbf{G}, \mathbf{F} \right) }{ q_{\phi} \left( \mathbf{Z}^{(1:T), 1:N} | \mathbf{X}^{(1:T), 1:N} \right) q_{\phi} \left(\mathbf{G}\right) q_{\phi} \left( \mathbf{F}\right) } \right]. \label{eqn:elbo_interm}
+\end{align}
+
+By the assumptions of the data generative process, 
+\begin{equation*}
+    p_{\theta} \left( \mathbf{X}^{(1:T), 1:N}, \mathbf{Z}^{(1:T), 1:N}, \mathbf{G}, \mathbf{F} \right)=  p_{\theta} \left( \mathbf{X}^{(1:T), 1:N} | \mathbf{Z}^{(1:T), 1:N}, \mathbf{F}\right) p_{\theta} \left(\mathbf{Z}^{(1:T), 1:N} | \mathbf{G} \right) p \left(\mathbf{F}\right) p\left( \mathbf{G}\right) 
+\end{equation*}
+Further, note that $\mathbf{X}^{(1:T), 1:N}$ are conditionally independent given $\mathbf{F}, \mathbf{Z}^{(1:T), 1:N}$. Also, $\mathbf{X}^{(1:T), n}$ is conditionally independent of $\mathbf{Z}^{(1:T), m}$ given $\mathbf{Z}^{(1:T), n}, \mathbf{F}$ for $m \neq n$. This implies that:
+\begin{equation*}
+    p_{\theta} \left( \mathbf{X}^{(1:T), 1:N} | \mathbf{Z}^{(1:T), 1:N}, \mathbf{F}\right) = \prod_{n=1}^N p_\theta \left( \mathbf{X}^{(1:T), n} | \mathbf{Z}^{(1:T), n}, \mathbf{F} \right).
+\end{equation*}
+
+Similarly, $\mathbf{Z}^{(1:T), 1:N}$ are conditionally independent given $\mathbf{G}$, which implies
+\begin{equation*}
+    p_{\theta} \left( \mathbf{Z}^{(1:T), 1:N} | \mathbf{G} \right) = \prod_{n=1}^N p_\theta \left( \mathbf{Z}^{(1:T), n} |  \mathbf{G} \right).
+\end{equation*}
+
+Substituting these terms back into \eqref{eqn:elbo_interm} and grouping terms according to the variables $\mathbf{Z}, \mathbf{G}, \mathbf{F}$ yields the ELBO.
+\begin{align*}
+    \log p_{\theta} \left( \mathbf{X}^{(1:T), 1:N} \right)
+    \geq & \sum_{n=1}^N \Bigg\{ \mathbb{E}_{q_{\phi}(\mathbf{Z}^{(1:T), n}|\mathbf{X}^{(1:T), n}) q_{\phi}(\mathbf{G}) q_{\phi}(\mathbf{F})} \Bigg[ \log p_{\theta}\left( \mathbf{X}^{(1:T), n} | \mathbf{Z}^{(1:T), n}, \mathbf{G}, \mathbf{F} \right) \\
+    & + \left( \log p_{\theta}\left( \mathbf{Z}^{(1:T), n} | \mathbf{G} \right) - \log q_{\phi}\left( \mathbf{Z}^{(1:T), n} | \mathbf{X}^{(1:T), n} \right) \right) \Bigg] \Bigg\} \\
+    & + \mathbb{E}_{q_{\phi}(\mathbf{G})} \left[ \log p(\mathbf{G}) - \log q_{\phi}(\mathbf{G}) \right] \\
+    & + \mathbb{E}_{q_{\phi}(\mathbf{F})} \left[ \log p(\mathbf{F}) - \log q_{\phi}(\mathbf{F}) \right] \equiv \text{ELBO}(\theta, \phi).
+\end{align*}
+
+\end{proof}
+
+
+
+\subsection{Identifiability} \label{app:identifiability}
+
+In this work, we extend the notion of identifiability in latent variable models to the spatiotemporal setting considered in this paper. Informally, a latent variable model is said to be identifiable if the underlying latent variables can be uniquely recovered from observations up to permissible ambiguities such as permutation or scaling. 
+
+We begin by formalizing the notion of a spatiotemporal process over a continuous spatial domain, which can be thought about as a gridded time series in a grid with infinite resolution. This abstraction enables us to reason about these systems using tools from real analysis. Although our theory assumes a continuous domain, the insights extend to discrete grids with dense discretization, that is, $L >> D$.
+
+\setcounter{definition}{-1}
+\begin{definition}[Linearly Independent Family of Functions]
+    Let $\mathcal{F}$ be a family of real-valued, parametric functions $\mathcal{F} = \left\{ f_\psi \mid \mathbb{R}^{K} \rightarrow \mathbb{R} \right\}$. $\mathcal{F}$ is said to be a linearly independent family if, for any finite set $\left\{ \psi_1, ..., \psi_n \right\}$, we have 
+    \begin{equation}
+        \sum_{k=1}^n \alpha_k f_{\psi_k} = 0 \implies \alpha_k = 0 \quad \forall k \in [n]. 
+    \end{equation}
+\end{definition}
+
+\begin{definition}[Spatial Factor Process]
+    \label{def:spatial_factor_process}
+    Let $\mathcal{G} = (0,1)^K$ be a $K-$dimensional spatial domain, and $\mathcal{F} = \left\{F_{\psi_1}, ..., F_{\psi_D} \right\}$ be a finite linearly independent family of functions defined on $\mathcal{G}$. Denote $\mathscr{G} = \big\{ g_{\ell} \colon \mathbb{R} \to \mathbb{R} \ \big| \ \ell \in \mathcal{G} \big\}$ as a family of functions defined for each point $\ell$ on the grid $\mathcal{G}$. Let  $\{\Zt\}_{t=1}^T, \Zt \in \mathbb{R}^D$ denote the latent causal process and  $p_{\varepsilon_{\ell}^{(t)}}$ be a zero-mean noise distribution. For each location $\ell \in \mathcal{G}$  and time $t \in [T]$, we assume the observation $\mathbf{X}$ follows the \textit{Spatial Factor Process} $\displaystyle \text{SFP}\left(\left\{\Zt\right\}_{t=1}^T, \mathcal{F}, \mathscr{G}, p_{\varepsilon_{\ell}^{(t)}} \right)$ defined below: 
+\begin{equation} \Xt (\ell) = g_{\ell} \left (\Fx^\top \Zt \right) + \varepsilon_{\ell}^{(t)}, \label{eqn:x_eqn_2}
+    \end{equation}
+    where
+    \begin{equation*}
+        \Fx = \begin{bmatrix}
+            F_{\psi_1}(\ell) \\
+            \vdots \\
+            F_{\psi_D}(\ell)
+        \end{bmatrix}.
+    \end{equation*}
+\end{definition}
+
+
+A \textit{Spatial Factor Process} (SFP) generalizes gridded time series to a continuous spatial domain $\mathcal{G} = (0,1)^K$, where observations are modeled at \textit{all} points in the grid. The dynamics are driven by a latent process $\{\Zt\}$, while spatial structure is captured through factors $\Fx = [F_{\psi_1}(\ell), \dots, F_{\psi_D}(\ell)]^\top$, composed of linearly independent functions evaluated at each $\ell \in \mathcal{G}$. Location-specific nonlinearities are modeled using mappings $g_{\ell}(\cdot)$, which transform the latent factors $\Zt$ into observations at each point.
+
+The identifiability question of SFP is: given the observational distribution $\displaystyle p \left(\Xt|\Zt; \mathbf{F}\right)$ generated from a latent causal process $\displaystyle \{ \Zt \}_{t=1}^T$, can we uniquely recover the latents \citep{yao2021learning, yao2022temporally, moran2022identifiable}? In other words, if we learn a generative model $\displaystyle p\left( \hatXt | \hatZt;  \widehat{\mathbf{F}} \right)$ such that $\displaystyle p(\mathbf{X}|\Zt; {\mathbf{F}}) = p(\hatXt|\hatZt; \widehat{\mathbf{F}} )$, can we infer that $\Zt = \hatZt$? In practice, we seek recovery of the latents up to trivial transformations like permutation or scaling.  We formalize this notion with the following definition.
+
+\begin{definition}[Identifiability of SFPs]
+  Let $\mathbf{X}$ denote the true generative SFP, specified by $\displaystyle \left(\left\{\Zt\right\}_{t=1}^T, \left\{ F_{\psi_i} \right\}_{i=1}^D , \{ g_{\ell} \mid \ell \in \mathcal{G}\}, p_{\varepsilon_{\ell}^{(t)}} \right)$ (as described in Definition \ref{def:spatial_factor_process}) with observational distribution $\displaystyle p(\Xt | \Zt; \mathbf{F})$, where 
+  \begin{equation}
+      \Xt(\ell) = g_{\ell} \left( \Fx^\top \Zt \right) + \varepsilon_{\ell}^{(t)}, \label{eqn:xt1}
+  \end{equation} 
+  with $\varepsilon_{\ell}^{(t)} \sim p_{\varepsilon_{\ell}^{(t)}}$ for some zero-mean noise distribution $p_{\varepsilon_{\ell}}$. Suppose we have a learned SFP $\displaystyle \widehat{\mathbf{X}}$, specified by $\displaystyle \left(\left\{\hatZt \right\}_{t=1}^T, \left\{ F_{\widehat{\psi_i}} \right\}_{i=1}^D, \{ \widehat{g}_{\ell} \mid \ell \in \mathcal{G}\}, \change{p_{{\varepsilon}_{\ell}^{(t)}}} \right)$
+  with observational distribution $\displaystyle p( \hatXt | \hatZt; \widehat{\mathbf{F}})$, where
+  \begin{equation}
+  \displaystyle \hatXt(\ell) = \widehat{g}_{\ell} \left( \hatFx^\top \hatZt \right) + \widehat{\varepsilon}_{\ell}^{(t)}, \label{eqn:hatxt1}   
+  \end{equation}
+  with $\widehat{\varepsilon}_{\ell}^{(t)} \sim \change{p_{{\varepsilon}_{\ell}^{(t)}}}$. The latent process $\{\Zt\}$ is said to be \textit{identifiable} upto permutation and scaling, if:
+  \begin{align*}
+    p(\Xt(\ell) | \Zt; \Fx) &= p( \hatXt(\ell) | \hatZt; \hatFx), \quad \forall \ell \in \mathcal{G}, t \in [T] \\
+    \implies \widehat{\mathbf{Z}}_t = PS \Zt, \text{ and }& \left\{ F_{\psi_i}\right\}_{i=1}^D = \left\{ F_{\widehat{\psi_i}}\right\}_{i=1}^D,
+  \end{align*}
+  for some permutation matrix $P$ and scaling matrix $S$.
+\end{definition}
+
+\change{
+
+We first show a useful result that allows us to ``denoise" the observation space and enables the point-wise equality of the transformed latent time series. 
+\setcounter{lemma}{0}
+\begin{lemma}[Denoising Lemma]
+\label{lemma:denoising_lemma}
+    Suppose $\mathbf{X} = \displaystyle \left(\left\{\Zt\right\}_{t=1}^T, \left\{ F_{\psi_i} \right\}_{i=1}^D , \{ g_{\ell} \mid \ell \in \mathcal{G}\}, p_{\varepsilon_{\ell}^{(t)}} \right)$ and $\widehat{\mathbf{X}} = \displaystyle \left(\left\{\hatZt \right\}_{t=1}^T, \left\{ F_{\widehat{\psi_i}} \right\}_{i=1}^D, \{ \widehat{g}_{\ell} \mid \ell \in \mathcal{G}\}, {p_{{\varepsilon}_{\ell}^{(t)}}} \right)$ are two SFPs with observational distributions $\displaystyle p(\Xt | \Zt; \mathbf{F})$ and $\displaystyle p( \hatXt | \hatZt; \widehat{\mathbf{F}})$ respectively, such that
+  \begin{equation*}
+      \Xt(\ell) = g_{\ell} \left( \Fx^\top \Zt \right) + \varepsilon_{\ell}^{(t)},
+  \end{equation*} 
+  and 
+    \begin{equation*}
+  \displaystyle \hatXt(\ell) = \widehat{g}_{\ell} \left( \hatFx^\top \hatZt \right) + \widehat{\varepsilon}_{\ell}^{(t)},
+  \end{equation*}
+  where $\varepsilon_\ell^{(t)}, \widehat{\varepsilon_\ell}^{(t)} \sim p_{\varepsilon_\ell^{(t)}}$.
+    Assume that for all $\ell \in \mathcal{G}$ and $t \in [T]$, the set $\displaystyle \left\{ {x} \in \mathbb{R} \mid \varphi_{\varepsilon_\ell^{(t)}} ({x}) = 0\right\}$ has measure zero where $\varphi_{\varepsilon_\ell^{(t)}}$ represents the characteristic function of the density $p_{\varepsilon_\ell^{(t)}}$.
+    If
+    \begin{equation}
+         p(\Xt(\ell) = x | \Zt; \Fx) = p( \hatXt(\ell) = x| \hatZt; \hatFx) \quad \forall \ell \in \mathcal{G}, t \in [T]. \label{eqn:denoising_condition}
+    \end{equation}
+    
+    Then we have that
+    \begin{equation*}
+        {g}_{\ell} \left( \Fx^\top \Zt \right)  = \widehat{g}_{\ell} \left( \hatFx^\top \hatZt \right) \quad \forall \ell \in \mathcal{G}, t \in [T].
+    \end{equation*}
+\end{lemma}
+
+\begin{proof}
+Our argument is similar to  Step I of Appendix B.2.2 in \citet{khemakhem2020variational}.
+
+Note that we can write
+\begin{equation}
+    p(\Xt(\ell) = x | \Zt; \Fx) = p_{\varepsilon_\ell^{(t)}} \left( x - \bar{x} \right) = \int_\mathbb{R} \delta_{\bar{x}} \left( z \right) p_{\varepsilon_\ell^{(t)}}(x-z) dz = \delta_{\bar{x}} * p_{\varepsilon_\ell^{(t)}} (x),
+    \label{eqn:denoise_lemma_1}
+\end{equation}
+where $\bar{x} = {g}_{\ell} \left( \Fx^\top \Zt \right)$, $\delta_{\bar{x}}$ denotes the Dirac-delta distribution centered at $\bar{x}$ and $*$ denotes the convolution operator.
+
+Similarly,
+
+\begin{equation}
+    p(\hatXt(\ell) = x | \hatZt; \hatFx) = p_{\varepsilon_\ell^{(t)}} \left( x - \tilde{x} \right) = \delta_{\tilde{x}} * p_{\varepsilon_\ell^{(t)}} (x),
+    \label{eqn:denoise_lemma_2}
+\end{equation}
+where $\tilde{x} = \widehat{g}_{\ell} \left( \hatFx^\top \hatZt \right)$.
+
+From \eqref{eqn:denoising_condition} and the equations \ref{eqn:denoise_lemma_1} and \ref{eqn:denoise_lemma_2}, we obtain
+
+\begin{equation*}
+    \delta_{\bar{x}} * p_{\varepsilon_\ell^{(t)}} (x) = \delta_{\tilde{x}} * p_{\varepsilon_\ell^{(t)}} (x).
+\end{equation*}
+Taking the Fourier Transform on both sides of the equation, we obtain,
+\begin{equation*}
+    e^{is\bar{x}} \varphi_{\varepsilon_\ell^{(t)}}(s) = e^{is\tilde{x}} \varphi_{\varepsilon_\ell^{(t)}}(s).
+\end{equation*}
+Since $\varphi_{\varepsilon_\ell^{(t)}}\neq 0$ almost everywhere, we have that $\displaystyle e^{is\bar{x}} = e^{is \tilde{x}}$ for almost all values of $s$. This implies that
+\begin{equation*}
+    \bar{x} = \tilde{x}, \text{ i.e., } {g}_{\ell} \left( \Fx^\top \Zt \right) = \widehat{g}_{\ell} \left( \hatFx^\top \hatZt \right) \forall \ell \in \mathcal{G}, t \in [T].
+\end{equation*}
+\end{proof}
+}
+
+\subsubsection{Linear Identifiability}
+Our first result shows that for the case with no nonlinearity, that is $g_{\ell}(y) = y$ for all $\ell \in \mathcal{G}$, the latents and spatial factors are identifiable.
+
+\setcounter{theorem}{0}
+
+\begin{theorem}[Identifiability of Linear SFPs]
+    Suppose we are given two SFPs $\mathbf{X} = \text{SFP}\left(\mathbf{Z}, \mathcal{F}, \left\{ g_{\ell} \mid \ell \in \mathcal{G} \right\}, p_{\varepsilon_{\ell}^{(t)}} \right)$ and $\widehat{\mathbf{X}} = \text{SFP}\left(\widehat{\mathbf{Z}}, \widehat{\mathcal{F}}, \left\{\widehat{g}_{\ell} \mid \ell \in \mathcal{G} \right\}, \change{p_{{\varepsilon}_{\ell}^{(t)}}} \right)$ specified by Equations \ref{eqn:xt1} and \ref{eqn:hatxt1} respectively, such that both $\mathcal{F}$ and $\widehat{\mathcal{F}}$ belong to the same (potentially infinite) family of linearly independent functions. Further, suppose that the following conditions are satisfied: 
+    \begin{enumerate}
+        \item \textbf{Linearity:} For all $\ell \in \mathcal{G}$, $\displaystyle g_{\ell} = \widehat{g}_{\ell} = \text{Id}$, where $\text{Id}$ is the identity function.
+        \item \textbf{Non-degenerate latent processes:} For all $d \in [D]$,  $\exists \,  t_0 \in [T]$ such that $\mathbf{Z}^{(t_0)}_d \neq 0$, that is, none of the time series is trivially zero. A similar condition holds for $\widehat{\mathbf{Z}}$.
+        \item \change{\textbf{Characteristic function of the noise:} For all $\ell \in \mathcal{G}$ and $t \in [T]$, the set $\displaystyle \left\{ {x} \in \mathbb{R} \mid \varphi_{\varepsilon_\ell^{(t)}} ({x}) = 0\right\}$ has measure zero where $\varphi_{\varepsilon_\ell^{(t)}}$ represents the characteristic function of the density $p_{\varepsilon_\ell^{(t)}}$}.
+        
+    \end{enumerate}
+     If $p(\Xt(\ell) | \Zt ; \Fx) = p \left(\hatXt(\ell)| \hatZt; \hatFx \right)$ for every $\ell \in \mathcal{G}$ and $t \in [T]$, then $\mathbf{Z} = P\tilde{\mathbf{Z}}$ and $\mathcal{F} = \widehat{\mathcal{F}}$ for some permutation matrix $P$. \label{thm:linear_sfp_identifiability}
+\end{theorem}
+
+\begin{proof}
+    By Lemma \ref{lemma:denoising_lemma},
+    \begin{align}
+        &p(\Xt(\ell) | \Zt ; \Fx) = p \left(\hatXt(\ell)| \hatZt; \hatFx \right) \nonumber \\
+         \implies &\Fx^\top \Zt = \hatFx^\top \hatZt \quad \forall \ell \in \mathcal{G}, \quad t \in [T] \nonumber \\
+        \implies  &\sum_{j=1}^D F_{\psi_j}(\ell) \Zt_j =  \sum_{j=1}^D {F}_{\widehat{\psi}_j}(\ell) \hatZt_j \quad \forall \ell \in \mathcal{G}, \quad t \in [T] \nonumber \\
+        \implies  &\sum_{j=1}^D F_{\psi_j}(\ell) \Zt_j  -  \sum_{j=1}^D {F}_{\widehat{\psi}_j}(\ell) \hatZt_{j} = 0 \quad \forall \ell \in \mathcal{G}, \quad t \in [T] \label{eqn:li_equation}
+    \end{align}
+    
+    Suppose $\displaystyle \left\{ \psi_1, \ldots, \psi_D \right\} \cap \left\{ \widehat{\psi}_1, \ldots, \widehat{\psi}_D \right\} = \varnothing$. Then, due to the fact that both $\mathcal{F}$ and $\widehat{\mathcal{F}}$ are subsets from the same family of linearly independent functions, this would imply that $\displaystyle \Zt_j = \hatZt_j = 0 \quad \forall j \in [D], t \in [T]$, which is a contradiction since we assume that none of the time series are all 0. This implies that $\displaystyle \left\{ \psi_1, \ldots, \psi_D \right\} \cap \left\{ \widehat{\psi}_1, \ldots, \widehat{\psi}_D \right\}  \neq \varnothing$.
+    Assume $\displaystyle V = \left\{ (i,j) : \psi_i = \tilde{\psi_j} \right\}$ and define $\displaystyle I = \left\{ i : \exists j \, \text{ such that } (i, j) \in V\right\}$, $\displaystyle J = \left\{ j : \exists \, i \text{ such that } (i, j) \in V\right\}$. Define the function $\displaystyle \mathcal{V} : I \rightarrow J, \quad \mathcal{V}(i) = j \text{ such that } (i, j) \in V$.
+    Then \eqref{eqn:li_equation} can be written as:
+    \begin{align*}
+         \sum_{\substack{j=1 \\ j \notin I}}^D F_{\psi_j}(\ell) \Zt_j  -  \sum_{\substack{j=1 \\ j \notin J}}^D {F}_{\widehat{\psi}_j}(\ell) \hatZt_j + \sum_{\substack{j=1 \\ j \in I}}^D {F}_{{\psi_j}}(\ell) \left(\Zt_j - \hatZt_{\mathcal{V}(j)} \right) = 0 \quad \forall \ell \in \mathcal{G}, t \in [T].
+    \end{align*}
+    If $I^\complement \neq \varnothing$, then $\displaystyle \Zt_j =0 \, \, \forall  j \in I^\complement$ due to the linear independence of $\displaystyle F_{\psi_j}$, which contradicts our assumption of non-zero time series. Therefore, we must have that $I^\complement = \varnothing$, which implies that  $\displaystyle \{ \psi_1, \ldots, \psi_D\} = \{ \tilde{\psi}_1, \ldots, \tilde{\psi}_D\}$, and $\Zt_j = \Zt_{\mathcal{V}(j)} \, \, \forall j \in [D], t \in [T]$.
+\end{proof} 
+
+
+\subsubsection{General Identifiability}
+We now turn our attention to the general setting where $g_\ell$ can be  nonlinear. Before proving the identifiability result, we state several useful lemmas  from real analysis. We first recall some useful properties of real analytic functions.
+
+\begin{definition}[Real Analytic Functions] 
+Let $U$ be an open set in $\mathbb{R}^K$. A function $f : U \rightarrow \mathbb{R}$ is real analytic (or simply analytic) if at each point $x \in U$, the function $f$ has a convergent power series representation that converges (absolutely) to $f(x)$ in some neighborhood of $x$.
+\end{definition}
+
+In other words, real analytic functions can be written using a power series representation for every point in the domain. Some examples include polynomial functions and the family of RBF kernels. Next, we recall the following, well-known identity theorem for real analytic functions.
+
+\begin{lemma}[Identity Theorem for Real Analytic Functions \citep{2022Tasty}] \label{lemma:identity_thm_analytic}
+    Suppose $f: U \rightarrow \mathbb{R}$ is a real analytic function defined on a connected domain $U \subset \mathbb{R}^K$. If $f=0$ on a nonempty, open subset $V \subset U$, then $f\equiv 0$ on $U$.
+\end{lemma}
+
+We also recall another important result about real analytic functions which we will use in our proof.
+\begin{lemma}[Zero sets of analytic functions have zero measure \citep{mityagin2015zero}] \label{lemma:zero_measure_analytic}
+    Let $f : U \rightarrow \mathbb{R}$ be a real analytic function on a connected open domain $U \subset \mathbb{R}^K$. If $f$ is not identically zero, then its zero set
+    \begin{equation*}
+        \Lambda_f = \{ x \in U \mid f(x) = 0\}
+    \end{equation*}
+    has a zero Lebesgue measure $\mu(\Lambda_f) = 0$.
+\end{lemma}
+
+Using these results, we prove some useful results about linearly independent families of real analytic functions. 
+
+\begin{lemma} \label{lemma:overlapping_li_zero}
+    Suppose $F = \{ f_1, \ldots, f_D\}$ and $G = \{g_1, \ldots, g_D \}$ are two sets of linearly independent, real analytic functions defined on $\mathcal{G} = (0, 1)^K$. Define the matrices
+
+    \begin{equation}
+        \mathcal{M}_F(\ell_1, \ldots, \ell_D) = \begin{bmatrix}
+            f_1(\ell_1) & \ldots & f_1(\ell_D) \\
+            \vdots & & \vdots\\
+            f_D(\ell_1) & \ldots & f_D(\ell_D) 
+        \end{bmatrix} \qquad \qquad \mathcal{M}_G(\ell_1, \ldots, \ell_D) = \begin{bmatrix}
+            g_1(\ell_1) & \ldots & g_1(\ell_D) \\
+            \vdots & & \vdots\\
+            g_D(\ell_1) & \ldots & g_D(\ell_D)
+        \end{bmatrix}. \label{eqn:matrices_defn}
+    \end{equation}
+    Let 
+    \begin{equation}
+     \Phi_{F} = \{ \mathbf{\boldsymbol \ell} = (\ell_1, \ldots, \ell_D) \mid {\ell}_i \in \mathcal{G}, \mathcal{M}_F(\mathbf{\boldsymbol \ell}) \text{ is full rank}\} \label{eqn:phi_definition}   
+    \end{equation}
+     denote the set of $D-$tuples in $\mathbb{R}^{K}$ for which the matrix $\mathcal{M}_F$ is full rank. Then 
+     \begin{enumerate}
+         \item $\mu(\Phi_{F} \cap \Phi_{G}) = 1$. In particular, $\Phi_{F}\cap \Phi_{G} \neq \varnothing$.
+         \item $\Phi_F \cap \Phi_G$ is an open set. 
+     \end{enumerate} 
+\end{lemma}
+\begin{proof}
+
+1. The complement of the set $\Phi_{F}$ is \begin{equation*}
+        \Phi_F^\complement = \left\{ \mathbf{\boldsymbol \ell} = (\ell_1, \ldots, \ell_D) \mid {\ell}_i \in \mathcal{G}, \det\left(\mathcal{M}_F\right)(\boldsymbol{\ell})=0 \right\}.
+    \end{equation*}
+    Since $\det\left(\mathcal{M}_F\right)(\boldsymbol {\ell})$ is a polynomial in real analytic functions, it is also a real analytic function in $\mathbb{R}^{DK}$. 
+
+    Note that since $F$ is linearly independent, $\Phi_F$ is non-empty. \footnote{See for example: \\ \url{https://math.stackexchange.com/questions/3516189/prove-existence-of-evaluation-points-such-that-the-matrix-has-nonzero-determinan}.} Thus, $\det\left(\mathcal{M}_F\right)(\boldsymbol{\ell})$ is not identically zero. By Lemma \ref{lemma:zero_measure_analytic}, $\mu \left(\Phi_F^\complement\right) = 0$. Similarly, $\mu \left(\Phi_G^\complement\right) = 0$, and $\displaystyle \mu \left( \Phi_F^\complement \cap \Phi_G^\complement \right) \leq \mu \left( \Phi_F^\complement\right) = 0 \implies \mu \left( \Phi_F^\complement \cap \Phi_G^\complement \right) = 0$.
+Thus, we obtain that
+    \begin{align*}
+        \mu \left( \Phi_F \cap \Phi_G\right) &= \mu \left( \Phi_F\right) + \mu \left( \Phi_G\right) - \mu\left( \Phi_F \cup \Phi_G \right)\\
+        &= \mu(\mathcal{G})-\mu \left( \Phi_F^\complement\right) + \mu(\mathcal{G}) - \mu \left( \Phi_G^\complement\right) - \left(\mu(\mathcal{G}) - \mu\left( \Phi_F^\complement \cap \Phi_G^\complement \right) \right)\\
+        &= \mu(\mathcal{G}) - \mu \left( \Phi_F^\complement\right) - \mu \left( \Phi_G^\complement\right) + \mu\left( \Phi_F^\complement \cap \Phi_G^\complement \right) \\
+        &= 1.
+    \end{align*}
+
+2. 
+Since the function $\det\left(\mathcal{M}_F\right)(\mathbf{\boldsymbol \ell})$ is real analytic, it is also continuous. Since the zero set of a continuous function is closed, $\Phi_F^\complement$ is closed, which implies that $\Phi_F$ is open. Similarly, $\Phi_G$ is open. Since the finite intersection of open sets is open, $\Phi_F \cap \Phi_G$ is open.
+\end{proof}
+
+\begin{lemma} \label{lemma:li_open_sets}
+    Suppose $F = \{ f_1, \ldots, f_D\}$ is a set of linearly independent real analytic functions defined on $\mathcal{G} = (0, 1)^K$. Then $F$ is linearly independent in every non-empty open set $U \subset \mathcal{G}$.
+\end{lemma}
+\begin{proof}
+Suppose there exists a nonempty open set $U \subset \mathcal{G}$ in which $F$ is linearly dependent. This implies $\exists c_1, \ldots c_D \in \mathbb{R}$, not all zero, such that
+\begin{equation*}
+    \sum_{i=1}^D c_i f_i(\ell) = 0 \qquad \forall \ell \in U.
+\end{equation*}
+Then, by Lemma \ref{lemma:identity_thm_analytic}, the real analytic function $\sum_{i=1}^D c_i f_i(\ell)$ is identically zero everywhere in $\mathcal{G}$, which is a contradiction to the linear independence of $F$. 
+\end{proof} 
+
+We are now ready to prove the identifiability of the model under general, diffeomorphic non-linearities in the mapping between the latent and observational space.
+
+\begin{theorem}[Identifiability of General SFPs]
+    Suppose we are given two SFPs $\mathbf{X} = \text{SFP}\left(\mathbf{Z}, \mathcal{F}, \left\{ g_{\ell} \mid \ell \in \mathcal{G} \right\}, p_{\varepsilon_{\ell}^{(t)}} \right)$ and $\widehat{\mathbf{X}} = \text{SFP}\left(\widehat{\mathbf{Z}}, \widehat{\mathcal{F}}, \left\{\widehat{g}_{\ell} \mid \ell \in \mathcal{G} \right\}, \change{p_{{\varepsilon}_{\ell}^{(t)}}} \right)$ specified by Equations \ref{eqn:xt1} and \ref{eqn:hatxt1} respectively, such that both $\mathcal{F}$ and $\widehat{\mathcal{F}}$ belong to the same (potentially infinite) family of linearly independent functions. Further, suppose that the following conditions are satisfied: 
+    \begin{enumerate}
+        \item \textbf{Diffeomorphisms:} For all $\ell \in \mathcal{G}$, $\displaystyle g_{\ell}, \widehat{g}_{\ell}$ are diffeomorphisms, that is, $g_{\ell}, \widehat{g}_{\ell}$ are invertible and continuously differentiable, and their inverses are also continuously differentiable.
+        \item \textbf{Real analytic functions:} All the functions $F_{\psi_i} \in \mathcal{F}, F_{\widehat{\psi}_i} \in \widehat{\mathcal{F}}$ are real analytic. 
+        \item \textbf{Non-degenerate latent processes:} For all $d \in [D]$,  $\exists \,  t_0 \in [T]$ such that $\mathbf{Z}^{(t_0)}_d \neq 0$, that is, none of the time series is trivially zero. A similar condition holds for $\widehat{\mathbf{Z}}$.
+        \item \change{\textbf{Characteristic function of the noise:} For all $\ell \in \mathcal{G}$ and $t \in [T]$, the set $\displaystyle \left\{ {x} \in \mathbb{R} \mid \varphi_{\varepsilon_\ell^{(t)}} ({x}) = 0\right\}$ has measure zero where $\varphi_{\varepsilon_\ell^{(t)}}$ represents the characteristic function of the density $p_{\varepsilon_\ell^{(t)}}$}.
+    \end{enumerate}
+     If $p(\Xt(\ell) | \Zt ; \Fx) = p \left(\hatXt(\ell)| \hatZt; \hatFx \right)$ for every $\ell \in \mathcal{G}$ and $t \in [T]$, then $\mathbf{Z} = PS\tilde{\mathbf{Z}}$ and $\mathcal{F} = \widehat{\mathcal{F}}$ for some permutation matrix $P$ and scaling matrix $S$. \label{thm:sfp_identifiability}
+\end{theorem}
+
+\begin{proof}
+    By Lemma \ref{lemma:denoising_lemma}, we obtain that,
+    \begin{align}
+        &p(\Xt(\ell) | \Zt ; \Fx) = p \left(\hatXt(\ell)| \hatZt; \hatFx \right) \nonumber \\
+         \implies & g_{\ell}\left(\Fx^\top \Zt\right) = \widehat{g}_{\ell} \left( \hatFx^\top \hatZt \right) \quad \forall \ell \in \mathcal{G}, \quad t \in [T] \nonumber \\
+         \implies & \Fx^\top \Zt = g_{\ell}^{-1} \circ \widehat{g}_{\ell} \left( \hatFx^\top \hatZt \right) = h_{\ell} \left( \hatFx^\top \hatZt \right) \quad \forall \ell \in \mathcal{G}, \quad t \in [T] \label{eqn:sfp_proof_intermediate}
+    \end{align}
+    where $\displaystyle h_{\ell} = g_{\ell}^{-1} \circ \widehat{g}_{\ell}$. Defining $\Phi_\mathcal{F}$ and $\Phi_{\widehat{\mathcal{F}}}$ as in \eqref{eqn:matrices_defn}, using Lemma \ref{lemma:overlapping_li_zero}, we get that $\displaystyle \Phi_\mathcal{F} \cap \Phi_{\widehat{\mathcal{F}}} \neq \varnothing$. Pick an arbitrary point $\mathbf{\boldsymbol \ell} = \left(\ell_1, \ldots, \ell_D \right) \in  \Phi_\mathcal{F} \cap \Phi_{\widehat{\mathcal{F}}}$. Then, the matrices 
+
+    \begin{equation*}
+        \mathcal{M}_{\mathcal{F}}(\mathbf{\boldsymbol \ell}) = \begin{bmatrix}
+            F_{\psi_1}(\ell_1) & \ldots & F_{\psi_1}(\ell_D) \\
+            \vdots & & \vdots\\
+            F_{\psi_D}(\ell_1) & \ldots & F_{\psi_D}(\ell_D) 
+        \end{bmatrix} \qquad \qquad \mathcal{M}_{\widehat{\mathcal{F}}}(\mathbf{\boldsymbol \ell}) = \begin{bmatrix}
+            {F}_{\widehat{\psi}_1}(\ell_1) & \ldots & {F}_{\widehat{\psi}_1}(\ell_D) \\
+            \vdots & & \vdots\\
+            {F}_{\widehat{\psi}_D}(\ell_1) & \ldots & {F}_{\widehat{\psi}_D}(\ell_D)
+        \end{bmatrix}
+    \end{equation*}
+    are invertible. Evaluating \eqref{eqn:sfp_proof_intermediate} at the $D$ points $\ell_1, \ldots, \ell_D$, we obtain:
+    \begin{align}
+        \mathcal{M}_{\mathcal{F}}(\mathbf{\boldsymbol \ell})^\top\Zt &= \mathscr{H}_{\mathbf{\boldsymbol \ell}} \left(\mathcal{M}_{\widehat{\mathcal{F}}}(\mathbf{\boldsymbol \ell})^\top \hatZt \right) \nonumber \\
+        \implies \Zt &= \left(\mathcal{M}_{\mathcal{F}}(\mathbf{\boldsymbol \ell})^{\top}\right)^{-1}\mathscr{H}_{\mathbf{\boldsymbol \ell}} \left(\mathcal{M}_{\widehat{\mathcal{F}}}(\mathbf{\boldsymbol \ell})^\top \hatZt \right) := \Theta_\mathbf{\boldsymbol \ell} \left(\hatZt\right), \label{eqn:theta_def} 
+    \end{align}
+    where $\displaystyle \mathscr{H}_{\mathbf{\boldsymbol \ell}}(y) = \begin{bmatrix}
+        h_{\ell_1}(y_1), \ldots, h_{\ell_D}(y_D)
+    \end{bmatrix}^\top$ for $y \in \mathbb{R}^D$. Since $\mathscr{H}_\mathbf{\boldsymbol \ell}$ is a component-wise invertible function, and $\mathcal{M}_{\mathcal{F}}(\mathbf{\boldsymbol \ell}), \mathcal{M}_{\widehat{\mathcal{F}}}(\mathbf{\boldsymbol \ell})$ are invertible matrices, the map $\Theta_\mathbf{\boldsymbol \ell}$ is an invertible map between $\Zt$ and $\hatZt$. Furthermore, the above argument can be repeated for any arbitrary $\mathbf{\boldsymbol \ell}' \in \Phi_\mathcal{F} \cap \Phi_{\widehat{\mathcal{F}}}$ to obtain $\Zt = \Theta_{\mathbf{\boldsymbol \ell}'} \left(\hatZt \right)$. Thus, we have that 
+    % \begin{equation}
+    %     \Theta_{\mathbf{\boldsymbol \ell}} = \Theta_{\mathbf{\boldsymbol \ell}'} \text{ for } \mathbf{\boldsymbol \ell}, \mathbf{\boldsymbol \ell}' \in \displaystyle \Phi_\mathcal{F} \cap \Phi_{\widehat{\mathcal{F}}}. \label{eqn:equality_of_maps}
+    % \end{equation}
+    \begin{equation}
+        \mathbf{Z}^{(t)} = \Theta_{\mathbf{\boldsymbol \ell}}\left( \hatZt \right) = \Theta_{\mathbf{\boldsymbol \ell}'} \left( \hatZt \right) \text{ for } \mathbf{\boldsymbol \ell}, \mathbf{\boldsymbol \ell}' \in \displaystyle \Phi_\mathcal{F} \cap \Phi_{\widehat{\mathcal{F}}}. \label{eqn:equality_of_maps}
+    \end{equation}
+     Now, consider the Jacobian $\displaystyle \frac{\partial \Zt}{\partial \hatZt} = J_{\Theta_\mathbf{\boldsymbol \ell}} \left( \hatZt \right)$ of the transformation $\Theta_\mathbf{\boldsymbol \ell}$. Our goal is to prove that $J_{\Theta_\ell}$ is a permutation scaling matrix, that is, for each $i \in [D]$, $\displaystyle \frac{\partial \Zt_i}{\partial \hatZt_j}$ is non-zero for exactly one value of $j \in [D]$. By the chain rule,
+    \begin{align}
+        J_{\Theta_\mathbf{\boldsymbol \ell}}\left(\hatZt\right) = \left(\mathcal{M}_{\mathcal{F}}(\mathbf{\boldsymbol \ell})^{\top}\right)^{-1}\mathscr{H}_{\mathbf{\boldsymbol \ell}}' \left( \mathcal{M}_{\widehat{\mathcal{F}}}(\mathbf{\boldsymbol \ell})^\top \hatZt \right) \mathcal{M}_{\widehat{\mathcal{F}}}(\mathbf{\boldsymbol \ell})^\top \label{eqn:jacobian_chain_rule}
+    \end{align}
+    where $\displaystyle \mathscr{H}_{\mathbf{\boldsymbol \ell}}' \left( y \right) =   \begin{bmatrix}
+    h_{\ell_1}'(y_1) & & \\
+    & \ddots & \\
+    & & h_{\ell_D}'(y_d)
+  \end{bmatrix}$ for $y \in \mathbb{R}^D$. 
+  
+  Taking the log-determinant of \eqref{eqn:jacobian_chain_rule}, we obtain
+  \begin{align}
+      \log \left| \det J_{\Theta_\mathbf{\boldsymbol \ell}} \left( \hatZt \right) \right| = \log \left| \det \left(\mathcal{M}_{\mathcal{F}}(\mathbf{\boldsymbol \ell})^\top\right)^{-1} \right| + \log \left| \det \left(\mathcal{M}_{\widehat{\mathcal{F}}}(\mathbf{\boldsymbol \ell})^\top\right) \right| + \sum_{k=1}^D \log \left| h'_{{{\ell}_k}} \left( \widehat{\mathbf{F}}_{{{\ell}_k}}\hatZt\right) \right| \label{eqn:logdet}
+  \end{align}
+  
+
+ Differentiating both sides of \eqref{eqn:logdet} with respect to $\hatZt_i$, we obtain:
+  \begin{align}
+      \frac{\partial}{\partial \hatZt_i} \log \left| \det J_{\Theta_\mathbf{\boldsymbol \ell}}\left(\hatZt\right) \right| = \sum_{k=1}^D \frac{h''_{{{\ell}_k}}\left( \widehat{\mathbf{F}}_{{{\ell}_k}}^\top \hatZt \right)}{h'_{{{\ell}_k}}\left( \widehat{\mathbf{F}}_{{{\ell}_k}}^\top \hatZt \right)} F_{\widehat{\psi}_i}({{\ell}_k}). \label{eqn:logdet_diff}
+  \end{align}
+  By the second part of Lemma \ref{lemma:overlapping_li_zero}, $\Phi_\mathcal{F} \cap \Phi_{\widehat{\mathcal{F}}}$ is open. Thus, $\exists r > 0$ such that $B_{DK} \left(\mathbf{\boldsymbol \ell}, r \right) \subset \Phi_\mathcal{F} \cap \Phi_{\widehat{\mathcal{F}}}$, where $B_{DK}(\mathbf{\boldsymbol \ell}, r)$ denotes the open ball in $\mathbb{R}^{DK}$ centered around $\mathbf{\boldsymbol \ell}$ with radius $r > 0$. Choose an arbitrary unit vector $\mathbf{u} \in \mathbb{R}^K$ and consider the point $\mathbf{\boldsymbol \ell}' = \left(\ell_1+\delta\mathbf{u}, \ell_2, \ldots, \ell_D  \right)$ such that $\delta < r$. Since $\displaystyle J_{\Theta_{\mathbf{\boldsymbol \ell}}} \left( \hatZt \right) = \frac{\partial \Zt}{\partial \hatZt}  = J_{\Theta_{\mathbf{\boldsymbol \ell}'}}\left( \hatZt \right)$ for $\boldsymbol{\ell}, \boldsymbol{\ell}' \in \Phi_\mathcal{F} \cap \Phi_{\widehat{\mathcal{F}}}$, $\displaystyle \log \left| \det J_{\Theta_\mathbf{\boldsymbol \ell}} \left( \hatZt \right) \right| = \log \left| \det J_{\Theta_{\mathbf{\boldsymbol \ell}'}} \left( \hatZt \right) \right|$. From \eqref{eqn:logdet_diff}, we obtain
+  \begin{align}
+    \frac{\partial}{\partial \hatZt_i} \log \left| \det J_{\Theta_\mathbf{\boldsymbol \ell}}\left(\hatZt\right) \right|  &= \sum_{k=1}^D \frac{h''_{{{\ell}_k}}\left( \widehat{\mathbf{F}}_{{{\ell}_k}}^\top \hatZt \right)}{h'_{{{\ell}_k}}\left( \widehat{\mathbf{F}}_{{{\ell}_k}}^\top \hatZt \right)} F_{\widehat{\psi}_i}({{\ell}_k}) \nonumber \\
+     &= \frac{h''_{\ell_1+\delta \mathbf{u}}\left( \widehat{\mathbf{F}}_{\ell_1+\delta \mathbf{u}}^\top \hatZt \right)}{h'_{\ell_1+\delta \mathbf{u}}\left( \widehat{\mathbf{F}}_{\ell_1+\delta \mathbf{u}}^\top \hatZt \right)} F_{\widehat{\psi}_i}(\ell_1+\delta \mathbf{u})+  \sum_{k=2}^D \frac{h''_{{{\ell}_k}}\left( \widehat{\mathbf{F}}_{{{\ell}_k}}^\top \hatZt \right)}{h'_{{{\ell}_k}}\left( \widehat{\mathbf{F}}_{{{\ell}_k}}^\top \hatZt \right)} F_{\widehat{\psi}_i}({{\ell}_k})\nonumber \\
+     &= \frac{\partial}{\partial \hatZt_i} \log \left| \det J_{\Theta_{\mathbf{\boldsymbol \ell}'}}\left(\hatZt\right) \right| \nonumber \\
+    \implies \frac{h''_{\ell_1+\delta \mathbf{u}}\left( \widehat{\mathbf{F}}_{\ell_1+\delta \mathbf{u}}^\top \hatZt \right)}{h'_{\ell_1+\delta \mathbf{u}}\left( \widehat{\mathbf{F}}_{\ell_1+\delta \mathbf{u}}^\top \hatZt \right)} F_{\widehat{\psi}_i}(\ell_1+\delta \mathbf{u}) &= \frac{h''_{\ell_1}\left( \widehat{\mathbf{F}}_{\ell_1}^\top \hatZt \right)}{h'_{\ell_1}\left( \widehat{\mathbf{F}}_{\ell_1}^\top \hatZt \right)} F_{\widehat{\psi}_i}(\ell_1) 
+  \end{align}
+  Since $\delta < r$ and $\mathbf{u}$ are arbitrary, the function 
+  \begin{align}
+      \Gamma_i(\hatZt) = \frac{h''_{\ell}\left( \widehat{\mathbf{F}}_{\ell}^\top \hatZt \right)}{h'_{\ell}\left( \widehat{\mathbf{F}}_{\ell}^\top \hatZt \right)} F_{\widehat{\psi}_i}(\ell) \label{eqn:gammai}
+  \end{align}
+  is a constant with respect to $\ell$ for $\ell \in B_{K}(\ell_1, r)$. Differentiating \eqref{eqn:logdet} with respect to $\hatZt_j, j \neq i$ and repeating the above argument, we obtain that
+    \begin{align}
+      \Gamma_j(\hatZt) = \frac{h''_{\ell}\left( \widehat{\mathbf{F}}_{\ell}^\top \hatZt \right)}{h'_{\ell}\left( \widehat{\mathbf{F}}_{\ell}^\top \hatZt \right)} F_{\widehat{\psi}_j}(\ell) \label{eqn:gammaj}
+  \end{align}
+  is constant with respect to $\ell$ for $\ell \in B_K(\ell_1, r)$. From equations \ref{eqn:gammai} and \ref{eqn:gammaj},
+    \begin{align}
+      F_{\widehat{\psi}_i}(\ell)\Gamma_j(\hatZt) = F_{\widehat{\psi}_j}(\ell) \Gamma_i(\hatZt), \quad \ell \in B_K(\ell_1, r). 
+  \end{align}
+  Note that since $F_{\widehat{\psi}_i}$ and $F_{\widehat{\psi}_j}$ are linearly independent in $\mathcal{G}$, by Lemma \ref{lemma:li_open_sets}, they are also linearly independent for $\ell \in B_K(\ell_1, r)$, which implies that $\displaystyle \Gamma_i(\hatZt) = \Gamma_j(\hatZt) = 0$. Since these arguments can be repeated for any distinct indices $i, j \in [D]$, we infer that
+  \begin{align}
+  \Gamma_i(\hatZt) = \frac{h''_{\ell}\left( \widehat{\mathbf{F}}_{\ell}^\top \hatZt \right)}{h'_{\ell}\left( \widehat{\mathbf{F}}_{\ell}^\top \hatZt \right)} F_{\widehat{\psi}_i}(\ell) = 0 \qquad \forall i \in [D],  \ell \in B_K(\ell_1, r). \label{eqn:gamma_zero}    
+  \end{align}
+  
+  Note that \eqref{eqn:gamma_zero} implies that $\displaystyle h''_{\ell}\left(\hatFx^\top \hatZt \right) \equiv 0 \quad  \forall \ell \in B_K(\ell_1, r), \hatZt \in \mathbb{R}^{D}$, otherwise, if for some $\displaystyle {\ell}_0 \text{ and } \hatZt$,  the value of $h''_{{\ell}_0}\left(\widehat{\mathbf{F}}_{{\ell}_0}^\top \hatZt \right) \neq 0$, then $F_{\widehat{\psi_i}}({\ell}_0)=0 \quad \forall i \in [D]$ which would contradict the invertibility of $\mathcal{M}_{\widehat{\mathcal{F}}}(\ell_0)$ for ${\ell}_0 \in B_K(\ell_1, r) \subset \Phi_\mathcal{F} \cap \Phi_{\widehat{\mathcal{F}}}$.
+
+  Therefore,
+  \begin{equation}
+      h'_{\ell}\left(\hatFx^\top \hatZt \right) = c_0 \quad \forall \ell \in B_K(\ell_1, r) \label{eqn:constancy}
+  \end{equation}
+  for some constant $c_0 \in \mathbb{R}$.
+
+  Now, we differentiate both sides of \eqref{eqn:sfp_proof_intermediate} with respect to $\hatZt_i$ to obtain:
+  \begin{equation}
+      \sum_{k=1}^D F_{\psi_k}(\ell) \frac{\partial \Zt_k}{\partial \hatZt_i} = h'_{\ell}\left(\hatFx^\top \hatZt \right) F_{\widehat{\psi}_i}(\ell).
+  \end{equation}
+  For $\ell \in B_K(\ell_1, r)$, the above equation becomes:
+  
+  \begin{equation}
+      \sum_{k=1}^D F_{\psi_k}(\ell) \frac{\partial \Zt_k}{\partial \hatZt_i} = c_0 F_{\widehat{\psi}_i}(\ell).
+  \end{equation}
+  Once again, using Lemma \ref{lemma:li_open_sets},  $\mathcal{F} = \left\{ F_{\psi_1}, \ldots, F_{\psi_D}\right\}$ is linearly independent for $\ell \in B_K(\ell_1, r)$. If $F_{\widehat{\psi}_i} \neq F_{{\psi}_k}$ for some $k \in [D]$, then due to linear independence, $\displaystyle \frac{\partial \Zt_k}{\partial \hatZt_i} = 0 \quad \forall k \in [D]$. However, this leads to a contradiction, since $\Zt$ and $\hatZt$ are related by an invertible map, which means the corresponding Jacobian matrix is full-rank. 
+
+  Therefore, $F_{\widehat{\psi}_i} = F_{{\psi}_k}$ for some $k \in [D]$, and $\displaystyle \frac{\partial \Zt_k}{\partial \hatZt_i}$ is non-zero for exactly one $k \in [D]$. Repeating the argument for all $i \in [D]$ yields the result.
+\end{proof}
+
+
+% We now consider the identifiability of the parameters from the observational distribution. To this end, we first introduce a useful lemma. We adapt the arguments from Lemma 3 in \citet{boussard2023towards} with some modifications.
+
+% \begin{lemma}[Denoising $\mathbf{X}$]
+%     Assume we have two models $\mathbf{X}$ and $\tilde{\mathbf{X}}$ with spatial factors $\Fx$ and $\tilde{\mathbf{F}}_{\ell}$ respectively. Assume that the observational distributions of $\mathbf{X}(\ell)$ and $\tilde{\mathbf{X}}(\ell)$ are equal, i.e., the following property holds: 
+    
+%     For any finite set of grid points $\{\ell_1, \ldots, x_n \} \in \mathcal{G}$, we have 
+%     \begin{equation}
+%      p \left(\mathbf{X}(\ell_1)=\chi_1, \ldots, \mathbf{X}(x_n)=\chi_n\right) = p \left(\tilde{\mathbf{X}}(\ell_1)=\chi_1, \ldots, \tilde{\mathbf{X}}(x_n)=\chi_n\right)   \label{eqn:observational_dist}
+%     \end{equation}
+%       for all values of $\displaystyle \left( \chi_1, \ldots, \chi_n \right) \in \mathbb{R}^{T} \times \mathbb{R}^n$. Then we have that the following holds:
+
+%     Given any set of points $\left\{\ell_1', \ldots, {{\ell}_k}' \right\}$, we have that
+%     $\displaystyle p\left( \mathbf{Y}(\ell_1'), \ldots, \mathbf{Y}({{\ell}_k}')\right) = p\left( \tilde{\mathbf{Y}}(\ell_1'), \ldots, \tilde{\mathbf{Y}}({{\ell}_k}')\right)$, where $\mathbf{Y}(\ell) := \Fx^\top \mathbf{Z}$ and $\tilde{\mathbf{Y}}(\ell) := \tilde{\mathbf{F}}_{\ell} ^\top\tilde{\mathbf{Z}}$. \label{lemma:denoising}
+% \end{lemma}
+
+% \begin{proof}
+%     Pick $n$ distinct grid points $\left\{ \ell_1, \ldots, x_n \right\} \subseteq \mathcal{G}$ such that $\displaystyle \left\{ \ell_1', \ldots, {{\ell}_k}'\right\} \cap \left\{ \ell_1, \ldots, x_n \right\} = \phi$ and $n+k > D$. Let $L=n+k$. Then, we can use the same argument as in Lemma 3 in \citet{boussard2023towards} on the distributions of $\left\{ \mathbf{X}(\ell_1), \ldots, \mathbf{X}(x_n), \mathbf{X}(\ell_1'), \ldots, \mathbf{X}({{\ell}_k}') \right\}$ and $\left\{ \tilde{\mathbf{X}}(\ell_1), \ldots, \tilde{\mathbf{X}}(x_n), \tilde{\mathbf{X}}(\ell_1'), \ldots, \tilde{\mathbf{X}}({{\ell}_k}') \right\}$, which we repeat for the sake of completeness. 
+    
+% Let $\displaystyle \mathbb{P}_{\mathbf{X}(\ell_1), \ldots, \mathbf{X}(x_n), \mathbf{X}(\ell_1'), \ldots, \mathbf{X}({{\ell}_k}')}$ and $\displaystyle \mathbb{P}_{\tilde{\mathbf{X}}(\ell_1), \ldots, \tilde{\mathbf{X}}(x_n), \tilde{\mathbf{X}}(\ell_1'), \ldots, \tilde{\mathbf{X}}({{\ell}_k}')}$ denote the probability measures corresponding to the densities
+% \begin{align*}
+% &p(\mathbf{X}(\ell_1), \ldots, \mathbf{X}(x_n), \mathbf{X}(\ell_1'), \ldots, \mathbf{X}({{\ell}_k}'))\\
+% &:= \int p(\mathbf{X}(\ell_1), \ldots, \mathbf{X}(x_n), \mathbf{X}(\ell_1'), \ldots, \mathbf{X}({{\ell}_k}'), \mathbf{Z}) \, d\mathbf{Z}, \\
+% &p(\tilde{\mathbf{X}}(\ell_1), \ldots, \tilde{\mathbf{X}}(x_n), \tilde{\mathbf{X}}(\ell_1'), \ldots, \tilde{\mathbf{X}}({{\ell}_k}'))\\ &:= \int p(\tilde{\mathbf{X}}(\ell_1), \ldots, \tilde{\mathbf{X}}(x_n), \tilde{\mathbf{X}}(\ell_1'), \ldots, \tilde{\mathbf{X}}({{\ell}_k}'), \tilde{\mathbf{Z}}) \, d\tilde{\mathbf{Z}},
+% \end{align*}
+% respectively. 
+
+% It is given that:
+% \begin{align*}
+% &\mathbb{P}_{\mathbf{X}(\ell_1), \ldots, \mathbf{X}(x_n), \mathbf{X}(\ell_1'), \ldots, \mathbf{X}({{\ell}_k}')}\\ 
+% &= \mathbb{P}_{\tilde{\mathbf{X}}(\ell_1), \ldots, \tilde{\mathbf{X}}(x_n), \tilde{\mathbf{X}}(\ell_1'), \ldots, \tilde{\mathbf{X}}({{\ell}_k}')}
+% \end{align*}
+
+% Define $\displaystyle \mathbf{Y}(\ell) := \Fx^\top \mathbf{Z}$ and $\displaystyle \tilde{\mathbf{Y}}(\ell) := \tilde{\mathbf{F}}_{\ell}^\top \tilde{\mathbf{Z}}$, where $\displaystyle \mathbf{Z} \sim p(\mathbf{Z})$ and $\displaystyle \tilde{\mathbf{Z}} \sim p(\tilde{\mathbf{Z}})$. 
+% Let $\mathcal{Y} = \left(\mathbf{Y}(\ell_1), \ldots, \mathbf{Y}(x_n), \mathbf{Y}(\ell_1'), \ldots, \mathbf{Y}({{\ell}_k}') \right)$ and $\tilde{\mathcal{Y}} = \left(\tilde{\mathbf{Y}}(\ell_1), \ldots, \tilde{\mathbf{Y}}(x_n), \tilde{\mathbf{Y}}(\ell_1'), \ldots, \tilde{\mathbf{Y}}({{\ell}_k}') \right)$.
+% Let $\displaystyle \mathbb{P}_{\mathbf{Y}(\ell)}$ and $\displaystyle \mathbb{P}_{\tilde{\mathbf{Y}}(\ell)}$ be the distributions of $\displaystyle \mathbf{Y}(\ell)$ and $\displaystyle \tilde{\mathbf{Y}}(\ell)$, respectively. We have:
+% \begin{equation*}
+% \mathbf{X}(\ell) = \mathbf{Y}(\ell) + \varepsilon_{\ell}, \quad \tilde{\mathbf{X}}(\ell) = \tilde{\mathbf{Y}}(\ell) + \tilde{\varepsilon}_{\ell},
+% \end{equation*}
+% where $\displaystyle \varepsilon_{\ell} \sim \mathcal{N}(0, \sigma^2 I_{T})$ and $\displaystyle \tilde{\varepsilon}_{\ell} \sim \mathcal{N}(0, \tilde{\sigma}^2 I_{T})$. 
+
+% Denote $\boldsymbol{\varepsilon} = \left(\varepsilon_{\ell_1}, \ldots, \varepsilon_{x_n}, \varepsilon_{\ell_1'}, \ldots, \varepsilon_{{{\ell}_k}'} \right)$ and $\tilde{\boldsymbol{\varepsilon}} = \left(\tilde{\varepsilon}_{\ell_1}, \ldots, \tilde{\varepsilon}_{x_n}, \tilde{\varepsilon}_{\ell_1'}, \ldots, \tilde{\varepsilon}_{{{\ell}_k}'} \right)$. 
+
+% By the additive structure of the model, the equality of measures becomes a convolution equation:
+% \begin{equation*}
+% \mathbb{P}_{\mathcal{Y}} * \mathbb{P}_{\boldsymbol{\varepsilon}} = \mathbb{P}_{\tilde{\mathcal{Y}}} * \mathbb{P}_{\tilde{\boldsymbol{\varepsilon}}},
+% \end{equation*}
+% where $\displaystyle \mathbb{P}_{\boldsymbol{\varepsilon}}$ and $\displaystyle \mathbb{P}_{\tilde{\boldsymbol{\varepsilon}}}$ represent the measures of the Gaussian noise terms, and $*$ denotes convolution.
+
+% Applying the Fourier transform $\mathscr{F}$ to both sides and using the fact that the Fourier transform of a convolution is the product of the Fourier transforms \citep{pollard2002user},
+% \begin{align*}
+% \mathscr{F}\left(\mathbb{P}_{\mathcal{Y}} * \mathbb{P}_{\boldsymbol{\varepsilon}}\right) &= \mathscr{F}\left(\mathbb{P}_{\tilde{\mathcal{Y}}} * \mathbb{P}_{\tilde{\boldsymbol{\varepsilon}}}\right) \\
+% \implies 
+% \mathscr{F}\left(\mathbb{P}_{\mathcal{Y}}\right)  \mathscr{F} \left(\mathbb{P}_{\boldsymbol{\varepsilon}}\right) &= \mathscr{F}\left(\mathbb{P}_{\tilde{\mathcal{Y}}}\right) \mathscr{F} \left(\mathbb{P}_{\tilde{\boldsymbol{\varepsilon}}}\right).
+% \end{align*}
+
+% Given that the Fourier transform of a zero-mean Gaussian random vector with covariance $\displaystyle \sigma^2 I_{LT}$ is $\displaystyle e^{-\frac{ \sigma^2}{2} \omega^\top \omega}$, we can rewrite the above as:
+% \begin{align*}
+% \mathscr{F}\left(\mathbb{P}_{\mathbf{Y}(\ell)}\right)(\omega) e^{-\frac{ \sigma^2}{2} \omega^\top \omega} &= \mathscr{F}\left(\mathbb{P}_{\tilde{\mathbf{Y}}(\ell)}\right)(\omega) e^{-\frac{ \tilde{\sigma}^2}{2} \omega^\top \omega}, \quad \forall \omega \in \mathbb{R}^{T}.
+% \end{align*}
+
+% We now aim to show that $\displaystyle \sigma^2 = \tilde{\sigma}^2$. Assume, without loss of generality, that $\displaystyle \sigma^2 < \tilde{\sigma}^2$. Dividing both sides by $\displaystyle e^{-\frac{ \sigma^2}{2} \omega^\top \omega}$ yields:
+% \begin{align*}
+% \mathscr{F}\left(\mathbb{P}_{\mathcal{Y}}\right)(\omega) &= \mathscr{F}\left(\mathbb{P}_{\tilde{\mathcal{Y}}}\right)(\omega) e^{-\frac{ \tilde{\sigma}^2 - \sigma^2}{2} \omega^\top \omega}, \quad \forall \omega \in \mathbb{R}^{LT}.
+% \end{align*}
+
+% Here, $\displaystyle e^{-\frac{ \tilde{\sigma}^2 - \sigma^2}{2} \omega^\top \omega}$ is the Fourier transform of a Gaussian distribution with covariance $\displaystyle (\tilde{\sigma}^2 - \sigma^2) I_{LT}$. However, note that the left-hand side is the Fourier transform of a distribution supported on the column span of $\Fx$, which lies in a $D$-dimensional subspace of $\mathbb{R}^{LT}$. In contrast, the right-hand side corresponds to a distribution with full support in $\mathbb{R}^{LT}$, as it involves the convolution of $\mathbb{P}_{\tilde{\mathcal{Y}}}$ with a $LT$-dimensional Gaussian random variable. This is a contradiction, as the supports of the distributions on both sides must match.
+
+% Thus, we must have $\displaystyle \sigma^2 = \tilde{\sigma}^2$.
+
+% Finally, with $\displaystyle \sigma^2 = \tilde{\sigma}^2$, we conclude that:
+% \begin{align*}
+% \mathscr{F}\left(\mathbb{P}_{\mathcal{Y}}\right) &= \mathscr{F}\left(\mathbb{P}_{\tilde{\mathcal{Y}}}\right), \\
+% \mathbb{P}_{\mathcal{Y}} &= \mathbb{P}_{\tilde{\mathcal{Y}}}.
+% \end{align*}
+% Marginalizing out the variables $\mathbf{Y}(\ell_1), \ldots, \mathbf{Y}(x_n)$ and $\tilde{\mathbf{Y}}(\ell_1), \ldots, \tilde{\mathbf{Y}}(x_n)$ yields the desired result.
+
+% \end{proof}
+
+% \begin{theorem}[Identifiability of the latents]   
+% \label{thm:identifiability}
+% Suppose we have two spatial factor processes $\mathbf{X}(\ell)$ and $\tilde{\mathbf{X}}(\ell)$ with spatial factors $\Fx$ and $\tilde{\mathbf{F}}_{\ell}$ respectively, generated from linearly independent families $\displaystyle \mathcal{F} = \left\{f_{\psi_1}, \ldots, f_{\psi_D} \right\}$ and $\displaystyle \tilde{\mathcal{F}} = \left\{f_{\tilde{\psi}_1}, \ldots, f_{\tilde{\psi}_D} \right\}$ respectively. 
+
+% Suppose the observational distributions of $\mathbf{X}(\ell)$ and $\tilde{\mathbf{X}}(\ell)$ are equal, i.e., the following property holds: 
+    
+%     For any finite set of grid points $\{\ell_1, \ldots, x_n \} \in \mathcal{G}$, we have 
+%     \begin{equation}
+%      p \left(\mathbf{X}(\ell_1)=\chi_1, \ldots, \mathbf{X}(x_n)=\chi_n\right) = p \left(\tilde{\mathbf{X}}(\ell_1)=\chi_1, \ldots, \tilde{\mathbf{X}}(x_n)=\chi_n\right)   \label{eqn:observational_dist_2}
+%     \end{equation}
+%       for all values of $\displaystyle \left( \chi_1, \ldots, \chi_n \right) \in \mathbb{R}^{T} \times \mathbb{R}^n$. 
+      
+% Then the latent variable distribution is identifiable upto transformation by an invertible matrix.
+% \end{theorem}
+
+% \begin{proof}
+%     Since \eqref{eqn:observational_dist_2} holds, we can apply Lemma \ref{lemma:denoising}, by which we have that:
+    
+%     \begin{equation}
+%      p \left(\mathbf{Y}(\ell_1)=\mathbf{y}_1, \ldots, \mathbf{Y}(x_n)=\mathbf{y}_n\right) = p \left(\tilde{\mathbf{Y}}(\ell_1)=\mathbf{y}_1, \ldots, \tilde{\mathbf{Y}}(x_n)=\mathbf{y}_n\right)   \label{eqn:denoised}
+%     \end{equation}
+%     $\forall \left( \mathbf{y}_1, \ldots, \mathbf{y}_n \right) \in \mathbb{R}^{T} \times \mathbb{R}^{n}$ where $\displaystyle \mathbf{Y}(\ell) = \Fx^\top \mathbf{Z}$.
+
+% Since the family $\mathcal{F}$ is linearly independent, we can pick $D$ points $\{\ell_1, \ldots, \ell_D\}$ from $\mathcal{G}$ such that
+
+% \begin{equation*}
+% \mathfrak{F} = \begin{bmatrix}
+% f_{\psi_1}(\ell_1) & \cdots & f_{\psi_D}(\ell_1) \\
+% \vdots & & \vdots \\
+% f_{\psi_1}(\ell_D) & \cdots & f_{\psi_D}(\ell_D)
+% \end{bmatrix} =
+% \begin{bmatrix}
+% \llongdash & \mathbf{F}_{\ell_1}^\top  & \rlongdash \\
+% \vdots & \vdots & \vdots \\
+% \llongdash & \mathbf{F}_{\ell_D}^\top   & \rlongdash
+% \end{bmatrix}
+% \end{equation*}
+% is full rank \footnote{See for example \url{https://math.stackexchange.com/questions/3516189/prove-existence-of-evaluation-points-such-that-the-matrix-has-nonzero-determinan}}.
+
+% Similarly, we can pick $D$ points $\{\tilde{x}_1, \ldots, \tilde{x}_D\}$ from $\mathcal{G}$ such that
+
+% \begin{equation*}
+% \tilde{\mathfrak{F}} = \begin{bmatrix}
+% f_{\tilde{\psi}_1}(\tilde{x}_1) & \cdots & f_{\tilde{\psi}_D}(\tilde{x}_1) \\
+% \vdots & & \vdots \\
+% f_{\tilde{\psi}_1}(\tilde{x}_D) & \cdots & f_{\tilde{\psi}_D}(\tilde{x}_D)
+% \end{bmatrix} = 
+% \begin{bmatrix}
+% \llongdash & \tilde{\mathbf{F}}_{\tilde{x}_1}^\top  & \rlongdash \\
+% \vdots & \vdots & \vdots \\
+% \llongdash & \tilde{\mathbf{F}}_{\tilde{x}_D}^\top   & \rlongdash
+% \end{bmatrix}
+% \end{equation*}
+% is full rank.
+
+% Define:
+% \begin{align*}
+% \mathcal{Y} = \begin{bmatrix}
+% \mathbf{Y}(\ell_1) \\
+% \vdots \\
+% \mathbf{Y}(\ell_D)
+% \end{bmatrix}, \quad 
+% \tilde{\mathcal{Y}} = \begin{bmatrix}
+% \tilde{\mathbf{Y}}(\ell_1) \\
+% \vdots \\
+% \tilde{\mathbf{Y}}(\ell_D)
+% \end{bmatrix}.
+% \end{align*}
+% Let $\displaystyle \mathbf{y} = \left( \mathbf{y}_1, \ldots, \mathbf{y}_D \right)$ and $\displaystyle \tilde{\mathbf{y}} = \left( \tilde{\mathbf{y}}_1, \ldots, \tilde{\mathbf{y}}_D \right)$.
+
+% Observe that 
+% \begin{align*}
+% \mathcal{Y} &= \mathfrak{F} \mathbf{Z}\\
+% \tilde{\mathcal{Y}} &= \tilde{\mathfrak{F}} \tilde{\mathbf{Z}}
+% \end{align*}
+
+% Using the formula for transformation of random variables,
+% \begin{align*}    
+% p\left( \mathcal{Y} = \mathbf{y} \right) &= \left|\det \left(\mathfrak{F}\right) \right| \, p \left(\mathbf{Z} = \mathfrak{F}^{-1} \mathbf{y} \right), \, \forall \mathbf{y} \in \mathbb{R}^{D \times T} \\
+% p\left( \tilde{\mathcal{Y}} = \mathbf{y} \right) &= \left|\det \left(\tilde{\mathfrak{F}}\right) \right| \, p \left(\tilde{\mathbf{Z}} = \tilde{\mathfrak{F}}^{-1} \mathbf{y} \right), \, \forall \mathbf{y} \in \mathbb{R}^{D \times T} \\
+% \end{align*}
+% Applying \eqref{eqn:denoised} for the points $\left\{ \ell_1, \ldots, \ell_D\right\}$, we can obtain
+% \begin{align*}
+%     \left|\det \left(\mathfrak{F}\right) \right| \, p \left(\mathbf{Z} = \mathfrak{F}^{-1} \mathbf{y} \right) &= \left|\det \left(\tilde{\mathfrak{F}}\right) \right| \, p \left(\tilde{\mathbf{Z}} = \tilde{\mathfrak{F}}^{-1} \mathbf{y} \right), \, \forall \mathbf{y} \in \mathbb{R}^{D \times T} \\
+%     \implies p \left(\mathbf{Z} = \mathfrak{F}^{-1} \mathbf{y} \right) &= \frac{\left|\det \left(\tilde{\mathfrak{F}}\right) \right|}{\left|\det \left(\mathfrak{F}\right) \right|} \times  p \left(\tilde{\mathbf{Z}} = \tilde{\mathfrak{F}}^{-1} \mathbf{y} \right), \, \forall \mathbf{y} \in \mathbb{R}^{D \times T}.
+% \end{align*}
+% Making the substitution $\mathbf{z} = \mathfrak{F}^{-1}\mathbf{y}$ and writing $\mathcal{M} = \tilde{\mathfrak{F}}^{-1}\mathfrak{F}$ yields:
+% \begin{align*}
+%     p \left(\mathbf{Z} = z \right) &= \frac{\left|\det \left(\tilde{\mathfrak{F}}\right) \right|}{\left|\det \left(\mathfrak{F}\right) \right|} \times  p \left(\tilde{\mathbf{Z}} = \mathcal{M} \mathbf{z} \right), \, \forall \mathbf{y} \in \mathbb{R}^{D \times T}.
+% \end{align*}
+% for the invertible matrix $\mathcal{M}$. Thus, we can recover the latent distribution up to transformation via an invertible matrix.
+% \end{proof}
+
+% \begin{theorem}[Identifiability of Latent Process]    
+% Suppose we have two distributions $p(\mathbf{X}(\ell))$ and $p(\tilde{\mathbf{X}}(\ell))$ with spatial factors $\Fx$ and $\tilde{\mathbf{F}}_{\ell}$ respectively, generated from linearly independent families $\displaystyle \mathcal{F} = \left\{f_{\psi_1}, \ldots, f_{\psi_D} \right\}$ and $\displaystyle \tilde{\mathcal{F}} = \left\{f_{\tilde{\psi}_1}, \ldots, f_{\tilde{\psi}_D} \right\}$ respectively. If the observational distributions are equal, i.e., for any finite set of points $\left\{ \ell_1, ..., x_n\right\} \subset \mathcal{G}$, we have $\displaystyle p\left(\mathbf{X}(\ell_1)=\chi_1, \ldots \mathbf{X}(x_n)=\chi_n \right) = p\left(\tilde{\mathbf{X}}(\ell_1)=\chi_1, \ldots, \tilde{\mathbf{X}}(x_n)=\chi_n \right)$ for all values of $(\chi_1, \ldots, \chi_n) \in \mathbb{R}^{T} \times \mathbb{R}^n$, and the two distributions start with the same latent distribution at the first timestep, i.e, $\displaystyle p \left( \mathbf{Z}^{(1)} = \mathbf{z}^{(1)} \right) = p \left( \tilde{\mathbf{Z}}^{(1)} = \mathbf{z}^{(1)} \right) \, \, \forall \mathbf{z}^{(1)} \in \mathbb{R}^D$, then the spatial factors and the latents are identifiable (upto permutation).
+% \end{theorem}
+
+% \begin{proof}
+%     Since $\displaystyle p\left(\mathbf{X}(\ell)=\chi \right) = p\left(\tilde{\mathbf{X}}(\ell)=\chi\right) \, \forall \chi$, by Lemma \ref{lemma:denoising}, we have that 
+%     \begin{align*}
+%     p \left( \mathbf{Y}(\ell) = \mathbf{y} \right) = p \left(\tilde{\mathbf{Y}}(\ell) = \mathbf{y} \right) \quad \forall \mathbf{y} \in \mathbb{R}^T 
+%     \end{align*}
+
+% By marginalizing over $\mathbf{Y}^{(2:T)}(\ell),$ we get
+%     \begin{align*}
+%     p \left( \mathbf{Y}^{(1)}(\ell) = {y} \right) = p \left(\tilde{\mathbf{Y}}^{(1)}(\ell) = {y} \right) \quad \forall {y} \in \mathbb{R} 
+%     \end{align*}
+
+% Note that we can write
+% \begin{align*}
+% p(\mathbf{Y}^{(1)}(\ell) = y) &= \int \mathbbm{1} \left( \Fx^\top \mathbf{z} = y \right) p \left(\mathbf{Z}^{(1)} = \mathbf{z}^{(1)}\right) \, d\mathbf{z}^{(1)} \\
+% p(\tilde{\mathbf{Y}}^{(1)}(\ell) = y) &= \int \mathbbm{1} \left( \tilde{\mathbf{F}}_{\ell}^\top \mathbf{z}^{(1)} = y \right) p\left(\tilde{\mathbf{Z}}^{(1)} = \mathbf{z}^{(1)}\right) \, d\mathbf{z}^{(1)}
+% \end{align*}
+% Equating the two, and using the fact that $\displaystyle p \left( \mathbf{Z}^{(1)} = \mathbf{z}^{(1)} \right) = p \left( \tilde{\mathbf{Z}}^{(1)} = \mathbf{z}^{(1)} \right) \, \, \forall \mathbf{z}^{(1)} \in \mathbb{R}^D$, we get:
+
+% \begin{equation*}
+% \int \left( \mathbbm{1} \left( \Fx^\top \mathbf{z}^{(1)} = y \right) - \mathbbm{1}  \left( \tilde{\mathbf{F}}_{\ell}^\top \mathbf{z}^{(1)} = y \right) \right)  p \left(\mathbf{Z}^{(1)} = \mathbf{z}^{(1)} \right) \, d\mathbf{z} = 0 \, \forall y \\
+% \end{equation*}
+
+% \begin{equation*}
+% \implies \Fx \mathbf{z}^{(1)} = \tilde{\mathbf{F}}_{\ell} \mathbf{z}^{(1)} \quad \forall \mathbf{z}^{(1)} \quad \text{a.s.}    
+% \end{equation*}
+% Since the above equation is true for all $\ell \in \mathcal{G}$, we can use Lemma \ref{lemma:sfp_identifiability} to conclude that $\displaystyle \Fx = P\tilde{\mathbf{F}}_{\ell}$ for some permutation matrix $P$.
+
+% Now, we further prove the identifability of the latents.
+
+% Since the family $\mathcal{F}$ is linearly independent, we can pick $D$ points $\{\ell_1, \ldots, \ell_D\}$ from $\mathcal{G}$ such that
+
+% \begin{align*}
+% \mathfrak{F} &= \begin{bmatrix}
+% f_1(\ell_1) & \cdots & f_D(\ell_1) \\
+% f_1(\ell_2) & \cdots & f_D(\ell_2) \\
+% \vdots & & \vdots \\
+% f_1(\ell_D) & \cdots & f_D(\ell_D)
+% \end{bmatrix} = 
+% \begin{bmatrix}
+% \llongdash & \mathbf{F}_{\ell_1}^\top  & \rlongdash \\
+% \llongdash & \mathbf{F}_{\ell_2}^\top & \rlongdash \\
+% \vdots & \vdots & \vdots \\
+% \llongdash & \mathbf{F}_{\ell_D}^\top   & \rlongdash
+% \end{bmatrix}
+% \end{align*}
+% is full rank \footnote{See for example \url{https://math.stackexchange.com/questions/3516189/prove-existence-of-evaluation-points-such-that-the-matrix-has-nonzero-determinan}}.
+
+% Now, for any $t \in [T]$, define:
+% \begin{align*}
+% \mathcal{Y}^{(t)} = \begin{bmatrix}
+% \mathbf{Y}^{(t)}(\ell_1) \\
+% \vdots \\
+% \mathbf{Y}^{(t)}(\ell_D)
+% \end{bmatrix}, \quad 
+% \tilde{\mathcal{Y}}^{(t)} = \begin{bmatrix}
+% \tilde{\mathbf{Y}}^{(t)}(\ell_1) \\
+% \vdots \\
+% \tilde{\mathbf{Y}}^{(t)}(\ell_D)
+% \end{bmatrix}.
+% \end{align*}
+
+% Observe that 
+% \begin{align*}
+% \mathcal{Y}^{(t)} &= \mathfrak{F} \Zt \\
+% \tilde{\mathcal{Y}}^{(t)} &= \tilde{\mathfrak{F}} \tilde{\mathbf{Z}}^{(t)} =  \mathfrak{F} P\tilde{\mathbf{Z}}^{(t)} \\
+% \end{align*}
+
+% Using the transformation of random variables,
+% \begin{align*}    
+% p\left( \mathcal{Y}^{(t)} = \mathbf{y}^{(t)} \right) &= \left|\det \left(\mathfrak{F}\right) \right| \, p \left(\Zt = \mathfrak{F}^{-1} \mathbf{y}^{(t)} \right), \text{ for } \mathbf{y}^{(t)} \in \mathbb{R}^D \\
+% p\left( \tilde{\mathcal{Y}}^{(t)} = \mathbf{y}^{(t)} \right) &= \left|\det \left(\mathfrak{F} P\right) \right| \, p \left(\tilde{\mathbf{Z}}^{(t)} = P^{-1}  \mathfrak{F}^{-1}  \mathbf{y}^{(t)} \right), \text{ for } \mathbf{y}^{(t)} \in \mathbb{R}^D
+% \end{align*}
+
+% These two distributions have to be equal, since Lemma \ref{lemma:denoising} holds for any finite set of grid points. Also note that $\left|\det \left(\mathfrak{F}P\right) \right| = \left| \det \left(\mathfrak{F}\right) \right| \left|\det (P) \right| = \left|\det \left(\mathfrak{F}\right) \right|$ since $P$ is a permutation matrix. Hence,
+% \begin{align*}    
+% \left|\det \left(\mathfrak{F}\right) \right| \, p \left(\Zt = \mathfrak{F}^{-1} \mathbf{y}^{(t)} \right) &= \left|\det \left(\mathfrak{F}P \right) \right| \, p \left(\tilde{\mathbf{Z}}^{(t)} = P^{-1} \mathfrak{F}^{-1}\mathbf{y}^{(t)} \right) \\
+% \implies  p \left(\Zt = \mathfrak{F}^{-1} \mathbf{y}^{(t)} \right) &=  p \left(\tilde{\mathbf{Z}}^{(t)} = P^{-1} \mathfrak{F}^{-1} \mathbf{y}^{(t)} \right).
+% \end{align*}
+% With the change of variables $\Zt = \mathfrak{F}^{-1}\mathbf{y}^{(t)}$, we obtain that
+% \begin{align*}
+%     p \left(\Zt = \Zt \right) &=  p \left(\tilde{\mathbf{Z}}^{(t)} = P^{-1}\Zt \right), 
+% \end{align*}
+% i.e., the latent distributions are identical upto permutation.
+% \end{proof}
+
+\change{
+\subsection{Theoretical assumptions for Rhino}
+\label{sec:theory_assumptions_for_rhino}
+Since our method, SPACY, relies on Rhino for latent causal discovery, we list the theoretical assumptions used in \citet{gong2022rhino} for the sake of completeness.
+
+The Rhino model is specified by the following equation:
+\begin{equation*}
+    \Zt_i = f_i \left( \text{Pa}_\mathbf{G}^i (<t), \text{Pa}_\mathbf{G}^i (t)\right) + g_i \left( \text{Pa}_\mathbf{G}^i (<t), \epsilon_i^{(t)} \right) 
+\end{equation*}
+
+where $f_i$ is a general differentiable non-linear function, and $g_i$ is a differentiable transform that models the history-dependent noise. The model is known to be identifiable when the following assumptions are satisfied:
+
+\textbf{Assumption 1} (Causal Stationarity). \citep{runge2018causal} The time series $\mathbf{Z}$ with a graph $\mathbf{G}$ is called causally stationary over a time index set $\mathcal{T}$ if and only if for all links $\mathbf{Z}_i^{(t-\tau)} \rightarrow \Zt_j$ in the graph
+\begin{equation*}
+    \mathbf{Z}^{(t-\tau)}_i \not\!\perp\!\!\!\perp \Zt_j \mid \Zt \backslash \left\{ \mathbf{Z}^{(t-\tau)}_i \right\} \qquad \text{holds for all } t \in \mathcal{T}.
+\end{equation*}
+Informally, this assumption states that the causal graph does not change over time, i.e., the resulting time series is stationary.
+
+\textbf{Assumption 2} (Causal Markov Property). \citep{peters2017elements} Given a DAG $\mathbf{G}$ and a probability distribution $p$, $p$ is said to satisfy the causal Markov property, if it factorizes according to $\mathbf{G}$, i.e. $\displaystyle p(\mathbf{Z}) = \prod_{i=1}^D p \left( \mathbf{Z}_i \mid \text{Pa}^i_\mathbf{G}(\mathbf{Z}_i) \right)$. In other words, each variable is independent of its non-descendent given its parents.
+
+\textbf{Assumption 3} (Causal Minimality). Given a DAG $\mathbf{G}$ and a probability distribution $p$, $p$ is said to satisfy the causal minimality with respect to $\mathbf{G}$, if $p$ is Markovian with respect to $\mathbf{G}$ but not to any proper subgraph of $\mathbf{G}$. 
+
+\textbf{Assumption 4} (Causal Sufficiency). A set of observed variables $V$ is said to be causally sufficient for a process $\Zt$ if, in the process, every common cause of two or more variables in $V$ is also in $V$, or is constant for all units in the population. In other words, causal sufficiency implies the absence of latent confounders in the data.
+
+\textbf{Assumption 5} (Well-defined Density). The likelihood of $\Zt$ is absolutely continuous
+with respect to a Lebesgue or counting measure and $\left| \log p\left( \mathbf{Z}^{(0:T)}; \mathbf{G} \right)\right| < \infty$ for all possible $\mathbf{G}$.
+
+\textbf{Assumption 6} (Conditions on $f$ and $g$). The following conditions are satisfied: 
+\begin{enumerate}
+    \item All functions $f_i, g_i$ and induced distributions are third-order differentiable.
+    \item $f_i$ is non-linear and not invertible w.r.t any nodes in $\text{Pa}_\mathbf{G}^i(t)$.
+    \item The double derivative $\displaystyle \left( \log p_{g_i} \left( g_i \left( \epsilon_i^{(t)} \mid \text{Pa}_\mathbf{G}(<t) \right)\right) \right)''$ w.r.t $\epsilon_i^{(t)}$ is zero at most on some discrete points.
+\end{enumerate}
+}
+
+
+\section{Implementation Details}
+\label{app:implementation_details}
+
+\subsection{Linear variant of SPACY}
+ We also implement a linear variant of SPACY, called \textbf{SPACY-L}. This variant models linear relationships with independent noise. $f_d$ is defined as:
+\begin{equation}
+f_d\left(\text{Pa}^d_\mathbf{G}(\leq t)\right) = \sum_{k = 0}^{\tau} \sum_{d'=1}^{D} (\mathbf{G} \circ W)^{k}_{d',d} \times \mathbf{Z}^{t-k}_{d'}, \label{eqn:f_def}
+\end{equation}
+where \( \circ \) denotes the Hadamard product, and \( W \in \mathbb{R}^{(\tau+1) \times D \times D} \) is a learned weight tensor. We assume that $\eta^t_d$ is isotropic Gaussian noise.
+
+\subsection{Loss Terms}
+We explain how we implement the various loss terms in \eqref{eqn:elbo}.
+
+The first term $ \displaystyle {\log p_{\theta}\left( \mathbf{X}^{(1:T), n} | \mathbf{Z}^{(1:T), n}, \mathbf{F} \right)}$ in \eqref{eqn:elbo} represents the conditional likelihood of the observed data $\mathbf{X}^{(1:T), n}$ conditioned on $\mathbf{Z}^{(1:T), n}$ and $\mathbf{F}$. This is calculated as the mean squared error (MSE) between the recovered and original time series:
+\begin{equation*}
+    \displaystyle {\log p_{\theta}\left( \mathbf{X}^{(1:T), n} | \mathbf{Z}^{(1:T), n}, \mathbf{F} \right)} = \sum_{\ell=1}^L \left\lVert \mathbf{X}^{(1:T), n}_\ell - \widehat{\mathbf{X}}^{(1:T), n}_\ell\right\rVert^2
+\end{equation*}
+where $\displaystyle \widehat{\mathbf{X}}_\ell^{(t), n} = g_\ell \left( \left[ \mathbf{F}\mathbf{Z} \right]_\ell^{(t)} \right)$ is the reconstructed time-series from the spatial factor $\mathbf{F}$ and latent time series $\mathbf{Z}$ sampled from the variational distributions. 
+
+The term $\displaystyle \log p_{\theta}\left(\mathbf{Z}^{(1:T), n} | \mathbf{G} \right)$ denotes the conditional likelihood of the latent time-series given the sampled graph $\mathbf{G}$. 
+
+For SPACY-L, this is implemented as follows:
+
+\begin{align}
+    &\log p_\theta \left(\mathbf{Z}^{(1:T), n} \middle|  \mathbf{G} \right) \\ &\quad= \sum_{t=L}^T \sum_{d=1}^D \log p_\theta \left(\mathbf{Z}^{(t), n}_d \middle|  \text{Pa}_{\mathbf{G}}^d(\leq t)\right) \nonumber \\ &\quad= \sum_{t=L}^T \sum_{d=1}^D  \left(\mathbf{Z}^{(t),n}_d - \sum_{k=0}^{\tau} \sum_{j=1}^D \left(\mathbf{G} \circ {W} \right)_{j, d}^k \times
+      \mathbf{Z}^{(t-k), n}_j \right)^2 \nonumber.
+\end{align}
+
+
+In (the nonlinear variant of) SPACY, we use the conditional spline flow model employed in \citet{durkan2019neural, gong2022rhino}. The conditional spline flow model handles more flexible noise distributions, and can also model history-dependent noise. The structural equations are modeled as follows:
+
+\begin{equation*}
+    \mathbf{Z}_d^{(t)} = f_{d}\left(\text{Pa}^d_\mathbf{G}(<t), \text{Pa}^d_\mathbf{G}(t)\right) + w_{d}\left(\text{Pa}^d_\mathbf{G}(<t)\right),
+\end{equation*}
+where $\displaystyle f_{d}\left(\text{Pa}^d_\mathbf{G}(<t), \text{Pa}^d_\mathbf{G}(t)\right)$ takes the form presented in \eqref{eqn:rhino_eqn}. The spline flow model uses a hypernetwork that predicts parameters for the conditional spline flow model, with embeddings $\mathscr{F}$, and hypernetworks $\xi_\eta$ and $\lambda_\eta$. The only difference is that the output dimension of $\xi_\eta$ is different, being equal to the number of spline parameters. 
+
+The noise variables $\eta_d^{(t)}$ are described using a conditional spline flow model, 
+%
+\begin{equation}
+    p_{w_d}(w_d(\eta^{(t)}_d) \mid  \text{Pa}_{\mathbf{G}}^d(<t) ) = p_\eta(\eta_d^{(t)}) \left|  \frac{\partial (w_d)^{-1}}{\partial \eta^{(t)}_d}\right|,
+\end{equation}
+
+with $\eta_d^{(t)}$ modeled as independent Gaussian noise.  
+
+The marginal likelihood becomes:
+\begin{align}
+    \log p_\theta \left(\mathbf{Z}^{(1:T), n} \middle|  \mathbf{G} \right) &= \sum_{t=\tau}^T \sum_{d=1}^D \log p_\theta \left( \mathbf{Z}^{(t), n}_{d} \middle|  \text{Pa}_{\mathbf{G}}^d(<t), \text{Pa}_{\mathbf{G}}^d(t) \right) \nonumber \\ &= \sum_{t=\tau}^T \sum_{d=1}^D \log p_{w_d}\left(u_d^{(t), n} \middle| \text{Pa}_{\mathbf{G}}^d(<t) \right)
+\end{align}
+where $\displaystyle u_{d}^{(t), n} = \mathbf{Z}_d^{(t), n} - f_{d} \left(\text{Pa}_{\mathbf{G}}^d(<t), \text{Pa}_{\mathbf{G}}^d(t) \right)$. 
+
+The prior distribution $p(\mathbf{G})$ is modeled as follows:
+\begin{equation}
+    p(\mathbf{G}) \propto \exp \left(-\alpha \left\lVert {\mathbf{G}}^{(0:T)}\right\rVert^2 - \sigma h\left(\mathbf{G}^{(0)} \right) \right). \label{eqn:prior_term}
+\end{equation}
+The first term is a sparsity prior and $h\left(\mathbf{G}^{(0)}\right)$ is the acyclicity constraint from \citet{zheng2018dags}. 
+
+The terms $\mathbb{E}_{q_{\phi}(\mathbf{Z}^{(1:T), n}|\mathbf{X}^{(1:T), n})} \left[  - \log q_{\phi} \left(\mathbf{Z}^{(1:T), n} | \mathbf{X}^{(1:T), n}\right) \right], \mathbb{E}_{q_\phi(\mathbf{G})} {\left[ - \log q_{\phi}(\mathbf{G}) \right]}$ and $\displaystyle \mathbb{E}_{q_\phi(\mathbf{F})} {\left[ - \log q_{\phi}(\mathbf{F}) \right]}$ represent the entropies of the variational distributions and are evaluated in closed form, since their parameters are modeled as samples from Gaussian and Bernoulli distributions.
+
+Finally, the prior term $p(\mathbf{F})$ is evaluated based on the assumed generative distribution mentioned in \eqref{eqn:f_prior}.
+
+\subsection{Spatial Factors}
+
+As detailed in the main paper, we use spatial factors with RBF kernels to model the spatial variability in the data.  To capture more complex spatial structures, we model the scale by introducing two additional parameter matrices $\mathbf{A}$ and $\mathbf{B}$. The matrix $\mathbf{A} = \begin{bmatrix} a & b \\ c & d \end{bmatrix}$ and the vector $\mathbf{B} = \begin{bmatrix} e \\ g \end{bmatrix}$ together influence the covariance structure of the RBF. Specifically, the covariance matrix $\Sigma$ is constructed as:
+\begin{equation}
+    \Sigma = \mathbf{A} \mathbf{A}^T + \exp(\mathbf{B}),
+\end{equation}
+
+% where $\exp(\mathbf{B}) = \begin{bmatrix} \exp(e) & 0 \\ 0 & \exp(g) \end{bmatrix}$ ensures a positive-definite structure of $\Sigma$.
+
+This covariance structure enables the RBF to capture anisotropic scaling in different directions. The matrix $\mathbf{A} \mathbf{A}^T$ provides a base covariance matrix, while the exponential transformation of $\mathbf{B}$ ensures that the resulting matrix is positive definite. As a result, the RBF kernel, which determines the spatial factor $\mathbf{F}$, is defined as:
+\begin{equation}
+    \mathbf{F}_{\ell d} = \exp\left( -\frac{1}{2} \| x_\ell - \boldsymbol{\rho}_d \|^2_{\Sigma^{-1}} \right),
+\end{equation}
+
+
+where $x_\ell$ denotes the spatial coordinates of the $\ell^\text{th}$ grid point, and $\| x_\ell - \boldsymbol{\rho}_d \|^2_{\Sigma^{-1}} = (x_\ell - \boldsymbol{\rho}_d)^T \Sigma^{-1} (x_\ell - \boldsymbol{\rho}_d)$ represents a Mahalanobis distance, allowing the RBF to have a more sophisticated shape that depends on the learned covariance $\Sigma$.
+% generative model is given by:
+
+% \begin{align*}
+%     p(\mathbf{X}(\ell)) &= \int p(\mathbf{X}(\ell), \mathbf{Z}) d \mathbf{Z} \\
+%      &= \int p(\mathbf{X}(\ell)| \mathbf{Z}) p(\mathbf{Z}) d \mathbf{Z} \\
+%      &= \int \mathcal{N}\left(\Fx \mathbf{Z}, \sigma^2 I_{d_{\ell}}\right) p(\mathbf{Z}) d \mathbf{Z} \\
+%      &= p(\mathbf{Y}(\ell)) * p(\mathbf{Z})\
+% \end{align*}
+
+
+% We sampled from a transition model $p$ such that $\Zt \sim p_Z(\Zt|\mathbf{Z}_{\leq t})$
+
+\change{\subsubsection{Choice of Metric in the Spatial Kernels} \label{sec:distance_rep}  
+Spatiotemporal data can originate from various sources, take different forms, and represent a range of phenomena. As a result, the choice of distance metric depends on the application: for local phenomena, Euclidean distance may suffice, while global analyses may require metrics that account for the Earth's curvature. To accommodate this diversity, SPACY allows for flexible modeling by incorporating different metrics with the spatial kernels in the spatial factors. 
+
+In this work, we use the SPACY with the RBF kernel equipped with two different metrics based on the target dataset.
+
+\textbf{Euclidean Distance.}
+For Cartesian coordinate systems underlying our synthetic datasets, we employ the standard Euclidean distance:
+\begin{equation}
+    d_{\text{Euc}}(x_\ell, x_{\ell'}) = \|{x}_\ell - {x}_{\ell'}\|_2 = \sqrt{\sum_{k=1}^K (x_{\ell,k} - x_{\ell',k})^2}
+\end{equation}
+where $K$ is the number of spatial dimensions.
+
+\textbf{Haversine Distance.} For Earth-scale climate observations, we compute great-circle distances using the Haversine formula:
+\begin{equation}
+    d_{\text{Hav}}({x}_\ell, {x}_{\ell'}) = 2r \arcsin\left(\sqrt{\sin^2\left(\frac{\Delta\phi}{2}\right) + \cos\phi_i \cos\phi_j \sin^2\left(\frac{\Delta\lambda}{2}\right)}\right)
+\end{equation}
+where $(\phi_i,\lambda_i)$ are latitude/longitude coordinates, $\Delta\phi = \phi_j - \phi_i$, $\Delta\lambda = \lambda_j - \lambda_i$, and $r$ is Earth's radius. This preserves the inherent spherical geometry of the climate dataset.}
+
+
+\subsection{Multivariate Extension}
+\label{app:multi-variate}
+
+We extend SPACY to address multivariate observational time series, where $\mathbf{X} \in \mathbb{R}^{V\times L \times T}$, $V \geq 1$ represents variates or domains. We make the following changes to the model architecture.
+The observed timeseries $\left(\mathbf{X}^{(1:T)}_{1:L}\right)_{(1:V)} \in \mathbb{R}^{V\times L \times T}$ now includes observations from multiple variates, with $\mathbf{X}_{(v)}$ representing observed data specific to variate $v$.
+
+\textbf{Forward Model. } For each variate $v$, we learn $D_v$ nodes, such that $D = \sum_{v=1}^V D_v$, where the $D_v, \, \, v\in V$ are input as hyperparameters. We learn separate spatial factors $\mathbf{F}_{(v)} \in \mathbb{R}^{L \times D_v}$ for each variate $v$. Let $\mathbf{Z}_{(v)} \in \mathbb{R}^{D_v \times T}$ denote the latent variables inferred from the $v^\text{th}$ variate. We perform causal discovery on the concatenated representations $\mathbf{Z} = \left[ \mathbf{Z}_{(1)}, \ldots, \mathbf{Z}_{(V)} \right] \in \mathbb{R}^{D \times T}$. In order to map from the latent representations to the multivariate observational space, we perform the tensor multiplication, defined below:
+\begin{align}
+\mathbf{X}_{\ell, (v)}^{(t)} = g_\ell^{(v)} \left( \left[ \mathbf{F}_{(v)}\mathbf{Z}_{(v)} \right]_\ell^{(t)} \right) + \varepsilon_{\ell, (v)}^{(t)}, \quad
+\varepsilon_{\ell, (v)}^{(t)} \sim \mathcal{N}(0, \sigma^2_\ell I)\label{eqn:multiv_decoder}
+\end{align}
+where $g_\ell^{(v)}$ is the variate-specific nonlinearity. We implement $g_\ell^{(v)}$ as:
+\begin{equation*}
+    g_\ell^{(v)}(x) = \Xi \left([x, \mathscr{E}_{\ell, (v)}] \right)
+\end{equation*}
+with learned embedding $\mathscr{E} \in \mathbb{R}^{V \times L \times f}$, where $f$ is the embedding dimension.
+
+
+% In practice, we incorporate the predefined number of latent variables using an input tensor $\alpha \in \mathbb{R}^{V\times D}$, such that $\forall d \in \{1,...,D\}, v \in \{1,...,V\}$:
+% \[
+% \alpha^v_d =
+% \begin{cases} 
+% 1, & d \in D_v, \\
+% 0, & d \notin D_v.
+% \end{cases}
+% \]
+
+\textbf{Variational Inference.} To model the variational distribution of the latent variables, we use a separate multilayer perceptron (MLP) for each variate. Specifically, $\zeta_\mu^{(v)}$ computes the mean, and $\zeta_{\sigma^2}^{(v)}$ computes the log-variance of the variational distribution for the $v^\text{th}$ variate.
+
+\begin{align*}
+    q_{\phi} \left(\mathbf{Z}^{(1:T)}_{(v)}|\mathbf{X}^{(1:T)}_{(v)}\right) = \mathcal{N} \left(\zeta_\mu^{(v)}(\mathbf{X}^{(t)}_{(v)}), \exp \left( \zeta_{\sigma^2}^{(v)}(\mathbf{X}^{(t)}_{(v)})\right) \right).
+\end{align*}
+
+\subsection{Training Details}
+
+We use an 80/20 training and validation split to evaluate the validation likelihood during training. We use an augmented Lagrangian training procedure to enforce the acyclicity constraint in the model \citep{zheng2018dags}. We closely follow the procedure employed by \citet{geffner2022deep, gong2022rhino} for scheduling the learning rates (LRs) across different modules of our model.
+
+\paragraph{Freezing Latent Causal Modules.} To stabilize the training and ensure accurate causal discovery, we freeze the parameters of the latent SCM and causal graph, and only train the spatial factors and encoder for the first 200 epochs. This allows the spatial factor parameters to be learned without interference from incorrect causal relationships in the latent space. Once these modules are unfrozen after 200 epochs, the complete forward model and variational distribution parameters are trained jointly for the rest of the training process. 
+
+
+\subsection{Evaluation Details}
+\label{subsection:eval_detail}
+We use the mean correlation coefficient (MCC) as a measure of alignment between the inferred and true latent variables, widely used in causal representation learning works \citep{yao2021learning,yao2022temporally}. Here, MCC is computed as the mean of the correlation coefficients between each pair of true and inferred latent variables to measure how well the inferred latent time series match the true underlying latent time series.
+
+To evaluate the accuracy of inferred causal graphs and representations, we find a permutation to match the nodes of the inferred graph to the ground truth. Specifically, we apply the Hungarian algorithm to find the optimal permutation of nodes that aligns the inferred graph’s adjacency matrix with the ground truth, minimizing the discrepancies between them. This optimal permutation is then used to calculate both the F1 Score and the Mean Correlation Coefficient (MCC). 
+
+\section{Experimental Details}
+
+\subsection{Synthetic Datasets}
+This section provides more details about how we set up and run experiments using SPACY on synthetic datasets.
+
+\subsubsection{Dataset generation} 
+\label{app:dataset_generation}
+
+The spatial decoder, represented by the function $g_\ell$, is configured to be linear or nonlinear, depending on the experimental setting. For the linear setting, $g_\ell$ is set to the identity function, while for nonlinear scenarios, we use randomly initialized MLPs. We generate $N=100$ samples of data, with $T = 100$ time length each and represented on a grid of size \(100 \times 100\). We vary the number of nodes ($D=10, 20$ and $30$) in each setting.
+
+For the ground-truth latent, we generate two separate sets of synthetic datasets: a linear dataset with independent Gaussian noise and a nonlinear dataset with history-dependent noise modeled using conditional splines \cite{durkan2019neural}. We generate a random graph (specifically, Erdős-Rényi (ER) graphs) and treat it as the ground-truth causal graph. \change{Specifically, we sample (directed) temporal adjacency matrices $\mathbf{G} \in \mathbb{R}^{(\tau+1) \times D \times D}$ with $4 \times D$ edges in the instantaneous adjacency matrix and $2 \times D$ connections in the lagged adjacency matrices. We regenerate the adjacency matrix until the instantaneous graph is a DAG.}
+
+\paragraph{Linear SCM.} We model the data as:
+\begin{equation}
+    \mathbf{Z}_d^{(t)} =  \sum_{k = 0}^{\tau} \sum_{d'=1}^{D} (\mathbf{G} \circ W)^{k}_{d',d} \times \mathbf{Z}^{d}_{t-k} + \eta^t_d
+\end{equation}
+ with \(\eta^t_d \in \mathcal{N}(0,0.5).\) Each entry of the matrix ${W}$ is drawn from ${U}[0.1,0.5] \cup {U}[-0.5,-0.1]$
+
+\paragraph{Non-linear SCM} We model the data as:
+\begin{equation*}
+    \mathbf{Z}_d^{(t)} = f_{d}\left(\text{Pa}^d_G(<t), \text{Pa}^d_G(t)\right) + \eta_d^{(t)} 
+\end{equation*}
+
+where $f_d$ are randomly initialized multi-layer perceptions (MLPs), and the random noise $\eta_d^{(t)}$ is generated using history-conditioned quadratic spline flow functions \citep{durkan2019neural}. \change{
+ The MLPs for the functional relationships are fully-connected with two hidden layers, 64 units and ReLU activation. The history dependency is modelled as a product of a scale variable obtained by the transformation of the averaged lagged parental values through a random-sampled quadratic spline, and Gaussian noise variable. Each sample of the synthetic datasets is generated with a series length of 200 steps with a burn-in period of 100 steps.
+
+}
+
+\paragraph{Spatial Factors} 
+\input{figures/syn_visuals}
+To generate the spatial factor matrices $\mathbf{F}$, we first sample the centers $\boldsymbol{\rho}_d$ of the RBF kernels uniformly over the grid while enforcing a minimum distance constraint to ensure separation between centers. Specifically, the minimum distance between any two centers is set to be $\frac{1}{10}$ of the grid dimension. The scales $\boldsymbol{\gamma}_d$ are sampled to define the extent of each RBF kernel, drawn uniformly from the range ${U}[3, 6]$. With these parameters, each entry of the spatial factor matrix $\mathbf{F}_d^\ell$ is determined by the RBF kernel as follows:
+\begin{equation*}
+\mathbf{F}_{\ell d} = \exp\left( -\frac{||x_\ell - \boldsymbol{\rho}_d||^2}{\exp(\boldsymbol{\gamma}_d)} \right),
+\end{equation*}
+where $x_\ell$ denotes the spatial coordinates of the $\ell^\text{th}$ grid point, $\boldsymbol{\rho}_d$ is the center, and $\boldsymbol{\gamma}_d$ is the scale of the $d^\text{th}$ latent variable.
+
+\paragraph{Spatial Mapping} For the generation of $\mathbf{X}_\ell$, we pass the product of the spatial factors and the latent time series through a non-linearity $g_\ell$:
+\begin{align}
+\mathbf{X}_\ell = g_\ell \left( \left[ \mathbf{F}\mathbf{Z} \right]_\ell \right) + \varepsilon_\ell, \quad
+\varepsilon_\ell \sim \mathcal{N}(0, \sigma^2_\ell I)
+\end{align}
+where $g_\ell$ is the spatial mapping. It is  implemented as a randomly initialized multi-layer perception (MLP) with the embedding of dimension 1 in the non-linear map setting, or as an identity function in the linear map setting. $ \varepsilon_\ell$ is the grid-wise Gaussian noise added. 
+
+\paragraph{Multivariate}
+\input{figures/syn_multi_vis}
+For the multi-variate experiments, we consider a setting with $V = 2$ variates to evaluate the performance of SPACY in capturing inter-variate interactions. The latent dimension is set to $D = 10$, with each variate-specific spatial factor contributing independently to the observed data. We generate the datasets with $D_1=D_2=5$ nodes, according to the forward model described in Appendix \ref{app:multi-variate}.
+
+
+\subsection{Baselines} 
+For all baselines, we used the default
+hyperparameter values. We use the Mapped-PCMCI implementation from \citep{xavi2022teleconnection}\footnote{Mapped-PCMCI: \url{https://github.com/xtibau/savar}}. For Linear-Response we refer to the implementation from \citep{Falasca_2024}\footnote{Linear-Response: \url{https://github.com/FabriFalasca/Linear-Response-and-Causal-Inference}}. For LEAP and TDRL, we implemented the encoder and decoder using convolution neural networks as this choice best fits our data modality. For LEAP we used the CNN encoder and decoder architecture from the mass-spring system experiment.
+\footnote{LEAP: \url{https://github.com/weirayao/leap}}. For TDRL we used the CNN encoder and decoder architecture from the modified cartpole environment experiment \footnote{TDRL: \url{https://github.com/weirayao/tdrl}}. For TensorPCA-PCMCI we implement a model based on the formulation from \citep{babii2023tensorprincipalcomponentanalysis} and PCMCI$^{+}$ \citep{runge2020pcmci+}.
+
+For multi-variate experiments (Synthetic, Climate) with Mapped-PCMCI, we run Varimax-PCA on each of the variates separately to obtain $D_v$ principal components for each $v \in [V]$. We concatenate the principal components to produce $D = \sum_{v=1}^V D_v$ nodes and perform causal discovery with PCMCI$^+$.
+
+% we flatten the input data along the variate dimension to transform the data of shape $\mathbb{R}^{V\times L \times T}$ to $\mathbb{R}^{VL \times T}$ and run the Varimax procedure to obtain the top $D$ principal components. 
+
+
+\subsection{Hyperparameters}
+In this section, we list the hyperparameters choices for SPACY in our experiments.
+\begin{table}[H]
+    \centering
+    \begin{tabular}{|l|c|c|c|}
+        \hline
+        \textbf{Dataset} & \textbf{Synthetic} $(D=10, 20, 30)$ & \textbf{Synthetic-Multivariate} & \textbf{Global Temperature}  \\ \hline
+        \textbf{Hyperparameter} & & &  \\ \hline
+        Matrix LR & $10^{-3}$ & $10^{-3}$ & $10^{-3}$  \\ 
+        SCM LR & $10^{-3}$ & $10^{-3}$ & $10^{-3}$  \\ 
+        Spatial Encoder LR & $10^{-3}$ & $10^{-3}$ & $10^{-3}$ \\ 
+        Spatial Factor LR & $10^{-2}$ & $10^{-2}$ & $10^{-2}$ \\ 
+        Spatial Decoder LR & $10^{-3}$ & $10^{-3}$ & $10^{-3}$ \\ 
+        Batch Size & 100 & 100 & 500 \\ 
+        \# Outer auglag steps & 60 & 60 & 60 
+        \\
+        \# Max inner auglag steps & 6000 & 6000 & 6000 
+        \\
+        $\xi_f, \lambda_f$ embedding dim & 64 & 64 & 64 
+        \\
+        Sparsity factor $\alpha$ & 10 & 10 & 40 
+        \\
+        Spline type & Quadratic & Quadratic & Quadratic
+        \\
+        $g_\ell$ embedding dim & 32 & 32 & 32 
+        \\ \hline
+    \end{tabular}
+    \caption{Table showing the hyperparameters used with SPACY.}
+    \label{tab:hyperparameters}
+\end{table}
+
+For the Synthetic, Synthetic-Multivariate, and Global Climate datasets, the outer augmented Lagrangian (auglag) steps are set to 60, with a maximum of 6000 inner auglag steps. For Synthetic datasets we used batch size of 100 samples per training, and 500 for Global Climate datasets.  
+
+We used the rational spline flow model described in \cite{durkan2019neural}. We use the quadratic rational spline flow model in all our experiments, with 8 bins. The MLPs $\xi_f$ and $\lambda_f$ have 2 hidden layers each and LeakyReLU activation functions. We also use layer normalization and skip connections. Table \ref{tab:hyperparameters} summarizes the hyperparameters used for training.
+\subsection{Visualization details}
+
+\label{section:F_visualization}
+
+We visualize the spatial factors for both the synthetic and global temperature experiments by identifying regions where individual nodes exert significant spatial influence. For each node $d$, we threshold the spatial factors $\mathbf{F}_d$ by selecting values above a specified percentile (e.g., $95\%$), resulting in a binary mask that highlights areas of dominant activity. These masks are then aggregated to produce a comprehensive visualization of the spatial influence patterns across all nodes, revealing both their individual spatial footprints and areas of overlap.
+
+For spatial factors with complex structure, we further simplify the representation by merging nearby nodes based on the proximity of their centers. Specifically, we compute pairwise distances between node centers and merge nodes whose distances fall below a percentile-based threshold (e.g., the lowest $5\%$), yielding a more interpretable depiction of the global spatial dynamics.
+
+
+% In this section, we describe how we visualize the spatial factors for both synthetic and global temperature experiments. We represent the spatial influence of different nodes on the grid by highlighting the areas where certain nodes are active. The method identifies significant regions in the grid by applying a threshold based on a chosen percentile of the values of the spatial factors $\mathbf{F}_d$ (for example, $95\%$) corresponding to the $d^\text{th}$ node. This thresholding helps to isolate areas where a node's spatial influence is particularly strong, creating a mask that highlights these regions.
+
+% These masked regions are then combined to generate a comprehensive view of how all modes influence the spatial grid. The visualization distinguishes the areas affected by different modes, allowing for easy identification of their spatial patterns and overlaps. 
+
+% For complex spatial factors and graphs, we use a merging process that simplifies the causal global dynamics by combining nodes based on the proximity of node centers. The process identifies merging clusters in the grid by applying a threshold based on a chosen percentile of all the pair-wise distances (for example, lower $5\%$), and merging nodes whose pairwise distances fall below the threshold.
+
+\section{Additional Results} \label{sec:additional_results}
+
+
+\subsection{Qualitative Results}
+\label{sec:syn_qual_results}
+Figure \ref{fig:syn_visuals} shows a comparison between the ground truth, inferred spatial factors by SPACY, \change{spatial matrix $W$ inferred by CDSD}, and mode weights by Mapped PCMCI on synthetic datasets. Overall, we observe that the inferred spatial factors from SPACY align well with the ground truth nodes in terms of location and scales with minor deviations in shape. In the non-linear SCM dataset, the model shows some slight errors with at most 1 missing mode (for Non-linear SCM, Nonlinear Mapping).  This is also reflected by the quantitative results as performance falls slightly for this setting.
+
+\change{The spatial matrix $W$ inferred by CDSD demonstrates overall strong performance, achieving competitive accuracy in linear settings. However, failures begin to emerge in non-linear configurations, where mode collapse occurs. This phenomenon leads to missing nodes and causes the spatial representations to scatter across the grid rather than localizing distinct modes.}
+
+The spatial factors, or mode weights as referred to in \citet{xavi2022teleconnection}, recovered by Mapped PCMCI, perform competitively in linear mapping settings. However, similar to CDSD, its accuracy deteriorates when non-linear spatial transformations are applied, leading to artifacts and errors in node identification. In particular, for the Non-linear SCM and Nonlinear Mapping cases, Mapped PCMCI misidentifies several latent representations, with some modes being incorrectly placed inside others, highlighting its limitations in handling complex spatial structures.
+
+\subsection{Multivariate Synthetic Dataset}
+
+\input{figures/syn_multi_eval}
+For multi-variate settings, we include the two-step baseline TensorPCA + PCMCI$^+$ \citep{babii2023tensorprincipalcomponentanalysis} in addition to Mapped PCMCI. The results of multi-variate synthetic experiments are shown in Table \ref{tab:syn_multi_eval}. SPACY maintains its performance advantage in the multi-variate setting, where it consistently outperforms the baselines in terms of causal discovery F1 score. Similar to the univariate case, Mapped-PCMCI performs well in terms of MCC but fails to recover the causal links accurately. SPACY outperforms Mapped-PCMCI in terms of both MCC and F1 score in the non-linear SCM settings. TPCA-PCMCI falls short in all settings. Figure \ref{fig:syn_multi_vis} provides a visual illustration of the recovered spatial factor for multi-variate setting for SPACY.
+
+
+\subsection{Ablation Study} \label{sec:ablation_study}
+% \input{figures/ablation_over}
+
+\paragraph{Over-specifying $D$. } SPACY requires specifying the number of latent variables $D$ as a hyperparameter. In practice, the exact number of underlying factors is often unknown. We examine the effect of overspecifying $D$ by setting it to $D^*+10$, where $D^*$ represents the true number of nodes used to generate the data. \change{Additionally, we explored the robustness of the model over different levels of parameterizations with $D^*+n$, $n \in \{0,2,5,7,10\}$} We use the synthetic dataset with grid dimensions $100\times 100$, linear SCM and non-linear mapping.
+
+Figure \ref{fig:ablation_overspec} illustrates the results of our experiment. When $D^* = 10$, despite over-specifying the number of nodes, the inferred spatial modes' general locations align well with the ground truth. The presence of additional modes does not significantly detract from the accuracy of detecting the primary spatial modes. This suggests that SPACY maintains robust learning of latent representations even when $D$ exceeds the true number of spatial factors. This observation also holds true when comparing the causal discovery performance using the F1 score. 
+
+\change{Figure \ref{fig:ablation_over2} illustrates the results of our exploration on different levels of over-parameterizations. As the latent dimension increases, the performance does not degrade. This suggests that SPACY maintains robust learning of latent representations across different levels of over-parameterization, offering flexibility in the choice of the hyperparameter $D$ when there is uncertainty about the true latent dimensionality.}
+
+
+% We also examine the robustness of SPACY to the choice of the kernel function when computing the spatial factors. The results are detailed in Appendix \ref{app:diff_kernels}.
+
+\input{figures/ablation_over}
+\input{figures/ablation_over2}
+
+\paragraph{Different Kernels}
+\label{app:diff_kernels}
+\input{figures/ablation_matern_results}
+
+We experiment with different spatial kernel functions in order to test SPACY's robustness to the choice of kernel used in modeling the spatial factors. We use the synthetic dataset with linear SCM and nonlinear spatial mapping, where the ground truth spatial mapping is generated using RBF kernels.
+
+The Matérn kernel is a generalization of the Radial Basis Function (RBF) kernel and is widely used in spatial statistics and machine learning due to its flexibility in modeling functions of varying smoothness. The Matérn kernel is defined as:
+
+\[
+k_{\text{Matérn}}(r) = \frac{2^{1-\nu}}{\Gamma(\nu)} \left( \sqrt{2\nu} \frac{r}{s} \right)^\nu K_\nu\left( \sqrt{2\nu} \frac{r}{s} \right),
+\]
+
+where:
+
+\begin{itemize}
+    \item $r = \| \mathbf{\boldsymbol \ell} - \mathbf{\boldsymbol \ell}' \|$ is the Euclidean distance between points $\mathbf{\boldsymbol \ell}$ and $\mathbf{\boldsymbol \ell}'$,
+    \item $s$ is the length scale,
+    \item $\nu > 0$ controls the smoothness of the function,
+    \item $\Gamma(\cdot)$ is the gamma function,
+    \item $K_\nu(\cdot)$ is the modified Bessel function of the second kind.
+\end{itemize}
+
+For specific values of $\nu$, the Matérn kernel simplifies to closed-form expressions:
+
+\begin{itemize}
+    \item \textbf{When $\nu = 1.5$:}
+    \[
+    k_{\text{Matérn}}^{1.5}(r) = \left(1 + \frac{\sqrt{3} r}{s}\right) \exp\left(-\frac{\sqrt{3} r}{s}\right).
+    \]
+    \item \textbf{When $\nu = 2.5$:}
+    \[
+    k_{\text{Matérn}}^{2.5}(r) = \left(1 + \frac{\sqrt{5} r}{s} + \frac{5 r^2}{3 s^2}\right) \exp\left(-\frac{\sqrt{5} r}{s}\right).
+    \]
+\end{itemize}
+
+These formulations allow us to model functions with different degrees of smoothness, providing a more flexible approach compared to the RBF kernel.
+
+
+We test SPACY with the Matérn kernel using two settings: $\nu = 1.5$ and $\nu = 2.5$. Figure \ref{fig:matern_result} presents the F1-Score and MCC for SPACY using the RBF kernel and both Matérn kernel settings. The results show that SPACY achieves similar performance with the Matérn kernels compared to the RBF kernel, indicating that the variational inference framework effectively generalizes across different kernel functions. The inferred spatial modes' general locations and scales align well with the ground truth across all kernel settings (illustrated in Figure \ref{fig:matern_visuals}). This consistency demonstrates that SPACY's spatial representations are robust to the choice of kernel function.
+
+\input{figures/ablation_matern_img}
+
+
+\change{\paragraph{How well do the RBF Kernels approximate anisotropy?} 
+\label{app:approx_kernels}
+While SPACY's theoretical framework supports fully anisotropic spatial kernels, we use RBF kernels in our experiments since they parsimoniously capture high-level features. In this experiment, we verify SPACY's robustness when modeling data generated from non-isotropic spatial factors using only isotropic RBF kernels. To create challenging test conditions, we first generate synthetic data with irregular anisotropic spatial factors defined as:
+\begin{equation}
+F_i((x,y)) = \exp\left(-\frac{(u(x, y) - x_0^{(i)})^2}{2(\sigma_x^{(i)})^2} - \frac{(v(x, y) - y_0^{(i)})^2}{2(\sigma_y^{(i)})^2}\right)
+\end{equation}
+where $x_0$ and $y_0$ denote fixed points corresponding to the `center' of the factors, and the coordinates are warped via sinusoidal transformations:
+\begin{align*}
+u(x, y) &= x + A^{(i)}\sin(\omega^{(i)}(x-x_0^{(i)}))\sin(\omega^{(i)}(y-y_0^{(i)})) \\
+v(x, y) &= y + A^{(i)}\cos(\omega^{(i)}(x-x_0^{(i)}))\cos(\omega^{(i)}(y-y_0^{(i)}))
+\end{align*}
+Here, $A^{(i)}$ and $\omega^{(i)}$ control the amplitude and frequency of spatial distortion for the $i$-th latent factor. We test with sampled warp parameters ($A \in \text{Uniform}([2,4]), \omega \in \text{Uniform}([0.1,0.3])$) to simulate complex neural response fields. The results are presented in Figure \ref{fig:Isotropic_estimation}, which demonstrates that SPACY achieves accurate localization and scale estimation for latent variables, even under irregular and anisotropic spatial factors. The high F1-Score and MCC further validate SPACY’s robust performance when using RBF-based approximation on irregularly structured data, confirming its ability to reconstruct the underlying causal graph effectively.}
+\input{figures/ablation_isotropic}
+
+
+
+
+\subsection{Global Climate}
+\label{section:global_temp_descrip}
+
+\input{figures/G_pred_global}
+The \textbf{Global Climate Dataset} is a comprehensive, mixed real-simulated dataset encompassing monthly global temperature and precipitation data spanning the years 1999 to 2001. It contains $7531$ simulated samples, each over a time period of 24 months, covering the entire globe at a fine spatial resolution. The grid size is 145 $\times$ 192, which corresponds to a spatial division of approximately 1.24$^\circ$ latitude and 1.875$^\circ$ longitude. This spatial resolution allows the dataset to provide detailed global coverage, capturing temperature and precipitation variations across diverse geographical regions. The resulting data dimensions are $7531 \times 2 \times 24 \times 145 \times 192$, representing the total number of samples, variates (temperature and precipitation), the temporal sequence, and the spatial grid, respectively.
+
+To facilitate causal analysis of complex climate phenomena beyond seasonal patterns, we apply a de-seasonality procedure. This normalization process involves computing the monthly mean for each month across all years and then subtracting the mean from the data of the corresponding month (for example, normalizing all January data by the mean of all January values). 
+
+For our analysis, we use the nonlinear variant of the SPACY method to uncover latent representations within the data. Specifically, we use 50 latent variables (denoted as $D = 50$) and a maximum lag of six months ($\tau = 6$). We set $D_1=D_2 = 25$ latent variables. Figure \ref{fig:G_pred_global} shows the inferred spatial modes across the different nodes, and the causal graph. We observe that the inferred modes are spatially confined, each with a distinct center and scale, which leads to improved interpretability. 
+
+% Figure \ref{fig:varimax_visuals} demonstrates the visualization of the individual modes inferred by Varimax-PCA. Some nodes/components exhibit clear spatial patterns that are interpretable in terms of physical or location-based information. However, multiple components are more diffuse and have less interpretable locations. For instance, it may be hard to attribute physical location for node $13,14,19,25$. There are also clusters of nodes that show similar spatial features, such as node $4,6$, suggesting they capture similar underlying components.
+
+\input{figures/varimax_global}
+
+Figure \ref{fig:varimax_global} presents the visualization of the modes and causal graph inferred by Mapped-PCMCI. The recovered spatial factors capture spatial correlations within each variate, revealing diffuse locality patterns in some regions such as Australia, Africa, and East Asia. This pattern is most noticeable in the temperature variate, where localized structures emerge. However, most inferred modes appear dispersed across the map, especially in the precipitation variate, suggesting that the underlying spatial structure lacks clear partitioning into distinct, interpretable modes.
+
+\input{figures/sst_varimax_precipitation}
+\input{figures/sst_varimax_temperature}
+
+\change{Figures \ref{fig:sst_varimax_precip} and \ref{fig:sst_varimax_temp} show the node-wise visualization of modes inferred by Mapped-PCMCI, with demonstrations of individual inferred modes for both variates. The visualizations show that many modes recovered by Varimax are diffuse, uninterpretable, and lack clear physical locations, with clusters (e.g., node 42, 44) suggesting similar underlying components.}

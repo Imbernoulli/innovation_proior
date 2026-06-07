@@ -1,0 +1,152 @@
+
+\newpage
+\vspace*{-10pt}
+
+\begin{appendix}
+
+\section{Proof for Lemma~\ref{theorem:upper}}
+\begin{proof}
+Suppose  after $k$ iterations, a graph neural network $\mathcal{A}$ has $\mathcal{A}(G_1) \neq \mathcal{A}(G_2)$ but the WL test cannot decide $G_1$ and $G_2$ are non-isomorphic. It follows that from iteration $0$ to $k$ in the WL test, $G_1$ and $G_2$ always have the same collection of node labels. In particular, because $G_1$ and $G_2$ have the same WL node labels for iteration $i$ and $i+1$ for any $i = 0, ..., k-1$, $G_1$ and $G_2$ have the same collection, i.e. multiset, of WL node labels $\left\lbrace l_v^{(i)} \right\rbrace$ as well as the same collection of node neighborhoods $\left\lbrace \left( l_v^{(i)}, \left\lbrace l_u^{(i)}: u \in \mathcal{N}(v) \right\rbrace  \right)  \right\rbrace $. Otherwise, the WL test would have obtained different collections of node labels at iteration $i+1$ for $G_1$ and $G_2$ as different multisets get unique new labels. 
+
+The WL test always relabels different multisets of neighboring nodes into different new labels. We show that on the same graph $G = G_1$ or $G_2$, if WL node labels $l_{v}^{(i)} = l_{u}^{(i)}$, we always have GNN node features $h_v^{(i)} = h_u^{(i)}$ for any iteration $i$. This apparently holds for $i = 0$ because WL and GNN starts with the same node features. Suppose this holds for iteration $j$, if for any $u, v$, $l_{v}^{(j + 1)} = l_{u}^{(j + 1)}$, then it must be the case that 
+\[   \left( l_v^{(j)}, \left\lbrace l_w^{(j)}: w \in \mathcal{N}(v) \right\rbrace  \right)   =  \left( l_u^{(j)}, \left\lbrace l_w^{(j)}: w \in \mathcal{N}(u) \right\rbrace  \right)   \]
+By our assumption on iteration $j$, we must have 
+\[   \left( h_v^{(j)}, \left\lbrace h_w^{(j)}: w \in \mathcal{N}(v) \right\rbrace  \right)   =  \left( h_u^{(j)}, \left\lbrace h_w^{(j)}: w \in \mathcal{N}(u) \right\rbrace  \right)   \]
+In the aggregation process of the GNN, the same AGGREGATE and COMBINE are applied. The same input, i.e. neighborhood features, generates the same output. Thus, $h_v^{(j + 1)} = h_u^{(j + 1)}$. By induction, if WL node labels $l_{v}^{(i)} = l_{u}^{(i)}$, we always have GNN node features $h_v^{(i)} = h_u^{(i)}$ for any iteration $i$. This creates a valid mapping $\phi$ such that $h_v^{(i)} = \phi(l_v^{(i)}) $ for any $v \in G$. It follows from $G_1$ and $G_2$ have the same multiset of WL neighborhood labels that $G_1$ and $G_2$ also have the same collection of GNN neighborhood features  \[\left\lbrace \left( h_v^{(i)}, \left\lbrace h_u^{(i)}: u \in \mathcal{N}(v) \right\rbrace  \right)  \right\rbrace =  \left\lbrace \left( \phi( l_v^{(i)} ), \left\lbrace \phi( l_u^{(i)} ): u \in \mathcal{N}(v) \right\rbrace  \right)  \right\rbrace\]
+
+Thus, $\left\lbrace h_v^{(i+1)} \right\rbrace$ are the same. In particular, we have the same collection of GNN node features $\left\lbrace h_v^{(k)} \right\rbrace$ for $G_1$ and $G_2$. Because the graph level readout function is permutation invariant with respect to the collection of node features, $\mathcal{A}(G_1) = \mathcal{A}(G_2)$. Hence we have reached a contradiction.
+\end{proof}
+
+\section{Proof for Theorem~\ref{theorem:condition}}
+\begin{proof}
+Let $\mathcal{A}$ be a graph neural network where the condition holds. Let $G_1$, $G_2$ be any graphs which the WL test decides as non-isomorphic at iteration $K$. Because the graph-level readout function is injective, i.e., it maps distinct multiset of node features into unique embeddings, it sufficies to show that $\mathcal{A}$'s neighborhood aggregation process, with sufficient iterations, embeds $G_1$ and $G_2$ into different multisets of node features. Let us assume $\mathcal{A}$ updates node representations as
+ \[h_v^{(k)} = \phi \left( h_v^{(k-1)}, f \left( \left\lbrace h_u^{(k-1)}: u\in \mathcal{N}(v)  \right\rbrace \right) \right) \]
+with injective funtions  $f$ and $\phi$. The WL test applies a predetermined injective hash function $g$ to update the WL node labels $l_v^{(k)}$:
+\[ l_v^{(k)} = g \left( l_v^{(k-1)}, \left\lbrace l_u^{(k-1)}: u \in \mathcal{N}(v)  \right\rbrace  \right) \]
+We will show, by induction, that for any iteration $k$, there always exists an injective function $\varphi$ such that $h_v^{(k)} = \varphi \left( l_v^{(k)} \right)$. This apparently holds for $k = 0$ because the initial node features are the same for WL and GNN $l_v^{(0)} = h_v^{(0)}$ for all $v \in G_1, G_2$. So $\varphi$ could be the identity function for $k = 0$. Suppose this holds for iteration $k - 1$, we show that it also holds for $k$. Substituting $h_v^{(k-1)}$ with $\varphi \left( l_v^{(k-1)} \right)$ gives us
+\[  h_v^{(k)} = \phi \left( \varphi \left( l_v^{(k-1)} \right), f \left( \left\lbrace \varphi \left( l_u^{(k-1)} \right): u\in \mathcal{N}(v)  \right\rbrace \right) \right).  \] 
+Since the composition of injective functions is injective, there exists some injective function $\psi$ so that 
+\[ h_v^{(k)} = \psi \left( l_v^{(k-1)}, \left\lbrace l_u^{(k-1)}: u \in \mathcal{N}(v)  \right\rbrace  \right) \]
+Then we have 
+\[ h_v^{(k)} = \psi \circ g^{-1} g \left( l_v^{(k-1)}, \left\lbrace l_u^{(k-1)}: u \in \mathcal{N}(v)  \right\rbrace  \right) =  \psi \circ g^{-1}  \left( l_v^{(k)} \right) \]
+$\varphi = \psi \circ g^{-1} $ is injective  because the composition of injective functions is injective. Hence for any iteration $k$, there always exists an injective function $\varphi$ such that $h_v^{(k)} = \varphi \left( l_v^{(k)} \right)$. At the $K$-th iteration, the WL test decides that $G_1$ and $G_2$ are non-isomorphic, that is the multisets $\left\lbrace l_v^{(K)} \right\rbrace$ are different for $G_1$ and $G_2$. The graph neural network $\mathcal{A}$'s node embeddings  $\left\lbrace h_v^{(K)} \right\rbrace = \left\lbrace \varphi \left( l_v^{(K)} \right) \right\rbrace $ must also be different for $G_1$ and $G_2$ because of the injectivity of $\varphi$. 
+
+%Now let us prove the theorem for the case where $\mathcal{A}$ aggregates the central node along with its neighbors
+%\[ h_v^{(k)} = f \left( \left\lbrace h_v^{(k-1)}, h_u^{(k-1)}: u\in \mathcal{N}(v)  \right\rbrace \right) \]
+%The difficulty in proving this form of aggregation mainly lies in the fact that it does not immediately distinguish the root or central node from its neighbors. For example, let us consider the chain graphs $a-b-b$ and $b-a-b$. If we aggregate once at the middle nodes  of the chain graphs $b$ and $a$ respectively, we essentially get the same new representation $\left( \left\lbrace a, b, b \right\rbrace \right)$ for $b$ and $a$, although the WL test would have represented these nodes as "rooted trees"  $\left( b, \left\lbrace a, b \right\rbrace \right)$ and $\left( a, \left\lbrace b, b \right\rbrace \right) $ instead. The key insight into solving the problem described above is to notice that it is possible to distinguish the two structures (different roots, but the same neighborhood plus the central node)  with two iterations of aggregation, unless the structures are symmetric, that is the two adjacent nodes (roots) in consideration are both adjacent to the same neighbors, in which case there is no need to distinguish because the multiset of node features will be the same. Before we formally prove the theorem, let us look at the chain graph example above again to get more intuition. This time let us apply the neighborhood aggregation again. The node features at the middle nodes $b$ and $a$ are essentially representative of $\left\lbrace   \left\lbrace a, b, b \right\rbrace, \left\lbrace a, b \right\rbrace, \left\lbrace b, b \right\rbrace \right\rbrace $ and $\left\lbrace   \left\lbrace a, b, b \right\rbrace, \left\lbrace a, b \right\rbrace, \left\lbrace a, b \right\rbrace \right\rbrace $. This time we can successfully distinguish the two structures rooted at $b$ and $a$. However, if we have complete graphs with nodes $a$, $b$, $b$ again. Even if we apply the aggregation twice, the representations will stay the same for roots $a$ and $b$, i.e. $\left\lbrace   \left\lbrace a, b, b \right\rbrace, \left\lbrace a, b, b \right\rbrace, \left\lbrace a, b, b \right\rbrace \right\rbrace $. But that is fine because the two graphs are isomorphic and we will end up with the same collection of node features. In summary, unless two rooted subtrees of height $1$ under consideration are not "symmetric", after two iterations, we can always recover the root and thus distinguish among different rooted trees. If they are symmetric, then we have the same multiset of node features and thus the correct representations. Next, we present a more formal proof. 
+
+%Let $v$ and $u$ be adjacent nodes and we are interested in distinguishing the rooted tree structures $v- \left\lbrace \mathcal{N} \cup u \right\rbrace$ and $u - \left\lbrace \mathcal{N} \cup v  \right\rbrace$ from graphs $G_1$ and $G_2$ respectively, where $\mathcal{N}$ is a set of adjacent nodes. Both rooted trees have the same unrooted multiset representation $\left\lbrace u, v, \mathcal{N}  \right\rbrace$. Here, we want our graph neural network $\mathcal{A}$ to have a \textit{unique} embedding for distinct structures and the goal is to recover the root with the unrooted multiset representations. Then we can apply the same argument as the "AGGREGATE and then COMBINE" aggregation process. Let us consider the node representations at $u$ and $v$ after two iterations of the aggregation below. 
+%\[ h_v^{(k)} = f \left( \left\lbrace h_v^{(k-1)}, h_u^{(k-1)}: u\in \mathcal{N}(v)  \right\rbrace \right) \]
+%With some abuse of notation, let $\mathcal{N}(\mathcal{N})$ denote the multiset of neighborhood multisets for each member from $\mathcal{N}$. Let $\mathcal{N}_1(\cdot)$ denote the neighborhood of a node in $G_1$, i.e. $v- \left\lbrace \mathcal{N} \cup u \right\rbrace$ . We can also define $\mathcal{N}_2$ similarly. 
+
+%Suppose it is the case that, for $v- \left\lbrace \mathcal{N} \cup u \right\rbrace$ and $u - \left\lbrace \mathcal{N} \cup v  \right\rbrace$, $\mathcal{N}_1(u) \cup u = \mathcal{N}_2(v) \cup v = \mathcal{N} \cup u \cup v $ and $\mathcal{N}_1 (\mathcal{N}) = \mathcal{N}_2 (\mathcal{N})$. That is, the two rooted trees from $G_1$ and $G_2$ are, in fact, symmetric in the sense that $u, v, \mathcal{N}$ form the same triangle. Indeed, in this case, we cannot distinguish the subtrees at $u$ and $v$ after two iterations of aggregation. However, that is not a problem for distinguishing $G_1$ and $G_2$ because both $G_1$ and $G_2$ have the same structure of $u, v, \mathcal{N}$, as well as the same, thus correct, collection of node features $\left\lbrace h_u, h_v \right\rbrace$. Aggregating the central node along with neighbors would not reduce the discriminative power of the GNN in this case.
+
+%Now suppose we do not have the symmetric structure for $v- \left\lbrace \mathcal{N} \cup u \right\rbrace$ and $u - \left\lbrace \mathcal{N} \cup v  \right\rbrace$. Then either a) The neighborhood of $u$ in $v- \left\lbrace \mathcal{N} \cup u \right\rbrace$ and that of $v$ in $u - \left\lbrace \mathcal{N} \cup v  \right\rbrace$ are not equivalent, i.e. $\mathcal{N}_1(u) \cup u  \neq \mathcal{N}_2 (v) \cup v$.  b) $\mathcal{N}_1 (\mathcal{N} ) \neq \mathcal{N}_2 (\mathcal{N} )$. After two iterations of aggregation, the node representations for $v$ in $v- \left\lbrace \mathcal{N} \cup u \right\rbrace$ and $u$ in $u - \left\lbrace \mathcal{N} \cup v  \right\rbrace$ will be $\left\lbrace \left\lbrace u, v, \mathcal{N} \right\rbrace, \left\lbrace u, \mathcal{N}_1 (u) \right\rbrace, \left\lbrace \mathcal{N}, \mathcal{N}_1(\mathcal{N}) \right\rbrace   \right\rbrace$ and $\left\lbrace \left\lbrace v, u, \mathcal{N} \right\rbrace, \left\lbrace v, \mathcal{N}_2 (v) \right\rbrace, \left\lbrace \mathcal{N}, \mathcal{N}_2 (\mathcal{N}) \right\rbrace   \right\rbrace$ respectively. If any of a) or b) is true, i.e. non-symmetric case, then the node representations for $u$ and $v$ are different. Our graph neural network $\mathcal{A}$ successfully distinguishes the embeddings of the rooted subtrees, despite only using unrooted representations. 
+
+%In conclusion, the aggregation process in the following form  
+%\[ h_v^{(k)} = f \left( \left\lbrace h_v^{(k-1)}, h_u^{(k-1)}: u\in \mathcal{N}(v)  \right\rbrace \right) \]
+%has the same discriminative power in embedding different graphs as the following aggregation form 
+% \[h_v^{(k)} = \phi \left( h_v^{(k-1)}, f \left( \left\lbrace h_u^{(k-1)}: u\in \mathcal{N}(v)  \right\rbrace \right) \right) \]
+%if $f$, $\phi$ are valid injective functions. Moreover, GNNs in both forms have the same discriminative power as the WL test. 
+
+%We prove the necessity first. Suppose condition a) is violated, we show that there exist non-isomorphic graphs which the graph neural network $A$ could not distinguish but the WL test could. Suppose the aggregation function $f$ operating on multisets is not injective. There must exist multisets $N_1$ and $N_2$ so that $N_1 \neq N_2$ but $f(N_1) = f(N_2)$. Let us consider two tree-structured graphs where the root is adjacent to nodes from $N_1$ and $N_2$ respectively. Because $f(N_1) = f(N_2)$, the center node's feature will be the same in the next iteration. 
+
+
+\end{proof}
+
+
+
+\section{Proof for Lemma~\ref{theorem:countability}} 
+\begin{proof}
+Before proving our lemma, we first show a well-known result that we will later reduce our problem to: $\mathbb{N}^k$ is countable for every $k \in \mathbb{N}$, i.e. finite Cartesian product of countable sets is countable. We observe that it suffices to show $\mathbb{N} \times \mathbb{N}$ is countable, because the proof then follows clearly from induction. To show $\mathbb{N} \times \mathbb{N}$ is countable, we construct a bijection $\phi$ from $\mathbb{N} \times \mathbb{N}$ to $\mathbb{N}$ as 
+\begin{align*}
+\phi\left(m, n\right) = 2^{m-1} \cdot \left( 2n - 1 \right)
+\end{align*}
+Now we go back to proving our lemma. If we can show that the range of any function $g$ defined on multisets of bounded size from a countable set is also countable, then the lemma holds for any $g^{(k)}$ by induction. Thus, our goal is to show that the range of such $g$ is countable. First, it is clear that the mapping from $g(X)$ to $X$ is injective because $g$ is a well-defined function. It follows that it suffices to show the set of all multisets $X \subset \mathcal{X}$ is countable. 
+
+Since the union of two countable sets is countable, the following set $\mathcal{X}^{\prime}$ is also countable. 
+\[\mathcal{X}^{\prime} = \mathcal{X} \cup \left\lbrace e \right\rbrace\] 
+
+where $e$ is a dummy element that is not in $\mathcal{X}$. It follows from the result we showed above, \ie, $\mathbb{N}^k$ is countable for every $k \in \mathbb{N}$, that ${\mathcal{X}^{\prime}}^k$ is countable for every $k \in \mathbb{N}$. It remains to show there exists an injective mapping from the set of multisets in $\mathcal{X}$ to  ${\mathcal{X}^{\prime}}^k$ for some $k\in \mathbb{N}$. 
+
+We construct an injective mapping $h$ from the set of multisets $X \subset \mathcal{X}$ to ${\mathcal{X}^{\prime}}^k$  for some $k \in \mathbb{N}$ as follows. Because $\mathcal{X}$ is countable, there exists a mapping $Z: \mathcal{X} \rightarrow \mathbb{N}$ from $x \in \mathcal{X}$ to natural numbers. We can sort the elements $x \in X$ by $z(x)$ as $x_1, x_2, ..., x_n$, where $n = |X|$. Because the multisets $X$ are of bounded size, there exists $k \in \mathbb{N}$ so that $|X| < k$ for all $X$. We can then define $h$ as
+\begin{align*}
+h\left( X \right) = \left(x_1, x_2, ..., x_n, e, e, e... \right),
+\end{align*}
+where the $k - n$ coordinates are filled with the dummy element $e$. It is clear that $h$ is injective because for any multisets $X$ and $Y$ of bounded size, $h(X) = h(Y)$ only if $X$ is equivalent to $Y$. Hence it follows that the range of $g$ is countable as desired.
+
+\end{proof}
+
+
+\section{Proof for Lemma~\ref{theorem:sum}} \label{proof:sum}
+
+\begin{proof}
+We first prove that there exists a mapping $f$ so that $\sum\limits_{x \in X} f(x)$ is unique for each multiset $X$ of bounded size. Because $\mathcal{X}$ is countable, there exists a mapping $Z: \mathcal{X} \rightarrow \mathbb{N}$ from $x \in \mathcal{X}$ to natural numbers. Because the cardinality of multisets $X$ is bounded, there exists a number $N \in \mathbb{N}$ so that $|X| < N$ for all $X$. Then an example of such $f$ is $f(x) =N^{-Z(x)}$. This $f$ can be viewed as a more compressed form of an one-hot vector or $N$-digit presentation. Thus, $h(X) =  \sum\limits_{x \in X} f(x)$ is an injective function of multisets. 
+
+$\phi \left( \sum_{x \in X} f(x) \right)$ is permutation invariant so it is a well-defined multiset function. For any multiset function $g$, we can construct such $\phi$ by letting $\phi \left( \sum_{x \in X} f(x) \right) = g(X)$. Note that such $\phi$ is well-defined because $h(X) =  \sum\limits_{x \in X} f(x)$ is injective. 
+
+\end{proof}
+
+
+\section{Proof of Corollary~\ref{lemma:gin-wl}}
+\begin{proof}
+Following the proof of Lemma~\ref{theorem:sum}, we consider $f(x) =N^{-Z(x)}$, where $N$ and $Z: \mathcal{X} \rightarrow \mathbb{N}$ are the same as defined in Appendix \ref{proof:sum}. Let $h(c, X) \equiv (1 + \epsilon)\cdot f(c) + \sum_{x \in X} f(x)$. Our goal is show that for any $(c^{\prime}, X^{\prime}) \neq (c, X) $ with $c, c^{\prime} \in \mathcal{X}$ and $X, X^{\prime} \subset \mathcal{X}$, $h(c, X) \neq h(c^{\prime}, X^{\prime})$ holds, if $\epsilon$ is an irrational number. We prove by contradiction. For any $(c, X)$, suppose there exists $(c^{\prime}, X^{\prime})$ such that $(c^{\prime}, X^{\prime})\neq (c, X)$ but $h(c, X) = h(c^{\prime}, X^{\prime})$ holds. Let us consider the following two cases: (1) $c^{\prime} = c$ but $X^{\prime} \neq X$, and (2) $c^{\prime} \neq c$. For the first case, $h(c, X) = h(c, X^{\prime})$ implies $\sum_{x \in X} f(x) = \sum_{x \in X^{\prime}} f(x)$. It follows from Lemma \ref{theorem:sum} that the equality will not hold, because with $f(x) =N^{-Z(x)}$, $X^{\prime} \neq X$ implies $\sum_{x \in X} f(x) \neq \sum_{x \in X^{\prime}} f(x)$. Thus, we reach a contradiction. For the second case, we can similarly rewrite $h(c, X) = h(c^{\prime}, X^{\prime})$  as
+\begin{align}
+\label{eq:rewrite}
+\epsilon \cdot \left(f(c) - f(c^{\prime}) \right) = \left( f(c^{\prime}) + \sum_{x \in X^{\prime}} f(x) \right) - \left( f(c) + \sum_{x \in X} f(x) \right).
+\end{align}
+Because $\epsilon$ is an irrational number and $f(c) - f(c^{\prime})$ is a non-zero rational number, L.H.S.~of \refeq{eq:rewrite} is irrational. On the other hand, R.H.S.~of \refeq{eq:rewrite}, the sum of a finite number of rational numbers, is rational. Hence the equality in \refeq{eq:rewrite} cannot hold, and we have reached a contradiction.
+
+For any function $g$ over the pairs $(c, X)$, we can construct such $\varphi$ for the desired decomposition by letting $\varphi \left( (1 + \epsilon)\cdot f(c) + \sum_{x \in X} f(x) \right) = g(c, X)$. Note that such $\varphi$ is well-defined because $h(c, X) = (1 + \epsilon)\cdot f(c) + \sum_{x \in X} f(x)$ is injective. 
+\end{proof}
+
+
+\section{Proof for Lemma~\ref{theorem:mlp}}
+
+
+\begin{proof}
+Let us consider the example $X_1 = \left\lbrace 1, 1, 1, 1, 1 \right\rbrace$ and $X_2 = \left\lbrace 2, 3 \right\rbrace$, $\ie$ two different multisets of positive numbers that sum up to the same value. We will be using the homogeneity of ReLU. 
+
+Let $W$ be an arbitrary linear transform that maps $x \in X_1, X_2$ into $\mathbb{R}^n$. It is clear that, at the same coordinates, $Wx$ are either positive or negative for all $x$ because all $x$ in $X_1$ and $X_2$ are positive. It follows that ReLU$(Wx)$ are either positive or $0$ at the same coordinate for all $x$ in $X_1, X_2$. For the coordinates where ReLU$(Wx)$ are $0$, we  have $\sum_{x \in X_1} \text{ReLU} \left( Wx \right) = \sum_{x \in X_2} \text{ReLU} \left( Wx \right)$. For the coordinates where $Wx$ are positive, linearity still holds. It follows from linearity that 
+\[ \sum_{x \in X} \text{ReLU}\left( Wx \right) = \text{ReLU}\left( W \sum_{x\in X} x\right) \]
+where $X$ could be $X_1$ or $X_2$. Because $\sum_{x \in X_1} x = \sum_{x \in X_2} x$, we have the following as desired. \[\sum_{x \in X_1} \text{ReLU} \left( Wx \right) = \sum_{x \in X_2} \text{ReLU} \left( Wx \right) \] 
+\end{proof}
+
+
+\section{Proof for Corollary~\ref{theorem:mean}}
+
+
+\begin{proof}
+Suppose multisets $X_1$ and $X_2$ have the same distribution, without loss of generality, let us assume $X_1 = (S, m)$ and $X_2 = (S, k \cdot m)$ for some $k \in \mathbb{N}_{\geq 1}$, i.e. $X_1$ and $X_2$ have the same underlying set and the multiplicity of each element in $X_2$ is $k$ times of that in $X_1$. Then we have $|X_2| = k |X_1|$ and $\sum_{x \in X_2} f(x) = k \cdot \sum_{x \in X_1} f(x)$. Thus, \[  \frac{1}{|X_2|}  \sum_{x \in X_2} f(x)  =  \frac{1}{k \cdot |X_1|} \cdot k \cdot \sum_{x \in X_1} f(x)  =  \frac{1}{|X_1|}  \sum_{x \in X_1} f(x)  \]
+
+Now we show that there exists a function $f$ so that $\frac{1}{|X|} \sum_{x \in X} f(x)$ is unique for distributionally equivalent $X$. Because $\mathcal{X}$ is countable, there exists a mapping $Z: \mathcal{X} \rightarrow \mathbb{N}$ from $x \in \mathcal{X}$ to natural numbers. Because the cardinality of multisets $X$ is bounded, there exists a number $N \in \mathbb{N}$ so that $|X| < N$ for all $X$.  Then an example of such $f$ is $f(x) =N^{-2 Z(x)}$. 
+\end{proof}
+
+\section{Proof for Corollary~\ref{theorem:max-pooling}}
+
+\begin{proof}
+Suppose multisets $X_1$ and $X_2$ have the same underlying set $S$, then we have \[   \max_{x \in X_1} f(x)  =  \max_{x \in S} f(x)  =   \max_{x \in X_2} f(x) \]
+Now we show that there exists a mapping $f$ so that $  \max_{x \in X} f(x) $ is unique for $X$s with the same underlying set. Because $\mathcal{X}$ is countable, there exists a mapping $Z: \mathcal{X} \rightarrow \mathbb{N}$ from $x \in \mathcal{X}$ to natural numbers. Then an example of such $f: \mathcal{X} \rightarrow \mathbb{R}^{\infty}$ is defined as $f_i(x) = 1$ for $i = Z(x)$ and $f_i(x) = 0$ otherwise, where $f_i(x)$ is the $i$-th coordinate of $f(x)$. Such an $f$ essentially maps a multiset to its one-hot embedding. 
+\end{proof}
+
+\section{Details of datasets}
+\label{app:dataset}
+We give detailed descriptions of datasets used in our experiments. Further details can be found in \citep{yanardag2015deep}.
+\paragraph{Social networks datasets.} 
+IMDB-BINARY and IMDB-MULTI are movie collaboration datasets. Each graph corresponds to an ego-network for each actor/actress, where nodes correspond to actors/actresses and an edge is drawn betwen two actors/actresses if they appear in the same movie. Each graph is derived from a pre-specified genre of movies, and the task is to classify the genre graph it is derived from.
+REDDIT-BINARY and REDDIT-MULTI5K are balanced datasets where each graph corresponds to an online discussion thread and nodes correspond to users. An edge was drawn between two nodes if at least one of them responded to another's comment.
+The task is to classify each graph to a community or a subreddit it belongs to.
+COLLAB is a scientific collaboration dataset, derived from 3 public collaboration datasets, namely, High Energy Physics, Condensed Matter
+Physics and Astro Physics. Each graph corresponds to an ego-network of different researchers from
+each field. The task is to classify each graph to a field the corresponding researcher belongs to.
+
+\paragraph{Bioinformatics datasets.}
+MUTAG is a dataset of 188 mutagenic aromatic and heteroaromatic nitro compounds with 7 discrete labels. 
+PROTEINS is a dataset where nodes are secondary structure elements (SSEs) and there is an edge between two nodes if they are neighbors in the amino-acid sequence or in 3D space. It has 3 discrete labels, representing helix, sheet or turn.
+PTC is a dataset of 344 chemical compounds that reports the carcinogenicity for male and female rats and it has 19 discrete labels.
+NCI1 is a dataset made publicly available by the National Cancer Institute (NCI) and is a subset of balanced datasets of chemical compounds screened for ability to suppress or inhibit the growth of a panel of human tumor cell lines, having 37 discrete labels.
+
+
+
+\end{appendix}
+

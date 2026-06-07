@@ -1,0 +1,46 @@
+\section{Related Work}
+
+
+%The proposed {\graphsaint} is designed to achieve high accuracy while significantly decreasing the training time compared to state-of-the-art, a summary of which is presented below.
+
+A neural network model that extends convolution operation to the graph domain is first proposed by \cite{gcn_lecun}. %... demonstrated the potential of graph convolution based models by non-trivial learning tasks such as . 
+Further, \cite{gcn, gcn_nips16} speed up graph convolution computation with localized filters based on Chebyshev expansion. They target relatively small datasets and thus the training proceeds in full batch. In order to scale GCNs to large graphs, layer sampling techniques \citep{graphsage,fastgcn,gcn_web,s-gcn,lgcn,as-gcn} have been proposed for efficient minibatch training. All of them follow the three meta steps: 
+\begin{enumerate*}
+\item Construct a complete GCN on the full training graph. 
+\item Sample nodes or edges of each layer to form minibatches. 
+\item Propagate forward and backward among the sampled GCN. 
+\end{enumerate*}
+Steps (2) and (3) proceed iteratively to update the weights via stochastic gradient descent. 
+The layer sampling algorithm of GraphSAGE \citep{graphsage} performs uniform node sampling on the previous layer neighbors. It enforces a pre-defined budget on the sample size, so as to bound the minibatch computation complexity. 
+\cite{gcn_web} enhances the layer sampler of \cite{graphsage} by introducing an importance score to each neighbor. The algorithm presumably leads to less information loss due to weighted aggregation. 
+S-GCN \citep{s-gcn}  further restricts neighborhood size by requiring only two support nodes in the previous layer. The idea is to use the historical activations in the previous layer to avoid redundant re-evaluation. 
+FastGCN \citep{fastgcn} performs sampling from another perspective. Instead of tracking down the inter-layer connections, node sampling is performed independently for each layer. It applies importance sampling to reduce variance, and results in constant sample size in all layers. However, the minibatches potentially become too sparse to achieve high accuracy. \cite{as-gcn} improves FastGCN by an additional sampling neural network. It ensures high accuracy, since sampling is conditioned on the selected nodes in the next layer. Significant overhead may be incurred due to the expensive sampling algorithm and the extra sampler parameters to be learned. 
+%In addition, the work in \cite{ipdps} proposes a subgraph based training algorithm that is scalable with respect to GCN depth, and also highly parallelizable on multi-core machines. 
+
+Instead of sampling layers, the works of \cite{ipdps_arxiv} and \cite{cluster-gcn} build minibatches from subgraphs. 
+\cite{ipdps_arxiv} proposes a specific graph sampling algorithm to ensure connectivity among minibatch nodes. They further present techniques to scale such training on shared-memory multi-core platforms. 
+More recently, ClusterGCN \citep{cluster-gcn} proposes graph clustering based minibatch training. 
+During pre-processing, the training graph is partitioned into densely connected clusters. During training, clusters are randomly selected to form minibatches, and intra-cluster edge connections remain unchanged. 
+Similar to {\graphsaint}, the works of \cite{ipdps_arxiv} and \cite{cluster-gcn} do not sample the layers and thus ``neighbor explosion'' is avoided. Unlike {\graphsaint}, both works are heuristic based, and do not account for bias due to the unequal probability of each node / edge appearing in a minibatch. %introduced by the minibatches. %towards specific structures in the pre-determined clusters. 
+
+% (topological)  clusters of the training graph, and shows the effectiveness of their algorithm on deep models. 
+% While the subgraph based methods \citep{cluster-gcn} empirically demonstrate high node classification accuracy, their minibatches inherently result in biased estimation of the full batch loss. Thus, more analysis may be required to understand their convergence property. 
+%On the other hand, we propose a different perspective by sampling the graph first and then constructing full GCN based on it.
+
+Another line of research focuses on improving model capacity. Applying attention on graphs, the architectures of \cite{gat,gaan,graphstar} better capture neighbor features by dynamically adjusting edge weights. 
+\cite{rw-gcn} combines PageRank with GCNs to enable efficient information propagation from many hops away. 
+To develop deeper models, ``skip-connection'' is borrowed from CNNs \citep{resnet,densenet} into the GCN context. 
+In particular, JK-net \cite{jk-net} demonstrates significant accuracy improvement on GCNs with more than two layers. Note, however, that JK-net \citep{jk-net} follows the same sampling strategy as GraphSAGE \citep{graphsage}. Thus, its training cost is high due to neighbor explosion. 
+In addition, high order graph convolutional layers \citep{high-order-1,high-order-2,high-order-3} also help propagate long-distance features. 
+With the numerous architectural variants developed, the question of how to train them efficiently via minibatches still remains to be answered.
+
+%{\graphsaint} is closely connected to the aforementioned sampling methods. In addition, the proposed samplers can be applied to train many of the alternative GCN models in a plug-and-play fashion. 
+
+%There are other efforts that speeds up large scale training by optimizing GPU/CPU performance. \cite{gcn_web} proposes a producer-consumer model that balances the CPU and GPU workload, so as to maximize the overall GPU utilization. \cite{ipdps19} proposes using graph sampling instead of layer sampling, their focus is to design
+%parallelization techniques to improve training performance on tightly coupled GPU/multi-core CPUs.
+%\cite{lgcn} proposes a ``subgraph training'' method which ensures that the minibatch data fits into GPU memory. Note that their notion of ``subgraph'' differs from that presented here as these subgraphs are essentially induced from all the support nodes for a given minibatch \textit{after layer sampling}. Since such sampling algorithm is similar to \cite{graphsage}, the problem of ``neighbor explosion'' is still likely to happen, and so the subgraph size is limited by a predefined threshold. On the other hand, in our approach, all nodes in the subgraph are considered to be in the minibatch and the support nodes are constructed from within the subgraph. Further, we also perform a detailed analysis of the choice of subgraph sampling which has not been addressed in the literature.
+% To further reduce training time on large graphs, there are other efforts optimizing GPU/CPU performance. LGCN, our arXiv paper. 
+
+%Apart from the above techniques to optimize scalability, there have been several successful exploration in improving the GCN model. Based on the localized spectral filter designs \cite{gcn_iclr16,gcn_nips16} which average the neighbor activations, \cite{graphsage} proposes two other types of aggregators that perform various non-linear mappings on the neighbor activations. \cite{lgcn} proposes a variant of max-pooling operator which selects the $k$-top values of the neighbor features. Such pooling operation leads to a GCN design which incorporates regular convolution on structured data.  
+
+%The proposed GraphSAINT framework consists of innovations along two orthogonal directions. It investigates an alternative way of minibatch construction based on graph sampling. This enables fast training of deep GCN, and thus leads to a wealth of exploration in GCN architecture as well. 

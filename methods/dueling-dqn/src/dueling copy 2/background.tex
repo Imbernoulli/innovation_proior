@@ -1,0 +1,133 @@
+%!TEX root = main.tex
+
+% In this section, we formalize the terminology and notation used in the rest of the paper. We present only a brief summary. For an introduction we refer the reader to~\citep{SuttonBarto:1998}.
+
+We consider a sequential decision making setup, in which 
+an agent interacts with an environment $\mathcal{E}$ over discrete time steps, see~\citet{SuttonBarto:1998} for an introduction. In the Atari domain, for example, the agent perceives a video $s_t$ consisting of $M$ image frames:  $s_t =(x_{t-M+1}, \ldots, x_t) \in \mathcal{S}$ at time step $t$. The agent then chooses an action from a discrete set $a_t \in \mathcal{A} = \{1,\ldots,|\mathcal{A}|\} $ and observes a reward signal $r_t$ produced by the game emulator. 
+%We represent $\mathcal{E}(s_t,a_t)$ as a random variable whose outcome is the next frame $x_{t+1}$ yielding the successor state $s_{t+1} \in \mathcal{S}$.
+
+%The agent seeks to maximize the  discounted return
+%is defined as $R_t = \sum_{\tau=t} \gamma^{\tau-t} r_{\tau}$,
+%where $\gamma \in [0,1]$ is a discount factor that trades-off the importance of immediate and future rewards.
+%In our experiments we use finite-length {\it episodes} but here we present the general case of continuing tasks.
+%A policy $\pi : \mathcal{S} \rightarrow \Delta(\mathcal{A})$ is a function that maps each state to a probability distribution over actions.
+The agent seeks maximize the expected discounted return, where we define the discounted return as $R_t = \sum_{\tau=t}^{\infty} \gamma^{\tau-t} r_{\tau}$. In this formulation,
+$\gamma \in [0,1]$ is a discount factor that trades-off the importance of immediate and future rewards.  
+
+For an agent behaving according to a stochastic policy $\pi$, the values of the state-action pair $(s,a)$ and the state $s$ 
+% at time $t$ 
+are defined as follows
+\begin{eqnarray}
+Q^{\pi}(s,a) &=& \expect{\left. R_t \right| s_t = s, a_t = a, \pi},~\mbox{ and } \nonumber \\
+V^{\pi}(s) &=& \expectQ{Q^{\pi}(s,a)}{a \sim \pi(s)}.
+\end{eqnarray}
+
+The preceding state-action value function ($Q$ function for short) can be computed recursively with dynamic programming:
+\[
+Q^{\pi}(s,a)  = \expectQ{r + \gamma \expectQ{Q^{\pi}(s',a')}{a'\sim\pi(s')}~|~s,a,\pi}{s'}.
+\]
+We define the optimal $Q^{*}(s,a) = \max_{\pi} Q^{\pi}(s,a).$
+Under the deterministic policy $a = \argmax_{a' \in \mathcal{A}} Q^{*}(s,a')$, it follows that
+$V^{*}(s) = \max_{a} Q^{*}(s,a).$ From this, it also follows that the optimal $Q$ function satisfies the Bellman equation:
+\be
+Q^{*}(s,a) = \E_{s'} \left[ r +  \gamma  \max_{a' } Q^{*}(s',a')~|~s,a \right]. 
+\ee
+
+
+We define another important quantity, the {\it advantage function}, relating the value and $Q$ functions:
+\be
+\label{eq:advantage}
+A^{\pi}(s,a) = Q^{\pi}(s,a) - V^{\pi}(s).
+\ee
+Note that $\expectQ{A^{\pi}(s,a)}{a \sim \pi(s)} = 0$. Intuitively, the value function $V$ measures the how good it is to be in a particular state $s$. The $Q$ function, however, measures the the value of choosing a particular action when in this state. The advantage function subtracts the value of the state from the Q function to obtain a relative measure of the importance of each action.
+
+%TODO(@Marc): IMPROVE INTUITIONS. ADD MORE ON ADVANTAGE.
+% In many domains, for some fixed model capacity (i.e. number of weights in the network) and number of training episodes, learning a $Q$ function is often more difficult than learning a value function. This is because the $Q$ function must represent both the state {\it and} advantage value per action in a single function, so models need to condition each action's value on each state $s \in \mathcal{S}$. In contrast, value functions simply need to output a single numerical value. Also, this increase in difficulty rises as $|\cal{A}|$ grows, which is problematic for RL on complex domains.
+
+% However, the choice of whether learn a model that represents $V$ instead of $Q$ is not so simple, because policies are not directly obtainable from value functions alone. A deterministic policy based on a value function would need access to a model of the environment to be able to compute $\max_{a \in \mathcal{A}} \E_{s' \sim \mathcal{E}} [ V(s')~|~s,a]$, which is often prohibitively expensive or impossible in practice. The dueling architecture described in Section~\ref{sec:dueling} remains model-free using a $Q$ function, but which is decomposed into $V$ and $A$ to alleviate some of the difficulty caused by state-action conditioning.
+
+\subsection{Deep Q-networks}
+\label{sec:dqn}
+
+The value functions as described in the preceding section are high dimensional objects. To approximate them, we can use a deep $Q$-network: $Q(s,a;\theta)$ with parameters $\theta$. To estimate this network, we optimize the following sequence of loss functions at iteration $i$:
+\be
+L_i(\theta_i) = \E_{s,a,r,s'} \left[ \left( y_i^{DQN} - Q(s,a; \theta_{i}) \right)^{2} \right],
+\label{eq:loss}
+\ee
+with 
+\be
+y_i^{DQN} =  r + \gamma \max_{a'} Q(s',a';\theta^{-}),
+\ee
+where $\theta^{-}$ represents the parameters of a fixed and separate {\it target network}. % , which has shown to significantly increase the stability of the learning~\cite{Mnih:2015,vanHasselt:2015}.
+We could attempt to use standard $Q$-learning to learn the parameters of the network $Q(s,a; \theta)$ online. However, this estimator performs poorly in practice. A key innovation in \citep{Mnih:2015} was to freeze the  parameters of the target network  $Q(s',a';\theta^{-})$ for a fixed number of iterations while updating the {\it online network} $Q(s,a; \theta_{i})$ by gradient descent. (This greatly improves the stability of the algorithm.) The specific gradient update is 
+\begin{eqnarray*}
+\hspace{-1.5em}&\nabla_{\theta_i} L_i(\theta_i) =
+\displaystyle{\E_{s,a,r,s'}} \Big[ \hspace{-1mm}\left( y_i^{DQN} - Q(s,a; \theta_{i}) \right)\hspace{-1mm} \nabla_{\theta_i} Q(s,a; \theta_{i}) \Big]
+\nonumber&
+\end{eqnarray*}
+
+This approach is model free in the sense that the states and rewards are produced by the environment. It is also off-policy because these states and rewards are obtained with a behavior policy (epsilon greedy in DQN) different from the online policy that is being learned.
+
+Another key ingredient behind the success of DQN is  {\it experience replay}~\citep{Lin:1993,Mnih:2015}. During learning, the agent accumulates a dataset $\mathcal{D}_t =\{e_1, e_2, \ldots, e_t\}$ of experiences
+$e_t=(s_t, a_t, r_t, s_{t+1})$ from many episodes. When training the $Q$-network, instead only using the current experience as prescribed by standard temporal-difference learning, the network is trained by sampling mini-batches of experiences  from $\mathcal{D}$ uniformly at random. The sequence of losses thus takes the form
+\be
+L_i(\theta_i) = \E_{(s,a,r,s')\sim \mathcal{U}(\mathcal{D}) } \left[ \left(  y_i^{DQN} - Q(s,a; \theta_{i}) \right)^{2} \right].
+\nonumber%\label{eq:lossreplay}
+\ee
+Experience replay increases data efficiency through re-use of experience samples in multiple updates and, importantly, it reduces variance as uniform sampling from the replay buffer reduces the correlation among the samples used in the update. 
+
+
+\subsection{Double Deep Q-networks} % <-- Love this section name. :) -- ML
+
+The previous section described the main components of DQN as presented in \citep{Mnih:2015}. In this paper, we use the improved Double DQN (DDQN) learning algorithm of \citet{vanHasselt:2015}. In Q-learning and DQN, the $\max$ operator
+uses the same values to both select and evaluate an action. This can therefore lead to overoptimistic value estimates \citep{vanHasselt:2010}. To mitigate this problem, DDQN uses the following target:
+\be
+y_i^{DDQN} =  r + \gamma Q(s',\argmax_{a'} Q(s',a';\theta_i)   ;\theta^{-}).
+\ee
+DDQN is the same as for DQN (see \citet{Mnih:2015}), but with the target $y_i^{DQN}$ replaced by $ y_i^{DDQN}$.
+% Removed for ICML before accept.
+The pseudo-code for DDQN is presented in Appendix~\ref{sec:ddqn_alg}.
+
+
+\subsection{Prioritized Replay}
+
+A recent innovation in prioritized experience replay~\citep{Schaul:2015} built on top of DDQN and further improved the state-of-the-art. Their key idea was to increase the replay probability of experience tuples that have a high expected learning progress (as measured via the proxy of absolute TD-error). This led to both faster learning and to better final policy quality across most games of the Atari benchmark suite, as compared to uniform experience replay.
+
+To strengthen the claim that our dueling architecture is complementary to algorithmic innovations, we show that it improves performance for both the uniform and the prioritized replay baselines (for which we picked the easier to implement rank-based variant), with the resulting prioritized dueling variant holding the new state-of-the-art. 
+
+
+% 
+% When DQN is used with a target network as specified in Section~\ref{sec:dqn}, it is natural to use the target network as the value estimator and choose actions according to $\pi_\mathcal{B}$. The pseudo-code is given in Algorithm~\ref{alg:ddqn}.
+% 
+% \begin{algorithm2e}[h!]
+% \small
+% \SetKwInOut{Input}{input}\SetKwInOut{Output}{output}
+% \Input{$\mathcal{D}$ -- empty replay buffer; $\theta_i$ -- initial network parameters, $\theta^\star$ -- copy of $\theta_i$}
+% \Input{$N_r$ -- replay buffer maximum size; $N_b$ -- training batch size; $N_\star$ -- target network replacement freq.}
+% Initialize total step count $T \leftarrow 0$ \;
+% \For{\mbox{episode} $e \in \{ 1, 2, \ldots, M$ \} } {
+%   Initialize frame sequence $\mathbf{x} \leftarrow ()$ \;
+%   \For{$t \in \{ 0, 1, \ldots \} $} {
+%     Set state $s \leftarrow \mathbf{x}$, and sample an action from behavior policy $a \sim \pi_\mathcal{B}$ \;
+%     Sample next frame $x_t$ from environment $\mathcal{E}$ given $(s,a)$ and receive reward $r$, and append $x_t$ to $\mathbf{x}$ \;
+%     {\bf if} {$|\mathbf{x}| > N_f$} {\bf then} delete the oldest frame $x_{t_{min}}$ from $\mathbf{x}$ {\bf end} \;
+%     Set $s' \leftarrow \mathbf{x}$, and add transition tuple $(s, a, r, s')$ to $\mathcal{D}$, replacing the oldest tuple if $|\mathcal{D}| \ge N_r$ \;
+%     Sample a minibatch of $N_b$ tuples $(s, a, r, s')$ uniformly from $\mathcal{D}$ \; %uniformly from $\mathcal{D}$ \;
+%     Construct target values, one for each of the $N_b$ tuples: \;
+%     $y_i = \left\{ \begin{array}{ll}
+%          r & \mbox{if $s'$ is terminal}\\
+%          r + \gamma Q(s', a'; \theta^\star), & \mbox{otherwise, where } a' = \argmax_{a''} Q(s', a''; \theta_i). \end{array} \right.$ \;
+%     Perform a gradient descent step on loss $||\mathbf{\delta}||^2$, where elements of $\delta$ are $| y_i - Q(s, a ; \theta_i ) |$ \;
+%     $T \leftarrow T + 1$; {\bf if} $T$ {\bf mod} $N_\star = 0$ {\bf then} replace target network parameters $\theta^\star \leftarrow \theta_i$ {\bf end} \;
+%   }
+% }
+% \caption{Double Deep Q-networks (DDQN) Algorithm.}\label{alg:ddqn}
+% \end{algorithm2e}
+
+%TODO(@Marc): DOUBLE DQN EXPLANATION
+
+%TODO(@Marc): DOUBLE DQN PSEUDO-CODE 
+
+% Why is this here.. isn't it a big part of the next section?
+%TODO(@Marc): NEURAL NETWORK DESCRIPTION 
+

@@ -1,0 +1,766 @@
+\documentclass{article} % For LaTeX2e
+\usepackage{iclr2023_conference,times}
+
+
+% Optional math commands from https://github.com/goodfeli/dlbook_notation.
+\input{math_commands.tex}
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{xcolor}         % colors
+
+\usepackage{color}
+ \definecolor{mydarkblue}{rgb}{0,0,0.55}
+\usepackage[colorlinks,citecolor=mydarkblue,urlcolor=mydarkblue,linkcolor=mydarkblue]{hyperref}
+\usepackage{multirow}
+\usepackage{makecell}
+\usepackage{tabu}
+\usepackage{graphicx}
+\usepackage{subfigure}
+\usepackage{amsmath}
+\usepackage{enumitem}
+\usepackage{capt-of}
+\usepackage{bbm}
+\usepackage{tabularx}
+
+
+\usepackage{cleveref}
+\crefname{section}{\S}{\S\S}
+\Crefname{section}{\S}{\S\S}
+\crefname{table}{Table}{Tables}
+\crefname{figure}{Figure}{Figures}
+\crefname{algorithm}{Algorithm}{}
+\crefname{equation}{eq.}{}
+\crefname{appendix}{App.}{}
+\crefformat{section}{\S#2#1#3}
+
+\title{Self-Consistency Improves Chain of Thought Reasoning in Language Models}
+
+% The \author macro works with any number of authors. There are two commands
+% used to separate the names and addresses of multiple authors: \And and \AND.
+%
+% Using \And between authors leaves it to LaTeX to determine where to break the
+% lines. Using \AND forces a line break at that point. So, if LaTeX puts 3 of 4
+% authors names on the first line, and the last on the second line, try using
+% \AND instead of \And before the third author name.
+
+
+\author{%
+   Xuezhi Wang$^{\dag\ddag}$ \quad Jason Wei$^\dag$ \quad Dale Schuurmans$^\dag$\quad
+   Quoc Le$^\dag$\quad Ed H. Chi$^\dag$ \quad\\
+   \textbf{Sharan Narang$^\dag$\quad Aakanksha Chowdhery$^\dag$\quad  Denny Zhou$^{\dag\S}$} \\
+   $^\dag$Google Research, Brain Team \\
+   $^\ddag$\texttt{xuezhiw@google.com}, $^\S$\texttt{dennyzhou@google.com} \\
+}
+
+\newcommand{\fix}{\marginpar{FIX}}
+\newcommand{\new}{\marginpar{NEW}}
+
+\iclrfinalcopy % Uncomment for camera-ready version, but NOT for submission.
+
+\begin{document}
+
+\maketitle
+
+
+
+\begin{abstract}
+Chain-of-thought prompting combined with pre-trained large language models has achieved encouraging results on complex reasoning tasks. In this paper, we propose a new decoding strategy, \emph{self-consistency}, to replace the naive greedy decoding used in chain-of-thought prompting. It first samples a diverse set of reasoning paths instead of only taking the greedy one, and then selects the most consistent answer by marginalizing out the sampled reasoning paths. Self-consistency leverages the intuition that a complex reasoning problem typically admits multiple different ways of thinking leading to its unique correct answer.  Our extensive empirical evaluation shows that self-consistency boosts the performance of chain-of-thought prompting with a striking margin on a range of popular arithmetic and commonsense reasoning benchmarks, including GSM8K (+17.9\%), SVAMP (+11.0\%), AQuA (+12.2\%), StrategyQA (+6.4\%) and ARC-challenge (+3.9\%).
+
+%Chain-of-thought prompting combined with pretrained large language models has achieved encouraging results on complex reasoning tasks. In this paper, we propose a new decoding strategy, \emph{self-consistency}, to replace the naive greedy decoding used in chain-of-thought prompting.
+%Self-consistency leverages the intuition that complex reasoning tasks typically admit multiple reasoning paths that reach a correct answer. 
+%We implement this idea by sampling a diverse set of reasoning paths and then finding the most consistent answer to a question by marginalizing out all possible reasoning paths. 
+%Our extensive empirical evaluation shows that self-consistency boosts the performance of chain-of-thought prompting with a striking margin on a range of popular arithmetic and commonsense reasoning benchmarks, including GSM8K (+17.9\%), SVAMP (+11.0\%), AQuA (+12.2\%), StrategyQA (+6.4\%) and ARC-challenge (+3.9\%).
+\end{abstract}
+
+\section{Introduction}
+
+Although language models have demonstrated remarkable success across
+a range of NLP tasks, %the ability to do reasoning is often seen as a limitation of language models 
+their ability to demonstrate reasoning is often seen as a limitation,
+which cannot be overcome solely by increasing model scale \citep[][\textit{inter alia}]{rae2021scaling,bigbench}.
+In an effort to address this shortcoming, \citet{wei2022chain} have proposed \textit{chain-of-thought prompting}, where a language model is prompted to generate a series of short sentences that mimic the reasoning process
+a person might employ in solving a task.
+For example, given the question \textit{``If there are 3 cars in the parking lot and 2 more cars arrive, how many cars are in the parking lot?''}, instead of directly responding with \textit{``5''},
+a language model would be prompted to respond with the entire chain-of-thought: \textit{``There are 3 cars in the parking lot already. 2 more arrive. Now there are 3 + 2 = 5 cars. The answer is 5.''}. 
+It has been observed that chain-of-thought prompting significantly improves model performance across a variety of multi-step reasoning tasks \citep{wei2022chain}.
+
+
+In this paper, we introduce a novel decoding strategy called \textit{self-consistency} to replace the greedy decoding strategy used in chain-of-thought prompting \citep{wei2022chain}, that further improves language models' reasoning performance by a significant margin.
+Self-consistency leverages the intuition that complex reasoning tasks typically admit multiple reasoning paths that reach a correct answer \citep{stanovich2000individual}. 
+The more that deliberate thinking and analysis is required for a problem \citep{evans2010intuition}, the greater the diversity of reasoning paths that can recover the answer.
+
+\cref{fig:overview} illustrates the self-consistency method with an example.
+We first prompt the language model with chain-of-thought prompting, 
+then instead of greedily decoding the optimal reasoning path, we propose a ``sample-and-marginalize'' decoding procedure: we first \textit{sample} from the language model's decoder to generate a \textit{diverse} set of reasoning paths; each reasoning path might lead to a different final answer, so we determine the optimal answer by \textit{marginalizing out} the sampled reasoning paths to find the most consistent answer in the final answer set.
+Such an approach is analogous to the human experience that if multiple different ways of thinking lead to the same answer, one has greater confidence that the final answer is correct.
+Compared to other decoding methods, self-consistency avoids the repetitiveness and local-optimality that plague greedy decoding, while mitigating the stochasticity of a single  sampled generation.
+% One can think of this process as introducing an additional latent variable $r_j$ representing the ``rationales'' used to reach each final answer $a_i$. 
+% We couple the generation of $r_j, a_i$ where $r_j \rightarrow a_i$ and utilize the stochasticity in $r_j$ to improve the accuracy on $a_i$, by sampling from the decoder for all possible $r_j$'s and marginalizing it out in the end.
+
+
+\begin{figure}[h]
+    \centering
+    \vspace{-0.1in}
+    \includegraphics[width=\linewidth]{figures/self_consistency_fig.pdf}
+    \vspace{-0.2in}
+    \caption{The self-consistency method contains three steps: (1) prompt a language model using chain-of-thought (CoT) prompting; (2) replace the ``greedy decode'' in CoT prompting by sampling from the language model's decoder to generate a diverse set of reasoning paths; and (3) marginalize out the reasoning paths and aggregate by choosing the most consistent answer in the final answer set.}
+    \label{fig:overview}
+    \vspace{-0.05in}
+\end{figure}
+
+Self-consistency is far simpler than prior approaches that either train an additional verifier \citep{cobbe2021training} or train a re-ranker given additional human annotations to improve generation quality \citep{thoppilan2022lamda}.
+Instead, self-consistency is entirely \textit{unsupervised}, works off-the-shelf with pre-trained language models, requires no additional human annotation, and avoids any additional training, auxiliary models or fine-tuning.
+% Compared to popular generate-then re-rank approaches \citep{cobbe2021training,thoppilan2022lamda}, self-consistency does not require a specially-trained re-ranker.
+Self-consistency also differs from a typical ensemble approach where multiple models are trained and the outputs from each model are aggregated, it acts more like a ``self-ensemble'' that works on top of a \textit{single} language model.
+% We empirically evaluate self-consistency on a range of arithmetic and commonsense reasoning tasks, finding that it improves performance over generating a single chain of thought by a surprising amount.
+% Self-consistency improves performance over a single generation by X\% on average over 5 arithmetic reasoning datasets and by Y\% on average over 4 commonsense reasoning datasets.
+% Notably, performance on the challenging GSM8K and SVAMP datasets improves from 17\% to 25\%, and from 39\% to 52\%, respectively.
+
+We evaluate self-consistency on a wide range of arithmetic and commonsense reasoning tasks over four language models with varying scales: the public UL2-20B \citep{ul2} and GPT-3-175B \citep{brown2020language}, and two densely-activated decoder-only language models: LaMDA-137B \citep{thoppilan2022lamda} and PaLM-540B \citep{palm}.
+On all four language models, self-consistency improves over chain-of-thought prompting by a striking margin across all tasks.
+% Specifically, on LaMDA-137B, self-consistency achieves +10.6\% on \citep[GSM8K;][]{cobbe2021training}, +14.4\% on \citep[SVAMP;][]{patel-etal-2021-nlp}, and +23.9\% on MultiArith \citep{roy-roth-2015-solving}; 
+% for commonsense reasoning, we also observe significant gains in CommonsenseQA \citep{talmor-etal-2019-commonsenseqa} (+5\%), and +4\% and +4.7\% on the AI2 Reasoning Challenge (ARC) dataset \citep{Clark2018ThinkYH}.
+% Similarly, on PaLM-540B, self-consistency achieves substantial gains over greedy decoding across many tasks: SVAMP (+7.6\%), AQuA (+12.5\%), GSM8K (+17.9\%), StrategyQA (+6.3\%), ARC-challenge (+3.5\%), and we are able to achieve the new state-of-the-art performance across almost all tasks.
+In particular, when used with PaLM-540B or GPT-3, self-consistency achieves new state-of-the-art levels of performance across arithmetic reasoning tasks, including GSM8K \citep{cobbe2021training} (+17.9\% absolute accuracy gains), SVAMP \citep{patel-etal-2021-nlp} (+11.0\%), AQuA \citep{ling-etal-2017-program} (+12.2\%), and across commonsense reasoning tasks such as StrategyQA \citep{geva-etal-2021-aristotle} (+6.4\%) and  ARC-challenge \citep{Clark2018ThinkYH} (+3.9\%).
+In additional experiments, we show self-consistency can robustly boost performance on NLP tasks where adding a chain-of-thought might hurt performance compared to standard prompting \citep{ye2022unreliability}.
+We also show self-consistency significantly outperforms sample-and-rank, beam search, ensemble-based approaches, and is robust to sampling strategies and imperfect prompts.
+% Self-consistency also significantly outperforms existing sample-and-rerank approaches, and prompt-ensemble-based methods.
+
+% \begin{figure}[h]
+%     \centering
+%     \includegraphics[width=0.48\linewidth]{figures/LaMDA-137B.pdf}
+%     \includegraphics[width=0.48\linewidth]{figures/PaLM-540B.pdf}
+%     \vspace{-0.1in}
+%     \caption{Self-consistency significantly improves reasoning accuracy across various arithmetic and commonsense reasoning tasks, and across model scales.}
+%     \label{fig:bar_plot}
+% \end{figure}
+
+% \begin{figure}[h]
+% \vspace{-0.1in}
+%     \centering
+%     \includegraphics[width=0.48\linewidth]{figures/barplot_1.pdf}
+%     \hspace{0.1in}
+%     \includegraphics[width=0.48\linewidth]{figures/barplot_2.pdf}
+%     \vspace{-0.15in}
+%     \caption{Self-consistency significantly improves reasoning accuracy across various arithmetic and commonsense reasoning tasks, and across model scales (137B and 540B LMs).}
+%     \label{fig:bar_plot}
+%     \vspace{-0.1in}
+% \end{figure}
+
+
+
+\section{Self-Consistency over Diverse Reasoning Paths}
+
+A salient aspect of humanity is that people think differently.
+It is natural to suppose that in tasks requiring deliberate thinking, there are likely 
+several ways to attack the problem.
+% , all of which lead to the same, correct answer.
+% When humans solve a reasoning task that requires deliberate thinking, since different people think differently, for any given problem there likely exist many sets of reasoning processes that lead to the same final solution.
+% If some of the reasoning chains lead to the same answer, then a human would be more confident that this answer is indeed correct.
+% The goal of chain of thought prompting is to allow models to produce a chain of thought that mimics the reasoning process a person may have when responding to a question. 
+We propose that such a process can be simulated in language models via sampling from the language model's decoder. 
+For instance, as shown in \cref{fig:overview}, a model can generate several plausible responses to a math question that all arrive at the same correct answer (Outputs 1 and 3).
+Since language models are not perfect reasoners, the model might also produce an incorrect reasoning path or make a mistake in one of the reasoning steps (e.g., in Output 2), but such solutions are less likely to arrive at the \textit{same} answer.
+That is, we hypothesize that correct reasoning processes, even if they are diverse, tend to have greater agreement in their final answer than incorrect processes.
+% This is a key fact that we utilize to identify the correct reasoning chains along with their answers that we denote as ``self-consistency'' below.
+
+% \begin{table}[h]
+% \vspace{-0.1in}
+% \small
+%     \centering
+%     \begin{tabu} to 1\textwidth { X[l] }
+%     \toprule
+%           \textbf{Question}: 
+%           \textit{Janet’s ducks lay 16 eggs per day. She eats three for breakfast every morning and bakes muffins for her friends every day with four. She sells the remainder at the farmers' market daily for \$2 per fresh duck egg. How much in dollars does she make every day at the farmers' market?} (Ground truth answer is \textcolor{blue}{18}.)\\
+%           \midrule
+%           \midrule
+%           \textbf{Greedy Decode}:
+%           She eats 3 for breakfast every morning and bakes muffins for her friends every day with 4. This means she eats 3 + 4 = 7 eggs every day. She sells the remainder at the farmers' market daily for \$2 per fresh duck egg. So she sells \textcolor{red}{7 * \$2 = \$14} per day. The answer is \textcolor{red}{14}. \\
+%           \midrule
+%           \textbf{Sample decode with diverse reasoning paths}:\\
+%           \vspace{0.01ex}
+%           \textbf{- Output 1}: She eats three eggs for breakfast. She bakes muffins for her friends with four eggs. 
+%           She sells the remainder at the farmers' market daily for \$2 per fresh duck egg. This means she sells the remainder at the farmers' market daily for \textcolor{red}{\$2 * (16 - 4 - 3) = \$2 * 13 = \$26} per day.  The answer is \textcolor{red}{\$26}. (\textcolor{red}{calculation mistake})\\
+%           \vspace{0.01ex}
+%           \textbf{- Output 2}: She eats three for breakfast every morning and bakes muffins for her friends every day with four. She sells the remainder at the farmers' market daily for \$2 per fresh duck egg. She eats \textcolor{blue}{3 + 4 = 7} eggs. She \\sells the remainder. So, the number of eggs she sells is \textcolor{blue}{16 - 7 = 9}. She sells each egg for \$2. So, in total she\\ makes \textcolor{blue}{\$2 * 9 = \$18}. The answer is \textcolor{blue}{\$18}.\\
+%           \vspace{0.01ex}
+%           \textbf{- Output 3}: She eats 3 eggs every morning and bakes muffins for her friends every day with 4 eggs. This means she uses 3 + 4 = 7 eggs every day. She sells the remainder at the farmers' market daily for \$2 each. So in total she sells \textcolor{red}{7 * \$2 = \$14} per day. The answer is \textcolor{red}{\$14}. (\textcolor{red}{incorrect reasoning process})\\
+%           \vspace{0.01ex}
+%           \textbf{- Output 4}: Janet's ducks lay 16 eggs per day. She eats 3 for breakfast and bakes muffins with 4. That means she has \textcolor{blue}{16 - 3 - 4 = 9} eggs left. She sells them for \$2 each, so she makes \textcolor{blue}{\$2 * 9 = \$18} per day. The answer is \textcolor{blue}{18}.\\
+%           \vspace{0.01ex}
+%           \textbf{- Output 5}: She eats 3 for breakfast every morning, so she has \textcolor{blue}{16 - 3 = 13} eggs left. Then she bakes muffins with 4 eggs every day, so she has \textcolor{blue}{13 - 4 = 9} eggs left. She sells the remainder at the farmers' market daily for \$2 per fresh duck egg. So she has \textcolor{blue}{9 eggs * \$2 = \$18}. The answer is \textcolor{blue}{\$18}.
+%         \\
+%     \bottomrule
+%     \end{tabu}
+%     \vspace{0.02in}
+%     \caption{An example showing how self-consistency over diverse reasoning paths can improve reasoning in language models. The outputs are generated from a 137B language model, and the example is taken from the GSM8K dataset \citep{cobbe2021training}. The blue/red color indicates correct/incorrect reasoning paths and their corresponding answers from the model.}
+%     \label{tab:example}
+%     \vspace{-0.15in}
+% \end{table}
+
+
+We leverage this intuition by proposing the following \textit{self-consistency} method.
+First, a language model is prompted with a set of manually written chain-of-thought exemplars \citep{wei2022chain}.
+Next, we sample a set of candidate outputs from the language model's decoder,  generating a diverse set of candidate reasoning paths. 
+Self-consistency is compatible with most existing sampling algorithms, including temperature sampling \citep{ACKLEY1985147,ficler-goldberg-2017-controlling}, top-$k$ sampling \citep{fan-etal-2018-hierarchical,holtzman-etal-2018-learning,Radford2019LanguageMA}, and nucleus sampling \citep{nucleus_sampling}.
+Finally, we aggregate the answers by marginalizing out the sampled reasoning paths and choosing the answer that is the most consistent among the generated answers.
+% In our experimental investigation, we find that combining chain of thought prompting with self-consistency leads to substantially better results than simply using chain of thought alone, which only considers a single generated path.
+
+In more detail, assume the generated answers $\mathbf{a}_i$ are from a fixed answer set, $\mathbf{a}_i\in \mathbb{A}$, where $i=1, \ldots, m$ indexes the $m$ candidate outputs sampled from the decoder. 
+Given a prompt and a question, self-consistency introduces an additional latent variable $\mathbf{r}_i$, which is a sequence of tokens representing the reasoning path in the $i$-th output, then couples the generation of $(\mathbf{r}_i, \mathbf{a}_i)$ where $\mathbf{r}_i\rightarrow \mathbf{a}_i$, i.e., generating a reasoning path $\mathbf{r}_i$ is optional and only used to reach the final answer $\mathbf{a}_i$.
+As an example, consider Output 3 from \cref{fig:overview}: 
+the first few sentences ``\textit{She eats 3 for breakfast\ ...\ So she has 9 eggs * \$2 = \$18.}'' constitutes $\mathbf{r}_i$, while the answer \textit{18} from the last sentence, ``\textit{The answer is \$18}'', is parsed as $\mathbf{a}_i$.\footnote{The parser is task dependent. For arithmetic reasoning, we parse the first numerical part as the final answer after the model generates ``The answer is ''. For commonsense reasoning, we parse the full string answer as the final answer after the model generates ``The answer is ''. Most generated outputs have a consistent format of ``\{Reasoning paths\}. The answer is X.'' if we prompt the language model in this format.}
+% Then the \textit{self-consistency} procedure aggregates the $m$ reasoning paths by taking the plurality vote over the final answers $a_i$, i.e.,
+% $
+% a_{\text{best}} = \argmax_{a_i, i\in{1, \ldots, m}} \sum_{j=1}^m \mathbbm{1} (a_j = a_i).
+% $
+% In other words, we choose the optimal answer $a_{\text{best}}$ to be the answer that is most \textit{consistent} among the generated answers (possibly with different reasoning paths).\footnote{When there are ties, i.e., answers with equal votes, we take the answer in the order first encountered.}
+After sampling multiple $(\mathbf{r}_i, \mathbf{a}_i)$ from the model's decoder, self-consistency applies a marginalization over $\mathbf{r}_i$ by taking a majority vote over $\mathbf{a}_i$, i.e., $\argmax_a\sum\nolimits_{i=1}^m \mathbbm{1} (\mathbf{a}_i = a)$, or as we defined as the most ``consistent'' answer among the final answer set.
+
+
+% Hence, given a question $x$,  then  in $p(a_i, r_i | x)$ via sampling  to determine the best $a_i$.
+% This observation allows us apply voting on a tractable set of potential final answers given by the generation of various reasoning paths.
+% For a given language model, we sample $m$ candidate outputs $\{r_i, a_i\}, i\in{1, \ldots, m}$, from its decoder, where each generated output consists of a reasoning path $r_i$, along with a final answer $a_i$.
+
+
+In Table~\ref{tab:aggregation}, we show the test accuracy over a set of reasoning tasks by using different answer aggregation strategies.
+In addition to majority vote, one can also weight each $(\mathbf{r}_i, \mathbf{a}_i)$ by $P(\mathbf{r}_i, \mathbf{a}_i \mid \text{prompt}, \text{question})$ when aggregating the answers.
+Note to compute $P(\mathbf{r}_i, \mathbf{a}_i \mid \text{prompt}, \text{question})$, we can either take the unnormalized probability of the model generating $(\mathbf{r}_i, \mathbf{a}_i)$ given $(\text{prompt}, \text{question})$, or we can normalize the conditional probability by the output length \citep{brown2020language}, i.e., 
+\begin{align}
+\label{eq2}
+P(\mathbf{r}_i, \mathbf{a}_i \mid \text{prompt}, \text{question}) = \exp^{\frac{1}{K}\sum_{k=1}^K {\log P(t_k \mid \text{prompt}, \text{question}, t_1, \ldots, t_{k-1})}},
+\end{align}
+where $\log P(t_k \mid \text{prompt}, \text{question}, t_1, \ldots, t_{k-1})$ is the log probability of generating the $k$-th token $t_k$ in $(\mathbf{r}_i, \mathbf{a}_i)$ conditioned on the previous tokens, and $K$ is the total number of tokens in $(\mathbf{r}_i, \mathbf{a}_i)$.
+In Table~\ref{tab:aggregation}, we show that taking the ``unweighted sum'', i.e., taking a majority vote directly over $\mathbf{a}_i$ yields a very similar accuracy as aggregating using the ``normalized weighted sum''.
+We took a closer look at the model's output probabilities and found this is because for each $(\mathbf{r}_i, \mathbf{a}_i)$, the normalized conditional probabilities $P(\mathbf{r}_i, \mathbf{a}_i \mid \text{prompt}, \text{question})$ are quite close to each other, i.e., the language model regards those generations as ``similarly likely''.\footnote{This also means that the language model is not well calibrated and thus cannot distinguish well between correct solutions and wrong solutions, which also explains why additional re-rankers were trained to better judge the quality of the solutions in previous work \citep{cobbe2021training,thoppilan2022lamda}.}
+Additionally, when aggregating the answers, the results in Table~\ref{tab:aggregation} show that the ``normalized'' weighted sum (i.e., \Eqref{eq2}) yields a much higher accuracy compared to its unnormalized counterpart.
+% For self-consistency in practice, one can either calculate the exact normalized weighted sum (\Eqref{eq1} and \ref{eq2}) or take a majority vote over $\mathbf{a}_i$ directly as an approximation, where the latter has a strictly lower computational cost. In our experiments, for simplicity we use majority vote to report all results.
+For completeness, in Table~\ref{tab:aggregation} we also report the results by taking a ``weighted average'', i.e., each $a$ gets a score of its weighted sum divided by $\sum\nolimits_{i=1}^m \mathbbm{1} (\mathbf{a}_i = a)$, which results in a much worse performance.
+
+\begin{table}[t]
+\small
+\setlength\tabcolsep{4pt}
+    \centering
+    \vspace{-0.1in}
+    \begin{tabular}{c cccccc}
+    \toprule
+         & GSM8K  & MultiArith & AQuA & SVAMP & CSQA & ARC-c \\
+         \midrule
+       Greedy decode & 56.5 & 94.7 & 35.8 & 79.0 & 79.0 & 85.2\\
+       \midrule
+       Weighted avg (unnormalized) & 56.3 \scriptsize{$\pm$ 0.0} & 90.5 \scriptsize{$\pm$ 0.0} & 35.8 \scriptsize{$\pm$ 0.0} & 73.0 \scriptsize{$\pm$ 0.0} & 74.8 \scriptsize{$\pm$ 0.0} & 82.3 \scriptsize{$\pm$ 0.0} \\
+       Weighted avg (normalized) & 22.1 \scriptsize{$\pm$ 0.0} & 59.7 \scriptsize{$\pm$ 0.0} & 15.7 \scriptsize{$\pm$ 0.0} & 40.5 \scriptsize{$\pm$ 0.0} & 52.1 \scriptsize{$\pm$ 0.0} & 51.7 \scriptsize{$\pm$ 0.0}\\
+       \midrule
+       Weighted sum (unnormalized) & 59.9 \scriptsize{$\pm$ 0.0} & 92.2 \scriptsize{$\pm$ 0.0} & 38.2 \scriptsize{$\pm$ 0.0} & 76.2 \scriptsize{$\pm$ 0.0} & 76.2 \scriptsize{$\pm$ 0.0} & 83.5 \scriptsize{$\pm$ 0.0} \\
+       Weighted sum (normalized) & 74.1 \scriptsize{$\pm$ 0.0} & 99.3 \scriptsize{$\pm$ 0.0} & 48.0 \scriptsize{$\pm$ 0.0} & 86.8 \scriptsize{$\pm$ 0.0} & 80.7 \scriptsize{$\pm$ 0.0} & 88.7 \scriptsize{$\pm$ 0.0}\\
+       \midrule
+       Unweighted sum (majority vote) & 74.4 \scriptsize{$\pm$ 0.1} & 99.3 \scriptsize{$\pm$ 0.0} & 48.3 \scriptsize{$\pm$ 0.5} & 86.6 \scriptsize{$\pm$ 0.1} & 80.7 \scriptsize{$\pm$ 0.1} & 88.7 \scriptsize{$\pm$ 0.1} \\
+       \bottomrule
+    \end{tabular}
+    \vspace{-0.1in}
+    \caption{Accuracy comparison of different answer aggregation strategies on PaLM-540B.}
+    \label{tab:aggregation}
+\vspace{-0.1in}
+\end{table}
+
+
+Self-consistency explores an interesting space between open-ended text generation and optimal text generation with a fixed answer.
+Reasoning tasks typically have fixed answers, which is why researchers have generally considered greedy decoding approaches  \citep{Radford2019LanguageMA,wei2022chain,palm}. 
+However, we have found that even when the desired answer is fixed, introducing diversity in the reasoning processes can be highly beneficial; therefore we leverage sampling, as commonly used for open-ended text generation \citep{Radford2019LanguageMA,brown2020language,thoppilan2022lamda}, to achieve this goal.
+% In a more-general sense, self-consistency can even be viewed as a general decoding method which considers a natural language chain of thought before providing the final answer.
+One should note that self-consistency can be applied only to problems where the final answer is from a fixed answer set, but in principle this approach can be extended to open-text generation problems if a good metric of consistency can be defined between multiple generations, e.g., whether two answers agree or contradict each other.
+
+
+\section{Experiments}
+We conducted a series of experiments to compare the proposed self-consistency method with existing approaches on a range of reasoning benchmarks.
+We find that self-consistency robustly improves reasoning accuracy for every language model considered, spanning a wide range of model scales.  %across multiple language models and model scales.
+
+\subsection{Experiment setup}
+
+\paragraph{Tasks and datasets.} We evaluate self-consistency on the following reasoning benchmarks.\footnote{By default we use the test split for all datasets if the labels are available for evaluation. For CommonsenseQA we use the dev split; for StrategyQA we use the question-only set from \cite{bigbench}: \scriptsize{\url{https://github.com/google/BIG-bench/tree/main/bigbench/benchmark_tasks/strategyqa}}.}
+\vspace{-0.05in}
+\begin{itemize}[leftmargin=0.6cm]
+    \item \textbf{Arithmetic reasoning}. For these tasks, we used the Math Word Problem Repository \citep{koncel-kedziorski-etal-2016-mawps}, including AddSub \citep{hosseini-etal-2014-learning}, MultiArith \citep{roy-roth-2015-solving}, and ASDiv \citep{miao-etal-2020-diverse}. We also included AQUA-RAT \citep{ling-etal-2017-program}, a recently published benchmark of grade-school-math problems \citep[GSM8K;][]{cobbe2021training}, and a challenge dataset over math word problems \citep[SVAMP;][]{patel-etal-2021-nlp}.
+    \item \textbf{Commonsense reasoning}. 
+    For these tasks, we used CommonsenseQA \citep{talmor-etal-2019-commonsenseqa},
+    StrategyQA \citep{geva-etal-2021-aristotle}, 
+    and the AI2 Reasoning Challenge (ARC) \citep{Clark2018ThinkYH}.
+    % In addition, we also included two other datasets that require reasoning from  \cite{bigbench}: Date Understanding and Sports Understanding.
+    \item \textbf{Symbolic Reasoning}. We evaluate two symbolic reasoning tasks: last letter concatenation (e.g., the input is ``Elon Musk'' and the output should be ``nk''), and Coinflip (e.g., a coin is heads-up, after a few flips is the coin still heads-up?) from \cite{wei2022chain}. 
+\end{itemize}
+
+\vspace{-0.1in}
+\paragraph{Language models and prompts.}
+We evaluate self-consistency over four transformer-based language models with varying scales: 
+\begin{itemize}[leftmargin=0.6cm]
+\vspace{-0.05in}
+    \item UL2 \citep{ul2} is an encoder-decoder model trained on a mixture of denoisers with 20-billion parameters. UL2 is completely open-sourced\footnote{Model checkpoints at \scriptsize{\url{https://github.com/google-research/google-research/tree/master/ul2}}.} and has similar or better performance than GPT-3 on zero-shot SuperGLUE, with only 20B parameters and thus is more compute-friendly;
+    \item GPT-3 \citep{brown2020language} with 175-billion parameters. We use two public engines \textit{code-davinci-001} and \textit{code-davinci-002} from the Codex series \citep{chen2021evaluating} to aid reproducibility;\footnote{Public API available at \scriptsize{\url{https://openai.com/api/}.}}
+    \item LaMDA-137B \citep{thoppilan2022lamda} is a dense left-to-right, decoder-only language model with 137-billion parameters, pre-trained on a mixture of web documents, dialog data and
+Wikipedia; 
+\item PaLM-540B \citep{palm} is a dense left-to-right, decoder-only language model with 540-billion parameters, pre-trained on a high quality corpus of 780 billion tokens with filtered webpages, books, Wikipedia, news articles, source
+code, and social media conversations.
+\end{itemize}
+
+\vspace{-0.1in}
+We perform all experiments in the few-shot setting, without training or fine-tuning the language models. 
+For a fair comparison we use the same prompts as in \citet{wei2022chain}: for all arithmetic reasoning tasks we use the same set of 8 manually written exemplars; for each commonsense reasoning task, 4-7 exemplars are randomly chosen from the training set with manually composed chain-of-thought prompts.\footnote{Self-consistency is robust to different sets of prompts and we provide a study in Appendix~\ref{sec:robustness_diff_prompts}.}
+Full details on the prompts used are given in Appendix~\ref{sec:appendix-prompt}.
+
+\vspace{-0.1in}
+\paragraph{Sampling scheme.}
+To sample diverse reasoning paths, we followed similar settings to those suggested in \citet{Radford2019LanguageMA,nucleus_sampling} for open-text generation.
+In particular, for UL2-20B and LaMDA-137B
+we applied temperature sampling with $T=0.5$ and truncated at the top-$k$ ($k=40$) tokens with the highest probability, for PaLM-540B  we applied $T=0.7, k=40$, and for GPT-3 we use $T=0.7$ without top-$k$ truncation.  
+We provide an ablation study in Section~\ref{sec:ablation_sampling} to show that self-consistency is generally robust to sampling strategies and parameters.
+
+\subsection{Main Results}
+We report the results of self-consistency averaged over 10 runs, where we sampled 40 outputs independently from the decoder in each run. The baseline we compare to is chain-of-thought prompting with greedy decoding \citep{wei2022chain}, referred to as \textbf{CoT-prompting}, which has been previously used for decoding in large language models \citep{palm}.
+
+\vspace{-0.1in}
+\paragraph{Arithmetic Reasoning}
+The results are shown in Table~\ref{tab:sota}.\footnote{The standard deviation of  self-consistency is $\leq0.5$ for all tasks and is thus omitted in the table. 
+Please refer to Figure~\ref{fig:exp_results}, Figure~\ref{fig:exp_results_lamda} and~\ref{fig:exp_results_palm} for the standard deviations under varying numbers of sampled paths.}
+Self-consistency improves the arithmetic reasoning performance over \textbf{all four language models} significantly over chain-of-thought prompting.
+More surprisingly, the gains become more significant when the language model's scale increases, e.g., we see +3\%-6\% absolute accuracy improvement over UL2-20B but +9\%-23\% for LaMDA-137B and GPT-3.
+% For LaMDA-137B, self-consistency substantially improves the performance over greedy decoding on every task, obtaining a close to 10\% absolute accuracy improvement on tasks like AddSub, ASDiv, AQuA and GSM8K, and more significant gains over MultiArith (+23.9\%) and SVAMP (+14.4\%).
+For larger models that already achieve high accuracy on most tasks (e.g., GPT-3 and PaLM-540B), self-consistency still contributes significant additional gains with +12\%-18\% absolute accuracy on tasks like AQuA and GSM8K, and +7\%-11\% on SVAMP and ASDiv. 
+With self-consistency, we achieve new state-of-the-art results on almost all tasks:
+despite the fact that self-consistency is unsupervised and task-agnostic, these results compare favorably to existing approaches that require task-specific training, or fine-tuning with thousands of examples (e.g., on GSM8K).
+
+\begin{table}[h]
+\small
+\setlength\tabcolsep{3pt}
+    \centering
+    \vspace{-0.05in}
+    \begin{tabular}{cl  llllll}
+    \toprule
+        & Method & AddSub & MultiArith & ASDiv & AQuA & SVAMP & GSM8K
+        \\
+         \midrule
+        & Previous SoTA & \textbf{94.9}$^a$ & 60.5$^a$ & 75.3$^b$ & 37.9$^c$ & 57.4$^d$ &  35$^e$ / 55$^g$ \\
+        \midrule
+        \multirow{2}{*}{UL2-20B} & CoT-prompting & 18.2 & 10.7 & 16.9 & 23.6 & 12.6 & 4.1 \\
+       & Self-consistency  & 24.8 {\scriptsize(+6.6)} & 15.0 {\scriptsize(+4.3)} & 21.5 {\scriptsize(+4.6)} & 26.9 {\scriptsize(+3.3)} & 19.4 {\scriptsize(+6.8)} & 7.3 {\scriptsize(+3.2)}\\
+        \midrule
+        \multirow{2}{*}{\makecell{LaMDA-137B}} &
+        CoT-prompting & 52.9 & 51.8 & 49.0 &  17.7 & 38.9 & 17.1\\
+        & Self-consistency & 63.5 {\scriptsize(+10.6)} & 75.7 {\scriptsize(+23.9)} & 58.2 {\scriptsize(+9.2)} & 26.8 {\scriptsize(+9.1)} & 53.3 {\scriptsize(+14.4)} & 27.7 {\scriptsize(+10.6)}\\
+        \midrule
+        \multirow{2}{*}{\makecell{PaLM-540B}} &
+        CoT-prompting & 91.9 & 94.7 & 74.0 & 35.8 & 79.0 & 56.5\\
+        & Self-consistency & 93.7 {\scriptsize(+1.8)} & 99.3 {\scriptsize(+4.6)} & 81.9 {\scriptsize(+7.9)} & 48.3 {\scriptsize(+12.5)} & 86.6 {\scriptsize(+7.6)} & 74.4 {\scriptsize(+17.9)}\\
+        \midrule
+        \multirow{2}{*}{\makecell{GPT-3\\\scriptsize{Code-davinci-001}}} & CoT-prompting & 57.2 & 59.5 & 52.7  & 18.9 & 39.8 & 14.6\\
+    & Self-consistency & 67.8 {\scriptsize(+10.6)} & 82.7 {\scriptsize(+23.2)} & 61.9 {\scriptsize(+9.2)} & 25.6 {\scriptsize(+6.7)} & 54.5 {\scriptsize(+14.7)}  & 23.4 {\scriptsize(+8.8)}\\
+    \midrule
+    \multirow{2}{*}{\makecell{GPT-3\\\scriptsize{Code-davinci-002}}} & CoT-prompting & 89.4 & 96.2 & 80.1 & 39.8 & 75.8 & 60.1\\
+    & Self-consistency & 91.6 {\scriptsize(+2.2)} & \textbf{100.0} {\scriptsize(+3.8)} & \textbf{87.8} {\scriptsize(+7.6)} & \textbf{52.0} {\scriptsize(+12.2)} & \textbf{86.8} {\scriptsize(+11.0)} & \textbf{78.0} {\scriptsize(+17.9)}\\
+    \bottomrule
+    \end{tabular}
+    \vspace{-0.1in}
+    \caption{Arithmetic reasoning accuracy by self-consistency compared to chain-of-thought prompting \citep{wei2022chain}.
+    The previous SoTA baselines are obtained from: 
+    $a$: Relevance and LCA operation classifier \citep{roy-roth-2015-solving},
+    $b$: \cite{lan2021mwptoolkit},
+    $c$: \cite{amini-etal-2019-mathqa},
+    $d$: \cite{pi2022reasoning},
+    $e$: GPT-3 175B finetuned with 7.5k examples \citep{cobbe2021training},
+    $g$: GPT-3 175B finetuned plus an additional 175B verifier \citep{cobbe2021training}. The best performance for each task is shown in bold.}
+    \label{tab:sota}
+\vspace{-0.1in}
+\end{table}
+
+
+\begin{table}[h]
+\small
+\setlength\tabcolsep{3pt}
+    \centering
+    \vspace{-0.05in}
+    \begin{tabular}{cl llllll}
+    \toprule
+        & Method & CSQA & StrategyQA & ARC-e & ARC-c & Letter (4) & Coinflip (4)
+        \\
+        \midrule
+        & Previous SoTA & \textbf{91.2}$^a$ & 73.9$^b$ & 86.4$^c$ & 75.0$^c$ & N/A & N/A \\
+        \midrule
+        \multirow{2}{*}{UL2-20B} & CoT-prompting & 51.4 & 53.3 & 61.6 & 42.9 & 0.0 & 50.4\\
+       & Self-consistency & 55.7 {\scriptsize(+4.3)} & 54.9 {\scriptsize(+1.6)} & 69.8 {\scriptsize(+8.2)} & 49.5 {\scriptsize(+6.8)} & 0.0 {\scriptsize(+0.0)} & 50.5 {\scriptsize(+0.1)}\\
+        \midrule
+        \multirow{2}{*}{\makecell{LaMDA-137B}} &
+        CoT-prompting & 57.9 & 65.4 & 75.3 & 55.1 & 8.2 & 72.4\\
+        & Self-consistency & 63.1 {\scriptsize(+5.2)} & 67.8 {\scriptsize(+2.4)} & 79.3 {\scriptsize(+4.0)} & 59.8 {\scriptsize(+4.7)} & 8.2 {\scriptsize(+0.0)} & 73.5 {\scriptsize(+1.1)}\\
+        \midrule
+        \multirow{2}{*}{\makecell{PaLM-540B}} &
+        CoT-prompting & 79.0 & 75.3 & 95.3 & 85.2 & 65.8 & 88.2\\
+        & Self-consistency & 80.7 {\scriptsize(+1.7)} & \textbf{81.6} {\scriptsize(+6.3)} & \textbf{96.4} {\scriptsize(+1.1)} & \textbf{88.7} {\scriptsize(+3.5)} & 70.8 {\scriptsize(+5.0)} & 91.2 {\scriptsize(+3.0)}\\
+        \midrule
+    \multirow{2}{*}{\makecell{GPT-3\\\scriptsize{Code-davinci-001}}} & CoT-prompting & 46.6 & 56.7 & 63.1 & 43.1 & 7.8 & 71.4\\
+    & Self-consistency & 54.9 {\scriptsize(+8.3)} & 61.7 {\scriptsize(+5.0)} & 72.1 {\scriptsize(+9.0)} & 53.7 {\scriptsize(+10.6)} & 10.0 {\scriptsize(+2.2)} & 75.9 {\scriptsize(+4.5)}\\
+    \midrule
+    \multirow{2}{*}{\makecell{GPT-3\\\scriptsize{Code-davinci-002}}} & CoT-prompting & 79.0 & 73.4 & 94.0 & 83.6 & 70.4 & 99.0\\
+    & Self-consistency & 81.5 {\scriptsize(+2.5)} & 79.8 {\scriptsize(+6.4)} & 96.0 {\scriptsize(+2.0)} & 87.5 {\scriptsize(+3.9)} & \textbf{73.4} {\scriptsize(+3.0)} & \textbf{99.5} {\scriptsize(+0.5)}\\
+        \bottomrule
+    \end{tabular}
+    \vspace{-0.1in}
+    \caption{Commonsense and symbolic reasoning accuracy by self-consistency compared to chain-of-thought prompting \citep{wei2022chain}.
+    The previous SoTA baselines are obtained from: 
+    $a$: DeBERTaV3-large + KEAR \citep{https://doi.org/10.48550/arxiv.2112.03254},
+    $b$: \cite{palm},
+    $c$: UnifiedQA-FT \citep{khashabi-etal-2020-unifiedqa}. The best performance for each task is shown in bold.}
+    \label{tab:commonsense}
+\end{table}
+
+\vspace{-0.1in}
+\paragraph{Commonsense and Symbolic Reasoning}
+Table~\ref{tab:commonsense} shows the results on commonsense and symbolic reasoning tasks. Similarly, self-consistency yields large gains across all four language models, and obtained SoTA results on 5 out of 6 tasks.
+% These results again compare favorably to previous state-of-the-art approaches that usually require task-specific training or fine-tuning.
+For symbolic reasoning, we test the out-of-distribution (OOD) setting where the input prompt contains examples of 2-letters or 2-flips but we test examples of 4-letters and 4-flips (this setting is more challenging as PaLM-540B or GPT-3 can already achieve perfect in-distribution accuracy).
+In this challenging OOD setting, the gain of self-consistency is still quite significant compared to CoT-prompting with sufficient model sizes.
+
+To show the effect of the number of sampled reasoning paths, we plot the accuracy (mean and standard deviation over 10 runs) with respect to varying numbers of sampled paths (1, 5, 10, 20, 40) in Figure~\ref{fig:exp_results}.
+The results show that sampling a higher number (e.g., 40) of reasoning paths leads to a consistently better performance, further emphasizing the importance of introducing diversity in the reasoning paths.
+In Table~\ref{tab:example_path}, we show self-consistency yields a richer set of reasoning paths compared to greedy decoding with a few example questions from two tasks. 
+% Here one can see that the sampled reasoning paths not only repair some of the errors introduced by greedy decoding, they also arrive at the correct answer with a richer set of reasoning processes, revealing what knowledge is stored in a language model and how that knowledge is used to compose models' rationales.
+% One might even view self-consistency as a method for collecting useful rationales from a language model more effectively, as the sampled reasoning paths with a consistent final answer %that is consistent with the others 
+% are useful in 
+
+
+\begin{figure}[h]
+\vspace{-0.1in}
+\centering
+\hspace{-0.06in}
+\includegraphics[width=0.25\linewidth]{figures/mawps_multiarith.pdf}
+\hspace{-0.1in}
+    \includegraphics[width=0.24\linewidth]{figures/svamp.pdf}
+\hspace{-0.1in}
+\includegraphics[width=0.24\linewidth]{figures/commonsenseqa_v1.pdf}
+    \hspace{-0.1in}
+    \includegraphics[width=0.295\linewidth]{figures/arc_challenge.pdf}\\
+    \vspace{-0.15in}
+    \caption{Self-consistency (blue) significantly improves accuracy over CoT-prompting with greedy decoding (orange) across arithmetic and commonsense reasoning tasks, over LaMDA-137B. Sampling a higher number of diverse reasoning paths consistently improves reasoning accuracy.}
+    \label{fig:exp_results}
+    % \vspace{-0.1in}
+\end{figure}
+
+
+
+\begin{table}[h]
+\vspace{-0.05in}
+\setlength\tabcolsep{4pt}
+\scriptsize
+\centering
+    \begin{tabu} to 1\textwidth { p{0.9cm} | p{7.8cm} | p{4.7cm}}
+        \toprule
+        &GSM8K & StrategyQA\\
+        \midrule
+         \textbf{Question} & \textit{Henry made two stops during his 60-mile bike trip. He first stopped after 20 miles. His second stop was 15 miles before the end of the trip. How many miles did he travel between his first and second stops?} & \textit{Yes or no: Is Albany, Georgia the most populous US Albany?}\\
+         \midrule
+         \textbf{Greedy Decode} & He traveled 60 miles in total. He stopped after 20 miles, so he traveled \textcolor{red}{60 - 20 = 40 miles} between the first and second stops. The answer is \textcolor{red}{40}. & \textcolor{red}{Albany, Georgia is the most populous US Albany}. Thus, the answer is \textcolor{red}{yes}.\\
+         \midrule
+         \textbf{Sampled Path 1} & Henry travelled a total of 60 miles. His first stop was 20 miles in, and his second stop was 15 miles before the end. So \textcolor{blue}{between his first and second stops he travelled 60 - 20 -15 = 25 miles}. The answer is \textcolor{blue}{25}. & \textcolor{blue}{The most populous US Albany is Albany, New York}. Thus, Albany, Georgia is not the most populous US Albany. So the answer is \textcolor{blue}{no}.\\
+         \midrule
+         \textbf{Sampled Path 2} & He made two stops during a 60-mile trip. The first was 20 miles into the trip. The second was 15 miles before the end of the trip. This means \textcolor{blue}{the second stop was 60 - 15 = 45 miles into the trip}. Since he made the stops in order, \textcolor{blue}{the second stop must have been 45 - 20 = 25 miles after the first stop}. The answer is \textcolor{blue}{25}. & \textcolor{blue}{Albany, Georgia has a population of about 88,000. Albany, New York has a population of about 95,000}. Thus, Albany, Georgia is not the most populous US Albany. So the answer is \textcolor{blue}{no}.\\
+         \bottomrule
+    \end{tabu}
+    \vspace{-0.15in}
+    \caption{Examples where self-consistency helps repair the errors over greedy decode, on PaLM-540B. Two sampled reasoning paths that are consistent with the ground truth are shown.}
+    \label{tab:example_path}
+    % \vspace{-0.1in}
+\end{table}
+
+
+
+\subsection{Self-Consistency Helps When Chain-of-Thought Hurts Performance}
+\citet{ye2022unreliability} show that sometimes chain-of-thought prompting could hurt performance compared to standard prompting in few-shot in-context learning.
+Here we perform a study using self-consistency to see if it can help fill in the gap, over a set of common NLP tasks, including (1) Closed-Book Question Answering: BoolQ \citep{clark2019boolq}, HotpotQA \citep{yang-etal-2018-hotpotqa}, and (2) Natural Language Inference: e-SNLI \citep{esnli}, ANLI \citep{nie-etal-2020-adversarial} and RTE \citep{dagan2005pascal,bar2006second,giampiccolo2007third,bentivogli2009fifth}.
+
+The results over PaLM-540B are shown in Table~\ref{tab:common_nlp}. 
+For some tasks (e.g., ANLI-R1, e-SNLI, RTE), adding chain-of-thought does hurt performance compared to standard prompting \citep{brown2020language}, but self-consistency is able to robustly boost the performance and outperform standard prompting, making it a reliable way to add rationales in few-shot in-context learning for common NLP tasks.
+
+\begin{table}[h]
+\vspace{-0.1in}
+\small
+\setlength\tabcolsep{4pt}
+    \centering
+    \begin{tabular}{c ccccc}
+    \toprule
+    & ANLI R1 / R2 / R3 & e-SNLI & RTE & BoolQ & HotpotQA (EM/F1) \\
+    \midrule
+    Standard-prompting (no-rationale) & 69.1 / 55.8 / 55.8 &  85.8 & 84.8 & 71.3 & 27.1 / 36.8  \\
+    CoT-prompting \citep{wei2022chain} & 68.8 / 58.9 / 60.6 & 81.0 & 79.1  & 74.2 & 28.9 / 39.8  \\
+    \midrule
+    Self-consistency & \textbf{78.5} / \textbf{64.5} / \textbf{63.4} & \textbf{88.4} & \textbf{86.3} & \textbf{78.4} & \textbf{33.8 / 44.6}\\
+    \bottomrule
+    \end{tabular}
+    \vspace{-0.1in}
+    \caption{Compare Standard/CoT prompting with self-consistency on common NLP tasks. }
+    \label{tab:common_nlp}
+\vspace{-0.1in}
+\end{table}
+
+\subsection{Compare to other existing approaches}
+\label{sec:ablation_compare}
+
+We conduct a set of additional studies and show that self-consistency significantly outperforms existing methods including sample-and-rank, beam search, and ensemble-based approaches.
+
+\vspace{-0.1in}
+\paragraph{Comparison to Sample-and-Rank}
+One commonly used approach to improve generation quality is sample-and-rank, where multiple sequences are sampled from the decoder and then ranked according to each sequence's log probability \citep{adiwardana2020humanlike}.
+We compare self-consistency with sample-and-rank on GPT-3 \textit{code-davinci-001}, by sampling the same number of sequences from the decoder as self-consistency and taking the final answer from the top-ranked sequence.
+The results are shown in Figure~\ref{fig:gpt}.
+While sample-and-rank does improve the accuracy with additionally sampled sequences and ranking, the gain is much smaller compared to self-consistency.
+
+\begin{figure}[h]
+\centering
+\vspace{-0.1in}
+\hspace{-0.1in}
+    \includegraphics[width=0.33\linewidth]{figures/gsm_sample.pdf}
+    \hspace{-0.1in}
+    \includegraphics[width=0.33\linewidth]{figures/multiarith_sample.pdf}
+    \hspace{-0.1in}
+    \includegraphics[width=0.36\linewidth]{figures/arc_challenge_sample.pdf}
+    \hspace{-0.1in}
+    \vspace{-0.15in}
+    \caption{Self-consistency significantly outperforms sample-and-rank with the same \# of samples.}
+    \label{fig:gpt}
+\vspace{-0.1in}
+\end{figure}
+
+\vspace{-0.1in}
+\paragraph{Comparison to Beam Search}
+In Table~\ref{tab:beam_search}, we compare self-consistency with beam search decoding on the UL2-20B model. For a fair comparison we report the accuracy under the same number of beams and reasoning paths. On both tasks self-consistency outperforms beam search significantly.
+Note self-consistency can also adopt beam search to decode each reasoning path (results are shown as ``Self-consistency using beam search''), but its performance is worse compared to self-consistency with sampling. 
+The reason is that beam search yields a lower diversity in the outputs  \citep{https://doi.org/10.48550/arxiv.1601.00372}, while in self-consistency the diversity of the reasoning paths is the key to a better performance.
+ 
+\begin{table}[h]
+\setlength\tabcolsep{3pt}
+\small
+    \centering
+    \vspace{-0.1in}
+    \begin{tabular}{ll ccccc}
+    \toprule
+        & Beam size / Self-consistency paths & 1 & 5 & 10 & 20 & 40\\
+\midrule
+\multirow{3}{*}{AQuA} & Beam search decoding (top beam) & 23.6 & 19.3 & 16.1 & 15.0 &10.2  \\
+& Self-consistency using beam search & 23.6 & 19.8 \scriptsize{$\pm$ 0.3} & 21.2 \scriptsize{$\pm$ 0.7} & 24.6 \scriptsize{$\pm$ 0.4} & 24.2 \scriptsize{$\pm$ 0.5}\\
+& Self-consistency using sampling & 19.7 \scriptsize{$\pm$ 2.5} & \textbf{24.9 \scriptsize{$\pm$ 2.6}} & \textbf{25.3 \scriptsize{$\pm$ 1.8}} & \textbf{26.7 \scriptsize{$\pm$ 1.0}} & \textbf{26.9 \scriptsize{$\pm$ 0.5}} \\
+\midrule
+\multirow{3}{*}{MultiArith} & Beam search decoding (top beam) & 10.7 & 12.0 &11.3 & 11.0 &10.5\\
+& Self-consistency using beam search & 10.7 & 11.8 \scriptsize{$\pm$ 0.0} & 11.4 \scriptsize{$\pm$ 0.1} &12.3 \scriptsize{$\pm$ 0.1} & 10.8 \scriptsize{$\pm$ 0.1}\\
+& Self-consistency using sampling & 9.5 \scriptsize{$\pm$ 1.2} & 11.3 \scriptsize{$\pm$ 1.2} & \textbf{12.3 \scriptsize{$\pm$ 0.8}} & \textbf{13.7 \scriptsize{$\pm$ 0.9}} & \textbf{14.7 \scriptsize{$\pm$ 0.3}}\\
+\bottomrule
+    \end{tabular}
+    \vspace{-0.1in}
+    \caption{Compare self-consistency with beam search decoding on the UL2-20B model.}
+    \label{tab:beam_search}
+    \vspace{-0.1in}
+\end{table}
+
+\vspace{-0.1in}
+\paragraph{Comparison to Ensemble-based Approaches}
+We further compare self-consistency to ensemble-based methods for few-shot learning. 
+In particular, we consider ensembling by:
+(1) prompt order permutation: we randomly permute the exemplars in the prompt 40 times to mitigate model's sensitivity to prompt order \citep{pmlr-v139-zhao21c,Lu2021FantasticallyOP};
+and (2) multiple sets of prompts \citep{gao-etal-2021-making}: we manually write $3$ different sets of prompts.
+We took majority vote of the answers from greedy decoding in both approaches as an ensemble.
+% Note that a key difference here is that self-consistency ensembles results in the ``output'' space (during decoding) without any changes to the inputs or the prompts, while existing work ensembles the results by varying the ``input'' space, e.g., the prompts.
+Table~\ref{tab:ensemble} shows that compared to self-consistency, existing ensemble-based approaches achieve a much smaller gain.\footnote{Self-consistency is compatible with both ensemble approaches and we show the results in Appendix~\ref{sec:combine}.}
+In addition, note that self-consistency is different from a typical model-ensemble approach, where \textit{multiple} models are trained and their outputs are aggregated. Self-consistency acts more like a ``self-ensemble'' on top of a \textit{single} language model. We additionally show the results of ensembling multiple models in Appendix~\ref{sec:compare_ensemble} where the model-ensembles perform much worse compared to self-consistency.
+
+\begin{table}[h]
+\small
+    \centering
+    \vspace{-0.1in}
+    \begin{tabular}{l ccccc}
+        \toprule
+        & GSM8K & MultiArith & SVAMP & ARC-e &  ARC-c\\
+        \midrule
+        CoT \citep{wei2022chain} & 17.1 &  51.8 & 38.9 & 75.3 & 55.1 \\
+        Ensemble (3 sets of prompts) & 18.6 \scriptsize{$\pm$ 0.5} & 57.1 \scriptsize{$\pm$ 0.7} & 42.1 \scriptsize{$\pm$ 0.6} & 76.6 \scriptsize{$\pm$ 0.1} & 57.0 \scriptsize{$\pm$ 0.2} \\
+        Ensemble (40 prompt permutations) & 19.2 \scriptsize{$\pm$ 0.1} & 60.9 \scriptsize{$\pm$ 0.2} & 42.7 \scriptsize{$\pm$ 0.1} & 76.9 \scriptsize{$\pm$ 0.1} & 57.0 \scriptsize{$\pm$ 0.1} \\
+        Self-Consistency (40 sampled paths) & \textbf{27.7 \scriptsize{$\pm$ 0.2}} & \textbf{75.7 \scriptsize{$\pm$ 0.3}} & \textbf{53.3 \scriptsize{$\pm$ 0.2}} & \textbf{79.3 \scriptsize{$\pm$ 0.3}} & \textbf{59.8 \scriptsize{$\pm$ 0.2}}\\
+    \bottomrule
+    \end{tabular}
+    \vspace{-0.1in}
+    \caption{Self-consistency outperforms prompt-order and multi-prompt ensembles on LaMDA-137B.}
+    \label{tab:ensemble}
+\vspace{-0.15in}
+\end{table}
+
+\subsection{Additional Studies}
+\label{sec:ablation_sampling}
+We conducted a number of additional experiments to analyze different aspects of the self-consistency method, including its robustness to sampling strategies and parameters, and how it works with imperfect prompts and  non-natural-language reasoning paths.
+
+\vspace{-0.1in}
+\paragraph{Self-Consistency is Robust to Sampling Strategies and Scaling}
+We show self-consistency is robust to sampling strategies and parameters, by varying $T$ in temperature sampling \citep{ACKLEY1985147,ficler-goldberg-2017-controlling}, 
+$k$ in top-$k$ sampling \citep{fan-etal-2018-hierarchical,holtzman-etal-2018-learning,Radford2019LanguageMA}, and $p$ in nucleus sampling \citep{nucleus_sampling}, over PaLM-540B in Figure~\ref{fig:gsm_temp} (left).
+Figure~\ref{fig:gsm_temp} (right) shows that self-consistency robustly improves performance across all scales for the LaMDA-137B model series. 
+The gain is relatively lower for smaller models due to certain abilities (e.g., arithmetic) only emerge when the model reaches a sufficient scale \citep{brown2020language}.
+
+
+% We investigate the effects of the sampling temperature $T$ in temperature sampling \citep{ACKLEY1985147,ficler-goldberg-2017-controlling}, the $k$ in top-$k$ sampling \citep{fan-etal-2018-hierarchical,holtzman-etal-2018-learning,Radford2019LanguageMA}, and the number of reasoning paths sampled.
+% In Figure~\ref{fig:gsm_temp} (left), we see that self-consistency consistently improves performance across various temperatures, yielding higher accuracy when the temperature introduces sufficient diversity in the decoding process, e.g., $T=0.5$ or $T=0.7$.
+% Additionally, we found that a larger number of sampled reasoning paths almost always produces a better result, but the improvements diminish when the number of sampled paths becomes sufficiently large (e.g., $40$ paths on most tasks, Figure~\ref{fig:exp_results}).
+% We also vary $k$ in top-$k$ sampling, or remove $k$ by sampling from all tokens in the vocabulary, finding that the results are quite robust to the choice of $k$.
+% A similar study of the robustness of self-consistency using PaLM-540B is given in the Appendix (Figure~\ref{fig:palm_temp}).
+
+
+\begin{figure}[h]
+\centering
+\vspace{-0.1in}
+    \includegraphics[width=0.53\linewidth]{figures/BR/gsm_temp.pdf}
+    \hspace{0.1in}
+    \includegraphics[width=0.35\linewidth]{figures/gsm_scaling.pdf}
+    \vspace{-0.15in}
+    \caption{GSM8K accuracy. (Left) Self-consistency is robust to various sampling strategies and parameters. (Right) Self-consistency improves performance across language model scales.}
+    \label{fig:gsm_temp}
+\vspace{-0.1in}
+\end{figure}
+
+% \begin{table}[h]
+% \centering
+%     \begin{tabular}{c|c|c|c|c}
+%         \toprule
+%         Greedy Decode &  \multicolumn{4}{c}{17.1} \\
+%         \midrule
+%         \# Sampled Seqs &  5 & 10 & 20 & 40 \\
+%         \midrule
+%         T = 0.7, $k$ = 40 & 18.5 & 22.1 & 25.6 & 27.0\\
+%         T = 0.5, $k$ = 40 & 21.1 & 24.3 & 27.0 & 27.7\\
+%         T = 0.3, $k$ = 40 & 21.2 & 22.7 & 23.4 & 23.5\\
+%         \midrule
+%         T = 0.5, $k$ = 20 & 20.2 & 23.9 & 26.2 & 26.9\\
+%         T = 0.5, no top-$k$ & 21.2 & 24.3 & 25.2 & 27.3 \\
+%     \bottomrule
+%     \end{tabular}
+%     \vspace{0.05in}
+%     \caption{Effect of the sampling temperature $T$ and the number of sequences we sample on GSM8K accuracy, fixing $k=40$ with top-$k$ sampling; and the effect of $k$ in top-$k$ sampling with a fixed sampling temperature of $T=0.5$. }
+%     \label{tab:temperature}
+% \end{table}
+
+\paragraph{Self-Consistency Improves Robustness to Imperfect Prompts}
+For few-shot learning with manually constructed prompts, human annotators sometimes make minor mistakes when creating the prompts.
+We further study if self-consistency can help improve a language model's robustness to imperfect prompts.\footnote{We use the same prompts as before, but swap all the numbers in the reasoning paths with random numbers except the final answer, e.g., from ``\textit{There are 3 cars in the parking lot already. 2 more arrive. Now there are 3 + 2 = 5 cars.}'' to ``\textit{There are \textcolor{red}{7} cars in the parking lot already. \textcolor{red}{6} more arrive. Now there are \textcolor{red}{7 + 6} = 5 cars.}''.}
+We show the results in Table~\ref{tab:robustness}: while imperfect prompts decrease accuracy with greedy decoding (17.1 $\rightarrow$ 14.9), self-consistency can fill in the gaps and robustly improve the results.
+
+Additionally, we found that the consistency (in terms of \% of decodes agreeing with the final aggregated answer) is highly correlated with accuracy (Figure~\ref{fig:error_rate}, over GSM8K). 
+This suggests that one can use self-consistency to provide an \textit{uncertainty estimate} of the model in its generated solutions.  In other words, one can use low consistency as an indicator that the model has low confidence; i.e., self-consistency confers some ability for the model to ``know when it doesn't know''.
+
+\begin{table}[h]
+\vspace{-0.05in}
+\begin{minipage}{0.62\linewidth}
+\setlength\tabcolsep{4pt}
+    \centering
+    \small
+    \begin{tabular}{ll c}
+    \toprule
+     \multirow{5}{*}{LaMDA-137B} &  Prompt with correct chain-of-thought & 17.1 \\
+     \cmidrule{2-3}
+        & Prompt with imperfect chain-of-thought & 14.9\\
+        & \hspace{1mm}  + Self-consistency (40 paths) & \textbf{23.4} \\
+    \cmidrule{2-3}
+        & Prompt with equations & 5.0 \\
+        & \hspace{1mm}  + Self-consistency (40 paths) & \textbf{6.5}\\
+    \midrule
+      \multirow{2}{*}{PaLM-540B} &  Zero-shot CoT \citep{zero_shot_cot} & 43.0 \\
+        & \hspace{1mm}  + Self-consistency (40 paths) & \textbf{69.2}\\
+    \bottomrule
+    \end{tabular}
+    \vspace{-0.1in}
+    \caption{Self-consistency works under imperfect prompts, equation prompts and zero-shot chain-of-thought for GSM8K.}
+    \label{tab:robustness}
+\end{minipage}\hfill
+\begin{minipage}{0.33\linewidth}
+		\centering
+% 		\vspace{-0.05in}
+		\includegraphics[width=1.0\linewidth]{figures/error_rate.pdf}
+		\vspace{-0.32in}
+		\captionof{figure}{The consistency is correlated with model's accuracy.}
+		\label{fig:error_rate}
+	\end{minipage}
+\vspace{-0.1in}
+\end{table}
+
+\vspace{-0.05in}
+\paragraph{Self-Consistency Works for Non-Natural-Language Reasoning Paths and Zero-shot CoT}
+We also tested the generality of the self-consistency concept to alternative forms of intermediate reasoning like equations (e.g., from ``\textit{There are 3 cars in the parking lot already. 2 more arrive. Now there are 3 + 2 = 5 cars.}'' to ``\textit{3 + 2 = 5}''). The results are shown in Table~\ref{tab:robustness} (``Prompt with equations''): self-consistency still improves accuracy by generating intermediate equations; however, compared to generating natural language reasoning paths, the gain is smaller since the equations are much shorter and less opportunity remains for generating diversity in the decoding process.
+% Nevertheless, this experiment indicates that self-consistency might be useful for any reasoning task where  intermediate reasoning steps are natural, such as when performing arithmetic or executing programs \citep{brown2020language,chen2021evaluating,scratchpad}, since diversifying and marginalizing over the intermediate steps appears to be robustly beneficial for improving the accuracy of final answers.
+In addition, we tested self-consistency with zero-shot chain-of-thought \citep{zero_shot_cot} and show that self-consistency works for zero-shot CoT as well and improves the results  significantly (+26.2\%) in Table~\ref{tab:robustness}.
+
+
+\section{Related work}
+\paragraph{Reasoning in language models.}
+Language models are known to struggle in Type 2 tasks, such as arithmetic, logical and commonsense reasoning \citep{evans2010intuition}.
+Previous work has primarily focused on \textit{specialized} approaches for improving reasoning \citep{andor-etal-2019-giving,ran-etal-2019-numnet,geva-etal-2020-injecting,piekos-etal-2021-measuring}.
+% or using multi-task learning to improve commonsense reasoning \citep{Lourie2021UNICORNOR}.
+Compared to prior work, self-consistency is applicable to a wide range of reasoning tasks without any additional supervision or fine-tuning,  while still substantially improving the performance of the chain-of-thought prompting approach proposed in \citet{wei2022chain}.
+
+\vspace{-0.12in}
+\paragraph{Sampling and re-ranking in language models.}
+%Depend on the applications, 
+Multiple decoding strategies for language models have been proposed in the literature, e.g., temperature sampling \citep{ACKLEY1985147,ficler-goldberg-2017-controlling}, top-$k$ sampling \citep{fan-etal-2018-hierarchical,holtzman-etal-2018-learning,Radford2019LanguageMA}, nucleus sampling \citep{nucleus_sampling}, minimum Bayes risk decoding \citep{eikema-aziz-2020-map,shi-etal-2022-natural}, and typical decoding \citep{meister2022typical}.
+% , where the sampling parameters can be tuned based on how much diversity is needed in the generation process.
+Other work has sought to explicitly promote diversity in the decoding process \citep{10.1007/978-3-642-33715-4_1,DBLP:journals/corr/LiMJ16,diverse_beam}.
+
+Re-ranking is another common approach to improve generation quality in language models \citep{adiwardana2020humanlike,shen-etal-2021-generate-rank}.
+\citet{thoppilan2022lamda} collect additional human annotations to train a re-ranker for response filtering.
+\citet{cobbe2021training} train a ``verifier'' to re-rank generated solutions, which substantially improves the solve rate on math tasks compared to just fine-tuning the language model.
+\citet{elazar-etal-2021-measuring} improve the consistency of factual knowledge extraction by extending pre-training with an additional consistency loss.
+All these methods require either training an additional re-ranker or collecting additional human annotation, while self-consistency requires no additional training, fine-tuning, nor  extra data collection.
+
+\vspace{-0.12in}
+\paragraph{Extract reasoning paths.}
+Some previous work has considered task-specific approaches for identifying reasoning paths, such as constructing semantic graphs \citep{xu-etal-2021-exploiting-reasoning}, learning an RNN to retrieve reasoning paths over the Wikipedia graph \citep{Asai2020Learning}, fine-tuning with human annotated reasoning paths on math problems \citep{cobbe2021training}, or training an extractor with heuristic-based pseudo reasoning paths %via connecting entities 
+\citep{DBLP:journals/corr/abs-1910-02610}.
+More recently, the importance of diversity in the reasoning processes has been noticed, but only leveraged via task-specific training, either through an additional QA model over extracted reasoning paths \citep{DBLP:journals/corr/abs-1910-02610}, or by the introduction of latent variables in a commonsense knowledge graph \citep{yu2022diversifying}.
+Compared to these approaches, self-consistency is far simpler and requires no additional training. The approach we propose simply couples the generation of reasoning paths and a final answer  by sampling from the decoder, using aggregation to recover  the most consistent answer without additional modules.
+
+\vspace{-0.12in}
+\paragraph{Consistency in language models.}
+Some prior work has shown that language models can suffer from inconsistency in conversation \citep{adiwardana2020humanlike}, 
+explanation generation \citep{camburu-etal-2020-make},
+and factual knowledge extraction \citep{elazar-etal-2021-measuring}.
+\cite{welleck-etal-2020-consistency} use ``consistency'' to refer to generating an infinite-length sequence in recurrent language models.
+\cite{nye2021improving} improve the logical consistency of samples from a System 1 model by adding a System 2-inspired logical reasoning module.
+In this paper we focus on a slightly different notion of ``consistency'', i.e., utilizing answer consistency among diverse reasoning paths to improve accuracy.
+
+
+\section{Conclusion and Discussion}
+We introduced a simple yet effective method called self-consistency, and observed that it significantly improves accuracy in a range of arithmetic and commonsense reasoning tasks, across four large language models with varying scales.
+Beyond accuracy gains, self-consistency is also useful for collecting rationales when performing reasoning tasks with language models, and for providing uncertainty estimates and improved calibration of language model outputs.
+
+One limitation of self-consistency is that it incurs more computation cost. 
+In practice people can try a small number of paths (e.g., 5 or 10) as a starting point to realize most of the gains while not incurring too much cost, as in most cases the performance saturates quickly (Figure \ref{fig:exp_results}). As part of future work, one could use self-consistency to generate better supervised data to fine-tune the model, such that the model can give more accurate predictions in a single inference run after fine-tuning.
+In addition, we observed that language models can sometimes generate incorrect or nonsensical reasoning paths (e.g., the StrategyQA example in Table~\ref{tab:example_path}, the two population numbers are not exactly correct), and further work is needed to better ground models' rationale generations.
+
+\clearpage
+\section*{Reproducibility Statement}
+In experiments, we included four different language models with varying scales. Two of them are public models: UL2 is a completely open-sourced model with model checkpoints available at \url{https://github.com/google-research/google-research/tree/master/ul2}; 
+GPT-3 is also a public model with public API available at \url{https://openai.com/api/}. 
+For GPT-3, we have included two public engines (``code-davinci-001'' and ``code-davinci-002'') to further aid reproducibility, as Codex is currently free so anyone can reproduce the results.
+In addition, as our results make use of LaMDA-137B and PaLM-540B that are not publicly available, we provide the exact input prompts for all tasks in Appendix~\ref{sec:appendix-prompt} (and note that we do not perform any finetuning and only apply prompting to off-the-shelf language models). 
+
+\section*{Ethics Statement}
+As we stated in the discussion, language models can sometimes generate nonsensical or non-factual reasoning paths, so one should use language models' outputs with extra caution. 
+We deal with reasoning tasks mostly and the generated rationales are only used for inspecting how a model reaches its answer. One could potentially use the generated rationales to further check why the model makes certain mistakes or whether the model contains any biases when performing a certain task.
+For language model in real-world use, further work is needed to better ground models' predictions and improve model's factuality and safety, to ensure the models do not cause harms to users.
+
+\bibliographystyle{iclr2023_conference}
+\bibliography{main}
+
+\clearpage
+\appendix
+\section{Appendix}
+
+\input{appendix}
+
+
+\end{document}

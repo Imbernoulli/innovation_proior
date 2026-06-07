@@ -1,0 +1,61 @@
+% DO NOT WRITE HERE, this content has been moved to the models_experiments.tex file 
+\section{ALBERT}
+In this section, we present a set of ALBERT models and give an overall comparison of these models to the original BERT models. 
+We will have detailed analysis of how each component contribute to the differences and the reasons behind the choices of these models in section \ref{sec:experiments}.
+
+\subsection{Model architectures}
+BERT uses the popular transformer encoder architecture \citep{vaswani2017attention}, which we will not review in detail. Following the annotation of BERTs,
+we denote the number transformer encoder layers as $L$, the hidden size as $H$, the number of self-attention heads as $A$,
+and the vocab embedding size as $E$. We also set the feed-forward/filter size to be $4H$. We primary report results on the models listed in Table \ref{table:model_architecture}. 
+The major differences between BERT and ALBERT are smaller vocabulary embedding size and cross-layer parameter sharing. Because of these two techniques, ALBERTs have much smaller parameter size compared to BERT with similar architecture. For example, ALBERT-large has about 18x less parameters compared to BERT-large. For BERTs, besides base and large models as reported by \cite{devlin2018bert}, we are able to train an xlarge model with a hidden size 2x as large as the BERT-large model. However, this BERT-xlarge has about 1.3 billions parameters, which make it difficult to train as it requires a Cloud-TPU machine with 1024 chips that is hard to get. On the contrary, ALBERTs have much smaller parameter size hence memory footprint, so we are able to scale to a model with 4x larger hidden size than BERT-large while having smaller parameter size. 
+
+
+
+
+\begin{table}
+\small
+\centering
+\begin{tabular}{l  l | c c c c c c}
+ \multicolumn{2}{c}{Model}  &Parameters	&Layers	&Hidden	& Heads	&Embedding &Parameter-sharing \\
+\hline
+\multirow{3}{*}{BERT}    &base	        &110M    &12 & 768  & 12 & 768 & False\\
+    &large	        &340M	 &24 & 1024 & 16 & 1024 & False\\
+    &xlarge	&1370M	 &24 & 2048 & 32 & 2048 & False\\
+    \hline
+\multirow{4}{*}{ALBERT}    &base	        &12M     &12 & 768  & 12 & 128 & True \\
+    &large	        &18M	 &24 & 1024 & 16 & 128 & True\\
+    &xlarge	&59M	 &24 & 2048 & 32 & 128 & True\\
+    &xxlarge	&233M	 &12 & 4096 & 64 & 128 & True\\
+\end{tabular}
+\caption{The architectures of the primary models reported in this paper.}
+\label{table:model_architecture}
+\end{table}
+
+
+\subsection{Overall Performance Comparison}
+\label{overall-performance}
+
+\begin{table}
+\small
+\centering
+\begin{tabular}{ l l | c  c c c c c c}
+ \multicolumn{2}{c}{Model}            	&SQuAD1.1	&SQuAD2.0	&MNLI-m	&SST-2	&RACE	&Avg & Speedup\\
+\hline
+\multirow{3}{*}{BERT} &base	          &90.5/83.3	&80.3/77.3	&84.1	&91.7	&68.3	&82.1 & 17.7x \\
+
+    &large	        	&92.4/85.8	&83.9/80.8	&85.8	&92.2	&73.8	&85.1 & 3.8x\\
+    &xlarge		&86.3/77.9	&73.8/70.5	&80.5	&87.8	&39.7	&76.7 & 1.0\\
+\hline 
+\multirow{4}{*}{ALBERT}  &base	        	    &89.3/82.1	&79.1/76.1	&81.9	&89.4	&63.5	&80.1 &21.1x \\
+&large	        	    &90.9/84.1	&82.1/79.0	&83.8	&90.6	&68.4	&82.4 &6.5x\\
+&xlarge		    &93.0/86.5	&85.9/83.1	&85.4	&91.9	&73.9	&85.5 & 2.4x\\
+&xxlarge		& \textbf{94.1/88.3}	&\textbf{88.1/85.1}	&\textbf{88.0}	&\textbf{95.2}	&\textbf{82.3}	&\textbf{88.7} & 1.2x\\
+\end{tabular}
+\caption{Dev sets results for primary models pre-trained over BookCorpus and Wikipedia for 125k steps. The average score are averaged over the representative downstream tasks. For SQuAD datasets, the two metrics are first averaged.}
+\label{table:overall_comparison}
+\end{table}
+
+
+
+We compare the performance of the primary models listed in Table \ref{table:overall_comparison} on the dev sets of several representative downstream tasks including SQuAD v1.1, SQuaAD v2.0, MNLI-m, SST-2 and RACE tasks. We first observe that BERT-xlarge gets significantly worse results than BERT-base on all metrics. This indicates that a model like BERT-xlarge is more difficult to train than those that have smaller parameter sizes. 
+Another interesting observation we have is the speed of data throughput. The slowest one is the BERT-xlarge model, which we use as the baseline. ALBERT models have higher data throughput than their corresponding BERT models. As the model get larger, the differences between a BERT model and its light version become bigger. A ALBERT xlarge can be trained about 2.4x faster than BERT-x large. The 12-layer ALBERT-xxlarge model outperform all other models significantly. Compared to BERT-large, which has roughly 1.45x more parameters, ALBERT-xxlarge has an average of $3.6\%$ absolute improvements over 5 downstream tasks and $8.5\%$ absolute improvements over the RACE task. 

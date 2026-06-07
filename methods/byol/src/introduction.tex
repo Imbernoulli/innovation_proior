@@ -1,0 +1,31 @@
+\phantom{\cite{fukushima1980neocognitron, wiskott2002slow, hinton2006fast,oquab2014learning, simonyan2014very, girshick2014rich, long2015fully}}
+
+\begin{wrapfigure}{r}{0.50\textwidth}
+  \vspace{-7.7mm}
+   \centering
+   \begin{minipage}{0.5\textwidth}
+    \centering
+     \includegraphics[width=0.95\textwidth,bb=0 0 1140 1018]{img/byol.pdf}
+       % \includegraphics[width=0.95\textwidth]{img/byol.pdf}
+        \caption{Performance of \algo on ImageNet (linear evaluation) using ResNet-50 and our best architecture ResNet-200 ($2\times$), compared to other unsupervised and supervised (\texttt{Sup\!.\!}) baselines~\cite{SimCLR}.}
+        \label{fig:holygrail}
+ \end{minipage}
+ \vspace{-8mm}
+\end{wrapfigure}
+
+Learning good image representations is a key challenge in computer vision~\cite{fukushima1980neocognitron, wiskott2002slow, hinton2006fast} as it allows for efficient training on downstream tasks~\cite{oquab2014learning, simonyan2014very, girshick2014rich, long2015fully}.
+%
+Many different training approaches have been proposed to learn such representations, usually relying on visual pretext tasks. 
+Among them, state-of-the-art contrastive methods~\cite{SimCLR, MOCO, CPC, CMC, Tian2020WhatMF} are trained by reducing the distance between representations of different \augview s of the same image (`positive pairs'), and increasing the distance between representations of \augview s from different images (`negative pairs'). These methods need careful treatment of negative pairs~\cite{pmlr-v97-saunshi19a} by either relying on large batch sizes~\cite{SimCLR, Tian2020WhatMF}, memory banks~\cite{MOCO} or customized mining strategies~\cite{Manmatha2017SamplingMI, Harwood2017SmartMF} to retrieve the negative pairs. In addition, their performance critically depends on the choice of \imageaugmentation s~\cite{SimCLR,Tian2020WhatMF}. 
+
+In this paper, we introduce \longalgo~(\algo), a new algorithm for self-supervised learning of image representations. \algo achieves higher performance than state-of-the-art contrastive methods without using negative pairs. It iteratively bootstraps\footnote{Throughout this paper, the term \emph{bootstrap} is used in its idiomatic sense rather than the statistical sense.} the outputs of a network to serve as targets for an enhanced representation.
+Moreover, \algo is more robust to the choice of \imageaugmentation s than contrastive methods; we suspect that not relying on negative pairs is one of the leading reasons for its improved robustness. While previous methods based on bootstrapping have used pseudo-labels~\cite{lee2013PseudoLabelT}, cluster indices~\cite{caron2018DeepCF} or a handful of labels~\cite{bachman2014learning, laine2016temporal, tarvainen2017mean}, 
+we propose to \textit{directly bootstrap the representations}. In particular, \algo uses two neural networks, referred to as online and target networks, that interact and learn from each other. Starting from \aaugview~of an image, \algo trains its online network to predict the target network's representation of another \augview~of the same image. 
+While this objective admits collapsed solutions, e.g., outputting the same vector for all images, we empirically show that \algo does not converge to such solutions. 
+We hypothesize (see~\Cref{sec:intuition_byol}) that the combination of
+(i) the addition of a predictor to the online network 
+and (ii) the use of a slow-moving average of the online parameters as the target network encourages encoding more and more information within the online projection and avoids collapsed solutions.
+
+We evaluate the representation learned by \algo on ImageNet~\cite{ILSVRC15} and other vision benchmarks using ResNet architectures~\cite{ResNet}. Under the linear evaluation protocol on ImageNet, consisting in training a linear classifier on top of the frozen representation, \algo reaches $74.3\%$ top-1 accuracy with a standard ResNet-$50$ and $79.6\%$ top-1 accuracy with a larger ResNet (\Cref{fig:holygrail}). 
+In the semi-supervised and transfer settings on ImageNet, we obtain results on par or superior to the current state of the art. Our contributions are: (\textit{i}) We introduce \algo, a self-supervised representation learning method (\Cref{sec:method}) which achieves state-of-the-art results under the linear evaluation protocol on ImageNet without using negative pairs. (\textit{ii}) We show that our learned representation outperforms the state of the art on semi-supervised and transfer benchmarks (\Cref{sec:experiments}). (\textit{iii}) We show that \algo is more resilient to changes in the batch size and in the set of \imageaugmentation s compared to its contrastive counterparts (\Cref{sec:ablation}).
+In particular, \algo suffers a much smaller performance drop than \simclr, a strong contrastive baseline, when only using random crops as \imageaugmentation s.

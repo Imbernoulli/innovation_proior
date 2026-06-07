@@ -1,0 +1,53 @@
+\begin{tikzpicture}
+\begin{footnotesize}
+\begin{axis}[
+  xlabel=Bitrate (kbps),
+  ylabel=MUSHRA (95\% confidence interval),
+  ylabel style={yshift=-0.5em},
+  ymax=100,
+  ymin=0,
+  xmin=0,
+  %xtick=data,
+  xtick={1.5, 3, 6, 9.6, 12, 24},
+  xticklabels={1.5, 3, 6, 9.6, 12, 384},
+  %xmode=log,
+  %log ticks with fixed point,
+  %ymode=log,
+  legend style={at={(0.98,0.02)},anchor=south east},
+  width=\columnwidth,
+  height=6.0cm,
+  error bars/y dir=both,
+  error bars/y explicit=true,
+  grid style={line width=.1pt, draw=gray!30},
+  grid=both,
+]
+\addplot+ [color=black!40!blue!100, mark=square*, mark options={scale=2}] table [
+                x=Bitrate,
+                y=Encodec, 
+                %y error=EncodecError] 
+                ]{pullfigure.dat};
+\addlegendentry{\encodec}
+\addplot+ [color=black!05!blue!100, mark=square, mark options={scale=2, solid}, solid, dashed] table [
+                y=EntropyCoded, 
+                %y error=EntropyCodedError] 
+                ]{pullfigure.dat};
+\addlegendentry{\encodec: entropy coded}
+\addplot+ [solid, color=red, mark=pentagon*, mark options={scale=2}] table [scatter,only marks, y=Lyrav2, x=Bitrate, 
+%y error=Lyrav2Error,
+]{pullfigure.dat};
+\addlegendentry{Lyra-v2}
+\addplot+ [solid, color=black!80!green!65, mark=triangle*, mark options={scale=2}] table [scatter,only marks, y=EVS, x=Bitrate, 
+%y error=EVSError,
+]{pullfigure.dat};
+\addlegendentry{EVS}
+\addplot+ [solid, color=purple, mark=diamond*, mark options={scale=2}] table [scatter,only marks, y=Opus, x=Bitrate, 
+%y error=OpusError,
+]{pullfigure.dat};
+\addlegendentry{Opus}
+%\addplot+ [solid, color=olive, mark=+, mark options={scale=1.5}] table [scatter,only marks, y=GT, x=Bitrate, y error=GTError,
+]{pullfigure.dat};
+%\addlegendentry{Ground truth}
+
+\end{axis}
+\end{footnotesize}
+\end{tikzpicture}

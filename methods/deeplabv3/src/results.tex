@@ -1,0 +1,267 @@
+\section{Experimental Evaluation}
+\label{sec:experiments}
+We adapt the ImageNet-pretrained \cite{ILSVRC15} ResNet \cite{he2015deep} to the semantic segmentation by applying atrous convolution to extract dense features. Recall that \emph{output\_stride} is defined as the ratio of input image spatial resolution to final output resolution. For example, when $\emph{output\_stride}=8$, the last two blocks (block3 and block4 in our notation) in the original ResNet contains atrous convolution with $rate=2$ and $rate=4$ respectively. Our implementation is built on TensorFlow \cite{abadi2016tensorflow}.
+
+We evaluate the proposed models on the PASCAL VOC 2012 semantic segmentation benchmark \cite{everingham2014pascal} which contains 20 foreground object classes and one background class. The original dataset contains $1,464$ (\textit{train}), $1,449$ (\textit{val}), and $1,456$ (\textit{test}) pixel-level labeled
+images for training, validation, and testing, respectively. The dataset is
+augmented by the extra annotations provided by \cite{hariharan2011semantic},
+resulting in $10,582$ (\textit{trainaug}) training images. The performance
+is measured in terms of pixel intersection-over-union (IOU) averaged across
+the 21 classes.
+
+\subsection{Training Protocol}
+\label{subsec:train_protocol}
+In this subsection, we discuss details of our training protocol.
+
+\textbf{Learning rate policy:} Similar to \cite{liu2015parsenet, chen2016deeplab}, we employ a ``poly'' learning rate policy where the initial learning rate is multiplied by $(1-\frac{iter}{max\_iter})^{power}$ with $power = 0.9$.
+
+\textbf{Crop size:} Following the original training protocol \cite{chen2014semantic, chen2016deeplab}, patches are cropped from the image during training. For atrous convolution with large rates to be effective, large crop size is required; otherwise, the filter weights with large atrous rate are mostly applied to the padded zero region. We thus employ crop size to be 513 during both training and test on PASCAL VOC 2012 dataset.
+
+\textbf{Batch normalization:} Our added modules on top of ResNet all include batch normalization parameters \cite{ioffe2015batch}, which we found important to be trained as well. Since large batch size is required to train batch normalization parameters, we employ $\emph{output\_stride}=16$ and compute the batch normalization statistics with a batch size of 16.
+%with the powerful feature of TensorFlow which dynamically performs the memory swapping between GPU and CPU.
+The batch normalization parameters are trained with decay = 0.9997. After training on the \textit{trainaug} set with 30K iterations and initial learning rate = 0.007, we then freeze batch normalization parameters, employ $\emph{output\_stride}=8$, and train on the official PASCAL VOC 2012 \textit{trainval} set for another 30K iterations and smaller base learning rate = 0.001. Note that atrous convolution allows us to control \emph{output\_stride} value at different training stages without requiring learning extra model parameters. Also note that training with $\emph{output\_stride}=16$ is several times faster than $\emph{output\_stride}=8$ since the intermediate feature maps are spatially four times smaller, but at a sacrifice of accuracy since $\emph{output\_stride}=16$ provides coarser feature maps.
+
+\textbf{Upsampling logits:} In our previous works \cite{chen2014semantic, chen2016deeplab}, the target groundtruths are downsampled by 8 during training when $\emph{output\_stride}=8$. We find it important to keep the groundtruths intact and instead upsample the final logits, since downsampling the groundtruths removes the fine annotations resulting in no back-propagation of details.
+
+\textbf{Data augmentation:} We apply data augmentation by randomly scaling the input images (from 0.5 to 2.0) and randomly left-right flipping during training.
+
+\subsection{Going Deeper with Atrous Convolution}
+We first experiment with building more blocks with atrous convolution in cascade.
+
+\textbf{ResNet-50:} In \tabref{tab:deeper_res50}, we experiment with the effect of \emph{output\_stride} when employing ResNet-50 with block7 (\ie, extra block5, block6, and block7). As shown in the table, in the case of $\emph{output\_stride}=256$ (\ie, no atrous convolution at all), the performance is much worse than the others due to the severe signal decimation. When \emph{output\_stride} gets larger and apply atrous convolution correspondingly, the performance improves from 20.29\% to 75.18\%, showing that atrous convolution is essential when building more blocks cascadedly for semantic segmentation.
+
+%Train at 16 and test at 8: 74.98. Can only fit batch size 6 for output stride 8 when employing block7. More gain for output stride 8 if we can fit more batch. Strategy: train at 16 and test at 8: descent decrease while faster training time: ~3.6 times faster in google infrastructure.
+\begin{table}[!t]
+  \centering
+  \scalebox{0.85}{
+  \begin{tabular}{c | c c c c c c}
+    \toprule[0.2em]
+    \emph{output\_stride} & 8 & 16 & 32 & 64 & 128 & 256 \\
+    \toprule[0.2em]
+    mIOU & 75.18 & 73.88 & 70.06 & 59.99 & 42.34 & 20.29 \\
+    \bottomrule[0.1em]
+  \end{tabular}
+  }
+  \caption{Going deeper with atrous convolution when employing ResNet-50 with block7 and different \emph{output\_stride}. Adopting $\emph{output\_stride}=8$ leads to better performance at the cost of more memory usage.}
+  \label{tab:deeper_res50}
+\end{table}
+
+\begin{table}[!t]
+  \centering
+  \scalebox{1.}{
+  \begin{tabular}{c | c c c c}
+    \toprule[0.2em]
+    Network & block4 & block5 & block6 & block7 \\
+    \toprule[0.2em]
+    ResNet-50 & 64.81 & 72.14 & 74.29 & 73.88 \\
+    ResNet-101 & 68.39 & 73.21 & 75.34 & 75.76 \\
+    \bottomrule[0.1em]
+  \end{tabular}
+  }
+  \caption{Going deeper with atrous convolution when employing ResNet-50 and ResNet-101 with different number of cascaded blocks at $\emph{output\_stride}=16$. Network structures `block4', `block5', `block6', and `block7' add extra 0, 1, 2, 3 cascaded modules respectively. The performance is generally improved by adopting more cascaded blocks.}
+  \label{tab:deeper_res101}
+\end{table}
+
+\begin{table}[!t]
+  \centering
+  \scalebox{1.}{
+  \begin{tabular}{c | c c c c}
+    \toprule[0.2em]
+    Multi-Grid & block4 & block5 & block6 & block7 \\
+    \toprule[0.2em]
+    (1, 1, 1) & 68.39 & 73.21 & 75.34 & 75.76 \\
+    (1, 2, 1) & 70.23 & 75.67 & 76.09 & {\bf 76.66} \\
+    %(1, 2, 2) & 70.65 & 74.37 & 75.57 & 75.42 \\
+    (1, 2, 3) & 73.14 & 75.78 & 75.96 & 76.11 \\
+    (1, 2, 4) & 73.45 & 75.74 & 75.85 & 76.02 \\
+    (2, 2, 2) & 71.45 & 74.30 & 74.70 & 74.62 \\
+    \bottomrule[0.1em]
+  \end{tabular}
+  }
+  \caption{Employing multi-grid method for ResNet-101 with different number of cascaded blocks at $\emph{output\_stride}=16$. The best model performance is shown in bold.}
+  \label{tab:multigrid}
+\end{table}
+
+\textbf{ResNet-50 vs. ResNet-101:} We replace ResNet-50 with deeper network ResNet-101 and change the number of cascaded blocks. As shown in \tabref{tab:deeper_res101}, the performance improves as more blocks are added, but the margin of improvement becomes smaller. Noticeably, employing block7 to ResNet-50 decreases slightly the performance while it still improves the performance for ResNet-101.
+
+\textbf{Multi-grid:} We apply the multi-grid method to ResNet-101 with several cascadedly added blocks in \tabref{tab:multigrid}. The unit rates, $\emph{Multi\_Grid}=(r_1,r_2,r_3)$, are applied to block4 and all the other added blocks. As shown in the table, we observe that (a) applying multi-grid method is generally better than the vanilla version where $(r_1,r_2,r_3)=(1, 1, 1)$, (b) simply doubling the unit rates (\ie, $(r_1,r_2,r_3)=(2, 2, 2)$) is not effective, and (c) going deeper with multi-grid improves the performance. Our best model is the case where block7 and $(r_1,r_2,r_3)=(1,2,1)$ are employed. 
+
+\textbf{Inference strategy on val set:} The proposed model is trained with $\emph{output\_stride}=16$, and then during inference we apply $\emph{output\_stride}=8$ to get more detailed feature map. As shown in \tabref{tab:deeper_val}, interestingly, when evaluating our best cascaded model with $\emph{output\_stride}=8$, the performance improves over evaluating with $\emph{output\_stride}=16$ by $1.39\%$. The performance is further improved by performing inference on multi-scale inputs (with $scales=\{0.5, 0.75, 1.0, 1.25, 1.5, 1.75\}$) and also left-right flipped images. In particular, we compute as the final result the average probabilities from each scale and flipped images.
+
+\begin{table}[!t]
+  \centering
+  \scalebox{0.95}{
+  \begin{tabular}{c|c c c c | c}
+    \toprule[0.2em]
+    Method & OS=16 & OS=8 & MS & Flip & mIOU \\
+    \toprule[0.2em]
+    block7 + & \checkmark &                 &    &      & 76.66 \\
+    MG(1, 2, 1) &            & \checkmark      &    &      & 78.05 \\
+    &            & \checkmark      & \checkmark & & 78.93 \\
+    &            & \checkmark      & \checkmark & \checkmark & 79.35 \\
+    \bottomrule[0.1em]
+  \end{tabular}
+  }
+  \caption{Inference strategy on the \textit{val} set. {\bf MG}: Multi-grid. {\bf OS}: \emph{output\_stride}. {\bf MS}: Multi-scale inputs during test. {\bf Flip}: Adding left-right flipped inputs.}
+  \label{tab:deeper_val}
+\end{table}
+
+\subsection{Atrous Spatial Pyramid Pooling}
+We then experiment with the Atrous Spatial Pyramid Pooling (ASPP) module with the main differences from \cite{chen2016deeplab} being that batch normalization parameters \cite{ioffe2015batch} are fine-tuned and image-level features are included.
+
+\begin{table}[!t]
+  \centering
+  \scalebox{0.7}{
+  \begin{tabular}{c c c|c c | c| c }
+    \toprule[0.2em]
+    \multicolumn{3}{c|}{Multi-Grid} & \multicolumn{2}{c|}{ASPP} & Image & \\
+    (1, 1, 1) & (1, 2, 1) & (1, 2, 4) & (6, 12, 18) & (6, 12, 18, 24) & Pooling & mIOU\\
+    \toprule[0.2em]
+    \checkmark &         &           & \checkmark &          &    & 75.36 \\
+    & \checkmark &        & \checkmark &          &    & 75.93 \\
+    &           & \checkmark & \checkmark &       &     & 76.58 \\
+    &           & \checkmark &            & \checkmark  &   & 76.46 \\
+    &           & \checkmark & \checkmark &  &  \checkmark & 77.21 \\
+    \bottomrule[0.1em]
+  \end{tabular}
+  }
+  \caption{Atrous Spatial Pyramid Pooling with multi-grid method and image-level features at $\emph{output\_stride}=16$.}
+  \label{tab:aspp}
+\end{table}
+
+\begin{table}[!t]
+  \centering
+  \scalebox{0.8}{
+  \begin{tabular}{c|c c c c c | c}
+    \toprule[0.2em]
+    Method & OS=16 & OS=8 & MS & Flip & COCO & mIOU \\
+    \toprule[0.2em]
+    MG(1, 2, 4) + & \checkmark &               &   &    &      & 77.21 \\
+    ASPP(6, 12, 18) + & & \checkmark      &    &  &     & 78.51 \\
+    Image Pooling & & \checkmark      & \checkmark & & & 79.45 \\
+    & & \checkmark      & \checkmark & \checkmark & & 79.77 \\
+    & & \checkmark      & \checkmark & \checkmark & \checkmark & 82.70 \\
+    \bottomrule[0.1em]
+  \end{tabular}
+  }
+  \caption{Inference strategy on the \textit{val} set: {\bf MG}: Multi-grid. {\bf ASPP}: Atrous spatial pyramid pooling. {\bf OS}: \emph{output\_stride}. {\bf MS}: Multi-scale inputs during test. {\bf Flip}: Adding left-right flipped inputs. {\bf COCO}: Model pretrained on MS-COCO.}
+  \label{tab:aspp_val}
+\end{table}
+
+\textbf{ASPP:} In \tabref{tab:aspp}, we experiment with the effect of incorporating multi-grid in block4 and image-level features to the improved ASPP module. We first fix $ASPP=(6,12,18)$ (\ie, employ $rates=(6,12,18)$ for the three parallel $3\times3$ convolution branches), and vary the multi-grid value. Employing $\emph{Multi\_Grid}=(1,2,1)$ is better than $\emph{Multi\_Grid}=(1,1,1)$, while further improvement is attained by adopting $\emph{Multi\_Grid}=(1,2,4)$ in the context of $ASPP=(6,12,18)$ (\cf, the `block4' column in \tabref{tab:multigrid}). If we additionally employ another parallel branch with $rate = 24$ for longer range context, the performance drops slightly by 0.12\%. On the other hand, augmenting the ASPP module with image-level feature is effective, reaching the final performance of 77.21\%.
+
+\textbf{Inference strategy on val set:} Similarly, we apply $\emph{output\_stride}=8$ during inference once the model is trained. As shown in \tabref{tab:aspp_val}, employing $\emph{output\_stride}=8$ brings 1.3\% improvement over using $\emph{output\_stride}=16$, adopting multi-scale inputs and adding left-right flipped images further improve the performance by 0.94\% and 0.32\%, respectively. The best model with ASPP attains the performance of 79.77\%, better than the best model with cascaded atrous convolution modules (79.35\%), and thus is selected as our final model for test set evaluation.
+
+\textbf{Comparison with DeepLabv2:} Both our best cascaded model (in \tabref{tab:deeper_val}) and ASPP model (in \tabref{tab:aspp_val}) (in both cases without DenseCRF post-processing or MS-COCO pre-training) already outperform DeepLabv2 (77.69\% with DenseCRF and pretrained on MS-COCO in Tab. 4 of \cite{chen2016deeplab}) on the PASCAL VOC 2012 \textit{val} set. The improvement mainly comes from including and fine-tuning batch normalization parameters \cite{ioffe2015batch} in the proposed models and having a better way to encode multi-scale context.
+
+%\textbf{Block5 + ASPP:} We have tried to combine both proposed models (\ie, cascaded modules and parallel modules). In particular, we employ ASPP on top of the features after block5. However, we have not observed any improvement.
+
+\textbf{Appendix:} We show more experimental results, such as the effect of hyper parameters and Cityscapes \cite{Cordts2016Cityscapes} results, in the appendix.
+
+\textbf{Qualitative results:} We provide qualitative visual results of our best ASPP model in \figref{fig:vis_results}. As shown in the figure, our model is able to segment objects very well without any DenseCRF post-processing.
+
+\textbf{Failure mode:} As shown in the bottom row of \figref{fig:vis_results}, our model has difficulty in segmenting (a) sofa \vs chair, (b) dining table and chair, and (c) rare view of objects.
+
+\begin{figure*}[!th]
+  \centering
+  \begin{tabular}{c}
+    \includegraphics[width=0.95\linewidth]{fig/all_results.png}\\
+  \end{tabular}
+  \caption{Visualization results on the \textit{val} set when employing our best ASPP model. The last row shows a failure mode.}
+  \label{fig:vis_results}
+\end{figure*}
+%% \begin{figure*}[!th]
+%%   \centering
+%%   \begin{tabular}{c c c}
+%%     \includegraphics[width=0.3\linewidth]{fig/results/result_1.png} &
+%%     \includegraphics[width=0.3\linewidth]{fig/results/result_2.png} &
+%%     \includegraphics[width=0.3\linewidth]{fig/results/result_3.png} \\
+%%     \includegraphics[width=0.3\linewidth]{fig/results/result_4.png} &
+%%     \includegraphics[width=0.3\linewidth]{fig/results/result_5.png} &
+%%     \includegraphics[width=0.3\linewidth]{fig/results/result_7.png} \\
+%%     \includegraphics[width=0.3\linewidth]{fig/results/result_25.png} &
+%%     \includegraphics[width=0.3\linewidth]{fig/results/result_8.png} &
+%%     \includegraphics[width=0.3\linewidth]{fig/results/result_13.png} \\
+%%     \includegraphics[width=0.3\linewidth]{fig/results/result_9.png} &
+%%     \includegraphics[width=0.3\linewidth]{fig/results/result_10.png} &
+%%     \includegraphics[width=0.3\linewidth]{fig/results/result_11.png} \\
+%%     \includegraphics[width=0.3\linewidth]{fig/results/result_12.png} &
+%%     \includegraphics[width=0.3\linewidth]{fig/results/result_14.png} &
+%%     \includegraphics[width=0.3\linewidth]{fig/results/result_18.png} \\
+%%     \includegraphics[width=0.3\linewidth]{fig/results/result_16.png} &
+%%     \includegraphics[width=0.3\linewidth]{fig/results/result_17.png} &
+%%     \includegraphics[width=0.3\linewidth]{fig/results/result_6.png} \\
+%%     \includegraphics[width=0.3\linewidth]{fig/results/result_19.png} &
+%%     \includegraphics[width=0.3\linewidth]{fig/results/result_20.png} &
+%%     \includegraphics[width=0.3\linewidth]{fig/results/result_21.png} \\
+%%     \includegraphics[width=0.3\linewidth]{fig/results/result_22.png} &
+%%     \includegraphics[width=0.3\linewidth]{fig/results/result_23.png} &
+%%     \includegraphics[width=0.3\linewidth]{fig/results/result_24.png} \\
+%%     \toprule[0.1em]
+%%     \includegraphics[width=0.3\linewidth]{fig/failure_mode/failure_mode_1.png} &
+%%     \includegraphics[width=0.3\linewidth]{fig/failure_mode/failure_mode_2.png} & 
+%%     \includegraphics[width=0.3\linewidth]{fig/failure_mode/failure_mode_3.png} \\
+%%   \end{tabular}
+%%   \caption{Visualization results on the \textit{val} set when employing our best ASPP model. The last row shows a failure mode.}
+%%   \label{fig:vis_results}
+%% \end{figure*}
+
+\textbf{Pretrained on COCO:} For comparison with other state-of-art models, we further pretrain our best ASPP model on MS-COCO dataset \cite{lin2014microsoft}. From the MS-COCO \textit{trainval\_minus\_minival} set, we only select the images that have annotation regions larger than 1000 pixels and contain the classes defined in PASCAL VOC 2012, resulting in about 60K images for training. Besides, the MS-COCO classes not defined in PASCAL VOC 2012 are all treated as background class. After pretraining on MS-COCO dataset, our proposed model attains performance of 82.7\% on \textit{val} set when using $\emph{output\_stride}=8$, multi-scale inputs and adding left-right flipped images during inference. We adopt smaller initial learning rate = 0.0001 and same training protocol as in \secref{subsec:train_protocol} when fine-tuning on PASCAL VOC 2012 dataset.
+
+%which attains the performance of 82.7\% on \textit{val} set when using $output\_stride=8$, multi-scale inputs and adding left-right flipped images during inference.
+
+\textbf{Test set result and an effective bootstrapping method:} We notice that PASCAL VOC 2012 dataset provides higher quality of annotations than the augmented dataset \cite{hariharan2011semantic}, especially for the bicycle class. We thus further fine-tune our model on the official PASCAL VOC 2012 \textit{trainval} set before evaluating on the test set. Specifically, our model is trained with $\emph{output\_stride}=8$ (so that annotation details are kept) and the batch normalization parameters are frozen (see \secref{subsec:train_protocol} for details).  Besides, instead of performing pixel hard example mining as \cite{wu2016bridging, pohlen2016full}, we resort to bootstrapping on hard images. In particular, we duplicate the images that contain hard classes (namely bicycle, chair, table, pottedplant, and sofa) in the training set. As shown in \figref{fig:bicycle}, the simple bootstrapping method is effective for segmenting the bicycle class. In the end, our `DeepLabv3' achieves the performance of 85.7\% on the test set without any DenseCRF post-processing, as shown in \tabref{tab:res_testset}.
+
+\begin{figure}[!t]
+  \centering
+  \begin{tabular}{c c c c}
+    \includegraphics[width=0.22\linewidth]{fig/bicycle/img/2008_008629.jpg} &
+    \includegraphics[width=0.22\linewidth]{fig/bicycle/gt/2008_008629.png} &
+    \includegraphics[width=0.22\linewidth]{fig/bicycle/no_bootstrap/2008_008629.png} &
+    \includegraphics[width=0.22\linewidth]{fig/bicycle/bootstrap/2008_008629.png} \\
+    \includegraphics[width=0.22\linewidth]{fig/bicycle/img/2009_001255.jpg} &
+    \includegraphics[width=0.22\linewidth]{fig/bicycle/gt/2009_001255.png} &
+    \includegraphics[width=0.22\linewidth]{fig/bicycle/no_bootstrap/2009_001255.png} &
+    \includegraphics[width=0.22\linewidth]{fig/bicycle/bootstrap/2009_001255.png} \\
+    \tiny{(a) Image} &
+    \tiny{(b) G.T.} &
+    \tiny{(c) w/o bootstrapping} &
+    \tiny{(d) w/ bootstrapping} \\
+  \end{tabular}
+  \caption{Bootstrapping on hard images improves segmentation accuracy for rare and finely annotated classes such as bicycle.}
+  \label{fig:bicycle}
+\end{figure}
+
+
+\begin{table}[!t]
+  \centering
+  \addtolength{\tabcolsep}{2.5pt}
+  \begin{tabular}{l | c}
+    \toprule[0.2 em]
+    {\bf Method} & {\bf mIOU} \\
+    \toprule[0.2 em]
+    Adelaide\_VeryDeep\_FCN\_VOC \cite{wu2016bridging} & 79.1 \\
+    LRR\_4x\_ResNet-CRF \cite{ghiasi2016laplacian} & 79.3 \\
+    DeepLabv2-CRF \cite{chen2016deeplab} & 79.7 \\
+    CentraleSupelec Deep G-CRF \cite{chandra2016fast} & 80.2 \\
+    HikSeg\_COCO \cite{sun2016mixed} & 81.4 \\
+    SegModel \cite{shen2017semantic} & 81.8 \\
+    Deep Layer Cascade (LC) \cite{li2017not} & 82.7 \\
+    TuSimple \cite{wang2017understanding} & 83.1 \\
+    Large\_Kernel\_Matters \cite{peng2017large} & 83.6 \\
+    Multipath-RefineNet \cite{lin2016refinenet} & 84.2 \\
+    ResNet-38\_MS\_COCO \cite{wu2016wider} & 84.9 \\
+    PSPNet \cite{zhao2016pyramid} & 85.4 \\
+    IDW-CNN \cite{wanglearning}  & 86.3 \\
+    CASIA\_IVA\_SDN \cite{fu2017stacked} & 86.6 \\
+    DIS \cite{luo2017deep} & 86.8 \\
+    \midrule
+    \href{http://host.robots.ox.ac.uk:8080/anonymous/EGZFFR.html}{DeepLabv3} & 85.7 \\
+    \href{http://host.robots.ox.ac.uk:8080/anonymous/BDPJA4.html}{DeepLabv3-JFT} & 86.9 \\
+    \bottomrule[0.1 em]
+  \end{tabular}
+  \caption{Performance on PASCAL VOC 2012 {\it test} set.}
+  \label{tab:res_testset}
+\end{table}
+
+\textbf{Model pretrained on JFT-300M:} Motivated by the recent work of \cite{sun2017revisiting}, we further employ the ResNet-101 model which has been pretraind on both ImageNet and the JFT-300M dataset \cite{hinton2015distilling, chollet2016xception, sun2017revisiting}, resulting in a performance of 86.9\% on PASCAL VOC 2012 test set.

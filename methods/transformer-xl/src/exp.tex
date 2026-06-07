@@ -1,0 +1,429 @@
+
+\section{Experiments}
+\label{sec:exp}
+
+\subsection{Main Results}
+
+%\begin{table}[ht]
+%    \small
+%    \centering
+%    \begin{tabular}{l|ccc}
+%        \toprule
+%        \bf Model & \bf \#Params & \bf Validation PPL &  \bf Test PPL \\
+%        \midrule
+%        \citet{grave2016improving} -- LSTM & - & - & 48.7 \\
+%        \citet{bai2018empirical} -- TCN & - & - & 45.2 \\
+%        \citet{dauphin2016language} -- GCNN-8 & - & - & 44.9 \\
+%        \citet{grave2016improving} -- LSTM + Neural cache & - & - & 40.8 \\
+%        \citet{dauphin2016language} -- GCNN-14 & - & - & 37.2 \\
+%        \citet{merity2018analysis} -- 4-layer QRNN & 151M & 32.0 & 33.0 \\
+%        \citet{rae2018fast} -- LSTM + Hebbian + Cache & - & 29.7 & 29.9 \\
+%        Ours -- Transformer-XL Standard & 151M & \textbf{23.1} & \textbf{24.0} \\
+%        \midrule
+%        \citet{baevski2018adaptive} -- adaptive input$^\diamond$ & 247M & 19.8 & 20.5 \\
+%        Ours - Transformer-XL Large & 257M & \textbf{17.7} & \textbf{18.3} \\
+%        \bottomrule
+%    \end{tabular}
+%    \caption{\small
+%        Comparison with state-of-the-art results on WikiText-103. $^\diamond$ indicates contemporary work.
+%    }
+%    \label{table:103}
+%\end{table}
+
+\bgroup
+\setlength{\tabcolsep}{3pt}
+\begin{table}[t]
+	\small
+	\centering
+	
+	\begin{adjustwidth}{-4pt}{}
+	\begin{tabular}{l|cc}
+		\toprule
+		\bf Model & \bf \#Param &  \bf PPL \\
+		\midrule
+		\citet{grave2016improving} - LSTM & - & 48.7 \\
+		\citet{bai2018empirical} - TCN & - & 45.2 \\
+		\citet{dauphin2016language} - GCNN-8 & - & 44.9 \\
+		\citet{grave2016improving} - LSTM + Neural cache & - & 40.8 \\
+		\citet{dauphin2016language} - GCNN-14 & - & 37.2 \\
+		\citet{merity2018analysis} - QRNN & 151M & 33.0 \\
+		\citet{rae2018fast} - Hebbian + Cache & - & 29.9 \\
+		Ours - Transformer-XL Standard & 151M & \textbf{24.0} \\
+		\midrule
+		\citet{baevski2018adaptive} - Adaptive Input$^\diamond$ & 247M & 20.5 \\
+		Ours - Transformer-XL Large & 257M & \textbf{18.3} \\
+		\bottomrule
+	\end{tabular}
+	\caption{\small
+		Comparison with state-of-the-art results on WikiText-103. $^\diamond$ indicates contemporary work.
+	}
+	\label{table:103}
+	\end{adjustwidth}
+\end{table}
+\egroup
+
+\bgroup
+\setlength{\tabcolsep}{3pt}
+\begin{table}[t]
+    \small
+    \centering
+    \begin{tabular}{l|cc}
+        \toprule
+        \bf Model & \bf \#Param & \bf bpc \\
+        \midrule
+        \citet{ha2016hypernetworks} - LN HyperNetworks & 27M & 1.34 \\
+        \citet{chung2016hierarchical} - LN HM-LSTM & 35M & 1.32 \\
+        \citet{zilly2016recurrent} - RHN & 46M & 1.27 \\
+        \citet{mujika2017fast} - FS-LSTM-4 & 47M & 1.25 \\
+        \citet{krause2016multiplicative} - Large mLSTM & 46M & 1.24 \\
+        \citet{cmix} - cmix v13 & - & 1.23 \\
+        \citet{al2018character} - 12L Transformer & 44M & 1.11 \\
+        % \midrule
+        Ours - 12L Transformer-XL & 41M & \textbf{1.06} \\
+        \midrule
+        \citet{al2018character} - 64L Transformer & 235M & 1.06 \\
+        Ours - 18L Transformer-XL & 88M & 1.03 \\
+        Ours - 24L Transformer-XL & 277M & \textbf{0.99} \\
+        \bottomrule
+    \end{tabular}
+    \caption{\small
+        Comparison with state-of-the-art results on enwik8.
+    }
+    \label{table:enwik8}
+\end{table}
+\egroup
+
+\bgroup
+\setlength{\tabcolsep}{3pt}
+\begin{table}[t]
+    \small
+    \centering
+    \begin{tabular}{l|cc}
+        \toprule
+        \bf Model & \bf \#Param & \bf bpc \\
+        \midrule
+        \citet{cooijmans2016recurrent} - BN-LSTM & - & 1.36 \\
+        \citet{chung2016hierarchical} - LN HM-LSTM & 35M & 1.29 \\
+        \citet{zilly2016recurrent} - RHN & 45M & 1.27 \\
+        \citet{krause2016multiplicative} - Large mLSTM & 45M & 1.27 \\
+        \citet{al2018character} - 12L Transformer & 44M & 1.18 \\
+        \midrule
+        \citet{al2018character} - 64L Transformer & 235M & 1.13 \\
+        Ours - 24L Transformer-XL & 277M & \textbf{1.08} \\
+        \bottomrule
+    \end{tabular}
+    \caption{\small
+        Comparison with state-of-the-art results on text8.
+    }
+    \label{table:text8}
+\end{table}
+\egroup
+
+%\begin{table}[t]
+%	\small
+%	\centering
+%	\begin{tabular}{l|ccccc}
+%		\toprule
+%		\bf Model & \bf \#Param & \bf PPL \\
+%		\midrule
+%		\citet{shazeer2014skip} -- Sparse Non-Negative & 33B & 52.9 \\
+%		\citet{chelba2013one} -- RNN-1024 + 9 Gram & 20B & 51.3 \\
+%		\citet{jozefowicz2016exploring} -- LSTM-2048-512 & 0.83B & 43.7 \\
+%		\citet{kuchaiev2017factorization} -- BIG G-LSTM-2 & - & 36.0 \\
+%		\citet{dauphin2016language} -- GCNN-14 bottleneck & - & 31.9 \\
+%		\citet{jozefowicz2016exploring} -- LSTM-8192-1024 & 1.8B & 30.6 \\
+%		\citet{jozefowicz2016exploring} -- LSTM-8192-1024 + CNN Input & 1.04B & 30.0 \\
+%		\citet{shazeer2017outrageously} -- Low-Budget MoE & $\sim$5B & 34.1 \\
+%		\citet{shazeer2017outrageously} -- High-Budget MoE & $\sim$5B & 28.0 \\
+%		% \midrule
+%		%        \citet{baevski2018adaptive} -- Adaptive Input Base & 0.33B & 25.4 \\
+%        \citet{shazeer2018mesh} -- Mesh Tensorflow & 4.9B & 24.0 \\
+%		\citet{baevski2018adaptive} -- Adaptive Input Large$^\diamond$ & 0.46B & 24.1 \\
+%		\citet{baevski2018adaptive} -- Adaptive Input Very Large$^\diamond$ & 1.0B & 23.7 \\
+%        \midrule
+%		Ours -- Transformer-XL Base & 0.46B & 23.5 \\
+%		Ours -- Transformer-XL Large & 0.8B & \textbf{21.8} \\
+%		\bottomrule
+%	\end{tabular}
+%	\caption{\small
+%		Comparison with state-of-the-art results on One Billion Word. $^\diamond$ indicates contemporary work.
+%	}
+%	\label{table:lm1b}
+%\end{table}
+
+\bgroup
+\setlength{\tabcolsep}{2pt}
+\begin{table}[t]
+	\small
+	\centering
+	\begin{adjustwidth}{-4pt}{}
+		
+	\begin{tabular}{l|ccccc}
+		\toprule
+		\bf Model & \bf \#Param & \bf PPL \\
+		\midrule
+		\citet{shazeer2014skip} - Sparse Non-Negative & 33B & 52.9 \\
+		\citet{chelba2013one} - RNN-1024 + 9 Gram & 20B & 51.3 \\
+%		\citet{jozefowicz2016exploring} - LSTM-2048-512 & 0.83B & 43.7 \\
+%		\citet{kuchaiev2017factorization} - BIG G-LSTM-2 & - & 36.0 \\
+		\citet{kuchaiev2017factorization} - G-LSTM-2 & - & 36.0 \\
+		\citet{dauphin2016language} - GCNN-14 bottleneck & - & 31.9 \\
+		\citet{jozefowicz2016exploring} - LSTM & 1.8B & 30.6 \\
+		\citet{jozefowicz2016exploring} - LSTM + CNN Input & 1.04B & 30.0 \\
+		\citet{shazeer2017outrageously} - Low-Budget MoE & $\sim$5B & 34.1 \\
+		\citet{shazeer2017outrageously} - High-Budget MoE & $\sim$5B & 28.0 \\
+		% \midrule
+		%        \citet{baevski2018adaptive} - Adaptive Input Base & 0.33B & 25.4 \\
+		\citet{shazeer2018mesh} - Mesh Tensorflow & 4.9B & 24.0 \\
+		\citet{baevski2018adaptive} - Adaptive Input$^\diamond$ & 0.46B & 24.1 \\
+		\citet{baevski2018adaptive} - Adaptive Input$^\diamond$ & 1.0B & 23.7 \\
+		\midrule
+		Ours - Transformer-XL Base & 0.46B & 23.5 \\
+		Ours - Transformer-XL Large & 0.8B & \textbf{21.8} \\
+		\bottomrule
+	\end{tabular}
+	\caption{\small
+		Comparison with state-of-the-art results on One Billion Word. $^\diamond$ indicates contemporary work.
+	}
+	\label{table:lm1b}
+	\end{adjustwidth}
+\end{table}
+
+\begin{table}[t]
+    \small
+    \centering
+    \begin{adjustwidth}{-5pt}{}
+    \begin{tabular}{l|cc}
+        \toprule
+        \bf Model & \bf \#Param & \bf PPL \\
+        \midrule
+        % \citet{mikolov2012context} - RNN-LDA + KN-5 + cache & 9M$^\ddagger$ & - & 92.0 \\
+        % \citet{zaremba2014recurrent} - LSTM & 20M & 86.2 & 82.7 \\
+        % \citet{gal2016theoretically} - Variational LSTM (MC) & 20M & - & 78.6 \\
+        % \citet{kim2016character} - CharCNN & 19M & - & 78.9 \\
+        % \citet{merity2016pointer} - Pointer Sentinel-LSTM & 21M & 72.4 & 70.9 \\
+        % \citet{grave2016improving} - LSTM + continuous cache pointer$^\dagger$ & - & - & 72.1 \\
+        \citet{inan2016tying} - Tied Variational LSTM & 24M & 73.2 \\
+        \citet{zilly2016recurrent} - Variational RHN & 23M & 65.4 \\
+        \citet{zoph2016neural} - NAS Cell & 25M & 64.0 \\
+        \citet{merity2017regularizing} - AWD-LSTM & 24M & 58.8 \\
+        \citet{pham2018efficient} - Efficient NAS & 24M & 58.6 \\
+        \citet{liu2018darts} - Differentiable NAS & 23M & 56.1 \\
+        \citet{yang2017breaking} - AWD-LSTM-MoS & 22M & 55.97 \\
+        \citet{melis2018pushing} - Dropout tuning & 24M & 55.3 \\
+        \midrule
+        Ours - Transformer-XL & 24M & \textbf{54.52} \\
+        \midrule
+        \citet{merity2017regularizing} - AWD-LSTM+Finetune$^\dagger$ & 24M & 57.3 \\
+        \citet{yang2017breaking} - MoS+Finetune$^\dagger$ & 22M & \textbf{54.44} \\
+        \bottomrule
+    \end{tabular}
+    \caption{\small
+        Comparison with state-of-the-art results on Penn Treebank. $\dagger$ indicates using two-step finetuning.
+    }
+    \label{table:ptb}
+	\end{adjustwidth}
+\end{table}
+\egroup
+
+%\begin{table*}[t]
+%	\small
+%	\centering
+%	\begin{tabular}{l|ccc}
+%		\toprule
+%		\bf Model & \bf \#Param & \bf Dev PPL & \bf Test PPL \\
+%		\midrule
+%		% \citet{mikolov2012context} -- RNN-LDA + KN-5 + cache & 9M$^\ddagger$ & - & 92.0 \\
+%		% \citet{zaremba2014recurrent} -- LSTM & 20M & 86.2 & 82.7 \\
+%		% \citet{gal2016theoretically} -- Variational LSTM (MC) & 20M & - & 78.6 \\
+%		% \citet{kim2016character} -- CharCNN & 19M & - & 78.9 \\
+%		% \citet{merity2016pointer} -- Pointer Sentinel-LSTM & 21M & 72.4 & 70.9 \\
+%		% \citet{grave2016improving} -- LSTM + continuous cache pointer$^\dagger$ & - & - & 72.1 \\
+%		\citet{inan2016tying} -- Tied Variational LSTM + augmented loss & 24M & 75.7 & 73.2 \\
+%		\citet{zilly2016recurrent} -- Variational RHN & 23M & 67.9 & 65.4 \\
+%		\citet{zoph2016neural} -- NAS Cell & 25M & - & 64.0 \\
+%		% \citet{melis2017state} -- 2-layer skip connection LSTM & 24M & 60.9 & 58.3 \\
+%		\citet{merity2017regularizing} -- AWD-LSTM & 24M & 60.7 & 58.8 \\
+%		\citet{pham2018efficient} -- Efficient NAS & 24M & 60.8 & 58.6 \\
+%		\citet{liu2018darts} -- Differentiable NAS & 23M & 58.3 & 56.1 \\
+%		\citet{yang2017breaking} -- AWD-LSTM-MoS & 22M & 58.08 & 55.97 \\
+%		\citet{melis2018pushing} -- 2-layer skip-LSTM + dropout tuning & 24M & 57.1 & 55.3 \\
+%		\midrule
+%		Ours -- Transformer-XL & 24M & \textbf{56.72} & \textbf{54.52} \\
+%		\midrule
+%		\citet{merity2017regularizing} -- AWD-LSTM + finetuning$^\dagger$ & 24M & 60.0 & 57.3 \\
+%		\citet{yang2017breaking} -- AWD-LSTM-MoS + finetuning$^\dagger$ & 22M & \textbf{56.54} & \textbf{54.44} \\
+%		\bottomrule
+%	\end{tabular}
+%	\caption{\small
+%		Comparison with state-of-the-art results on Penn Treebank. $\dagger$ indicates using two-step finetuning.
+%	}
+%	\label{table:ptb}
+%\end{table*}
+
+\begin{table*}[t]
+    \small
+    \centering
+    \begin{tabular}{lcccccc}
+        \toprule
+        \bf Remark & \bf Recurrence & \bf Encoding & \bf Loss & \bf PPL init & \bf PPL best & \bf Attn Len \\
+        \midrule
+        Transformer-XL (128M) & \cmark & Ours & Full & \textbf{27.02} & \textbf{26.77} & \textbf{500} \\
+        - & \cmark & \citet{shaw2018self} & Full & 27.94 & 27.94 & 256 \\
+        - & \cmark & Ours & Half & 28.69 & 28.33 & 460 \\
+        - & \xmark & Ours & Full & 29.59 & 29.02 & 260 \\
+        - & \xmark & Ours & Half & 30.10 & 30.10 & 120 \\
+        \midrule
+        - & \xmark & \citet{shaw2018self} & Full & 29.75 & 29.75 & 120 \\
+        - & \xmark & \citet{shaw2018self} & Half & 30.50 & 30.50 & 120 \\
+        - & \xmark & \citet{vaswani2017attention} & Half & 30.97 & 30.97 & 120 \\
+        Transformer (128M)$^\dagger$ & \xmark & \citet{al2018character} & Half & 31.16 & 31.16 & 120 \\
+        \midrule
+        \multirow{3}{*}{Transformer-XL (151M)} & \multirow{3}{*}{\cmark} & \multirow{3}{*}{Ours} & \multirow{3}{*}{Full} & \multirow{3}{*}{23.43} & \textbf{23.09} & \textbf{640} \\
+         &  &  &  &  & 23.16 & 450 \\
+          &  &  &  & & 23.35 & 300 \\
+        \bottomrule
+    \end{tabular}
+    \caption{\small
+        Ablation study on WikiText-103. For the first two blocks, we use a slightly smaller model (128M parameters). $\dagger$ indicates that the corresponding row is reduced to the same setting as the Transformer network in \cite{al2018character}, except that two auxiliary losses are not implemented in our experiments. ``PPL init'' refers to using the same length as training. ``PPL best'' indicates the perplexity obtained by using the optimal length. ``Attn Len'' is the shortest possible attention length during evaluation to achieve the corresponding result (PPL best).
+        Increasing the attention length during evaluation improves performance only when our positional encoding is used.
+        The ``Transformer-XL (151M)'' setting uses a standard parameter budget as previous work~\cite{merity2018analysis}, where we observe a similar effect when increasing the attention length during evaluation.
+    }
+    \label{table:ablation}
+\end{table*}
+
+\begin{table}[t]
+    \small
+    \centering
+    \begin{tabular}{lc}
+        \toprule
+        \bf Method & \bf PPL \\
+        \midrule
+        Ours & \textbf{25.2} \\
+        With \citet{shaw2018self} encodings & 25.7 \\
+        Without recurrence & 27.1 \\
+        \bottomrule
+    \end{tabular}
+    \caption{\small
+        Ablation study on One Billion Word, a dataset without long-term dependency.
+    }
+    \label{table:ablation2}
+\end{table}
+
+We apply Transformer-XL to a variety of datasets on both word-level and character-level language modeling to have a comparison with state-of-the-art systems, including WikiText-103 \citep{merity2016pointer}, enwik8 \citep{mahoney2011large}, text8~\citep{mahoney2011large}, One Billion Word \citep{chelba2013one}, and Penn Treebank \citep{mikolov2012context}.
+
+WikiText-103 is the largest available word-level language modeling benchmark with long-term dependency. It contains 103M training tokens from 28K articles, with an average length of 3.6K tokens per article, which allows testing the ability of long-term dependency modeling.
+% We train a 16-layer Transformer-XL with 151M parameters on two P100 GPUs for 200K steps for about two days.
+We set the attention length to 384 during training and 1600 during evaluation.
+We adopted adaptive softmax and input representations \citep{baevski2018adaptive,grave2016efficient}.
+As shown in Table \ref{table:103}, Transformer-XL reduces the previous state-of-the-art (SoTA) perplexity from 20.5 to 18.3, which demonstrates the superiority of the Transformer-XL architecture.
+% More interestingly, compared to a contemporary work relying on the fixed-context Transformer~\cite{baevski2018adaptive}, Transformer-XL also shows a significant advantage, which demonstrates that our new architecture is substantially better on word-level datasets that require modeling long-term dependency.
+
+The dataset enwik8 contains 100M bytes of unprocessed Wikipedia text.
+We compare our architecture with the previous results in Table \ref{table:enwik8}.
+% As the common model size on this benchmark is about 40+M parameters, we train a 12-layer Transformer-XL with two P100 GPUs for about one week.
+% We set the attention length at 512 during training and 2,800 during evaluation.
+Under the model size constraint, the 12-layer Transformer-XL achieves a new SoTA result, outperforming the 12-layer vanilla Transformer from \citet{al2018character} by 0.05, while both Transformer variants have a large margin over conventional RNN-based models.
+Notably, our 12-layer architecture achieves the same result as the 64-layer network from \citet{al2018character}, using only 17\% of the parameter budget.
+In order to see whether better performances can be obtained by increasing the model size, we train 18-layer and 24-layer Transformer-XLs with increased model sizes.
+% with a double model size on four P100 GPUs for ten days.
+With the attention length 784 during training and 3,800 during evaluation, we obtained a new SoTA result and our method is the first to break through 1.0 on widely-studied character-level benchmarks.
+% with 63\% fewer parameters.
+Different from \citet{al2018character}, Transformer-XL does not need any auxiliary losses, and thus all benefits are credited to a better architecture.
+
+Similar to but different from enwik8, text8 contains 100M processed Wikipedia characters created by lowering case the text and removing any character other than the 26 letters \texttt{a} through \texttt{z}, and space.
+Due to the similarity, we simply adapt the best model and the same hyper-parameters on enwik8 to text8 without further tuning.
+The comparison with previous methods is summarized in Table \ref{table:text8}.
+Again, Transformer-XL achieves the new SoTA result with a clear margin.
+
+One Billion Word does not preserve any long-term dependency because sentences have been shuffled. Consequently, this dataset mainly tests the ability of modeling only short-term dependency.
+The comparison between Transformer-XL and the other methods is shown in Table \ref{table:lm1b}.
+Although Transformer-XL is mainly designed to better capture longer-term dependency, it dramatically improves the single-model SoTA from 23.7 to 21.8.
+Specifically, Transformer-XL significantly outperforms a contemporary method using vanilla Transformers~\cite{baevski2018adaptive}, suggesting the advantage of Transformer-XL is generalizable to modeling short sequences.
+
+% We train a 18-layer Transformer-XL on one P100 GPU for ten days.
+% With a standard model size (excluding the gigantic MoE model), Transformer-XL achieves a SoTA result of 29.4 perplexity with less parameters, fewer training epochs, and a substantially lower hardware resource budget. To make a fair comparison with Transformer-XL, the direct baseline from \cite{jozefowicz2016exploring} should be the LSTM-2048-512 model, which has a similar model size and does not employ character-level modules. Our model is 4.3 points better than LSTM-2048-512. Even though \cite{shazeer2017outrageously} uses a much higher capacity model, our architecture still beats the low-budget version and approaches the high-budget version. With these combined, Transformer-XL is among the best architectures for modeling short-term dependency as well.
+
+We also report the results on word-level Penn Treebank in Table \ref{table:ptb}. Similar to AWD-LSTM \citep{merity2017regularizing}, we apply variational dropout and weight average to Transformer-XL. With proper regularization, Transformer-XL achieves a new SoTA result among models without two-step finetuning. Penn Treebank has only 1M training tokens, which implies that Transformer-XL also generalizes well even on small datasets.
+
+\subsection{Ablation Study}
+%This is consistent with our motivation and discussion in Section \ref{sec:model}.
+
+%We conduct an ablation study on WikiText-103 to examine the effects of two proposed techniques used in Transformer-XL: the recurrence mechanism and the new positional encoding scheme. The results are reported in Table \ref{table:ablation}. Among the compared encoding schemes, \cite{shaw2018self} is relative, while \cite{vaswani2017attention} and \cite{al2018character} are absolute. ``Full'' and ``half'' losses refer to applying a cross entropy loss to all or the recent half positions in the segment. We found that absolute encodings only work well with half losses because half losses exclude positions with very short attention lengths during training for better generalization. Table \ref{table:ablation} shows that both the recurrence mechanism and our encoding scheme are necessary to achieve the best performance, as well as generalizing to longer attention sequences during evaluation time. Although the backpropagation length during training is only 128, with the two techniques the attention length can be increased to 640 at test time. In the standard setting with 151M parameters, the perplexity decreases as the attention length increases. This is consistent with our motivation and discussion in Section \ref{sec:model}.
+
+We conduct two sets of ablation studies to examine the effects of two proposed techniques used in Transformer-XL: the recurrence mechanism and the new positional encoding scheme.
+
+
+The first study is performed on WikiText-103, which requires modeling long-term dependency.
+The results are reported in Table \ref{table:ablation}.
+Among the compared encoding schemes, \citet{shaw2018self} is relative, while \citet{vaswani2017attention} and \citet{al2018character} are absolute. ``Full'' and ``half'' losses refer to applying a cross entropy loss to all or the recent half positions in the segment.
+We found that absolute encodings only work well with half losses because half losses exclude positions with very short attention lengths during training for better generalization.
+Table \ref{table:ablation} shows that both the recurrence mechanism and our encoding scheme are necessary to achieve the best performance, as well as generalizing to longer attention sequences during evaluation time. Although the backpropagation length during training is only 128, with the two techniques the attention length can be increased to 640 at test time. In the standard setting with 151M parameters, the perplexity decreases as the attention length increases.
+
+Since the recurrence mechanism costs additional memory, we also compare Transformer-XL with baselines under the same GPU memory constraints. As shown in Table \ref{table:memory} in Appendix \ref{sec:memory}, despite using a shorter backpropagation length, Transformer-XL remains superior to the baselines.
+
+The second study targets at isolating the effects of resolving the context fragmentation problem from the benefit of capturing longer context length.
+In order to achieve this goal, we deliberately choose a dataset that does not require long-term dependency, so that any improvement from establishing the recurrence can be attributed to solving the context fragmentation.
+Specifically, we perform this controlled experiment on the One Billion Word dataset, which can only benefit from removing the context fragmentation. We train a 20-layer Transformer-XL with $\sim$0.3B parameters for 400K steps.
+As shown in Table \ref{table:ablation2}, using segment-level recurrence substantially improves performance even when long-term dependency is not needed, which is consistent with our previous discussion that the recurrence mechanism resolves the context fragmentation problem. Moreover, our relative positional encodings is also superior to \citet{shaw2018self} on short sequences.
+
+
+\subsection{Relative Effective Context Length}
+\bgroup
+\setlength{\tabcolsep}{2pt}
+\begin{table}[t]
+	\small
+	\centering
+	\begin{tabular}{lccc}
+		\toprule
+		\bf Model & $r=0.1$ & $r=0.5$ & $r=1.0$ \\
+		\midrule
+		Transformer-XL 151M & \textbf{900} & \textbf{800} & \textbf{700} \\
+		QRNN & 500 & 400 & 300 \\
+		LSTM & 400 & 300 & 200 \\
+		\midrule
+		Transformer-XL 128M & \textbf{700} & \textbf{600} & \textbf{500} \\
+		- use \citet{shaw2018self} encoding & 400 & 400 & 300 \\
+		- remove recurrence & 300 & 300 & 300 \\
+		Transformer & 128 & 128 & 128 \\
+		\bottomrule
+	\end{tabular}
+	\caption{\small
+		Relative effective context length (RECL) comparison. See text for the definition of RECL and $r$. The first three models and the last four models are
+		compared as two \textit{model groups} when we calculate RECL (RECL is computed on a model group rather than a single model). Each group has the same parameter budget.
+	}
+	\label{table:recl}
+\end{table}
+\egroup
+
+\citet{khandelwal2018sharp} proposed a method to evaluate the \textit{Effective Context Length} (ECL) of a sequence model.
+%ECL is computed by measuring and thresholding the gains by increasing the context length.
+ECL is the longest length to which increasing the context span would lead to a gain more than a threshold.
+However, ECL ignores the fact that it is harder to get improvement when a model already achieves a lower perplexity using only a shorter context, and thus it is not suitable for fair comparison among multiple models. We instead propose a new metric called \textit{Relative Effective Context Length} (RECL). RECL is defined on a model group instead of a single model, and the gain of a long context is measure by the relative improvement over the \textit{best} short context model. As such, the model group shares the same baseline to enable fair comparison. RECL also has a parameter $r$, which means constraining the comparison on top-$r$ hard examples. See Appedix \ref{sec:recl} for more details about RECL. As shown in Table \ref{table:recl}, Transformer-XL manages to model dependency of 900 words long on average with $r = 0.1$. The RECL of Transformer-XL is 80\% and 450\% longer than recurrent networks and Transformer respectively. Both the recurrence mechanism and our positional encodings contribute to a longer RECL. This further substantiates our argument that Transformer-XL is able to model longer-term dependency.
+
+\subsection{Generated Text}
+
+Trained only on WikiText-103 which is medium-sized, Transformer-XL is already able to generate relatively coherent articles with thousands of tokens without manual cherry picking, despite minor flaws. Please refer to Appendix \ref{sec:gen} for samples.
+
+
+\subsection{Evaluation Speed} \label{sec:speed}
+Finally, we compare the evaluation speed of our model with the vanilla Transformer model~\cite{al2018character}. As shown in Table \ref{table:speed}, due to the state reuse scheme, Transformer-XL achieves an up to 1,874 times speedup during evaluation.
+
+\begin{table}[t]
+	\small
+	\centering
+	\begin{tabular}{cc}
+		\toprule
+		\bf Attn Len & \bf How much \citet{al2018character} is slower \\
+		\midrule
+		3,800 & 1,874x \\
+		2,800 & 1,409x \\
+		1,800 & 773x \\
+		800 & 363x \\
+		\bottomrule
+	\end{tabular}
+	\caption{\small
+		Slowdown in terms of running time during evaluation. Evaluation is based on per-token time on one GPU.
+	}
+	\label{table:speed}
+\end{table}

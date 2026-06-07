@@ -1,0 +1,35 @@
+%!TEX root = main.tex
+
+\newcommand{\mpwthree}{6cm}
+\newcommand{\myhspace}{\hspace{-3mm}}
+
+\begin{figure*}[h!]
+	\begin{center}
+	\begin{minipage}{\textwidth}
+	\begin{tabular}{ccc}%
+		%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		\hspace{-4mm}
+			\begin{minipage}{\mpwthree}%
+			\centering%
+			\includegraphics[width=\columnwidth]{PCR_R_err_rev1_refine.pdf} \\
+			\end{minipage}
+		& \myhspace
+			\begin{minipage}{\mpwthree}%
+			\centering%
+			\includegraphics[width=\columnwidth]{PCR_t_err_rev1_refine.pdf} \\
+			\end{minipage}
+		& \hspace{-5mm}
+			\begin{minipage}{\mpwthree}%
+			\centering%
+			\includegraphics[width=\columnwidth]{PCR_n_iter_rev1_refine.pdf} \\
+			\end{minipage}
+		\end{tabular}
+	\end{minipage}
+	\vspace{-3mm} 
+	\caption{ {\bf Point Cloud Registration.} Performance of \GNCGM and \GNCTLS compared with state-of-the-art techniques on the \bunny dataset~\cite{Curless96siggraph} for increasing outliers. 
+	(a) rotation error; (b) translation  error; (c) number of iterations until convergence. Statistics are computed over 20 Monte Carlo runs.
+	}
+	\label{fig:pointCloudRegistration}
+	\vspace{-5mm} 
+	\end{center}
+\end{figure*}

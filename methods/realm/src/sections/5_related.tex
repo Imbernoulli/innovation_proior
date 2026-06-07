@@ -1,0 +1,67 @@
+%\section{Discussion and Related Work}
+
+%\mw{sorry... but I felt that section 5$+$6 is a bit too long. Maybe we can reduce the sapce and then show a null-gap figure instead (it shows that the retriever getting trained over time}
+\section{Discussion and Related Work}
+%\section{Related work}
+We previously discussed related methods for \openqa.
+%in %Section~\ref{sec:comparisons}.
+Here we present several alternate ways of viewing REALM that connect it to a broader set of ideas beyond \openqa:
+
+\paragraph{Language modeling with corpus as context}
+Language representation models have been incorporating contexts of 
+%Variants of language modeling for pre-trained representations have been applied to
+increasingly large scope when making predictions.
+Examples of this progression include models that condition on surrounding words~\cite{skipgram, word2vec}, sentences~\cite{skipthought, elmo}, and paragraphs~\cite{gpt, bert}. We can view \thename as a generalization of the above work to the next level of scope: the entire text \emph{corpus}. %The representations form \thename condition on a entire \emph{corpus} of text, and this is achieved by enforcing sparsity in the context used.
+%\zo{I think the term "finite support" may be better than "sparsity", but I'm not sure how common this is ... I think I encountered it in some undergrad math classes.}
+% \todo{REALM = BERT but with more FLEXIBLE context}
+
+\paragraph{Retrieve-and-edit with learned retrieval}
+In order to better explain the variance in the input text and enable controllable generation, \citet{prototypes} proposed a language model with the retrieve-and-edit framework~\cite{retrieve_and_edit} that conditions on text with high lexical overlap. \thename has a similar approach, except that the model learns for itself which texts are most useful for reducing perplexity. By jointly learning the retriever, \thename has the capacity to depend on information beyond lexical overlap.
+
+% \kl{Most memory network literature is about micro-reading with turing-machine like mechanisms and isn't actually super relevant here.}
+% We share motivations with recent work on neural memory~\cite{memory_networks} such as~\citet{product_key}, which uses a product-key mechanism to increase the capacity of language models. \thename similarly learns to retrieve memories on-the-fly via maximum inner products between key and query vectors. A critical difference is that these memories are grounded in natural language that can be inspected for trustworthiness.
+% However, this provenance does not come for free. Unlike the originally proposed memory networks~\cite{memory_networks}, our retrieval step is non-differentiable and requires approximate inference by sampling retrievals that are likely to be useful. 
+%\ice{This is a bit confusing since we conflate the two works. Maybe do Weston -> product key -> ours }
+%\paragraph{Static neural memory}
+%Our document index acts as a static memory where the keys are document embeddings $\docembed(z)$. Unlike original memory networks \cite{memory_networks,neural_turing,end_to_end_memory}, which update the memory at inference time (akin to working memory in humans), a static memory acts as a permanent information store and is only updated during training.
+% Prior work that use large static memory rely on heuristics to select memory cells \cite{simplequestions_memory,key_value_memorynetwork}.
+% Our work shares motivations with Product Key Memory~\cite{product_key},
+% which allows efficient neural retrieval.
+% One difference is that we use a shared embedder to compute memory keys instead of treating them as separate and performing sparse updates. This improves generalization, which is crucial for a large memory where not all entries will be accessed during training, but also requires additional work (Section~\ref{sec:training}) to ensure stable updates.
+\paragraph{Scalable grounded neural memory}
+The document index can be viewed as a memory where the keys are the document embeddings.
+From this view, our work share motivations
+with works such as product key memory~\cite{product_key},
+which enables
+%designs a key structure to allow
+sub-linear memory access in a memory network \cite{memory_networks,neural_turing,end_to_end_memory}, allowing these scalable memory layers to be integrated into large language models.
+One main difference is that our memories are grounded---each memory is associated with a document rather than unnamed value vectors. This level of interpretability is crucial for applications like \openqa, where users would require provenance for a predicted answer to be trustworthy.
+%the memory key has to reflect the semantics of its grounding (the document), making the keys harder to learn under a restrictive key structure.
+
+\paragraph{Unsupervised Corpus Alignment}
+In sequence-to-sequence models with attention~\cite{attention}, text is generated with latent selection of relevant tokens. This results in a set of \emph{model-centric} unsupervised alignments between target and source tokens. Analogously, \thename also generates text with latent selection of relevant documents. A by-product of our method is that we offer a set of \emph{model-centric} unsupervised alignments between text in the pre-training corpus $\mathcal{X}$ and knowledge corpus $\mathcal{Z}$.
+
+
+
+%\section{Related Work}
+%We also present existing work that is highly related but offer somewhat orthogonal contributions.
+
+%\begin{enumerate}
+%\item word2vec \cite{skipgram}, which predicted an inner word based on a single contextual word, or a set of words in its context.
+%\item ELMo \cite{elmo}, which used bidirectional LSTMs to predict a word given left and right contexts, encoded separately.
+%\item BERT \cite{bert}, which predicted masked-out tokens in sentences, conditioning on all other tokens jointly.
+%\end{enumerate}
+
+%RealR is related to corpus-level masked language modeling, in the sense that the model can condition on any information in a corpus, so long as any token/word-piece prediction has finite support.
+
+% None of these objectives are true language modeling objectives: they are not generative, and assume the model has access to the number of tokens omitted (1 for word2vec and ELMo, multiple word pieces for BERT).
+
+%\subsection{Non-parametric language modeling}
+%The intersection of retrieval and language modeling has been previously explored in the context of non-parametric language models~\cite{grave2016neuralcache,knnlm}. These methods retrieve nearest-neighbor contexts during inference, compute a weighted average of observations (the next token given the context), and bias predictions towards this average.
+%This supports the hypothesis that there is significant room for improvement over compressing text into a fixed set of parameters. 
+%A critical difference of such methods from \thename is that they perform \emph{post-hoc} retrieval---the hidden states happen to result in useful nearest neighbors, but they are not explicitly optimized for any task.
+
+%\zo{added some detail on the neural cache methods, but I'm having 2nd thoughts ... maybe revert back to Kenton's simpler version}\kl{lgtm: this shows unfamiliar readers exactly the way in which the knnlm retrieval is post-hoc.}
+
+%\subsection{Other aspects of question answering}
+%Existing work on question answering comes in many different forms and focuses. Since our goal is to examine that ability of our model to use world knowledge, we focus on the open-domain setting rather than reading comprehension as popularized by~\citet{squad}. In the open-domain setting, contributions typically fall under two categories: (1) using straightforward heuristics to retrieve a small number of text candidates and improving how to re-rank and better understand them~\cite{key_value_memorynetwork, drqa}, (2) improving retrieval by incorporating additional candidates from other retrieval functions, such as entity linking or iterative retrieval~\cite{GraphRetriever}; these are usually independently trained. In contrast, the goal of \thename is to pre-train an end-to-end joint model without being limited by the quality of heuristic retrieval.

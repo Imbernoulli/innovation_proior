@@ -1,0 +1,205 @@
+%!TEX root = main.tex
+
+\section{Introduction}
+\label{sec:introduction}
+\IEEEPARstart{R}{obust}
+% Robust 
+estimation is a crucial tool for robotics and computer vision, 
+%and is 
+being
+concerned with the estimation of unknown quantities 
+(\eg the state of a robot, or of variables describing the external world) 
+from noisy and potentially corrupted measurements. Corrupted measurements (\ie \emph{outliers}) can be caused by sensor malfunction, but are  more commonly associated with % caused by
+incorrect data association \mbox{and model misspecification~\cite{Cadena16tro-SLAMsurvey,Yang19rss-teaser}.} 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% ESTIMATION WITHOUT OUTLIERS
+In the outlier-free case, common estimation problems 
+%in 
+% Many estimation problems in 
+% robotics and vision 
+are formulated as a least squares optimization: % in the form:
+%terms of the following general form of optimization:
+% seek to solve 
+% the following geneal form of optimization:
+\bea \label{eq:leastSquares}
+\min_{\vxx \in \calX} \;\sumAllPointsi r^2(\vy_i,\vxx),
+\eea 
+where $\vxx$ is the variable we want to estimate (\eg the pose of an unknown object); 
+$\calX$ is the domain of $\vxx$ (\eg the set of 3D poses);
+$\vy_i$ ($i=1,\ldots,N$) are given measurements (\eg pixel observations of points belonging to the object); 
+  and the function $r(\vy_i,\vxx)$ is the \emph{residual} error for the $i$-th measurement,
+quantifying the mismatch between the expected measurement at an estimate $\vxx$ and the actual measurement~$\vy_i$.
+% The mathematical expression of $r(\vy_i,\vxx)$ varies from problem to problem, 
+% where $\calK\subseteq\Real{n}$ is the (potentially non-convex,~\eg~$\SOthree$) feasible set, $r(\calD_i,\vxx) := r_i \in \Real{}$ is the $i$-th \emph{residual} computed by applying the residual function $r(\cdot,\cdot)$ on the $i$-th measurement data $\calD_i$ and the decision variable $\vxx$. When there are zero noise among all the measurements $\calD_i$'s, then $r_i=0$ for all $i=1,\dots,N$.
+In typical robotics and computer vision applications, 
+\revise{~the least squares optimization}~\eqref{eq:leastSquares} is difficult to solve globally, due to the nonlinearity of the 
+residual errors and the nonconvexity of the domain~$\calX$. Despite these challenges, 
+the research community has developed closed-form solutions and\revise{~globally optimal} solvers for many such problems.
+% of interest.
+Specifically, 
+while closed-form solutions are rare~\cite{Horn87josa}, 
+  %in recent years researchers have %developed global solvers shown that 
+  % researchers 
+\emph{Semidefinite Programming} (SDP) and \emph{Sums-of-Squares} (SOS)~\cite{Blekherman12Book-sdpandConvexAlgebraicGeometry}
+%~\cite{Lasserre07siam-sos,Parrilo00thesis} 
+relaxations have been recently shown to 
+  be a powerful tool to obtain \emph{certifiably optimal} solutions to relevant instances of problem~\eqref{eq:leastSquares}, 
+  ranging from pose graph optimization~\cite{Carlone16tro-duality2D,Rosen18ijrr-sesync},
+   rotation averaging~\cite{Eriksson18cvpr-strongDuality},
+   anisotropic registration~\cite{Briales17cvpr-registration}, 
+   two-view geometry~\cite{Briales18cvpr-global2view}, 
+   and PnP~\cite{Agostinho2019arXiv-cvxpnpl}.
+   The resulting techniques are commonly referred to as \emph{non-minimal solvers}, to contrast them against 
+   methods that solve problem~\eqref{eq:leastSquares} using only a small (minimal) subset of measurements $\vy_i$ 
+   (see related work in Section~\ref{sec:relatedWork}).
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% ESTIMATION WITH OUTLIERS
+%   $\rho(\cdot)$ is a given cost function.
+% In eq.~\eqref{eq:generalEstimation}, 
+Unfortunately, in the presence of outliers, problem~\eqref{eq:leastSquares}'s solution provides a 
+poor estimate for 
+%the variable 
+$\vxx$. This limits the applicability of existing non-minimal solvers, 
+% Indeed, the quadratic cost typically follows from the assumption that
+% the measurement noise is Gaussian~\cite{Cadena16tro-SLAMsurvey} and is less suitable to deal with heavy-tailed noise. 
+ since they can be applied only after the outliers have been removed. 
+ Yet,
+ the theory of robust estimation  
+ suggests regaining robustness by substituting the quadratic cost in\revise{~the least squares problem}~\eqref{eq:leastSquares} 
+ with a \emph{robust cost} $\rho(\cdot)$:
+%
+\bea \label{eq:generalEstimation}
+\min_{\vxx \in \calX} \; \sumAllPointsi \rho( r(\vy_i,\vxx) ).
+\eea 
+%
+% where $\vxx$ is the variable we would like to estimate (\eg the pose of an unknown object), 
+% $\calX$ is the domain of $\vxx$ (\eg the set of 3D poses),
+% $\vy_i$ ($i=1,\ldots,m$) are given measurements (\eg pixel observations of points belonging to the object), 
+%   and $\rho(\cdot)$ is a given cost function.
+% In eq.~\eqref{eq:generalEstimation}, the function $r(\vy_i,\vxx)$ is the \emph{residual} error for the $i$-th measurement,
+%  that quantifies the mismatch between the expected measurement given an estimate $\vxx$ and the actual measurement $\vy_i$.
+For instance, $\rho(\cdot)$ can be a Huber loss, a truncated least squares cost, or a Geman-McClure cost~\cite{Black96ijcv-unification}.
+% For instance, $\rho(\cdot)$ can be a Huber loss, a truncated least squares cost, or a Geman-McClure cost~\cite{Black96ijcv-unification}.  
+To date, the application of non-minimal solvers  to eq.~\eqref{eq:generalEstimation} has been limited. 
+Some of the non-minimal solvers designed for~\eqref{eq:leastSquares} can be extended to include a \emph{convex} robust cost function, such as the Huber loss~\cite{Carlone18ral-robustPGO2D}; however, it is known that convex losses have a low breakdown point and are still sensitive to gross outliers~\cite{Lajoie19ral-DCGM}. 
+In rare cases, the literature provides \emph{robust non-minimal solvers} that achieve 
+global solutions to specific instances of problem~\eqref{eq:generalEstimation}, 
+such as robust registration~\cite{Yang19rss-teaser,Yang19iccv-QUASAR}. 
+%, and pose graph optimization~\cite{Lajoie19ral-DCGM}.  
+However, 
+these solvers cannot be easily extended to other estimation problems, and they rely on solving large SDPs, which is currently
+ % might be
+  impractical for large-scale problems.
+% Currently, however, the application of eq.~\eqref{eq:generalEstimation}'s approach to non-minimal solvers in robotics and computer vision has been limited. 
+% Particularly, 
+% although
+% some of the non-minimal solvers above can be indeed extended to include a \emph{convex} robust cost (such as the Huber loss~\cite{Carlone18ral-robustPGO2D}),
+% %. But 
+% such costs have low breakdown points, and are still sensitive to gross outliers~\cite{Lajoie19ral-DCGM}. 
+% And although for special cases the literature provides \emph{robust non-minimal solvers} achieving
+% global solutions to specific instances of problem~\eqref{eq:generalEstimation}
+% (such as robust registration~\cite{Yang19rss-teaser,Yang2019ICCV-QUASARforWahba}, and pose graph optimization~\cite{Lajoie19ral-DCGM}),
+% %.  However, 
+% these solvers cannot be easily extended to other estimation problems, and rely on solving large SDPs, which 
+% \mbox{might be impractical for very large-scale problems.}
+ %real-time
+% is impractical 
+% require specialized solvers~\cite{Rosen18ijrr-sesync}.
+%which is practical only in relatively small instances. %\red{HY: should mention BnB here as well?} 
+% Alternative global approaches to outlier rejection are based on branch-and-bound (\bnb)~\cite{Bustos18pami-GORE,chin2017slcv-maximumconsensusadvances}, which unfortunately
+%  has exponential runtime in the worst case.
+% we provide a specialized global solver : Teaser/Quasar- but there are few of them and there are no scalable implementations
+% others are exponential time.
+
+
+{\bf Contributions.} In this paper, we aim to reconcile non-minimal solvers and robust estimation, by providing a 
+\textit{general-purpose}\footnote{For a given problem~\eqref{eq:generalEstimation}, we only assume the existence of a non-minimal solver for the 
+corresponding outlier-free problem~\eqref{eq:leastSquares}.} algorithm to solve problem~\eqref{eq:generalEstimation} without requiring an initial guess. 
+ % Our only assumption is that a non-minimal solver exists 
+% , for any instance 
+% without requiring an initial guess; 
+%  our only restriction is to problems 
+% our algorithm only requires the existence of a non-minimal solver for the 
+%  We only require 
+% for any instance where a non-minimal solver is available, and without an initial guess. 
+We achieve this by combining  non-minimal solvers with an approach known as \emph{graduated non-convexity} (\GNC). 
+% This paper aims to develop general-purpose algorithms for a broad class of estimation problems 
+In contrast, standard algorithms for problem~\eqref{eq:generalEstimation} rely on iterative optimization to refine a given initial guess, which causes the result to be brittle when the quality of the  guess is poor. 
+Particularly, we propose three contributions.
+
+First, we revisit the Black-Rangarajan duality~\cite{Black96ijcv-unification} between robust estimation and outlier processes.
+%, and apply it to spatial perception problems in robotics.
+ % In particular, we focus on 
+ % The third contribution is to demonstrate how two examples of the \GNC framework, the \GNC-\emph{Geman McClure} (\GNCGM) and the \GNC-\emph{Truncated Least Squares} (\GNCTLS), can be applied on four robotics and computer vision applications: point cloud registration, generalized 3D registration, pose graph optimization, and shape alignment from a single image. 
+  We also revisit the use of \emph{graduated non-convexity} (\GNC) as a general tool to solve a non-convex 
+  optimization problem without an initial guess.
+  While Black-Rangarajan duality and \GNC have been used in early vision problems, such as stereo reconstruction, 
+  image restoration and segmentation, and optical flow, 
+%    beautiful theory of Black-Rangarajan duality has been confined to simple estimation problems
+% mainly for early vision problems, including stereo reconstruction, image restoration and segmentation, and optical flow
+% -- mainly focuses on surface fitting
+ we show that combining them with non-minimal solvers allows solving \emph{spatial perception} problems, ranging from 
+ mesh registration, pose graph optimization, and image-based object pose estimation.
+ %it provides a general tool for robust estimation in many spatial 
+ % The crux is that while the original theory, 
+
+Our second contribution is to
+tailor Black-Rangarajan duality and \GNC to the 
+ \textit{Geman-McClure} and \textit{truncated least squares} costs.
+We show how to optimize these functions  by alternating two steps: 
+a \emph{variable update}, which solves a \emph{weighted} least squares problem using non-minimal solvers; 
+ and a \emph{weight update}, \mbox{which updates the outlier process in closed~form.} 
+ % In addition, we show that the use of \emph{graduated non-convexity} (\GNC) 
+ %framework, where a family of optimizations with increasing non-convexity are solved to gradually reject outliers. 
+ %  In addition, lack of efficient \emph{minimal} solvers prevents us from applying \ransac to gain robustness. In this paper, our first contribution is to propose the \emph{Graduated Non-Convexity} (\GNC) framework, where a family of optimizations with increasing non-convexity are solved to gradually reject outliers. 
+ % Our second contribution is to show that solving each optimization in the \GNC framework can be done in two steps: 
+% Our second contribution 
+
+Our approach requires 
+%the availability of 
+a non-minimal solver, but currently there is no such solver for 
+image-based object pose estimation (also known as \emph{shape alignment}).
+%Therefore, 
+Our third contribution is to present a novel non-minimal solver for shape alignment.
+While related techniques propose approximate relaxations~\cite{Zhou17pami-shapeEstimationConvex}, we 
+provide a 
+\emph{certifiably optimal} solution 
+%can be obtained by applying 
+using SOS relaxation. 
+
+We demonstrate our \emph{robust non-minimal solvers} on point cloud registration (\PCR), mesh registration (as known as \emph{generalized} registration, \GReg), pose graph optimization (\PGO), and shape alignment (\shape).
+%point cloud and mesh registration, pose graph optimization, and image-based object pose estimation.
+ % Replacing the least squares cost with robust cost functions yields non-convex optimizations whose performance are highly sensitive to initial guesses. 
+Our solvers  are robust to {70-80\%} outliers, 
+%across applications, 
+outperform \ransac, 
+are more accurate than specialized \emph{local} solvers, and 
+faster than \emph{global} solvers.
+% The proposed solvers are fast and general-purpose, are robust to at least \red{70-80\%} of outliers, are superior and more broadly applicable than existing general-purpose methods (\eg{ }\ransac), \red{and perform {comparably to specialized methods.}}
+%, while being 
+%fast and  general-purpose. 
+% The paper also extends the literature on non-minimal solvers by proposing an SOS solver for image-based object pose estimation.
+% issue with BR: nonconvex domain.. even with continuation, problems is non-convex
+% while these techniques are not necessarily as robust as specialized methods, they carry the promise of fast 
+% execution and practical robustness
+% faster than specialized methods
+%  beautiful theory of Black-Rangarajan duality has been confined to simple estimation problems
+% mainly for early vision problems, including stereo reconstruction, image restoration and segmentation, and optical flow
+% % -- mainly focuses on surface fitting
+% -- later for:" A graduated assignment algorithm for graph matching"
+% -- markov random fields
+% The main contribution of this paper is to bridge the gap between non-minimal solvers and robust estimation, 
+%  and provide a general-purpose tool for robust global estimation, which can be applied to any problem where a non-minimal solver is available.
+% minimal solvers
+% 1) the chapter is about GNC but NOT robust estimation (only about early vision), but has alternation
+% 2) Black-Rangarajan duality is about line processes, mentions continuation = graduated nonconvexity and alternation
+% 3) FRG has both line processes, GNC, and alternation but focuses on a specific application
+ % Towards this goal, we leverage the Black-Rangarajan duality between robust estimation and outlier processes 
+ % (which has been traditionally applied to early vision problems) and show that the 
+ % joint use of non-minimal solvers and \emph{graduated non-convexity} (\GNC) allows computing robust solutions without requiring 
+ % an initial guess. % for the variables. 
+ % 
+

@@ -1,0 +1,50 @@
+% !TeX root = ../eccv2016submission.tex
+\begin{table}[t!]
+\vskip -0.05in
+\caption{Test error (\%) of ResNets trained with \name{} compared to other most competitive methods previously published (whenever available). A "+" in the name denotes standard data augmentation. ResNet with constant depth refers to our reproduction of the experiments by He et al.}
+\label{table.error}
+\vspace{-2ex}
+\begin{center}
+\resizebox{0.9\textwidth}{!}
+{
+\begin{small}
+\begin{tabular}{ccccc}
+	
+\hline
+		  	& CIFAR10+   & CIFAR100+   & SVHN & ImageNet\\
+\hline
+Maxout \cite{goodfellow2013maxout} 		
+			& 9.38 	   & -		   & 2.47 	&	-	\\
+DropConnect \cite{icml2013_wan13}
+	   		& 9.32 	   & -		   & 1.94 	&	-	\\
+Net in Net \cite{lin2013network}
+			& 8.81 	   & -		   & 2.35 	&	-	\\
+Deeply Supervised \cite{lee2014deeply}
+			& 7.97 	   & -		   & 1.92 	& 33.70	\\
+Frac. Pool \cite{graham2014fractional}
+			& - 	   & 27.62	   & -	   	&	-	\\
+All-CNN \cite{springenberg2014striving}
+			& 7.25 	   & -		   & -	   	& 41.20	\\
+Learning Activation \cite{agostinelli2014learning}
+			& 7.51 	   & 30.83	   & - 		&   -	\\
+R-CNN \cite{liang2015recurrent}
+			& 7.09 	   & -		   & 1.77 	&   -	\\
+Scalable BO \cite{snoek2015scalable}
+			& 6.37 	   & 27.40	   & 1.77 	&	-	\\
+Highway Network \cite{srivastava2015training}
+			& 7.60	   & 32.24	   & - 		&   -	\\
+Gen. Pool \cite{lee2015generalizing}
+			& 6.05	   & -		   & 1.69 	& 28.02 \\
+\hline
+ResNet with constant depth		
+		    & 6.41 	   & 27.76	   & 1.80	& 21.78  \\
+ResNet with \name
+			& 5.25	   & 24.98	   & 1.75   & 21.98  \\
+\hline
+% http://arxiv.org/pdf/1511.07289v5.pdf for CIFAR-100 state of the art
+\end{tabular}
+\end{small}
+}
+\end{center}
+\vspace{-4ex}
+\end{table} 

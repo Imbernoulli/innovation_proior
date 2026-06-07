@@ -1,0 +1,10 @@
+%!TEX root = pixelrnn.tex
+
+\section{Conclusion}
+
+In this paper we significantly improve and build upon deep recurrent neural networks as generative models for natural images. We have described novel two-dimensional LSTM layers: the Row LSTM and the Diagonal BiLSTM, that scale more easily to larger datasets. The models were trained to model the raw RGB pixel values. We treated the pixel values as discrete random variables by using a softmax layer in the conditional distributions. We employed masked convolutions to allow PixelRNNs to model full dependencies between the color channels. We proposed and evaluated architectural improvements in these models resulting in PixelRNNs with up to 12 LSTM layers.
+
+We have shown that the PixelRNNs significantly improve the state of the art on the MNIST and CIFAR-10 datasets. We also provide new benchmarks for generative image modeling on the ImageNet dataset. Based on the samples and completions drawn from the models we can conclude that the PixelRNNs are able to model both spatially local and long-range correlations and are able to produce images that are sharp and coherent.
+Given that these models improve as we make them larger and that there is practically unlimited data available to train on, more computation and larger models are likely to further improve the results.
+
+% In this paper we significantly improve and build upon deep recurrent neural networks as generative models for natural images. Besides describing fast recurrent layers, we show that modeling the raw pixel values with a discrete distribution is advantageous over continuous approaches. We show how to use masks inside convolutions to allow the networks to model the full dependencies in the color channels. Our 12 layer deep PixelRNNs improve considerably on the state of the art on multiple datasets. The models show a remarkable ability to generate crisp and globally coherent images. 

@@ -1,0 +1,32 @@
+\section{Related work}
+
+\paragraph{Text-guided synthesis.}
+
+Text-guided image synthesis has been widely studied in the context of GANs~\citep{goodfellow2014generative}. Typically, a conditional model is trained to reproduce samples from given paired image-caption datasets~\citep{zhu2019dm,tao2020df}, leveraging attention mechanisms~\citep{xu2018attngan} or cross-modal contrastive approaches~\citep{zhang2021cross,ye2021improving}. More recently, impressive visual results were achieved by leveraging large scale auto-regressive~\citep{ramesh2021zero,yu2022scaling} or diffusion models~\citep{ramesh2022hierarchical,saharia2022photorealistic,nichol2021glide,rombach2021highresolution}.
+
+Rather than training conditional models, several approaches employ test-time optimization to explore the latent spaces of a pre-trained generator~\citep{crowson2022vqgan,murdock2021bigsleep,crowson2021diffusion}. These models typically guide the optimization to minimize a text-to-image similarity score derived from an auxiliary model such as CLIP~\citep{radford2021learning}.
+
+Moving beyond pure image generation, a large body of work explores the use of text-based interfaces for image editing~\citep{patashnik2021styleclip,abdal2021clip2stylegan,avrahami2022blended}, generator domain adaptation~\citep{gal2021stylegan,kim2022diffusionclip}, video manipulation~\citep{tzaban2022stitch,bar2022text2live}, motion synthesis~\citep{tevet2022motionclip,petrovich22temos}, style transfer~\citep{kwon2021clipstyler,liu2022name} and even texture synthesis for 3D objects~\citep{text2mesh}.
+
+Our approach builds on the open-ended, conditional synthesis models. Rather than training a new model from scratch, we show that we can expand a frozen model's vocabulary and introduce new pseudo-words that describe specific concepts. 
+
+ 
+\paragraph{GAN inversion.}
+Manipulating images with generative networks often requires one to find a corresponding latent representation of the given image, a process referred to as \textit{inversion}~\citep{zhu2016generative,xia2021gan}.
+In the GAN literature, this inversion is done through either an optimization-based technique~\citep{abdal2019image2stylegan,abdal2020image2stylegan++,zhu2020improved,gu2020image} or by using an encoder~\citep{richardson2020encoding,zhu2020domain,pidhorskyi2020adversarial,tov2021designing}. Optimization methods directly optimize a latent vector, such that feeding it through the GAN will re-create a target image. Encoders leverage a large image set to train a network that maps images to their latent representations. 
+
+In our work, we follow the optimization approach, as it can better adapt to unseen concepts. Encoders face harsher generalization requirements, and would likely need to be trained on web-scale data to offer the same freedom. We further analyze our embedding space in light of the GAN-inversion literature, outlining the core principles that remain and those that do not.
+
+\paragraph{Diffusion-based inversion.}
+In the realm of diffusion models, inversion can be performed \naive{ly} by adding noise to an image and then de-noising it through the network. However, this process tends to change the image content significantly. \citet{choi2021ilvr} improve inversion by conditioning the denoising process on noised low-pass filter data from the target image.
+\citep{dhariwal2021diffusion} demonstrate that the DDIM~\citep{song2020denoising} sampling process can be inverted in a closed-form manner, extracting a latent noise map that will produce a given real image. In DALL-E 2~\citep{ramesh2022hierarchical}, they build on this method and demonstrate that it can be used to induce changes in the image, such as cross-image interpolations or semantic editing. The later relies on their use of CLIP-based codes to condition the model, and may not be applicable to other methods.
+
+Whereas the above works invert a given \textit{image} into the model's latent space, we invert a user-provided \textit{concept}. Moreover, we represent this concept as a new pseudo-word in the model's vocabulary, allowing for more general and intuitive editing.
+
+
+\paragraph{Personalization.}
+Adapting models to a specific individual or object is a long-standing goal in machine learning research. Personalized models are typically found in the realms of recommendation systems~\citep{benhamdi2017personalized,fernando2018artwork,martinez2009s,cho2002personalized} or in federated learning~\citep{mansour2020three,jiang2019improving,fallah2020personalized,shamsian2021personalized}.
+
+More recently, personalization efforts can also be found in vision and graphics. There it is typical to apply a delicate tuning of a generative model to better reconstruct specific faces or scenes~\citep{semantic2019bau,roich2021pivotal,alaluf2021hyperstyle,dinh2022hyperinverter,cao2022authentic,nitzan2022mystyle}. 
+
+Most relevant to our work is PALAVRA~\citep{cohen2022my}, which leverages a pre-trained CLIP model for retrieval and segmentation of personalized objects. PALAVRA identifies pseudo-words in the textual embedding space of CLIP that refer to a specific object. These are then used to describe images for retrieval, or in order to segment specific objects in a scene. However, their task and losses are both discriminative, aiming to separate the object from other candidates. As we later show (\Cref{fig:baseline_comp}), their approach fails to capture the details required for plausible reconstructions or synthesis in new scenes.

@@ -1,0 +1,573 @@
+\section[Proof of Theorem 6.2]{Proof of Theorem~\ref{thm-diophantine}}
+\label{app-rings}
+
+Consider the rings $\Z$ and $\D$, together with their respective
+extensions $\Z[\sqrt2]$, $\Z[\omega]$ and $\D[\sqrt2]$, $\D[\omega]$,
+as introduced in Section~\ref{sec-algebra}. We wish to give an
+efficient method for solving equations of the form $t\da t=\xi$, for
+given $\xi\in\D[\sqrt2]$ and unknown $t\in\D[\omega]$. To do this, we
+first classify the primes in $\Z[\sqrt2]$ and $\Z[\omega]$, then show
+how to solve the equation $t\da t=\xi$ in the case where
+$\xi\in\Z[\sqrt2]$ and $t\in\Z[\omega]$, which we finally extend to
+the general case. None of the results in this section are original;
+they are well-known from the theory of cyclotomic fields, which goes
+back to the 19th century work of Gauss and Kummer.  Nevertheless, we
+hope that the following detailed treatment may be useful to readers
+who are not experts in algebraic number theory. Moreover, we hope to
+give sufficient details to enable an interested reader, in principle,
+to implement the algorithm. This will also aid in our complexity
+analysis.
+
+A fundamental property of the rings $\Z$, $\Z[\sqrt2]$, and
+$\Z[\omega]$ is that they are {\em Euclidean domains}; this implies
+that the notions of divisibility, greatest common divisor, and unique
+prime factorization all make sense in these rings.  Recall that in a
+ring, a {\em unit} is an invertible element.  In a Euclidean domain,
+we write $x\divides y$ if $x$ is a divisor of $y$, and $x\sim y$ if
+$x\divides y$ and $y\divides x$; equivalently, $x\sim y$ iff there
+exists a unit $u$ that $x u=y$. An element $x$ is {\em prime} if $x$
+is not a unit, and $x=ab$ implies that either $a$ or $b$ is a
+unit. Note that if $x$ is prime and $x\divides ab$, then $x\divides a$
+or $x\divides b$; this follows from Euclid's algorithm.
+
+\subsection[{Units in Z[sqrt 2]}]{Units in $\Z[\sqrt2]$}
+
+\begin{definition}
+  We say that $\xi\in\Z[\sqrt 2]$ is {\em doubly positive} if $\xi\geq
+  0$ and $\xi\bul \geq 0$.
+\end{definition}
+
+\begin{lemma}\label{lem-units}
+  The units of $\Z[\sqrt2]$ are of the form $u=(-1)^n\lambda^m$, where
+  $\lambda=1+\sqrt 2$. Moreover, a unit $u$ is doubly positive if and
+  only if $u$ is a square in $\Z[\sqrt2]$.
+\end{lemma}
+
+\begin{proof}
+  Lemma~10 of {\cite{Selinger-newsynth}}.
+\end{proof}
+
+\begin{lemma}
+  Let $\xi\in\Z[\sqrt2]$, and consider $n=\xi\bul\xi$. If $n$ is a unit
+  in $\Z$, then $\xi$ is a unit in $\Z[\sqrt2]$.
+\end{lemma}
+
+\begin{proof}
+  If $n$ is a unit, then there exists $m\in\Z$ such that $nm=1$, hence
+  $\xi\xi\bul m=1$, hence $\xi$ is invertible in $\Z[\sqrt2]$.
+\end{proof}
+
+%----------------------------------------------------------------------
+\subsection[{Primes in Z[sqrt 2]}]{Primes in $\Z[\sqrt2]$}
+
+\begin{lemma}\label{lem-prime-criterion}
+  Let $\xi\in\Z[\sqrt2]$, and consider $n=\xi\bul\xi$. If $n$ is prime
+  in $\Z$, then $\xi$ is prime in $\Z[\sqrt2]$.
+\end{lemma}
+
+\begin{proof}
+  Suppose $\xi=\alpha\beta$ in $\Z[\sqrt 2]$, and consider $n =
+  \xi\bul\xi = \alpha\bul\alpha \beta\bul\beta$. Since
+  $\alpha\bul\alpha$ and $\beta\bul\beta$ are integers and $n$ is
+  prime, we must have that either $\alpha\bul\alpha$ or
+  $\beta\bul\beta$ is a unit in $\Z$; hence $\alpha$ or $\beta$ is a
+  unit in $\Z[\sqrt 2]$. So $\xi$ is prime.
+\end{proof}
+
+\begin{lemma}
+  For every prime $\xi$ of $\Z[\sqrt2]$, there exists a unique (up to
+  a unit) prime $p$ of $\Z$ such that $\xi \divides p$.
+\end{lemma}
+
+\begin{proof}
+  To show existence, consider $n=\xi\bul\xi$. Note that $\xi\neq 0$,
+  hence $n\neq 0$. Let $n=p_1p_2\cdots p_k$ be a prime factorization
+  of $n$. Since $\xi \divides p_1p_2\cdots p_k$ and $\xi$ is prime in
+  $\Z[\sqrt2]$, there exists some $i$ such that $\xi\divides p_i$.
+
+  To show uniqueness, assume $\xi\divides p$ and $\xi\divides q$, where $p\not\sim q$.
+  Then $\gcd(p,q)=1$, hence by Euclid's algorithm, we can write
+  $1=np+mq$, for integers $n$ and $m$. Then $\xi\divides np+mq=1$, which
+  is absurd since $\xi$ is prime. 
+\end{proof}
+
+\begin{lemma}\label{lem-z2-cases}
+  Let $\xi$ be a prime of $\Z[\sqrt2]$, and let $p$ be the unique (up
+  to a unit) prime of $\Z$ such that $\xi\divides p$. Then exactly one of
+  the following holds: $\xi\sim p$ or $\xi\bul\xi\sim p$.
+\end{lemma}
+
+\begin{proof}
+  First note that at most one of these properties can hold, because
+  otherwise $\xi\sim\xi\bul\xi$, which implies that $\xi\bul$ is a
+  unit, which is absurd since it is prime.
+
+  We now show that at least one of the properties holds. Since
+  $\xi\divides p$ and $p$ is an integer, we have $\xi\bul\divides p$, hence
+  $\xi\bul\xi\divides p^2$. Also, $\xi\bul\xi$ is an integer, so either
+  $\xi\bul\xi\sim 1$, $\xi\bul\xi\sim p$, or $\xi\bul\xi\sim p^2$. The
+  first of these cases is absurd, since $\xi$ would then be a unit. In
+  the second case, we have $\xi\bul\xi\sim p$, which is to be
+  shown. In the third case, since $\xi\divides p$, there is
+  $\alpha\in\Z[\sqrt2]$ such that $\xi\alpha=p$. Then we have
+  $\xi\bul\xi\alpha\bul\alpha=p^2\sim\xi\bul\xi$, which implies that
+  $\alpha$ is a unit, hence $\xi\sim p$.
+\end{proof}
+
+\begin{lemma}\label{lem-prime-factor-z2}
+  Let $p$ be a prime of $\Z$. Then the prime factorization of $p$ in
+  $\Z[\sqrt2]$ consists of one or two factors. 
+\end{lemma}
+
+\begin{proof}
+  Let $\xi$ be some prime factor of $p$ in $\Z[\sqrt2]$. By
+  Lemma~\ref{lem-z2-cases}, either $\xi\sim p$ or $\xi\bul\xi\sim
+  p$. Either way, this gives a prime factorization of $p$ in $\Z[\sqrt2]$.
+\end{proof}
+
+We now determine the prime factorization in $\Z[\sqrt2]$ of every
+prime $p$ of $\Z$. It turns out that there are 5 cases, depending
+whether $p$ is even, or $p\equiv 1, 3, 5, 7\mmod{8}$.
+
+\begin{lemma}\label{lem-2}
+  The prime factorization of $p=2$ in $\Z[\sqrt2]$ is $p =
+  \sqrt{2}\cdot \sqrt{2}$. The prime factorization of $p=-2$ in
+  $\Z[\sqrt2]$ is $p=-\sqrt{2}\cdot\sqrt{2}$.
+\end{lemma}
+
+\begin{proof}
+  We only need to show that $\sqrt2$ is prime in $\Z[\sqrt2]$, but
+  this follows from Lemma~\ref{lem-prime-criterion}.
+\end{proof}
+
+\begin{lemma}\label{lem-3-5}
+  Let $p$ be a prime of $\Z$ such that $p\equiv 3\mmod{8}$ or $p\equiv
+  5\mmod{8}$. Then $p$ is prime in $\Z[\sqrt2]$.
+\end{lemma}
+
+\begin{proof}
+  Let $\xi$ be a prime factor of $p$ in $\Z[\sqrt2]$. By
+  Lemma~\ref{lem-z2-cases}, we know that $\xi\sim p$ or
+  $\xi\bul\xi\sim p$. In the former case, $p$ is prime and we are
+  done. In the latter case, writing $\xi=a+b\sqrt2$, we have
+  $\xi\bul\xi = a^2-2b^2 =\pm p$, hence $a^2-2b^2\equiv\pm3\mmod{8}$.
+  By easy case distinction, we see that $a^2$ can only be $0$, $1$, or
+  $4$ modulo $8$, and $2b^2$ can only be $0$ or $2$ modulo $8$, so
+  $a^2-2b^2\equiv\pm3\mmod{8}$ is plainly impossible.
+\end{proof}
+
+\begin{lemma}\label{lem-associate-primes}
+  Let $\xi\in\Z[\sqrt2]$ such that $\xi\sim\xi\bul$. Then either
+  $\xi\sim n$, or $\xi\sim n\sqrt{2}$, for some $n\in\Z$.
+\end{lemma}
+
+\begin{proof}
+  By assumption, $\xi\sim\xi\bul$, so there exists a unit
+  $u\in\Z[\sqrt2]$ such that $\xi\bul=u\xi$. By Lemma~\ref{lem-units}, the 
+  units of $\Z[\sqrt2]$ are exactly of the form $u=(-1)^n\lambda^m$, where
+  $\lambda=1+\sqrt2$. Applying the automorphism to $\xi\bul=u\xi$, we get 
+  $\xi=u\bul\xi\bul$, hence $\xi\bul\xi = u\bul u\xi\bul\xi$, hence 
+  $u\bul u=1$, hence $(\lambda\bul\lambda)^m = 1$. But $\lambda\bul\lambda=-1$, 
+  so $m$ is even; say $m=2k$. Let $\xi' = \lambda^k\xi$. Note that
+  $\xi'\sim\xi$. Then we have
+  \begin{equation}\label{eqn-xi-prime}
+    \xi'^\bullet = (\lambda\bul)^k\xi\bul = (-\lambda)^{-k} u\xi
+    = (-1)^{-k}\lambda^{-k}(-1)^n\lambda^{m}\xi = \pm\lambda^k\xi = \pm \xi'.
+  \end{equation}
+  We can write $\xi' = a+b\sqrt2$ for some $a,b\in\Z$. From
+  {\eqref{eqn-xi-prime}}, we have either $a-b\sqrt 2 = a+b\sqrt 2$, or
+  $a-b\sqrt 2 = -(a+b\sqrt 2)$. In the first case, $b=0$, and therefore
+  $\xi\sim\xi'= a$. In the second case, $a=0$, and therefore
+  $\xi\sim\xi'= b\sqrt 2$.
+\end{proof}
+
+\begin{lemma}\label{lem-1-7}
+  Let $p$ be a prime of $\Z$ such that $p\equiv 1\mmod{8}$ or $p\equiv
+  7\mmod{8}$. Then $p$ has a prime factorization of the form $p\sim
+  \xi\bul\xi$ in $\Z[\sqrt2]$; moreover, $\xi\not\sim\xi\bul$, so that
+  the two prime factors are distinct.
+\end{lemma}
+
+\begin{proof}
+  It is well-known (by quadratic reciprocity) that if $p$ is a prime
+  with $p\equiv\pm1\mmod{8}$, then $2$ is a quadratic residue modulo
+  $p$. Therefore, the equation $x^2\equiv 2\mmod{p}$ has an integer
+  solution; let $x$ be such a solution. Let $\alpha=x+\sqrt2$. Then
+  $\alpha\bul\alpha=x^2-2\equiv0\mmod{p}$, and hence
+  $p\divides\alpha\bul\alpha$. On the other hand, clearly $p\nmid\alpha$
+  (since $\alpha/p\not\in\Z[\sqrt2]$), and similarly
+  $p\nmid\alpha\bul$, which shows that $p$ is not a prime in
+  $\Z[\sqrt2]$. By Lemma~\ref{lem-z2-cases}, $p\sim\xi\bul\xi$ for
+  some prime $\xi$ of $\Z[\sqrt 2]$. 
+
+  The final claim follows from Lemma~\ref{lem-associate-primes},
+  because if $\xi\sim\xi\bul$, then either $\xi\sim n$ or $\xi\sim
+  n\sqrt2$. In the first case, $n^2\divides \xi\bul\xi \sim p$, but $p$ is
+  prime, so that $n=\pm 1$, contradicting that $\xi$ is prime. In the
+  second case, $2n^2\divides\xi\bul\xi\sim p$, contradicting the
+  assumption that $p$ is odd.
+\end{proof}
+
+\begin{lemma}\label{lem-prime-factorization-z2}
+  Let $p$ be a prime of $\Z$. A prime factorization of $p$ in
+  $\Z[\sqrt2]$ can be computed in probabilistic polynomial time.
+\end{lemma}
+
+\begin{proof}
+  Assume without loss of generality that $p>0$. If $p=2$, then
+  $p=\rt{2}$ is the desired prime factorization by
+  Lemma~\ref{lem-2}. If $p\equiv 3,5\mmod{8}$, then $p$ is already
+  prime in $\Z[\sqrt2]$ by Lemma~\ref{lem-3-5}. The remaining case is
+  when $p\equiv 1,7\mmod{8}$. In this case the prime factorization is
+  of the form $p\sim\xi\bul\xi$ by Lemma~\ref{lem-1-7}. Moreover, the
+  proof of Lemma~\ref{lem-1-7} indicates how such $\xi$ can be
+  computed, namely as $\xi=\gcd(p,x+\sqrt2)$, where $x$ is a solution
+  of $x^2\equiv 2\mmod{p}$. The equation $x^2\equiv 2\mmod{p}$ can be
+  solved in probabilistic polynomial time by a well-known algorithm,
+  see {\cite{Rabin1980}}.
+\end{proof}
+
+\subsection[{Primes in Z[omega]}]{Primes in $\Z[\omega]$}
+
+\begin{lemma}
+  Let $\xi$ be a prime in $\Z[\sqrt2]$. Then either $\xi$ is prime in
+  $\Z[\omega]$, or else $\xi\sim t\da t$ where $t$ is some prime of
+  $\Z[\omega]$. In particular, the prime factorization
+  of $\xi$ in $\Z[\omega]$ consists of either one or two factors. 
+\end{lemma}
+
+\begin{proof}
+  This is similar to the proof of Lemma~\ref{lem-prime-factor-z2}.
+  Let $t$ be some prime factor of $\xi$ in $\Z[\omega]$. Then
+  $t\divides \xi$, therefore $t\da\divides \xi\da=\xi$, therefore
+  $t\da t\divides \xi^2$ in $\Z[\omega]$. But both $t\da t$ and $\xi$
+  are elements of $\Z[\sqrt2]$, so $t\da t\divides \xi^2$ in
+  $\Z[\sqrt2]$. Since $\xi$ is prime in $\Z[\sqrt2]$, there are only
+  three possibilities: $t\da t\sim 1$, $t\da t\sim \xi$, and $t\da
+  t\sim \xi^2$. In the first case, $t$ is a unit, contradicting the
+  fact that it is prime in $\Z[\omega]$. In the second case, we are
+  done. In the third case, since $t\divides \xi$, there is
+  $a\in\Z[\omega]$ such that $at=\xi$. Then $a\da at\da
+  t=\xi\da\xi=\xi^2 = t\da t$, which implies $a\da a=1$. Therefore $a$
+  is a unit, and $t\sim \xi$. Therefore $\xi$ is prime in $\Z[\omega]$
+  and we are done.
+\end{proof}
+
+\subsection[{The Diophantine equation t* t = xi}]
+{The Diophantine equation $t\da t=\xi$}
+
+We are interested in solving equations of the form 
+\begin{equation}\label{eqn-tdat}
+t\da t=\xi,
+\end{equation}
+where $\xi\in\D[\sqrt2]$ is given, and $t\in\D[\omega]$ is unknown.
+
+\begin{definition}
+  Recall that for elements $\xi,\xi'\in\Z[\sqrt2]$, the notation
+  $\xi\sim\xi'$ means that $\xi,\xi'$ differ by a unit, i.e., there
+  exists a unit $u\in\Z[\sqrt2]$ such that $\xi=u\xi'$. We extend this
+  notation also to the ring $\D[\sqrt2]$: for $\xi,\xi'\in\D[\sqrt2]$,
+  we write $\xi\sim\xi'$ iff there exists a unit $u\in\Z[\sqrt2]$ such
+  that $\xi=u\xi'$. Note that we have taken $u$ to be a unit of the
+  ring $\Z[\sqrt2]$, not of $\D[\sqrt2]$.
+\end{definition}
+
+It will often be convenient to replace {\eqref{eqn-tdat}} by the
+following weaker condition. 
+
+\begin{definition}
+  We say that $\xi\in\D[\sqrt2]$ is \emph{$\dagger$-decomposable} if
+  the equation
+  \begin{equation}\label{eqn-tdat-associates}
+    t\da t\sim\xi
+  \end{equation} 
+  has a solution $t\in\D[\omega]$.
+\end{definition}
+
+Solutions to {\eqref{eqn-tdat}} can be recovered from solutions to
+{\eqref{eqn-tdat-associates}} by using the following observation:
+
+\begin{lemma}\label{lem-sim}
+  Let $\xi\in\D[\sqrt2]$. Then equation {\eqref{eqn-tdat}} has a
+  solution if and only if $\xi$ is doubly positive and
+  $\dagger$-decomposable.
+\end{lemma}
+
+\begin{proof}
+  If $\xi$ is a solution to {\eqref{eqn-tdat}}, then it is obviously
+  $\dagger$-decomposable. It is also doubly positive by
+  Lemma~\ref{lem-nec-cond}. Conversely, assume $t\da t\sim
+  \xi$. Then there exists a unit $u$ of $\Z[\sqrt2]$ such that
+  $\xi=ut\da t$. Since both $\xi$ and $t\da t$ are doubly positive, it
+  follows that $u$ is doubly positive, and hence $u$ is a square of
+  the ring $\Z[\sqrt2]$ by Lemma~\ref{lem-units}; say $u=v^2$. Since
+  $v\in\Z[\sqrt2]$, we have $v=v\da$. Setting $t'=vt$, we have
+  $\xi=v\da vt\da t = t'^{\dagger}t'$, which finishes the proof.
+\end{proof}
+
+%----------------------------------------------------------------------
+\subsection[{The case xi in Z[root 2]}]
+{The case $\xi\in\Z[\sqrt 2]$}
+
+\begin{lemma}\label{lem-zomega-domega}
+  Suppose $t\da t\sim \xi$ for $t\in\D[\omega]$ and $\xi\in\Z[\sqrt
+  2]$. Then $t\in\Z[\omega]$. 
+\end{lemma}
+
+\begin{proof}
+  Note that, in $\Z[\omega]$, we have $\rt{k}\divides t$ if and only
+  if $2^k\divides t\da t$. Choose $t'\in\Z[\omega]$ and $k\geq 0$ such
+  that $t=t'/\rt{k}$. Then $t'^{\dagger}t' = 2^k\xi$, hence
+  $2^k\divides t'^{\dagger}t'$, hence $\rt{k}\divides t'$, hence
+  $t\in\Z[\omega]$. 
+\end{proof}
+
+\begin{lemma}\label{lem-gcd}
+  If $x,y,z$ are three elements of a Euclidean domain, then
+  \[\gcd(xy,z)\divides \gcd(x,z)\cdot\gcd(y,z).
+  \]
+\end{lemma}
+
+\begin{proof}
+  By considering the prime factorization of $z$. 
+\end{proof}
+
+\begin{lemma}\label{lem-alpha-beta}
+  Suppose $\xi=\alpha\beta$, where $\alpha,\beta\in\Z[\sqrt2]$ and
+  $\gcd(\alpha,\beta)=1$. Then $\xi$ is $\dagger$-decomposable iff
+  $\alpha$ and $\beta$ are $\dagger$-decomposable.
+\end{lemma}
+
+\begin{proof}
+  For the right-to-left implication, assume $\alpha\sim s\da s$ and
+  $\beta\sim r\da r$. Clearly $\xi=\alpha\beta\sim (sr)\da sr$. For
+  the left-to-right implication, assume $\xi\sim t\da t$. Note that
+  $t\in\Z[\omega]$ by Lemma~\ref{lem-zomega-domega}. To show that
+  $\alpha$ is $\dagger$-decomposable, let $s=\gcd(t, \alpha)$.  We
+  claim that $s\da s\sim\alpha$. Clearly, since $s\divides\alpha$ and
+  $s\da\divides\alpha$, we have $s\da s\divides \alpha^2$. One the
+  other hand, we know that $s\da s\divides t\da t \sim
+  \xi=\alpha\beta$. Since $\alpha$ and $\beta$ are relatively prime,
+  it follows that $s\da s\divides \alpha$. Conversely, note that by
+  Lemma~\ref{lem-gcd}, $\alpha = \gcd(t\da t,\alpha) \divides
+  \gcd(t\da,\alpha)\cdot \gcd(t,\alpha) = s\da s$. Therefore $s\da
+  s\sim\alpha$ and $\alpha$ is $\dagger$-decomposable. The argument
+  for $\beta$ is similar.
+\end{proof}
+
+\begin{lemma}\label{lem-1235}
+  Suppose that $\xi\in\Z[\sqrt2]$ is prime. Let $p>0$ be the unique
+  positive prime in $\Z$ such that $\xi\divides p$. Then $\xi$ is
+  $\dagger$-decomposable if and only if $p=2$ or $p\equiv
+  1,3,5\mmod{8}$.
+\end{lemma}
+
+\begin{proof}
+  We consider each case in turn. If $p=2$, then $\xi\sim\sqrt2$. Let
+  $\delta=1+\omega$; a simple calculation shows that $\delta\da
+  \delta=\lambda\sqrt2\sim\xi$. So $\xi$ is $\dagger$-decomposable.
+
+  If $p\equiv 1\mmod{4}$, then by quadratic reciprocity, there exists
+  some integer $u$ such that $u^2\equiv -1\mmod{p}$. Therefore
+  $\xi\divides p\divides u^2+1 = (u+i)(u-i)$. Let $t=\gcd(\xi,u+i)$.
+  We claim that $\xi\sim t\da t$. Note that $t\divides \xi$, hence
+  $t\da\divides\xi\da=\xi$, hence $t\da t\divides \xi^2$. Since $\xi$
+  is prime in $\Z[\sqrt2]$, there are 3 possibilities: $t\da t\sim 1$,
+  $t\da t\sim \xi$, or $t\da t\sim \xi^2$. The first case is not
+  possible, because in this case, $t$ would be a unit, so that $\xi$
+  is relatively prime to $u+i$, hence to $u-i$, hence to $u^2+1$,
+  contradicting $\xi\divides u^2+1$. In the second case, we have $t\da
+  t\sim \xi$, which was to be shown. In the third case, we have $t\da
+  t\sim\xi^2$. Since $t\divides \xi$, there exists some
+  $s\in\Z[\omega]$ such that $ts=\xi$. But then $t\da ts\da s =
+  \xi\da\xi=\xi^2\sim t\da t$, so that $s$ is a unit. In this case, we
+  have $t\sim \xi$, therefore $\xi\divides u+i$, therefore also
+  $\xi=\xi\da\divides u-i$, hence $\xi\divides (u+i)-(u-i)\sim 2$,
+  contradicting the fact that $p$ is the only prime integer divisible
+  by $\xi$.
+
+  The case $p\equiv 3\mmod{8}$ is very similar. In this case, by
+  quadratic reciprocity, $-2$ is a square modulo $p$, so that there
+  exists some integer $u$ such that $u^2\equiv-2\mmod{p}$. Therefore
+  $\xi\divides p\divides u^2+2 = (u+i\sqrt2)(u-i\sqrt2)$. Let
+  $t=\gcd(\xi,u+i\sqrt2)$.  We claim that $\xi\sim t\da t$. Note that
+  $t\divides\xi$, hence $t\da\divides\xi\da=\xi$, so $t\da t\divides
+  \xi^2$. So again we have the three possibilities $t\da t\sim 1$,
+  $t\da t\sim \xi$, or $t\da t\sim \xi^2$. The first case is not
+  possible, because in this case, $t$ would be a unit, so that $\xi$
+  is relatively prime to $u+i\sqrt2$, hence to $u-i\sqrt2$, hence to
+  $u^2+2$, contradicting $\xi\divides u^2+2$. In the second case, we
+  have $t\da t\sim \xi$, which was to be shown. In the third case, we
+  have $t\da t\sim\xi^2$. Since $t\divides \xi$, there exists some
+  $s\in\Z[\omega]$ such that $ts=\xi$. But then $t\da ts\da s =
+  \xi\da\xi=\xi^2\sim t\da t$, so that $s$ is a unit. In this case, we
+  have $t\sim \xi$, therefore $\xi\divides u+i\sqrt2$, therefore also
+  $\xi=\xi\da\divides u-i\sqrt2$, hence $\xi\divides
+  i(u-i\sqrt2)-i(u+i\sqrt2)=2\sqrt2$. On the other hand, $\xi\divides
+  p$, therefore $\xi\divides\gcd(p,2\sqrt2)=1$, contradicting the fact
+  that $\xi$ is not a unit.
+
+  Finally, if $p\equiv 7\mmod{8}$, then $p\sim\xi\bul\xi$ by
+  Lemma~\ref{lem-1-7}. Assume that $\xi$ is $\dagger$-decomposable as
+  $\xi\sim t\da t$. Then
+  \[ (t\da t)\bul(t\da t) \sim \xi\bul\xi\sim p.
+  \]
+  Note that $t\bul t\in\Z[i]$, so we can write $t\bul t=a+bi$ for some
+  $a,b\in\Z$. But then we have
+  \[ p \sim (t\bul t)(t\bul t)\da = (a+bi)(a-bi) = a^2+b^2.
+  \]
+  But $a^2$ and $b^2$ can only be congruent to $0$, $1$, or $4$ modulo
+  8, contradicting $p\equiv 7\mmod{8}$. Therefore $\xi$ is not
+  $\dagger$-decomposable, which is what was claimed.
+\end{proof}
+
+\begin{lemma}\label{lem-1235-powers}
+  Suppose $\xi\in\Z[\sqrt2]$ is prime. Let $p>0$ be the unique
+  positive prime in $\Z$ such that $\xi\divides p$. Let $m$ be a
+  positive integer. Then $\xi^m$ is $\dagger$-decomposable if and only
+  if $m$ is even or $p\equiv 1,2,3,5\mmod{8}$.
+\end{lemma}
+
+\begin{proof}
+  If $m$ is even, then note that $\xi\in\Z[\sqrt2]$, so $\xi=\xi\da$;
+  therefore, $t=\xi^{m/2}$ will be a solution. If $p\equiv
+  1,2,3,5\mmod{8}$, then by Lemma~\ref{lem-1235}, there exists
+  $s\in\Z[\omega]$ with $s\da s\sim\xi$; therefore $t=s^m$ is a
+  solution of $t\da t\sim\xi^m$. The only remaining case is then $m$
+  is odd and $p\equiv 7\mmod{8}$. In this case, there can be no
+  solution. For assume on the contrary that $t\da t=\xi^m$. Then as in
+  the proof of Lemma~\ref{lem-1235}, we can write $t\bul t=a+bi$ for
+  some $a,b\in\Z$, and we get
+  \[ p^m \sim (t\bul t)(t\bul t)\da = (a+bi)(a-bi) = a^2+b^2,
+  \]
+  contradicting $p^m\equiv 7\mmod{8}$.
+\end{proof}
+
+\begin{remark}\label{rem-1235-eff}
+  The proofs of Lemmas~\ref{lem-1235} and {\ref{lem-1235-powers}} are
+  constructive, and immediately yield efficient algorithms for
+  determining $t$, provided that we have an efficient method of
+  solving $u^2\equiv-1\mmod{p}$ when $p$ is a prime congruent to
+  $1\mmod{4}$ and of solving $u^2\equiv-2\mmod{p}$ when $p$ is a prime
+  congruent to $3\mmod{8}$. These last problems can be solved in
+  probabilistic polynomial time by a well-known algorithm, see
+  {\cite{Rabin1980}}.
+\end{remark}
+
+\begin{lemma}\label{lem-solve}
+  Given $\xi\in\Z[\sqrt2]$, together with its prime factorization in
+  $\Z[\sqrt2]$, there exists an algorithm that determines, in
+  probabilistic polynomial time, whether the equation $t\da t\sim\xi$ has
+  a solution or not, and finds a solution if there is one.
+\end{lemma}
+
+\begin{proof}
+  Let $\xi\sim \xi_1^{m_1}\xi_2^{m_2}\cdots\xi_k^{m_k}$ be a prime
+  factorization of $\xi$ in $\Z[\sqrt2]$, where $\xi_1,\ldots,\xi_k$
+  are distinct (i.e., pairwise non-associate) primes. By
+  Lemma~\ref{lem-alpha-beta}, $t\da t\sim\xi$ has a solution if and
+  only if $t\da t\sim\xi_i^{m_i}$ has a solution for all $i$.  By
+  Lemma~\ref{lem-1235-powers}, $t\da t\sim\xi_i^{m_i}$ has a solution
+  if and only if $m_i$ is even or $p\equiv 1,2,3,5\mmod{8}$. Since
+  these conditions are easy to check, we can therefore determine the
+  existence of a solution efficiently, i.e., in polynomial time.
+
+  Moreover, once a solution has been shown to exist, the actual
+  solution can be efficiently computed. Namely, for each $i$, find
+  $t_i$ such that $t_i\da t_i\sim\xi_i^{m_i}$ as in
+  Lemma~\ref{lem-1235-powers}. Then $t\sim t_1t_2\cdots t_k$ satisfies
+  $t\da t\sim \xi_1^{m_1}\xi_2^{m_2}\cdots\xi_k^{m_k}\sim\xi$. By
+  Remark~\ref{rem-1235-eff}, all of this can be computed in
+  probabilistic polynomial time.
+\end{proof}
+
+\begin{proposition}\label{prop-diophantine}
+  Let $\xi\in\Z[\sqrt2]$, and let $n=\xi\bul\xi$. Note that $n$ is an
+  integer. Given the prime factorization of $n$, there exists an
+  algorithm that determines, in probabilistic polynomial time, whether
+  the equation $t\da t\sim\xi$ has a solution or not, and finds a
+  solution if there is one.
+\end{proposition}
+
+\begin{proof}
+  Suppose that $n=\pm p_1^{m_1}\cdots p_k^{m_k}$ is the prime
+  factorization of $n$, where $p_1,\ldots,p_k$ are distinct positive
+  primes.  Each $p_i$ can be efficiently factored into primes of
+  $\Z[\sqrt2]$ by Lemma~\ref{lem-prime-factorization-z2}; this yields
+  the prime factorization of $n=\xi\bul\xi$ in $\Z[\sqrt2]$. From
+  this, it is easy to obtain a prime factorization of $\xi$. The rest
+  of the claim then follows from Lemma~\ref{lem-solve}.
+\end{proof}
+
+%----------------------------------------------------------------------
+\subsection[{The case xi in D[root 2]}]
+{The case $\xi\in\D[\sqrt 2]$}
+
+The following lemma can be used to reduce the problem of
+$\dagger$-decomposability in $\D[\sqrt2]$ to $\dagger$-decomposability
+in $\Z[\sqrt2]$.
+
+\begin{lemma}\label{lem-Z-to-D-new}
+  Consider $\xi\in\D[\sqrt 2]$. Then $\xi$ is $\dagger$-decomposable
+  if and only if $\sqrt2\,\xi$ is $\dagger$-decomposable.
+\end{lemma}
+
+\begin{proof}
+  Recall that $\delta=1+\omega$ satisfies $\delta\da\delta=\lambda\sqrt2 \sim
+  \sqrt2$. Also note that $\delta$ is invertible in $\D[\omega]$;
+  specifically, $\delta\inv = \delta\lambda\inv\omega\inv/\sqrt2 \in\D[\omega]$.
+  Assume that $\xi$ is $\dagger$-decomposable, so that $t\da
+  t\sim\xi$. Letting $t'=\delta t$, we have
+  $t'^{\dagger}t'=\delta\da\delta t\da t \sim \sqrt2 t\da t\sim
+  \sqrt2\,\xi$, so that $\sqrt2\,\xi$ is $\dagger$-decomposable.
+  The converse is proved similarly, using $\delta\inv$ instead of
+  $\delta$. 
+\end{proof}
+
+We can now prove Theorem~\ref{thm-diophantine}, whose statement we 
+reproduce here.
+
+\begin{un-theorem}
+  Let $\xi\in\D[\sqrt 2]$. Note that $\xi\bul\xi\in\D$, so we can
+  write $\xi\bul\xi=\frac{n}{2^\ell}$ for some $n\in\Z$ and $\ell\in\N$. 
+  There exists a probabilistic algorithm which, given $\xi$ and, in 
+  case $n\neq 0$, a prime factorization of $n$, determines whether or 
+  not the equation $t\da t =\xi$ has a solution, and finds a 
+  solution if there is one. Moreover, the expected runtime of this 
+  algorithm is polynomial in the size of $n$.
+\end{un-theorem}
+
+\begin{proof}
+  Let $\xi$ be an element of $\D[\sqrt 2]$ with $\xi\bul\xi=
+  \frac{n}{2^\ell}$ for some $n\in\Z$. First, the algorithm can easily
+  check whether $\xi$ is doubly positive, and if it is not, there is
+  no solution. Next, if $n=0$, then $\xi=0$, and $t=0$ is obviously a
+  solution, so there is nothing to do. Otherwise, let $\xi'= {\rt
+    \ell}\xi$. Since $\xi'\in \Z[\sqrt 2]$ and $\xi'^{\bullet} \xi'=n$, and
+  a factorization of $n$ is given, we can use
+  Proposition~\ref{prop-diophantine} to efficiently determine whether
+  $s\da s\sim \xi'$ has a solution. By
+  Lemma~\ref{lem-Z-to-D-new} this is the case if and only if the equation
+  $t\da t\sim\xi$ also has a solution, in which case it is given by
+  $t=\delta^{-\ell} s$. Finally, since $\xi$ is doubly positive, we can
+  solve $t'^{\dagger}t'=\xi$ by Lemma~\ref{lem-sim}.
+\end{proof}
+
+We conclude this appendix with a useful fact: the algorithm of
+Theorem~\ref{thm-diophantine} always succeeds in case $n$ is a prime
+that is congruent to $1$ modulo $8$.
+
+\begin{proposition}\label{prop-prime-1mod8}
+  Let $\xi=\D[\sqrt 2]$ be doubly positive, with $\xi\bul\xi=
+  \frac{n}{2^\ell}$ for some $n\in\Z$. If $n$ is prime and $n\equiv
+  1\mmod{8}$, then the equation $t\da t=\xi$ has a solution.
+\end{proposition}
+
+\begin{proof}
+  Let $\xi'={\rt \ell}\xi$. Then $\xi'\in\Z[\sqrt 2]$ and
+  $\xi'^{\bullet}\xi'=n$. Then $\xi'$ is prime by
+  Lemma~\ref{lem-prime-criterion} and $\dagger$-decomposable by
+  Lemma~\ref{lem-1235}. By Lemma~\ref{lem-Z-to-D-new}, $\xi$ is
+  $\dagger$-decomposable, so that the equation $t\da t=\xi$ can be
+  solved by Lemma~\ref{lem-sim}.
+\end{proof}

@@ -1,0 +1,93 @@
+To measure WaveNet's audio modelling performance, we evaluate it on three different tasks: multi-speaker speech generation (not conditioned on text), TTS, and music audio modelling. We provide samples drawn from WaveNet for these experiments on the accompanying webpage:\\ \url{https://www.deepmind.com/blog/wavenet-generative-model-raw-audio/}.
+
+\subsection{Multi-Speaker Speech Generation}
+
+For the first experiment we looked at free-form speech generation (not conditioned on text). We used the English multi-speaker corpus from CSTR voice cloning toolkit (VCTK) \citep{VCTK} and conditioned WaveNet only on the speaker. The conditioning was applied by feeding the speaker ID to the model in the form of a one-hot vector. The dataset consisted of 44 hours of data from 109 different speakers.
+
+Because the model is not conditioned on text, it generates non-existent but human language-like words in a smooth way with realistic sounding intonations. This is similar to generative models of language or images, where samples look realistic at first glance, but are clearly unnatural upon closer inspection. The lack of long range coherence is partly due to the limited size of the model's receptive field (about 300 milliseconds), which means it can only remember the last 2--3 phonemes it produced.
+
+A single WaveNet was able to model speech from any of the speakers by conditioning it on a one-hot encoding of a speaker. This confirms that it is powerful enough to capture the characteristics of all 109 speakers from the dataset in a single model. We observed that adding speakers resulted in better validation set performance compared to training solely on a single speaker. This suggests that WaveNet's internal representation was shared among multiple speakers.
+
+Finally, we observed that the model also picked up on other characteristics in the audio apart from the voice itself. For instance, it also mimicked the acoustics and recording quality, as well as the breathing and mouth movements of the speakers.
+
+\subsection{Text-To-Speech}
+For the second experiment we looked at TTS.  
+We used the same single-speaker speech databases from which Google's North American English and Mandarin Chinese TTS systems are built.
+The North American English dataset contains 24.6 hours of speech data, and the Mandarin Chinese dataset contains 34.8 hours; both were spoken by professional female speakers.
+
+WaveNets for the TTS task were locally conditioned on \emph{linguistic features} which were derived from input texts.
+We also trained WaveNets conditioned on the logarithmic fundamental frequency ($\log F_0$) values in addition to the linguistic features.
+External models predicting $\log F_0$ values and phone durations from linguistic features were also trained for each language.
+The receptive field size of the WaveNets was 240 milliseconds.
+As example-based and model-based speech synthesis baselines, hidden Markov model (HMM)-driven unit selection concatenative \citep{Xavi_Barracuda_interspeech}
+and long short-term memory recurrent neural network (LSTM-RNN)-based statistical parametric \citep{Zen_LSTMprod_Interspeech} speech synthesizers were built.
+Since the same datasets and linguistic features were used to train both the baselines and WaveNets, these speech synthesizers could be fairly compared.
+
+To evaluate the performance of WaveNets for the TTS task, subjective paired comparison tests and mean opinion score (MOS) tests were conducted.
+In the paired comparison tests, after listening to each pair of samples, the subjects were asked to choose which they preferred, though they could choose ``neutral'' if they did not have any preference.
+In the MOS tests, after listening to each stimulus, the subjects were asked to rate the naturalness of the stimulus in a five-point Likert scale score (1: Bad, 2: Poor, 3: Fair, 4: Good, 5: Excellent).
+Please refer to Appendix~\ref{appendix:tts_experiment} for details.
+
+\figref{fig:sxs2} shows a selection of the subjective paired comparison test results (see  Appendix~\ref{appendix:tts_experiment} for the complete table).
+It can be seen from the results that WaveNet outperformed the baseline statistical parametric and concatenative speech synthesizers in both languages.
+We found that WaveNet conditioned on linguistic features could synthesize speech samples with natural segmental quality but sometimes it had unnatural prosody by stressing wrong words in a sentence.
+This could be due to the long-term dependency of $F_0$ contours: the size of the receptive field of the WaveNet, 240 milliseconds, was not long enough to capture such long-term dependency.  
+WaveNet conditioned on both linguistic features and $F_0$ values did not have this problem: the external $F_0$ prediction model runs at a lower frequency (200 Hz) so it can learn long-range dependencies that exist in $F_0$ contours.
+ 
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.65\linewidth]{Figures/LSTM_vs_Concat.pdf}%
+\vspace{8mm}\par
+\includegraphics[width=0.65\linewidth]{Figures/WaveNetL_vs_WaveNetLF.pdf}%
+\vspace{8mm}\par
+\includegraphics[width=0.65\linewidth]{Figures/Baseline_vs_WaveNetLF.pdf}%
+\caption{Subjective preference scores (\%) of speech samples between (top) two baselines, (middle) two WaveNets, and (bottom) the best baseline and WaveNet.  Note that \textsf{LSTM} and 
+\textsf{Concat} correspond to LSTM-RNN-based statistical parametric and HMM-driven unit selection concatenative baseline synthesizers, and \textsf{WaveNet (L)} and \textsf{WaveNet (L+F)} correspond to the WaveNet conditioned on linguistic features only and that conditioned on both linguistic features and $\log F_0$ values.}
+\label{fig:sxs2}
+\end{figure}
+
+
+
+\tblref{tab:mos} show the MOS test results.
+It can be seen from the table that WaveNets achieved 5-scale MOSs in naturalness above 4.0, which were significantly better than those from the baseline systems.
+They were the highest ever reported MOS values with these training datasets and test sentences.
+The gap in the MOSs from the best synthetic speech to the natural ones decreased from 0.69 to 0.34 (51\%) in US English and 0.42 to 0.13 (69\%) in Mandarin Chinese.
+
+\begin{table}[htbp]
+  \centering
+  \begin{tabularx}{0.94\textwidth}{L|CC}
+    \toprule
+    & \multicolumn{2}{|c}{\textbf{Subjective 5-scale MOS in naturalness}} \\ \cmidrule{2-3}
+    \textbf{Speech samples} & North American English & Mandarin Chinese \\ \midrule\midrule
+    LSTM-RNN parametric  & 3.67 $\pm$ 0.098 & 3.79 $\pm$ 0.084 \\ 
+    HMM-driven concatenative & 3.86 $\pm$ 0.137 & 3.47 $\pm$ 0.108  \\
+    \textbf{WaveNet} (L+F) & \textbf{4.21} $\pm$ 0.081 & \textbf{4.08} $\pm$ 0.085 \\
+    \midrule
+    Natural (8-bit $\mu$-law) & 4.46 $\pm$ 0.067 & 4.25 $\pm$ 0.082 \\
+    Natural (16-bit linear PCM) & 4.55 $\pm$ 0.075 & 4.21 $\pm$ 0.071 \\
+    \bottomrule
+  \end{tabularx}%
+  \caption{Subjective 5-scale mean opinion scores of speech samples from  LSTM-RNN-based statistical parametric, HMM-driven unit selection concatenative, and proposed WaveNet-based speech synthesizers, 8-bit $\mu$-law encoded natural speech, and 16-bit linear pulse-code modulation (PCM) natural speech. WaveNet improved the previous state of the art significantly, reducing the gap between natural speech and best previous model by more than 50\%.}
+  \label{tab:mos}
+\end{table}%
+
+
+\subsection{Music}
+
+For out third set of experiments we trained WaveNets to model two music datasets:
+\begin{itemize}
+    \item the MagnaTagATune dataset \citep{law2009input}, which consists of about 200 hours of music audio. Each 29-second clip is annotated with tags from a set of 188, which describe the genre, instrumentation, tempo, volume and mood of the music.
+    \item the YouTube piano dataset, which consists of about 60 hours of solo piano music obtained from YouTube videos. Because it is constrained to a single instrument, it is considerably easier to model.
+\end{itemize}
+Although it is difficult to quantitatively evaluate these models, a subjective evaluation is possible by listening to the samples they produce.
+We found that enlarging the receptive field was crucial to obtain samples that sounded musical. Even with a receptive field of several seconds, the models did not enforce long-range consistency which resulted in second-to-second variations in genre, instrumentation, volume and sound quality. Nevertheless, the samples were often harmonic and aesthetically pleasing, even when produced by unconditional models.
+
+Of particular interest are conditional music models, which can generate music given a set of tags specifying e.g. genre or instruments. Similarly to conditional speech models, we insert biases that depend on a binary vector representation of the tags associated with each training clip. This makes it possible to control various aspects of the output of the model when sampling, by feeding in a binary vector that encodes the desired properties of the samples. We have trained such models on the MagnaTagATune dataset; although the tag data bundled with the dataset was relatively noisy and had many omissions, after cleaning it up by merging similar tags and removing those with too few associated clips, we found this approach to work reasonably well.
+
+\subsection{Speech Recognition}
+
+Although WaveNet was designed as a generative model, it can straightforwardly be adapted to discriminative audio tasks such as speech recognition. 
+
+Traditionally, speech recognition research has largely focused on using log mel-filterbank energies or mel-frequency cepstral coefficients (MFCCs), but has been moving to raw audio recently \citep{palaz2013estimating,tuske2014acoustic,hoshen2015speech,sainath2015learning}. Recurrent neural networks such as LSTM-RNNs \citep{LSTM} have been a key component in these new speech classification pipelines, because they allow for building models with long range contexts. With WaveNets we have shown that layers of dilated convolutions allow the receptive field to grow longer in a much cheaper way than using LSTM units.
+
+As a last experiment we looked at speech recognition with WaveNets on the TIMIT \citep{TIMIT} dataset. For this task we added a mean-pooling layer after the dilated convolutions that aggregated the activations to coarser frames spanning 10 milliseconds (160$\times$ downsampling). The pooling layer was followed by a few non-causal convolutions. We trained WaveNet with two loss terms, one to predict the next sample and one to classify the frame, the model generalized better than with a single loss and achieved $18.8$ PER on the test set, which is to our knowledge the best score obtained from a model trained directly on raw audio on TIMIT.

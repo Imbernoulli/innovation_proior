@@ -1,0 +1,157 @@
+
+\section{Experiments}
+
+% We empirically evaluate the performance of our spatiotemporal causal discovery model, SPACY. We utilize both synthetic and real-world datasets to showcase the model's effectiveness in capturing causal relationships within spatiotemporal settings.
+
+% We compare SPACY against several state-of-the-art baselines to validate its performance. Specifically, we consider algorithmic-based causal discovery methods such as Mapped PCMCI (Varimax-PCA + PCMCI+) \citep{xavi2022teleconnection, runge2020pcmci+} and the Linear Response method \citep{Falasca_2024}, both of which have notable applications in climate science. Additionally, we evaluate against identifiable causal representation learning methods like LEAP \citep{yao2021learning} and TDRL (Temporal Disentangled Representation Learning) \citep{yao2022temporally}, which are designed for broader causal representation learning tasks.
+
+% An implementation of SPACY is available at (\url{https://anonymous.4open.science/r/spacy-572B/}). For a fair comparison, we adhere to the original implementations of the baselines as described in prior works\citep{xavi2022teleconnection, Falasca_2024}. LEAP and TDRL are implemented according to their original formulations and adjusted to align with our data specifications.
+
+% To demonstrate practical applicability, we apply SPACY to simulated real-world climate science data. Our model successfully recovers spatial modes associated with known climate events, such as the Northern Atlantic Oscillation and the Antarctic Oscillation, underscoring its effectiveness in real-world scenarios.
+
+% Furthermore, we conduct ablation studies to highlight the flexibility and robustness of our formulation and the model. These studies provide insights into the robustness of SPACY under different realistic assumptions, reinforcing its utility in spatiotemporal causal discovery tasks. All experiments were conducted on the Nvidia A10 GPU to ensure consistent performance and reproducibility.
+
+We assess SPACY's ability to capture causal relationships across various spatiotemporal settings using both synthetic datasets with known ground truth and simulated climate datasets. Our results demonstrate that SPACY consistently uncovers accurate causal relationships while generating interpretable outputs. 
+% An implementation of SPACY is available at \url{https://anonymous.4open.science/r/spacy-01CF/}.
+
+\textbf{Baselines.} We compare SPACY with state-of-the-art baselines. We include the two-step algorithms Mapped PCMCI (Varimax-PCA + PCMCI$^+$ with Partial Correlation test) \citep{xavi2022teleconnection, runge2020pcmci+} and the Linear Response method \citep{Falasca_2024}. We also evaluate against the causal representation learning approaches, LEAP \citep{yao2021learning}, TDRL \citep{yao2022temporally}, and CDSD \citep{boussard2023towards,brouillard2024causal}
+
+% \paragraph{Baselines}
+
+% We compare our model against the following baselines:
+% \begin{itemize}
+%     \item \textbf{Mapped PCMCI (PCA + PCMCI)}\citep{xavi2022teleconnection}: This method combines principal component analysis (PCA) with the PCMCI algorithm to discover temporal causality from spatial data.
+%     \item \textbf{Mapped PCMCI (Varimax + PCMCI)}\citep{xavi2022teleconnection}: Similar to the PCA-based approach, this baseline applies Varimax rotation followed by PCMCI for causal discovery.
+%     \item \textbf{Linear Response} \citep{Falasca_2024}: This approach uses linear response theory to infer temporal causal dependencies by examining the response of latent variables over time.
+%     \item \textbf{LEAP} \citep{yao2021learning}: LEAP is a causal representation method that applies deep learning techniques to learn latent embeddings and temporal dependencies.
+%     \item \textbf{TDRL} \citep{yao2022temporally}: Temporal Disentangled Representation Learning (TDRL) models temporal causality using latent dynamic embeddings.
+% \end{itemize}
+% The baseline implementations follow prior work, such as \citet{xavi2022teleconnection} and \citet{Falasca_2024}. For LEAP and TDRL, we implement the methods based on their original formulations.
+
+% We compare our model against several baselines.  is Mapped PCMCI (PCA + PCMCI) \citep{xavi2022teleconnection}, which uses principal component analysis (PCA) combined with the PCMCI algorithm to identify temporal causality from spatial data. Another variation, Mapped PCMCI (Varimax + PCMCI) \citep{xavi2022teleconnection}, applies Varimax rotation before using PCMCI for causal discovery. Additionally, we include the Linear Response method \citep{Falasca_2024}, which leverages linear response theory to infer temporal causal dependencies by examining the behavior of latent variables over time. LEAP \citep{yao2021learning} serves as a causal representation learning approach, employing deep learning techniques to model latent embeddings and temporal dependencies. Lastly, TDRL (Temporal Disentangled Representation Learning) \citep{yao2022temporally} models temporal causality using latent dynamic embeddings. The baselines adhere to the implementations from prior work like \citet{xavi2022teleconnection} and \citet{Falasca_2024}, and we implement LEAP and TDRL according to their original formulations.
+
+
+\subsection{Synthetic Data}
+
+% To evaluate our model's performance under controlled conditions, we generate a wide range of synthetic datasets with known causal structures based on the probabilistic graphical model (figure reference). These datasets are designed to simulate both linear and nonlinear spatiotemporal relationships, enabling us to assess the robustness of our model.
+
+% \subsubsection{Data Generation}
+
+% We create synthetic datasets based on the following configurations:
+% \begin{itemize}
+%     \item \textbf{Structure Causal Model}: We generate datasets with both linear and nonlinear causal structures using the function $f$, ensuring that the complexity reflects real-world dynamics. For non-linear SCM we use a universal approximator as the function accompanied with history-dependent noise.
+%     \item \textbf{Spatial Map}: The spatial map for each dataset is either linear or nonlinear using the function $g$, depending on the specific experiment setting. For non-linear spatial map, we also use a universal approximator.
+%     \item \textbf{Grid Size}: Datasets are generated with a grid size of $100 \times 100$ to represent a spatial layout.
+%     \item \textbf{Number of Variates}: The number of variates in the synthetic datasets is set to 1.
+%     \item \textbf{Number of Nodes}: The number of nodes varies between 10, 20, and 30, corresponding to different levels of complexity in the causal graph.
+% \end{itemize}
+
+% We employ this synthetic dataset setup to evaluate the performance of our model and the baselines in uncovering known causal structures. The experiments are designed to provide insights into how well each method handles varying grid sizes and causal complexity. Additionally, we vary the types of relationships (linear vs. nonlinear) and the amount of noise added to simulate real-world measurement errors.
+
+% To assess our model’s performance under controlled conditions, we generate synthetic datasets with known causal structures based on a probabilistic graphical model (Figure \ref{fig:spacy_pgm}). These datasets are designed to mimic both linear and nonlinear causal and spatiotemporal relationships, providing a robust environment to evaluate our model's performance.
+
+% For data generation, we create datasets using specific configurations. The structural causal model (SCM) is developed with both linear and nonlinear causal structures using the function \(f\). For the nonlinear structural equation, we use randomly initialized multi-layer perception combined with conditional-spline history-dependent noise. The spatial mapping, represented by the function \(g\), is configured either as linear or nonlinear, depending on the experiment setting; for nonlinear mapping, we use randomly initialized multi-layer perception. We generate $N=100$ samples of data, with $T = 100$ time length each and represented on a grid of size \(100 \times 100\). This brings the total data dimension of $100 \times 100 \times 100 \times 100$. We vary the number of nodes (10, 20, and 30) to introduce different levels of complexity in the causal graph.
+
+% This synthetic dataset framework allows us to evaluate our model and the baselines in uncovering causal structures, while also examining how each method handles varying grid sizes and causal complexities We evaluate the synthetic experiments by the causal discovery accuracy with orientational F1 score of the causal graph \(G\), and the mean correlation coefficient (MCC) between learned and ground-truth latent representations \(Z\). 
+
+\textbf{Setup. } Since real-world datasets lack ground truth causal graphs, we generate synthetic datasets with known causal relationships to benchmark SPACY's causal discovery performance. These are generated from randomly constructed ground-truth graphs and follow the forward model described in Figure \ref{fig:spacy_pgm_main}. We experiment with several configurations of synthetic data. The latent time series are generated using either (1) a linear structural causal model (SCM) with randomly initialized weights and additive Gaussian noise, or (2) a nonlinear SCM, where the structural equations are modeled by randomly initialized MLPs, combined with additive history-dependent conditional-spline noise. The mapping function $g_\ell$ is set as (1) linear, where the identity function is used, or (2) nonlinear, where an MLP is used. \change{The spatial factors are constructed using RBF kernels with randomly initialized center and scale parameters, and the Euclidean distance is used as the underlying metric.} For each configuration, we generate $N=100$ samples, each with time length $T=100$ and a grid of size $100 \times 100$ ($L=10^4$). Datasets are generated with $D=10, 20$ and $30$ nodes in each setting. For more details on dataset generation, refer to Appendix \ref{app:dataset_generation}. 
+
+We assess the performance of SPACY and the baselines using two metrics: the orientation F1 score of the inferred causal graph, and the mean correlation coefficient (MCC) between the learned and ground-truth latents. More details on evaluation are presented in Appendix \ref{subsection:eval_detail}.
+
+
+\textbf{Results.} The results of the synthetic experiments are shown in Figure \ref{fig:syn_eval}. SPACY consistently outperforms all other methods across all settings of $D$ in terms of F1 score. On the linear SCM datasets, SPACY remains slightly ahead of \change{CDSD and} Mapped PCMCI, while LEAP, TDRL, and Linear-Response exhibit weaker performance. However, SPACY significantly outperforms the baselines in the nonlinear settings. A pronounced performance drop is observed for LEAP, TDRL, and Linear-Response, whose F1 scores decline sharply as $D$ increases. SPACY's performance scales more effectively with increasing $D$, further widening the gap in performance.
+
+The recovery of the latent variables, measured by the MCC score, follows a similar pattern. SPACY achieves similar or better MCC scores compared to \change{CDSD and} Mapped PCMCI, while LEAP, TDRL, and Linear-Response consistently show lower MCC scores across all configurations. Figure \ref{fig:syn_visuals} provides a visual illustration of the recovered spatial factors.
+
+% As $D$ increases from 10 to 30, SPACY's performance advantage becomes clearer. SPACY scaled effectively, maintaining high performance in representation recovery and causal discovery, while Mapped PCMCI scaled well but fell short under nonlinear settings. LEAP, TDRL, and Linear-Response show a relative performance drop as node size increases. Based on these results, SPACY is most capable of uncovering the true underlying causal structure. 
+
+% \input{figures/MJO_subgraph}
+% \input{figures/AAO_subgraph}
+% \input{figures/NAO_subgraph}
+
+
+
+
+\textbf{Scalability.} We also measure the scalability of SPACY with increasing grid-size. For this experiment, we used the dataset with linear SCM and nonlinear spatial mapping $g_\ell$, and varied the grid size from $L=30\times 30$ to $L=250\times 250$. Figure \ref{fig:syn_scalable} demonstrates the scalability and performance of SPACY compared to the baseline methods as the grid size $L$ increases. The runtime plot indicates that, while all methods experience an increase in runtime with increasing grid size, SPACY strikes a good balance, exhibiting moderate growth in computational time while maintaining strong causal discovery performance. Although Mapped-PCMCI is the most efficient in terms of runtime, it underperforms in causal discovery. LEAP, TDRL, \change{and CDSD} show similar or higher computational costs than SPACY but fail to match its performance. Linear-Response, in particular, scales poorly in terms of runtime with increasing grid size. Additional results and ablation studies are in Appendix \ref{sec:additional_results}.
+
+\input{figures/syn_scalable}
+\input{figures/all_oscillation_subgraphs}
+
+\subsection{Climate Dataset}
+
+
+% The Global Climate Dataset is a mixed real-simulated dataset containing monthly global temperature data from 1999 to 2001. It includes 7,531 simulated samples, each with a 24-month time sequence, across a  $145 \times 192$ spatial grid. Before applying SPACY, we deseasonalized the data by subtracting the monthly mean values. Given the global nature of the dataset, we employed the Haversine distance instead of Euclidean distance when calculating the RBF kernel for spatial factors. For more details about the dataset and preprocessing steps, refer to Appendix \ref{section:global_temp_descrip}.
+
+The Global Climate Dataset \citep{baker2019linear} is a mixed real-simulated dataset containly monthly global temperature and precipitation from 1999 to 2001. For more details about the dataset and preprocessing steps, refer to Appendix \ref{section:global_temp_descrip}. \change{In our experiments, we use the RBF kernel with the Haversine distance as the metric, as detailed in Appendix~\ref{sec:distance_rep}}
+
+% Key characteristics of this dataset include its grid size, sample structure, methodologies applied, and qualitative analysis.
+
+
+\textbf{Results.} In the absence of a ground truth causal graph, we qualitatively evaluate the spatial factors and causal graph inferred by SPACY. We highlight several spatial modes identified by SPACY that correspond to critical regions that significantly influence global climate patterns, including coastlines of major land masses (e.g., East Asia, Northern Europe) and key ocean areas (e.g., Central Pacific, South Atlantic). We refer the interested reader to Figure \ref{fig:G_pred_global} in Appendix \ref{section:F_visualization} for the full visualization of 
+the spatial factors and causal graphs inferred by SPACY from this dataset.
+
+
+Figure \ref{fig:all_osc_subgraphs} highlights three subgraphs of the inferred graph, corresponding to the Madden-Julian Oscillation (MJO) \citep{MJODetectionofa4050DayOscillationintheZonalWindintheTropicalPacific,MJODescriptionofGlobalScaleCirculationCellsintheTropicswitha4050DayPeriod}, Northern Atlantic Oscillation (NAO) \citep{NAOsignificanceandimpact,NAOdecadal,NAOSensitivityofTeleconnectionPatternstotheSignofTheirPrimaryActionCenter}, and Antarctic Oscillation (AAO) \citep{AAODavid2002Antarctic,AAOKingtse2000Antarctic}. SPACY discovers causal links consistent with known teleconnection mechanisms: short-lagged connections (1–2 months) between mid-Pacific (nodes 0 and 17) and Southeast Asian precipitation/temperature nodes (nodes 2 and 11) align with the MJO’s eastward-propagating convection and 30–60 day cycle. Similarly, simultaneous precipitation links between Northeast America (nodes 8) and Western Europe (node 1), alongside dipole-like connections in Europe/North Africa (nodes 15 and 18), mirror the NAO’s temperature and precipitation dipole. The AAO subgraph captures Antarctic-centered teleconnections, including causal ties among Australia (nodes 2 and 19), Antarctica (nodes 4, 7 and 12), and South America (node 23), reflecting the AAO’s hemispheric influence on Southern Ocean dynamics. In all these cases, SPACY infers nodes that are spatially confined with clear boundaries. In contrast, Mapped PCMCI (Figure \ref{fig:varimax_global}) produces broadly distributed components that are challenging to interpret.
+
+\change{It is important to note that while the isotropic RBF kernel represents a modeling simplification, key atmospheric processes—such as the Walker circulation, monsoonal systems, and ENSO teleconnections—are inherently localized due to heterogeneous boundary conditions (e.g., land-sea contrast, topography) and regional forcings. Crucially, SPACY successfully resolves these localized relationships despite its kernel assumptions, achieving greater physical interpretability than traditional methods. Approaches relying on principal components, for instance, often obscure spatial coherence through domain-wide averaging, whereas SPACY preserves geographically anchored causal links tied to identifiable mechanisms. This localization advantage allows the framework to avoid diffuse, unphysical spatial factors common in conventional teleconnection analyses.}
+% Unanticipated causal links in these subgraphs—such as regional couplings lacking established explanations—highlight opportunities to refine climate models using data-driven causal discovery.
+
+
+
+
+% The Madden-Julian Oscillation (MJO) \citep{MJODetectionofa4050DayOscillationintheZonalWindintheTropicalPacific} is a tropical intraseasonal mode defined by eastward-propagating convective anomalies. The SPACY-derived causal subgraph (Fig. \ref{fig:MJO_subgraph}) identifies teleconnections reflecting its dipole structure: mid-Pacific precipitation (node 0) lags Southeast Asian precipitation (node 2) by 2 months, mirroring the MJO’s eastward propagation \citep{MJODescriptionofGlobalScaleCirculationCellsintheTropicswitha4050DayPeriod}. Similarly, Southeast Asia/East India temperature (node 11) correlates with mid-Pacific temperature (node 17), while cross-variate links reveal Southeast Asian precipitation mediating Australian temperature variability. All causal lags (1–2 months) align with the MJO’s 30–60 day cycle. Furthermore, East Pacific rainfall exhibits tentative correlations with Australian/Southeast Asian temperature, though significance requires future validation.
+
+
+% The causal graph learned by SPACY shown in Figure \ref{fig:NAO_subgraph} also revealed links that aligns with the Northern Atlantic Oscillation's known teleconnections. The simultaneous link between precipitation in Northeast America (node 8) and Western Europe (node 1) reflects the NAO’s control over the North Atlantic jet stream: a positive NAO phase strengthens westerlies, suppressing storms (drier Northeast America) while channeling moisture into Western Europe \citep{NAOSensitivityofTeleconnectionPatternstotheSignofTheirPrimaryActionCenter,GrangerCausalityofCoupledClimateProcessesOceanFeedbackontheNorthAtlanticOscillation}. Similarly, the zero-lag temperature coupling between Northern and Southern Europe/North Africa (Node 15,18) mirrors the NAO’s dipole effect\citep{NAOsignificanceandimpact}.
+
+
+
+% Figure \ref{fig:temp_subgraph} highlights two subgraphs extracted from SPACY’s results: $G_{\text{NAO}}$ and $G_{\text{AAO}}$, which correspond to spatial modes associated with the Northern Atlantic Oscillation (NAO) \citep{NAOdecadal, NAOSensitivityofTeleconnectionPatternstotheSignofTheirPrimaryActionCenter, NAOsignificanceandimpact} and the Antarctic Oscillation (AAO) \citep{David2002Antarctic, Kingtse2000Antarctic}. This subgraph reveals how SPACY uncovers causal connections between regions that share similar weather characteristics and are driven by these known teleconnection patterns. The model successfully identifies the spatial extent and connectivity of NAO-related regions, which comprises of North-Eastern Canada and North Western Europe \citep{NAOSensitivityofTeleconnectionPatternstotheSignofTheirPrimaryActionCenter, NAOdecadal}, and AAO-related regions (South-East Australia, South-Atlantic, South-Indian Ocean) \citep{David2002Antarctic}. The learned subgraphs correctly mirror the correlation and oscillation of temperature in these regions, identifying both instantaneous links and those occurring a few months prior. Moreover, the inferred modes are spatially confined, each with a distinct center and scale, which enhances their interpretability. In contrast to standard principal component analyses and methods like Mapped PCMCI (Figure \ref{fig:varimax_visuals}), which often result in broadly distributed components that are hard to interpret, SPACY infers localized regions with well-defined spatial extents. 
+
+
+
+
+
+% To be moved to appendix
+% The Matérn kernel is a generalization of the Radial Basis Function (RBF) kernel and is widely used in spatial statistics and machine learning due to its flexibility in modeling functions of varying smoothness. The Matérn kernel is defined as:
+
+% \[
+% k_{\text{Matérn}}(r) = \frac{2^{1-\nu}}{\Gamma(\nu)} \left( \sqrt{2\nu} \frac{r}{\ell} \right)^\nu K_\nu\left( \sqrt{2\nu} \frac{r}{\ell} \right),
+% \]
+
+% where:
+
+% \begin{itemize}
+%     \item $r = \| \mathbf{x} - \mathbf{x}' \|$ is the Euclidean distance between points $\mathbf{x}$ and $\mathbf{x}'$,
+%     \item $\ell$ is the length scale,
+%     \item $\nu > 0$ controls the smoothness of the function,
+%     \item $\Gamma(\cdot)$ is the gamma function,
+%     \item $K_\nu(\cdot)$ is the modified Bessel function of the second kind.
+% \end{itemize}
+
+% For specific values of $\nu$, the Matérn kernel simplifies to closed-form expressions:
+
+% \begin{itemize}
+%     \item \textbf{When $\nu = 1.5$:}
+%     \[
+%     k_{\text{Matérn}}^{1.5}(r) = \left(1 + \frac{\sqrt{3} r}{\ell}\right) \exp\left(-\frac{\sqrt{3} r}{\ell}\right).
+%     \]
+%     \item \textbf{When $\nu = 2.5$:}
+%     \[
+%     k_{\text{Matérn}}^{2.5}(r) = \left(1 + \frac{\sqrt{5} r}{\ell} + \frac{5 r^2}{3 \ell^2}\right) \exp\left(-\frac{\sqrt{5} r}{\ell}\right).
+%     \]
+% \end{itemize}
+
+% These formulations allow us to model functions with different degrees of smoothness, providing a more flexible approach compared to the RBF kernel.
+
+
+
+% \paragraph{Discussion and Future Directions}
+
+% The ability of SPACY to maintain performance with different kernel functions highlights the flexibility of its variational inference framework. This opens up opportunities for future research to incorporate more generalizable, learnable kernels or even combinations of kernels. Such extensions could enhance SPACY's adaptability to a wider range of spatial-temporal dynamics, making it a more versatile tool in complex modeling scenarios.
+
+
+
+% \subsection{Evaluation Metrics}
+
+% For quantitative evaluation, we use standard metrics such as mean squared error (MSE) for measuring the prediction accuracy of the observed variables. Additionally, we evaluate the learned causal graphs using precision, recall, and F1-score to quantify how well the discovered causal structures match the ground truth in synthetic datasets. For real-world data, qualitative analyses are supplemented with expert feedback.

@@ -1,0 +1,28 @@
+\begin{table}[]
+\small
+\centering
+\begin{tabular}{@{}lcc@{}}
+\toprule
+\multirow{2}{*}{\begin{tabular}[c]{@{}c@{}}PyramidNet-200 ($\Tilde{\alpha}$=240) \\ (\# params: 26.8 M)\end{tabular}} & \multirow{2}{*}{\begin{tabular}[c]{@{}c@{}}Top-1 \\ Err (\%)\end{tabular}} & \multirow{2}{*}{\begin{tabular}[c]{@{}c@{}}Top-5 \\ Err (\%)\end{tabular}} \\  & & \\ \midrule
+Baseline                                      & 16.45   & 3.69                  \\
++ StochDepth~\cite{stochasticdepth}                                  & 15.86   & 3.33\\
++ Label smoothing ($\epsilon$=0.1)~\cite{szegedy2016rethinking_labelsm} & 16.73   & 3.37\\
++ Cutout~\cite{devries2017cutout}                                      & 16.53   & 3.65\\
++ Cutout + Label smoothing ($\epsilon$=0.1)                    & 15.61   & 3.88\\
++ DropBlock~\cite{ghiasi2018dropblock}                          & 15.73   & 3.26\\
++ DropBlock + Label smoothing ($\epsilon$=0.1)                  & 15.16   & 3.86\\
++ Mixup ($\alpha$=0.5)~\cite{zhang2017mixup}                    & 15.78   & 4.04\\
++ Mixup ($\alpha$=1.0)~\cite{zhang2017mixup}                    & 15.63   & 3.99\\
++ Manifold Mixup ($\alpha$=1.0)~\cite{verma2018manifoldmixup}    & 16.14   & 4.07\\
++ Cutout + Mixup ($\alpha$=1.0)                & 15.46   & 3.42                  \\
++ Cutout + Manifold Mixup ($\alpha$=1.0)        & 15.09   & 3.35                  \\
++ ShakeDrop~\cite{yamada2018shakedrop}         & 15.08   & {2.72}         \\
++ CutMix                           & {14.47}                      & 2.97\\
++ CutMix  + ShakeDrop~\cite{yamada2018shakedrop} & \textbf{{13.81}}          & \textbf{2.29} \\  \toprule
+\end{tabular}
+\vspace{-0.2cm}
+\caption{Comparison of state-of-the-art regularization methods on CIFAR-100. 
+}
+\vspace{-0.4cm}
+\label{table:cifar-pyramidnet}
+\end{table}

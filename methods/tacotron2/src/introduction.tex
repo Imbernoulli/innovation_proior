@@ -1,0 +1,58 @@
+\section{Introduction}
+\label{sec:intro}
+
+Generating natural speech from text (text-to-speech synthesis, TTS) remains a
+challenging task despite decades of investigation \cite{Taylor:2009:TS:1592988}.
+%
+Over time, different techniques have dominated the field.
+%
+Concatenative synthesis with unit selection, the process of stitching small
+units of pre-recorded waveforms together
+\cite{Hunt:1996:USC:1256383.1256532,cstr:unitsel97} was the state-of-the-art for
+many years.
+%
+Statistical parametric speech synthesis
+\cite{Tokuda00speechparameter,Black07statisticalparametric,40837,tokuda2013speech},
+which directly generates smooth trajectories of speech features to be
+synthesized by a vocoder, followed, solving many of the issues that
+concatenative synthesis had with boundary artifacts. However, the audio produced
+by these systems often sounds muffled and unnatural compared to human speech.
+
+WaveNet \cite{45774}, a generative model of time domain
+waveforms, produces audio quality that begins to rival that of real human
+speech and is already used in some complete TTS systems
+\cite{DBLP:journals/corr/ArikCCDGKLMRSS17,DBLP:journals/corr/ArikDGMPPRZ17,2017arXiv171007654P}.
+%
+The inputs to WaveNet (linguistic features, predicted log fundamental
+frequency ($F_0$), and phoneme durations), however, require significant domain
+expertise to produce, involving elaborate text-analysis systems as well as a
+robust lexicon (pronunciation guide).
+
+Tacotron \cite{46150}, a sequence-to-sequence architecture
+\cite{conf/nips/SutskeverVL14} for producing magnitude spectrograms from
+a sequence of characters, simplifies the traditional speech synthesis pipeline
+by replacing the production of these linguistic and acoustic features with a
+single neural network trained from data alone. To vocode the resulting magnitude
+spectrograms, Tacotron uses the Griffin-Lim algorithm
+\cite{Griffin84signalestimation} for phase estimation, followed by an inverse
+short-time Fourier transform. As the authors note, this was simply a placeholder
+for future neural vocoder approaches, as Griffin-Lim produces characteristic
+artifacts and lower audio quality than approaches like WaveNet.
+
+In this paper, we describe a unified, entirely neural approach to speech
+synthesis that combines the best of the previous approaches: a
+sequence-to-sequence Tacotron-style model \cite{46150} that generates mel
+spectrograms, followed by a modified WaveNet vocoder
+\cite{DBLP:journals/corr/ArikDGMPPRZ17,tamamori2017speaker}. Trained directly
+on normalized character sequences and corresponding speech waveforms, our
+model learns to synthesize natural sounding speech that is difficult to
+distinguish from real human speech.
+
+Deep Voice 3 \cite{2017arXiv171007654P} describes a similar approach. However,
+unlike our system, its naturalness has not been shown to rival that of
+human speech.
+%
+Char2Wav \cite{Sotelo2017Char2wavES} describes yet another similar approach to
+end-to-end TTS using a neural vocoder. However, they use different intermediate
+representations (traditional vocoder features) and their model architecture
+differs significantly.

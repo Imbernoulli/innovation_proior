@@ -1,0 +1,272 @@
+\section{Introduction}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.05\textwidth]{errorvscomplexity}
+    \caption{{\bf Left:} Train and test error as a function of model size,
+    for ResNet18s of varying width 
+    on CIFAR-10 with 15\% label noise.
+    %In the under-parameterized regime, test error follows
+    %the behavior predicted by classical statistical learning theory, but in the overparameterized regime (once training error is approximately zero),  the test error undergoes a ``second descent'' and decreases as model size increases. The shaded region represents the critically parameterized regime where the transition from under- to over-parameterization occurs. 
+    {\bf Right:}
+    Test error, shown for varying train epochs.
+    %The dashed red line shows that with optimal early stopping double descent is not observed.
+    % All models are ResNet18s of varying width,
+    % trained on CIFAR10 with 15\% label noise
+    All models trained using Adam for 4K epochs.
+    %, and plotting means and standard-deviations from 5 trials with random network initialization.
+    The largest model (width $64$) corresponds to standard ResNet18. 
+    %    \ptodo{point out that interpolation point for second plot is plotted in the ocean plot}
+    }
+    \label{fig:errorvscomplexity}
+\end{figure}
+
+The \emph{bias-variance trade-off} is a fundamental concept in classical statistical learning theory (e.g., \cite{hastie2005elements}).
+The idea is that models of higher complexity have lower bias but higher variance.
+According to this theory, once model complexity passes a certain threshold, models ``overfit'' with the variance term dominating the test error, and hence from this point onward, increasing model complexity will only \emph{decrease} performance  (i.e., increase test error).
+Hence conventional wisdom in classical statistics is that, once we pass a certain threshold, \emph{``larger models are worse.''}
+
+
+
+However, modern neural networks exhibit no such phenomenon.
+Such networks have millions of parameters, more than enough to fit even random labels~(\cite{ZhangBHRV16}), 
+and yet they perform much better on many tasks than smaller models.
+Indeed, conventional wisdom among practitioners is that \textit{``larger models are better'}' (\cite{krizhevsky2012imagenet}, \cite{gpipe}, \cite{Inception}, \cite{gpt}).
+The effect of training time on test performance is also up for debate. 
+In some settings, ``early stopping'' improves test performance, while in other settings 
+training neural networks to zero training error only improves performance.
+Finally, if there is one thing both classical statisticians and deep learning practitioners agree on is \textit{``more data is always better''}.
+
+
+In this paper, we present empirical evidence that both reconcile and challenge some of the above ``conventional wisdoms.'' 
+We show that many deep learning settings have two different regimes.
+In the \emph{under-parameterized} regime, where the model complexity is small compared to the number of samples, the test error as a function of model complexity follows the U-like behavior predicted by the classical bias/variance tradeoff.
+%the classical %statistical learning U-like curve.
+%, as in the left side of Figure~\ref{fig:classicalvsmodernfig}.
+However, once model complexity is sufficiently large to
+\emph{interpolate} i.e., achieve (close to) zero training error, then increasing complexity only \emph{decreases} test error, following the modern intuition of ``bigger models are better''.
+%as in the right side of Figure~\ref{fig:classicalvsmodernfig}.
+Similar behavior was previously observed in
+\cite{opper1995statistical, opper2001learning},
+\cite{advani2017high},
+\cite{spigler2018jamming}, and \cite{geiger2019jamming}.
+This phenomenon was first postulated in generality by \cite{belkin2018reconciling}  who named it ``double descent'', and
+demonstrated it
+for 
+decision trees,
+random features,
+and
+2-layer neural networks
+with $\ell_2$ loss, on a variety of learning tasks including MNIST and CIFAR-10.
+
+\iffalse
+\begin{figure}[t]
+\centering
+\begin{minipage}{.4\textwidth}
+  \centering
+  \includegraphics[width=\textwidth]{figures/bias-var-trade}
+\end{minipage}\hspace{1cm}
+\begin{minipage}{.4\textwidth}
+  \centering
+  \vspace{-.15cm}
+  \includegraphics[width=\textwidth]{effnet}
+\end{minipage}
+    \caption{Left: A classical ``bias-variance'' tradeoff where after a certain point, increasing model complexity hurts test performance; figure from \cite{hastie2005elements}. Right: Illustration of modern over-parameterized neural networks, where increasing complexity empirically results in better performance; data from \cite{tan2019efficientnet}.}
+    \label{fig:classicalvsmodernfig}
+    
+\end{figure}
+\fi
+
+
+\begin{figure}[t!]
+\centering
+\begin{minipage}{.512\textwidth}
+  \centering
+  \includegraphics[width=1\textwidth]{Intro-ocean-test}
+\end{minipage}%
+\begin{minipage}{.488\textwidth}
+  \centering
+  \includegraphics[width=1\textwidth]{Rn-cifar10-p15-adam-aug-train}
+\end{minipage}
+\caption{{\bf Left:} Test error as a function of model size and train epochs. The horizontal line corresponds to model-wise double descent--varying model size while training for as long as possible.
+The vertical line corresponds to epoch-wise double descent,
+with test error undergoing double-descent as train time increases.
+{\bf Right} Train error of the corresponding models.
+All models are Resnet18s trained on CIFAR-10 with 15\% label noise,
+data-augmentation, and Adam for up to 4K epochs.}
+\label{fig:unified}
+\end{figure}
+
+
+\paragraph{Main contributions.} We show that double descent is a robust phenomenon that occurs in a variety of tasks, architectures, and
+optimization methods (see Figure~\ref{fig:errorvscomplexity} and Section~\ref{sec:model-dd}; our experiments are summarized in Table~\ref{sec:bigtable}).
+Moreover, we propose a much more general notion of ``double descent'' that goes beyond varying the number of parameters. We define the \emph{effective model complexity (EMC)} of a training procedure as the maximum number of samples on which it can achieve close to zero training error. 
+The EMC depends not just on the data distribution and the architecture of the classifier but also on the training procedure---and in particular increasing training time will increase the EMC.
+
+We hypothesize that for many natural models and learning algorithms, double descent occurs as a function of the EMC.
+Indeed we observe ``epoch-wise double descent''  when we keep the model fixed and increase the training time, with performance following a classical U-like curve in the underfitting stage (when the EMC is smaller than the number of samples) and then improving with training time once the EMC is sufficiently larger than the number of samples (see Figure~\ref{fig:unified}). 
+As a corollary, early stopping only helps in the relatively narrow parameter regime of critically parameterized models.
+
+\begin{figure}[h]
+    \centering
+    \begin{minipage}[c]{0.5\textwidth}
+        \includegraphics[width=\textwidth]{NLP-small-data-vary-MDD}
+    \end{minipage}\hfill
+    \begin{minipage}[c]{0.45\textwidth}
+       \caption{Test loss (per-token perplexity) as a function of Transformer model size (embedding dimension $d_{model}$)
+        on language translation (\iwslt~German-to-English).
+        The curve for 18k samples is generally lower than the one for 4k samples, but also shifted to the right,
+        since fitting 18k samples requires a larger model.
+        Thus, for some models, the performance for 18k samples is \emph{worse} than for 4k samples.}
+    \label{fig:moresamplesareworse}
+    \end{minipage}
+\end{figure}
+
+\paragraph{Sample non-monotonicity.}
+Finally, our results shed light on test performance
+as a function of the number of train samples.
+Since the test error peaks around the point where EMC matches the number of samples (the transition from the under- to over-parameterization), increasing the number of samples has the effect of shifting this peak to the right.
+While in most settings increasing the number of samples decreases error, this shifting effect
+can sometimes result in a setting where \emph{more data is worse!}
+For example, Figure~\ref{fig:moresamplesareworse} demonstrates cases in which increasing the number of samples by a factor of $4.5$ results in worse test performance.
+
+
+
+\section{Our results}
+
+To state our hypothesis more precisely, we define the notion of \emph{effective model complexity}.
+We define a \emph{training procedure}  $\mathcal{T}$ to be any procedure that takes as input 
+a set $S= \{ (x_1,y_1),\ldots,(x_n,y_n)\}$ of labeled training samples and outputs a classifier $\mathcal{T}(S)$
+mapping data to labels.
+We define the \emph{effective model complexity} of $\mathcal{T}$ (w.r.t. distribution $\mathcal D$) to be the maximum number of samples $n$ on which $\mathcal{T}$ achieves on average $\approx 0$ \emph{training error}. 
+
+\newcommand{\EMC}{\mathrm{EMC}}
+\begin{definition}[Effective Model Complexity]
+The \emph{Effective Model Complexity} (EMC) of a training procedure $\cT$, with respect to distribution $\cD$ and parameter $\epsilon>0$,
+is defined as:
+\begin{align*}
+    \EMC_{\cD,\eps}(\cT)
+    :=  \max \left\{n ~|~ \E_{S \sim \cD^n}[ \mathrm{Error}_S( \cT( S )  ) ] \leq \eps \right\}
+    \end{align*}
+    where $\mathrm{Error}_S(M)$ is the mean error of model $M$ on train samples $S$.
+\end{definition}
+
+Our main hypothesis can be informally stated as follows:
+
+\begin{hypothesis}[Generalized Double Descent hypothesis, informal] \label{hyp:informaldd}
+For any natural data distribution $\cD$, neural-network-based training procedure $\cT$, and small $\epsilon>0$,
+if we consider the task of predicting labels based on  $n$ samples from $\cD$ then:
+\begin{description}
+    \item[Under-paremeterized regime.]  If~$\EMC_{\cD,\epsilon}(\cT)$ is sufficiently smaller than $n$, any perturbation of $\cT$ that increases its effective complexity will decrease the test error.
+    \item[Over-parameterized regime.] If $\EMC_{\cD,\epsilon}(\cT)$ is sufficiently larger than $n$,
+    any perturbation of $\cT$ that increases its effective complexity will decrease the test error.
+    
+    \item[Critically parameterized regime.] If $\EMC_{\cD,\epsilon}(\cT) \approx n$, then
+    a perturbation of $\cT$ that increases its effective complexity
+    might decrease {\bf or increase} the test error.
+\end{description}
+\end{hypothesis}
+
+\iffalse
+Hypothesis~\ref{hyp:informaldd} is stated informally
+as we are yet to fully understand the behavior at the critically parameterized regime.
+For example, it is an open question what determines the width of the \emph{critical interval}---the interval around the point  in which $\EMC_{\cD,\epsilon}(\cT) = n$, where increasing complexity might hurt performance. Specifically, we lack a formal definition for ``sufficiently smaller'' and ``sufficiently larger''. Another parameter that lacks principled understanding is the choice of $\epsilon$. In our experiments, we use $\epsilon=0.1$ heuristically.
+
+While in both the under-parameterized and over-parameterized regimes increasing complexity helps performance, the dynamics of the learning process seem very different in these two regimes
+For example, in the over-parameterized regime, the gain comes not from classifying more training samples correctly but rather from increasing the confidence for the training samples that have already been correctly classified. \gal{iffalsed previous stuff}
+\fi
+
+Hypothesis~\ref{hyp:informaldd} is informal in several ways.
+We do not have a principled way to choose the parameter $\epsilon$ (and currently heuristically use $\epsilon=0.1$). 
+We also are yet to have a formal specification for ``sufficiently smaller'' and ``sufficiently larger''.
+Our experiments suggest that there is a \emph{critical interval}
+around the \emph{interpolation threshold} when $\EMC_{\cD,\epsilon}(\cT) = n$: below and above
+this interval increasing complexity helps performance,
+while within this interval it may hurt performance.
+The width of the critical interval depends on both the distribution and
+the training procedure in ways we do not yet completely understand.
+
+% While in both the under-parameterized and over-parameterized regimes
+% increasing complexity helps performance, the dynamics of the
+% learning process seem very different in these two regimes.
+%\footnote{For example, in the over-parameterized regime, the gain comes not from classifying more training samples correctly but rather from increasing the confidence for the training samples that have already been correctly classified.}
+
+We believe Hypothesis~\ref{hyp:informaldd} sheds light on the interaction between optimization algorithms, model size, and test performance and helps reconcile some of the competing intuitions about them.
+The main result of this paper is an experimental validation of Hypothesis~\ref{hyp:informaldd} under a variety of settings, where we considered several natural choices of datasets, architectures, and optimization algorithms,
+and we changed the ``interpolation threshold''
+by varying the number of model parameters,
+the length of training, the amount of label noise in the distribution, and the number of train samples.
+
+
+{\bf Model-wise Double Descent.}
+In Section~\ref{sec:model-dd},
+we study the test error of models of increasing size,
+for a fixed large number of optimization steps.
+We show that ``model-wise double-descent'' occurs
+for various modern datasets
+(CIFAR-10, CIFAR-100, \iwslt~de-en, with varying amounts of label noise),
+model architectures (CNNs, ResNets, Transformers),
+optimizers (SGD, Adam),
+number of train samples,
+and training procedures (data-augmentation, and regularization).
+Moreover, the peak in test error systematically occurs at the interpolation threshold.
+In particular, we demonstrate realistic settings in which
+\emph{bigger models are worse}.
+
+{\bf Epoch-wise Double Descent.}
+In Section~\ref{sec:epoch-dd},
+we study the test error of a fixed, large architecture over the course of training.
+%That is, we vary the Effective Model Complexity by increasing the number of train epochs for a fixed architecture.
+We demonstrate, in similar settings as above,
+a corresponding peak in test performance when
+models are trained just long enough to reach $~\approx 0$ train error.
+The test error of a large model
+first decreases (at the beginning of training), then increases (around the critical regime),
+then decreases once more (at the end of training)---that is,
+\emph{training longer can correct overfitting.}
+
+
+{\bf Sample-wise Non-monotonicity.}
+In Section~\ref{sec:samples},
+we study the test error of a fixed model and training procedure, for varying number of train samples.
+Consistent with our generalized double-descent hypothesis,
+we observe distinct test behavior in the ``critical regime'',
+when the number of samples is near the maximum that the model can fit.
+This often manifests as a long plateau region,
+in which taking significantly more data might not help when training to completion
+(as is the case for CNNs on CIFAR-10).
+Moreover, we show settings (Transformers on \iwslt~en-de),
+where this manifests as a peak---and for a fixed architecture and training procedure, \emph{more data actually hurts.}
+%\todo{fix wording here.}
+%\pnote{Need to be careful to qualify the relation with early-stopping.}
+
+{\bf Remarks on Label Noise.} 
+We observe all forms of double descent most strongly in settings
+with label noise in the train set
+(as is often the case when collecting train data in the real-world).
+However, we also show several realistic settings with a test-error peak even without label noise:
+ResNets (Figure~\ref{fig:resnet-cifar-left}) and CNNs (Figure~\ref{fig:app-cifar100-clean-sgd}) on CIFAR-100;
+Transformers on \iwslt~ (Figure~\ref{fig:more-mdd2}).
+Moreover,  all our experiments demonstrate distinctly different test behavior
+in the critical regime--- often manifesting as a ``plateau'' in the test error in the noiseless case which 
+develops into a peak with added label noise.
+See Section~\ref{sec:discuss} for further discussion.
+
+\section{Related work}
+Model-wise double descent was first proposed as a general phenomenon
+by \cite{belkin2018reconciling}.
+Similar behavior had been observed in
+\cite{opper1995statistical, opper2001learning},
+\cite{advani2017high},
+\cite{spigler2018jamming}, and \cite{geiger2019jamming}.
+Subsequently, there has been a large body of work studying the double descent phenomenon.
+A growing list of papers that theoretically analyze it in the tractable setting of linear least squares regression includes \cite{belkin2019two, hastie2019surprises, bartlett2019benign, muthukumar2019harmless, bibas2019new, Mitra2019UnderstandingOP, mei2019generalization}. Moreover, \cite{geiger2019scaling} provide preliminary results for model-wise double descent in convolutional networks trained on CIFAR-10. Our work differs from the above papers in two crucial aspects: First, we extend the idea of double-descent beyond the number of parameters to incorporate the training procedure under a unified notion of ``Effective Model Complexity", leading to novel insights like epoch-wise double descent and sample non-monotonicity.
+The notion that increasing train time corresponds to
+increasing complexity was also presented in~\cite{nakkiran2019sgd}.
+Second, we provide an extensive
+and rigorous demonstration of double-descent for modern practices spanning a variety of architectures, datasets optimization procedures.
+An extended discussion of the related work is provided in Appendix \ref{sec:related_appendix}.
+
+%Our work extends the idea of model-wise double descent to a notion of "Effective Model Complexity" that encompasses the training procedure under a unified view, leading to novel insights like epoch-wise double descent.
+
+%of this transition beyond varying the number of parameters when models are trained for as long as possible, to a notion of ”Effective Model Complexity” that encompasses training time and regularization under a unified view. 

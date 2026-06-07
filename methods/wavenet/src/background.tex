@@ -1,0 +1,91 @@
+The goal of TTS synthesis is to render  naturally sounding speech signals given a text to be synthesized.
+Human speech production process first translates a text (or concept) into movements of muscles associated with
+articulators and speech production-related organs.
+Then using air-flow from lung, vocal source excitation signals, which contain both periodic
+(by vocal cord vibration) and aperiodic (by turbulent noise) components, are generated.
+By filtering the vocal source excitation signals by time-varying vocal tract transfer functions
+controlled by the articulators, their frequency characteristics are modulated.
+Finally, the generated speech signals are emitted.
+The aim of TTS is to mimic this process by computers in some way.
+
+TTS can be viewed as a sequence-to-sequence mapping problem;
+from a sequence of 
+discrete symbols (text) to a real-valued time series (speech signals).
+A typical TTS pipeline has two parts; 1) text analysis and 2) speech synthesis.
+The text analysis part typically includes a number of natural language processing (NLP) steps,
+such as sentence segmentation, word segmentation, text normalization,
+part-of-speech (POS) tagging,
+and grapheme-to-phoneme (G2P) conversion.
+It takes a word sequence as input and outputs
+a phoneme sequence with a variety of linguistic contexts.
+The speech synthesis part takes the context-dependent phoneme sequence as its input and outputs a synthesized speech waveform.
+This part typically includes prosody prediction and speech waveform generation.
+
+\begin{figure}[!t]
+  \centering
+  \includegraphics[width=0.6\textwidth]{Figures/hts_flow.pdf}
+  \caption{Outline of statistical parametric speech synthesis.}
+  \label{fig:outline_spss}
+\end{figure}%mm
+
+There are two main approaches to realize the speech synthesis part; non-parametric, example-based approach known as concatenative speech synthesis \citep{PSOLA,ATR_nutalk,Hunt_UnitSelection_ICASSP}, and parametric, model-based approach known as statistical parametric speech synthesis \citep{yoshimura_PhD,Zen_SPSS_SPECOM}.
+The concatenative approach builds up the utterance from units of recorded speech, whereas the statistical parametric approach uses a generative model to synthesize the speech.
+The statistical parametric approach first extracts a sequence of vocoder parameters \citep{Vocoder} $\bo = \{ \bo_1, \dots, \bo_N \}$ from speech signals $\bx = \{ x_1, \dots, x_T \}$ and linguistic features $\bl$ from the text $W$, where $N$ and $T$ correspond to the numbers of vocoder parameter vectors and speech signals.
+Typically a vocoder parameter vector $\bo_n$ is extracted at every 5 milliseconds.
+It often includes cepstra \citep{UELS} or line spectral pairs \citep{LSP}, which represent 
+vocal tract transfer function, and fundamental
+frequency ($F_0$) and aperiodicity \citep{Kawahara_STRAIGHT_Excitation}, which represent characteristics of vocal source excitation signals.
+Then a set of generative models, such as hidden Markov models (HMMs) \citep{yoshimura_PhD}, feed-forward neural networks \citep{Zen_DNN_ICASSP}, and recurrent neural networks \citep{Robinson_RNNTTS,Karaani_RTDNNTTS,Fan_BLSTM_Interspeech14}, is trained from the extracted vocoder parameters and linguistic features as
+\begin{equation}
+  \hat{\Lambda} = \argmax_{\Lambda} p\left( \bo \mid \bl, \Lambda \right),
+\end{equation}
+where $\Lambda$ denotes the set of parameters of the generative model.
+At the synthesis stage, the most probable vocoder parameters are generated given linguistic features extracted from a text to be synthesized as
+\begin{equation}
+  \hat{\bo} = \argmax_{\bo} p ( \bo \mid \bl, \hat{\Lambda} ).
+\end{equation}
+Then a speech waveform is reconstructed from $\hat{\bo}$ using a vocoder.
+The statistical parametric approach offers various advantages over the
+concatenative one such as small footprint
+and flexibility to change its voice characteristics.
+However, its subjective naturalness is often significantly worse than that of the concatenative approach; synthesized speech often sounds muffled and has artifacts.
+\cite{Zen_SPSS_SPECOM} reported three major factors that can degrade the subjective naturalness; quality of vocoders, accuracy of generative models, and effect of oversmoothing.
+The first factor causes the artifacts and the second and third factors lead to the muffleness in the synthesized speech.
+There have been a number of attempts to address these issues individually, such as developing high-quality vocoders \citep{Kawahara_STRAIGHT,Vocaine,WORLD}, improving the accuracy of generative models \citep{Zen_trjHMM_CSL,Zen_DNN_ICASSP,Fan_BLSTM_Interspeech14,Uria_TrajectoryRNADE_ICASSP2015}, and compensating the oversmoothing effect \citep{Toda_MLGV_IEICE,Takamichi_ModulationSpectrum_TASLP}.
+\cite{Zen_LSTMprod_Interspeech} showed that state-of-the-art statistical parametric speech syntheziers matched state-of-the-art concatenative ones in some languages.
+However, its vocoded sound quality is still a major issue.
+
+Extracting vocoder parameters can be viewed as estimation of a generative model parameters given speech signals \citep{LPC,UELS}.
+For example, linear predictive analysis \citep{LPC}, which has been used in speech coding, assumes that the generative model of speech signals is 
+a linear auto-regressive (AR) zero-mean Gaussian process;
+\begin{align}
+  x_t &= \sum_{p=1}^P a_p x_{t-p} + \epsilon_t \\
+  \epsilon_t &\sim \Gauss(0, G^2)
+\end{align}
+where $a_p$ is a $p$-th order linear predictive coefficient (LPC) and $G^2$ 
+is a variance of modeling error.
+These parameters are estimated based on the maximum likelihood (ML) criterion.
+In this sense, the training part of the statistical parametric approach can be viewed as a two-step optimization and sub-optimal: extract vocoder parameters by fitting a generative model of speech signals then model trajectories of the extracted vocoder parameters by a separate generative model for time series \citep{Tokuda_ASRU2011}.
+There have been attempts to integrate these two steps into a single one
+\citep{STAVOCO,MGELSD,Maia_WaveformModel_SSW,Kazuhiro_McepHMM_IEICE,Black_AutoEncoder_arXiv,Tokuda_CepLSTM_ICASSP2015,Tokuda_MixCepLSTM_ICASSP2016,Takaki_FFTDNN_ICASSP}.
+For example, \cite{Tokuda_MixCepLSTM_ICASSP2016} integrated non-stationary, nonzero-mean Gaussian process generative model of speech signals and LSTM-RNN-based sequence generative model to a single one and jointly optimized them by back-propagation.
+Although they showed that this model could approximate natural speech signals, its segmental naturalness was significantly worse than the non-integrated model due to over-generalization and over-estimation of noise components in speech signals.
+
+The conventional generative models of raw audio signals have a number of assumptions which are inspired from the speech production, such as
+\begin{itemize}
+    \item Use of fixed-length analysis window; They are typically based on a stationary stochastic process \citep{LPC,UELS,Poritz_ARHMM_ICASSP82,Juang_MARHMM_ICASSP85,Kameoka_MultiKernelLPC_ASJ}.  To model time-varying speech signals by a stationary stochastic process, parameters of these generative models are estimated within a fixed-length, overlapping and shifting analysis window (typically its length is 20 to 30 milliseconds, and shift is 5 to 10 milliseconds).
+    However, some phones such as stops are time-limited by less than 20 milliseconds \citep{Rabiner_ASR}.
+    Therefore, using such fixed-size analysis window has limitations.
+    \item Linear filter; These generative models are typically realized as a linear time-invariant filter  \citep{LPC,UELS,Poritz_ARHMM_ICASSP82,Juang_MARHMM_ICASSP85,Kameoka_MultiKernelLPC_ASJ} within a windowed frame.  However, the relationship between successive audio samples can be highly non-linear.
+    \item Gaussian process assumption; The conventional generative models are based on Gaussian process \citep{LPC,UELS,Poritz_ARHMM_ICASSP82,Juang_MARHMM_ICASSP85,Kameoka_MultiKernelLPC_ASJ,Tokuda_CepLSTM_ICASSP2015,Tokuda_MixCepLSTM_ICASSP2016}.  From the source-filter model of speech production \citep{Chiba_SourceFilter,Fant_SourceFilter} point of view, this is equivalent to assuming that a vocal source excitation signal is a sample from a Gaussian distribution \citep{LPC,UELS,Poritz_ARHMM_ICASSP82,Juang_MARHMM_ICASSP85,Tokuda_CepLSTM_ICASSP2015,Kameoka_MultiKernelLPC_ASJ,Tokuda_MixCepLSTM_ICASSP2016}. 
+    Together with the linear assumption above, it results in assuming that speech signals are normally distributed.
+    However, distributions of real speech signals can be significantly different from Gaussian.
+\end{itemize}
+Although these assumptions are convenient, samples from these generative models tend to be noisy and lose important details to make these audio signals sounding natural.
+
+WaveNet, which was described in Section~\ref{sec:wavenet}, has none of the above-mentioned assumptions.
+It incorporates almost no prior knowledge about audio signals, except the choice of the receptive field and $\mu$-law encoding of the signal.
+It can also be viewed as a non-linear causal filter for quantized signals.
+Although such non-linear filter can represent complicated signals while preserving the details, designing such filters is usually difficult \citep{NonlinearFilterDesign}.
+WaveNets give a way to train them from data.
+

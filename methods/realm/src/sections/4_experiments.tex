@@ -1,0 +1,158 @@
+\section{Experiments} % (kentonl)
+\label{sec:experiments}
+% Due to the simple task definition of \openqa---mapping a question string to an answer string, we can compare the significantly different approaches mentioned in
+% Section~\ref{sec:open_qa_background}: retrieval-based models are directly comparable with generation-based models as long as they consume the same training and evaluation data. 
+
+We now evaluate our approach on the \openqa task.
+In this section, we describe in detail the benchmarks used and the different approaches to which we compare empirically.
+
+\subsection{\openqa Benchmarks}
+A number of benchmarks have been proposed for \openqa. In this work, we focus on datasets where the question writers did not already know the answer. This yields questions that reflect more realistic information-seeking needs, and also avoids artifacts that can arise if the question is formulated with a particular answer in mind. A deeper justification is given in ~\citet{orqa}.
+In all cases, the predicted answer is evaluated via exact match with any reference answer, following previous \openqa work~\cite{drqa}.
+
+\paragraph{NaturalQuestions-Open} The NaturalQuestions dataset \cite{naturalquestions} consists of naturally occurring Google queries and their answers. Each answer also comes with an ``answer type'': following \citet{orqa}, we only keep questions that are categorized as ``short answer type'' with at most five tokens. The dataset also provides a suggested Wikipedia document to retrieve; like all models we compare against, we do not provide this to our model.
+
+% Since we operate in the open-domain setting, we discard the Wikipedia evidence page (it is not made available to any models we evaluate).
+%  and a Wikipedia page that provides evidence for the answer.
+
+\paragraph{WebQuestions} The WebQuestions dataset \cite{webquestions} was collected from the Google Suggest API, using one seed question and expanding the set to related questions. We follow the setting defined by \citet{drqa}.
+
+\paragraph{CuratedTrec}
+The CuratedTrec dataset is a collection of question-answer pairs drawn from real user queries issued on sites such as MSNSearch and AskJeeves. To account for multiple correct answers or different spelling variations, the answers in this dataset are defined as regular expressions that match all correct answers. It is unclear how to train generation-based models with this type of supervision, so we do not evaluate them on this dataset.
+
+\subsection{Approaches compared}
+\label{sec:comparisons}
+%We compare \thename against existing state-of-the-art methods for \openqa, as well as various principled baselines.
+%
+%\input{figures/compare_tabs.tex}
+\paragraph{Retrieval-based \openqa}
+%As mentioned in Section~\ref{sec:open_qa_background},
+% most existing \openqa systems perform knowledge retrieval, and then apply reading comprehension over the retrieved knowledge to produce an answer. We wish to compare different methods for implementing retrieval.
+Most existing \openqa systems answer the input question by first retrieving potentially relevant documents from a knowledge corpus, and then using a reading comprehension system to extract an answer from the documents. In this paradigm, the knowledge is stored \emph{explicitly} in the corpus.
+We wish to compare different methods for implementing retrieval.
+
+\hyphenation{HardEM}
+Many approaches use non-learned heuristic retrieval such as sparse bag-of-words matching~\cite{bm25} or entity linking on the question to select a small set of relevant documents (e.g., 20). These documents are typically then re-ranked using a learned model, but coverage may be limited by the initial heuristic retrieval step. Approaches such as DrQA~\cite{drqa}, HardEM~\cite{openqa_hardem}, GraphRetriever~\cite{GraphRetriever}, and PathRetriever~\cite{rrp_salesforce} in Table~\ref{tab:main_results} are in this category.
+
+Some recent approaches have proposed to implement learnable retrieval using a MIPS index. ORQA~\cite{orqa} formulates \openqa using a similar latent variable model as \thename, and also trains by maximizing the marginal likelihood. However, \thename adds a novel language model pre-training step, and backpropagates into the MIPS index, rather than using a fixed index. In Table~\ref{tab:main_results}, we directly compare the two. It is also important to note that the retrievers for both \thename pretraining and ORQA are initialized using the Inverse Cloze Task, described in Section~\ref{sec:inductive-bias}.
+
+% \paragraph{Information Retrieval + Reading}
+% The first baseline is based on the information retrieval (IR) and reading comprehension (RC) paradigm proposed in ~\citet{drqa}. In this setting, the IR system is a heuristic retrieval system such as TF-IDF. It is used to propose evidence candidates during training and inference. An RC model is then trained by assuming that the supervised string answer is correct if it appears in the result from the IR system. We used the improved system from ~\citet{orqa} that replaces TF-IDF with BM25 and replaces the randomly initialized RC model with BERT.
+
+% \paragraph{Heuristically Pre-trained Retrieval + Reading}
+% We also compare against the existing state-of-the-art ORQA system from ~\citet{orqa}. Our fine-tuning procedure is almost identical to this system---a neural knowledge retriever proposes text candidates, and a transformer encoder is used to model the likelihood of answers given the knowledge. A significant difference of ORQA is that its retriever is only heuristically pre-trained on the Inverse Cloze Task. Therefore, it is not directly optimized to provide useful knowledge, nor is the encoder trained to take advantage of retrieved knowledge.
+
+\paragraph{Generation-based \openqa}
+An emerging alternative approach to \openqa is to model it as a sequence prediction task:
+simply encode the question, and then decode the answer token-by-token based on the encoding.
+While it was initially unclear how large amounts of knowledge could be injected into the model,
+GPT-2~\cite{gpt2} hinted at the possibility of directly generating answers without using any given context via sequence-to-sequence. However, their performance was not competitive possibly due to the lack of fine-tuning. Orthogonally, T5~\cite{t5} showed that directly generating answers without explicit extraction from the given context is viable approach, but they only experimented on the reading comprehension task, where a context document is provided.
+%suggest that it is possible to pre-train a generation model on unlabeled text to \emph{implicitly} inject knowledge via language modeling.
+% One possible justification is that the task of predicting masked tokens sometimes resembles the \openqa task
+% (e.g., learning to predict \nl{pound} for \nl{The \mask is the currency of the UK} would help with answering \nl{What is the currency of the UK?}).
+
+%To assess generation-based methods,
+%We compare to one of the largest generative models to date, T5~\cite{t5}, which is a Transformer-based model.
+%It is a sequence-to-sequence Transformer pre-trained with a self-supervised objective similar to masked language modeling.
+
+For the most competitive and comparable generation-based baseline, we compare to concurrent work which fine-tunes T5 for \openqa~\cite{t5_openqa}.\footnote{We initially conducted our own T5 experiments using the code from {\tiny\url{https://tinyurl.com/t5-openqa-colab}}~\cite{t5}. We now report results from the concurrent work of \citet{t5_openqa}, which has an improved fine-tuning procedure.}
+We compare against the Base, Large, and even larger 11-billion parameter model to measure the effect of model size.
+
+\input{figures/main_tab.tex}
+
+\subsection{Implementation Details}
+\paragraph{Fine-tuning}
+We reuse all hyperparameters from \citet{orqa}, to enable direct comparison. Our knowledge corpus is derived from the December 20, 2018 snapshot of English Wikipedia. Documents are greedily split into chunks of up to 288 BERT wordpieces, resulting in just over 13 million retrieval candidates. During fine-tuning inference, we consider the top-5 candidates, and the entire model can be run on a single machine with a 12GB GPU.
+
+\paragraph{Pre-training}
+We pre-train for 200k steps on 64 Google Cloud TPUs, with a batch size of 512 and a learning rate of 3e-5, using BERT's default optimizer. The document embedding step for the MIPS index is parallelized over 16 TPUs. For each example, we retrieve and marginalize over 8 candidate documents, including the null document $\znull$.
+
+We experiment with two choices of the pre-training corpus \target:
+%from which the ($x$, $y$) query-mask pairs are %%sampled
+%): 
+(1)~Wikipedia, which is identical to the knowledge corpus $\cZ$, and (2)~CC-News, our reproduction of the corpus of English news proposed by~\citet{roberta}.
+
+\input{figures/ablations_tab.tex}
+\input{figures/retrieval_examples.tex}
+
+\subsection{Main results}
+Table~\ref{tab:main_results} shows the accuracy of different approaches on the three \openqa datasets. \thename outperform all previous approaches by a significant margin. Table~\ref{tab:main_results} also shows the number of parameters for each model. 
+
+%\todo{WDYT of this new comparison with T5}
+As reported in the concurrent work of~\citet{t5_openqa}, the generative \openqa systems based on T5 are surprisingly powerful, with the largest T5-11B model outperforming the previous best \openqa system.
+Increasing the size of T5 yields consistent improvement, but comes at significant computational cost (from Base to 11B, the model is 50 times larger, and gains roughly 5 points in accuracy). In contrast, \thename outperforms the largest T5-11B model while being 30 times smaller. It is also important to note that T5 accesses additional reading comprehension data from SQuAD during its pre-training (100,000+ examples). Access to such data could also benefit \thename, but was not used in our experiments.
+% mw: I put it back so that we will not forget about this. This footnote does not appear on ICML version
+
+% \footnote{Note that there are several potential ways to improve T5-based models. For instance, T5 pre-trains on the mixed-genre C4 corpus~\cite{t5}, which can cause the model to be distracted by non-knowledge information. Appropriate combinations of pre-training corpora could make the model more fit for \openqa.}
+
+% LET's just remove this footnote for the ICML submission; put it back in arxiv submission!!!
+
+Among all systems, the most direct comparison with \thename is ORQA~\cite{orqa}, where the fine-tuning setup, hyperparameters and training data are identical. %The key difference is that ORQA's dual-encoder retrieval and transformer encoder where pre-trained separately and heuristically, whereas \thename is pre-trained jointly, with both components acting cooperatively to optimize the mask language modeling objective. \kv{has overlap with what was said in ``Approaches compared'' section}.
+%
+%We show that this joint pre-training results in
+The improvement of \thename over ORQA is purely due to better pre-training methods. The results also indicate that our method of pre-training can be applied both on (1) the single-corpus setting (\target= Wikipedia, \unlabeled= Wikipedia), or (2) the separate-corpus setting (\target= CC-News, \unlabeled= Wikipedia).
+
+Compared to other retrieval-based systems~\cite{rrp_salesforce,openqa_hardem,GraphRetriever} which often retrieve from 20 to 80 documents, our system gets the overall best performance while only retrieving 5 documents.
+
+%\mw{add discussion about the "memory" between t5 and realm here}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Analysis}\label{sec:ablation}
+
+In Table~\ref{tab:ablations} we present results for NaturalQuestions-Open after ablating critical components of \thename. In addition to the end-to-end results, we also report how often the gold answer appears in the top-5 retrievals before applying any fine-tuning. The latter metric more significantly isolates the contribution of improving the retriever during pre-training.
+
+\paragraph{Encoder or Retriever}
+We first aim to determine whether \thename pre-training improves the retriever or the encoder, or both. To do so, we can reset the parameters of either the retriever or the encoder to their baseline state before \thename pre-training, and feed that into fine-tuning. Resetting both the retriever and encoder reduces the system to our main baseline, ORQA. We find that both the encoder and retriever benefit from \thename training separately, but the best result requires both components acting in unison.
+
+\paragraph{Masking scheme}
+We compare our salient span masking scheme (Section~\ref{sec:inductive-bias})
+with (1) random token masking introduced in BERT~\cite{bert}
+and (2) random span masking proposed by SpanBERT~\cite{spanbert}. 
+While such salient span masking has not been shown to be impactful in previous work with standard BERT training~\cite{spanbert}, it is crucial for \thename. Intuitively, the latent variable learning relies heavily on the utility of retrieval and is therefore more sensitive to a consistent learning signal.
+
+\paragraph{MIPS index refresh rate}
+During pre-training, we run a parallel process to re-embed corpus documents and rebuild the MIPS index.
+This results in one index refresh per approximately 500 training steps.
+To demonstrate the importance of frequent index refreshes,
+we compare against using a slower refresh rate.
+The results in Table~\ref{tab:ablations} suggests that a stale index can hurt model training, and further reducing this staleness could offer better optimization.
+
+%\paragraph{Source of input sentences.}
+%During pre-training, we use corpus documents (Wikipedia) as the source for input masked sentences.
+%We experiment with using a different corpus, \ccnews \cite{roberta}, to generate masked inputs,
+%while keeping Wikipedia as the retrieval corpus.
+%The result (last row of Table~\ref{tab:main_results}) is better than training on Wikipedia.
+%This is perhaps because the retriever is better trained: there is more cross-corpora content overlap
+%than cross-article content overlap within a single corpus,
+%and as such the retriever has more chance to get meaningful training signals.
+%\todo{Add results}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\paragraph{Examples of retrieved documents}
+Table~\ref{tab:retrieval_examples} shows an example of
+the \thename masked language model prediction.
+In this example, \nl{Fermat}
+is the correct word, and \thename (row~(c)) gives the word a much high probability
+compared to the BERT model (row~(a)).
+%The probability produced by \thename is marginalized over 8 documents. %While some retrieved documents are spurious (Row~(b)), 
+Since \thename manages to retrieve some documents with a related fact (row~(b)), the marginalized probability of the correct answer dramatically increases. This shows that \thename
+is able to retrieve document to fill in the masked word even though it is trained with unsupervised text only.
+% \eat{
+% when (1) the answer is a less common entity and
+% (2) another document in the knowledge corpus contains the same or related fact as the input sentence.
+% Table~\ref{tab:retrieval_examples} shows such an example.
+% Without a supporting document, both vanilla BERT and REALM models fail to predict
+% the rather niche term \nl{fermat}.
+% However, with the retrieved documents about the same topic, REALM manages to put more probability mass on \nl{fermat},
+% making the final marginalized probability high on the correct term.
+% }
+% Appendix~\todo{A} shows additional examples
+
+
+%\subsection{Discussion on Generation-based QA}
+%\todo{address the grammatical issues}
+
+
+
+%\zo{unsure whether "improvement" above is improvement on T5, REALM, or both?}

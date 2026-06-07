@@ -1,0 +1,14 @@
+\newcommand{\genSdeTable}{%
+\multicolumn{1}{l|}{}                                                        & \multicolumn{4}{c|}{Unconditional CIFAR-10 at 32$\times$32}                   & \multicolumn{2}{c|}{Class-conditional}  \\
+\multicolumn{1}{l|}{}                                                        & \multicolumn{2}{c|}{VP}               & \multicolumn{2}{c|}{VE}               & \multicolumn{2}{c|}{ImageNet-64}        \\
+\tabucline{-}
+{\bf Sampling method}                                                        & FID~$\downarrow$  & NFE~$\downarrow$  & FID~$\downarrow$  & NFE~$\downarrow$  & FID~$\downarrow$  & NFE~$\downarrow$    \\
+\tabucline{-}
+Deterministic baseline (Alg.~\refpaper{alg:heun})                            & 2.93              & {\bf\s35}         & 3.73              & {\bf\s\s27}       & 2.64              & {\bf\s79}           \\
+Alg.~\refpaper{alg:stochastic}, $\StminStmax = [0, \infty]$, $\Snoise = 1$   & 2.69              & \s95              & 2.97              & \s383             & 1.86              & 383                 \\
+Alg.~\refpaper{alg:stochastic}, $\StminStmax = [0, \infty]$                  & 2.54              & 127               & 2.51              & \s511             & 1.63              & 767                 \\
+Alg.~\refpaper{alg:stochastic}, $\Snoise = 1$                                & 2.52              & \s95              & 2.84              & \s191             & 1.84              & 255                 \\
+Alg.~\refpaper{alg:stochastic}, Optimal settings                             & {\bf2.27}         & 383               & {\bf2.23}         & \s767             & {\bf1.55}         & 511                 \\
+\tabucline{-}
+Previous work~\cite{Song2021sde,Dhariwal2021}                                & 2.55              & 768               & 2.46              & 1024              & 2.01              & 384                 \\
+}

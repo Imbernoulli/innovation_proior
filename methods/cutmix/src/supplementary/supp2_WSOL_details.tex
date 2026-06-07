@@ -1,0 +1,55 @@
+\section{Weakly-supervised Object Localization}
+\label{appendix:wsol}
+
+
+
+
+We describe the training and evaluation procedure of weakly-supervised object localization in detail.
+
+\noindent\textbf{Network modification: }
+Basically weakly-supervised object localization (WSOL) has the same training strategy as image classification does. 
+Training WSOL is starting from ImageNet-pretrained model. 
+From the base network structures, VGG-16 and ResNet-50~\cite{resnet}, WSOL takes larger spatial size of feature map $14 \times 14$ whereas the original models has $7 \times 7$.
+For VGG network, we utilize VGG-GAP, which is a modified VGG-16 introduced in~\cite{zhou2016CAM}.
+For ResNet-50, we modified the final residual block (\texttt{layer4}) to have no stride ($=1$), which originally has stride $2$. 
+
+Since the network is modified and the target dataset could be different from ImageNet~\cite{ImageNet}, the last fully-connected layer is randomly initialized with the final output dimension of $200$ and $1000$ for CUB200-2011~\cite{wah2011cub} and ImageNet, respectively.
+
+
+\noindent\textbf{Input image transformation: }
+For fair comparison, we used the same data augmentation strategy except Mixup, Cutout, and CutMix as the state-of-the-art WSOL methods do~\cite{singh2017hide,zhang2018ACOL}.
+In training, the input image is resized to $256\times256$ size and randomly cropped $224 \times 224$ size images are used to train network.
+In testing, the input image is resized to $256\times256$, cropped at center with $224\times224$ size and used to validate the network, which called single crop strategy. 
+
+
+\noindent\textbf{Estimating bounding box: }
+We utilize class activation mapping (CAM)~\cite{zhou2016CAM} to estimate the bounding box of an object. 
+First we compute CAM of an image, and next, we decide the foreground region of the image by binarizing the CAM with a specific threshold. 
+The region with intensity over the threshold is set to 1, otherwise to 0. 
+We use the threshold as a specific rate $\sigma$ of the maximum intensity of the CAM. 
+We set $\sigma$ to $0.15$ for all our experiments. 
+From the binarized foreground map, the tightest box which can cover the largest connected region in the foreground map is selected to the bounding box for WSOL.
+
+
+\noindent\textbf{Evaluation metric: }
+To measure the localization accuracy of models, we report top-1 localization accuracy (Loc), which is used for ImageNet localization challenge~\cite{ImageNet}. 
+For top-1 localization accuracy, intersection-over-union (IoU) between the estimated bounding box and ground truth position is larger than $0.5$, and, at the same time, the estimated class label should be correct.
+Otherwise, top-1 localization accuracy treats the estimation was wrong.
+
+
+\subsection{CUB200-2011}
+CUB-200-2011 dataset~\cite{wah2011cub} contains over 11 K images with 200 categories of birds.
+We set the number of training epochs to $600$. 
+For ResNet-50, the learning rate for the last fully-connected layer and the other were set to $0.01$ and $0.001$, respectively.
+For VGG network, the learning rate for the last fully-connected layer and the other were set to $0.001$ and $0.0001$, respectively.
+The learning rate is decaying by the factor of $0.1$ at every $150$ epochs.
+We used SGD optimizer, and the minibatch size, momentum, weight decay were set to $32$, $0.9$, and $0.0001$. 
+
+\subsection{ImageNet dataset}
+ImageNet-1K~\cite{ImageNet} is a large-scale dataset for general objects consisting of 13 M training samples and 50 K validation samples.
+We set the number of training epochs to $20$. 
+The learning rate for the last fully-connected layer and the other were set to $0.1$ and $0.01$, respectively.
+The learning rate is decaying by the factor of $0.1$ at every $6$ epochs.
+We used SGD optimizer, and the minibatch size, momentum, weight decay were set to $256$, $0.9$, and $0.0001$.
+
+

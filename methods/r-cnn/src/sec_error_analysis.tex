@@ -1,0 +1,84 @@
+\subsection{Detection error analysis}
+\seclabel{analysis}
+We applied the excellent detection analysis tool from Hoiem \etal
+\cite{hoiem2012diagnosing} in order to reveal our
+method's error modes, understand how fine-tuning changes them, and
+to see how our error types compare with DPM.  A full summary of the
+analysis tool is beyond the scope of this paper and we encourage readers to consult \cite{hoiem2012diagnosing} to
+understand some finer details (such as ``normalized AP''). Since the
+analysis is best absorbed in the context of the associated plots, we
+present the discussion within the captions of \figref{fp-type-dist}
+and \figref{obj-char}.
+%\vspace{-0.5em}
+\begin{figure}[h!]
+\def \sz {1.2in}
+\def \sp {-0.7em}
+\centering
+\includegraphics[height=\sz]{figures/det_analysis/rcnn_fc6/plots_fp_trendarea_animals.pdf}
+\hspace{\sp}
+\includegraphics[height=\sz,clip=true,trim=1.05cm 0 0 0]{figures/det_analysis/rcnn_ft_fc7/plots_fp_trendarea_animals.pdf}
+\hspace{\sp}
+%\includegraphics[height=\sz,clip=true,trim=1.05cm 0 0 0]{figures/det_analysis/dpm_v5/plots_fp_trendarea_animals.pdf}\\
+\includegraphics[height=\sz,clip=true,trim=1.05cm 0 0 0]{figures/det_analysis/rcnn_ft_fc7_bb/plots_fp_trendarea_animals.pdf}\\
+\vspace{2pt}
+%\hspace{\sp}
+\includegraphics[height=\sz]{figures/det_analysis/rcnn_fc6/plots_fp_trendarea_furniture.pdf}
+\hspace{\sp}
+\includegraphics[height=\sz,clip=true,trim=1.05cm 0 0 0]{figures/det_analysis/rcnn_ft_fc7/plots_fp_trendarea_furniture.pdf}
+\hspace{\sp}
+%\includegraphics[height=\sz,clip=true,trim=1.05cm 0 0 0]{figures/det_analysis/dpm_v5/plots_fp_trendarea_vehicles.pdf}\\
+\includegraphics[height=\sz,clip=true,trim=1.05cm 0 0 0]{figures/det_analysis/rcnn_ft_fc7_bb/plots_fp_trendarea_furniture.pdf}\\
+\caption{\textbf{Distribution of top-ranked false positive (FP)
+types.} Each plot shows the evolving distribution of FP types as
+more FPs are considered in order of decreasing score. Each FP is
+categorized into 1 of 4 types: Loc---poor localization (a detection with an IoU overlap
+with the correct class between 0.1 and 0.5, or a duplicate); Sim---confusion with a similar category;
+Oth---confusion with a dissimilar object category; BG---a FP that fired
+on background.  Compared with DPM (see \cite{hoiem2012diagnosing}), significantly more of our errors
+result from poor localization, rather than confusion with background
+or other object classes, indicating that the CNN features are much
+more discriminative than HOG. Loose localization likely results from our
+use of bottom-up region proposals and the positional invariance
+learned from pre-training the CNN for whole-image classification.
+Column three shows how our simple bounding-box regression method fixes many localization errors.}
+\figlabel{fp-type-dist}
+\vspace{-1em}
+\end{figure}
+
+\begin{figure*}[t!]
+\centering
+\def \sz {1.275in}
+\includegraphics[height=\sz]{figures/det_analysis/rcnn_fc6/plots_impact_ov50.pdf}
+\hspace{0em}
+\includegraphics[height=\sz,clip=true,trim=0.5cm 0 0 0]{figures/det_analysis/rcnn_ft_fc7/plots_impact_ov50.pdf}
+\hspace{0em}
+\includegraphics[height=\sz,clip=true,trim=0.5cm 0 0 0]{figures/det_analysis/rcnn_ft_fc7_bb/plots_impact_ov50.pdf}
+\hspace{0em}
+\includegraphics[height=\sz,clip=true,trim=0.5cm 0 0 0]{figures/det_analysis/dpm_v5/plots_impact_ov50.pdf}
+\caption{\textbf{Sensitivity to object characteristics.} Each plot shows the mean (over classes)
+normalized AP (see \cite{hoiem2012diagnosing}) for the highest and lowest performing subsets within six different
+object characteristics (occlusion, truncation, bounding-box area, aspect ratio, viewpoint, part visibility).
+We show plots for our method (R-CNN) with and without fine-tuning (FT) and bounding-box regression (BB) as well as for DPM voc-release5.
+Overall, fine-tuning does not reduce sensitivity (the difference between max and min), but does substantially improve
+both the highest and lowest performing subsets for nearly all characteristics. This indicates that fine-tuning does
+more than simply improve the lowest performing subsets for aspect ratio and bounding-box area, as one might
+conjecture based on how we warp network inputs. Instead, fine-tuning improves robustness
+for all characteristics including occlusion, truncation, viewpoint, and part visibility.}
+\figlabel{obj-char}
+\vspace{-1em}
+\end{figure*}
+
+\subsection{Bounding-box regression}
+\seclabel{bboxreg}
+Based on the error analysis, we implemented a simple method to reduce localization errors.
+Inspired by the bounding-box regression employed in DPM \cite{lsvm-pami}, we train a linear regression model to predict a new detection window given the \pool{5} features for a selective search region proposal.
+Full details are given in \asecref{bboxreg}.
+Results in \tableref{voc2010}, \tableref{voc2007}, and \figref{fp-type-dist} show that this simple approach fixes a large number of mislocalized detections, boosting mAP by 3 to 4 points.
+
+\subsection{Qualitative results}
+Qualitative detection results on ILSVRC2013 are presented in \figref{examples1} and \figref{examples2} at the end of the paper.
+Each image was sampled randomly from the \valb set and all detections from all detectors with a precision greater than 0.5 are shown.
+Note that these are not curated and give a realistic impression of the detectors in action.
+More qualitative results are presented in \figref{cexamples1} and \figref{cexamples2}, but these have been curated.
+We selected each image because it contained interesting, surprising, or amusing results.
+Here, also, all detections at precision greater than 0.5 are shown.

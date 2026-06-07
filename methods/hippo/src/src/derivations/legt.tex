@@ -1,0 +1,157 @@
+\documentclass[../../hippo]{subfiles}
+\begin{document}
+
+\subsection{Derivation for Translated Legendre (HiPPO-LegT)}
+\label{sec:derivation-legt}
+
+This measure fixes a window length $\theta$ and slides it across time.
+
+
+\paragraph{Measure and Basis}
+We use a uniform weight function supported on the interval $[t - \theta, t]$ and pick
+Legendre polynomials $P_n(x)$, translated from $[-1, 1]$ to $[t - \theta, t]$, as basis
+functions:
+\begin{align*}
+  \omega(t, x) &= \frac{1}{\theta} \mathbb{I}_{[t-\theta, t]}
+  \\
+  p_n(t, x) &= (2n+1)^{1/2} P_n\left( \frac{2(x-t)}{\theta} + 1 \right)
+  \\
+  g_n(t, x) &= \lambda_n p_n(t, x)
+  .
+\end{align*}
+Here, we have used no tilting so $\chi = 1$ and $\zeta = 1$ (equations~\eqref{eq:framework-chi} and~\eqref{eq:framework-zeta}).
+We leave $\lambda_n$ unspecified for now.
+
+
+
+
+At the endpoints, these basis functions satisfy
+\begin{align*}
+  g_n(t, t) &= \lambda_n (2n+1)^{\frac{1}{2}}
+  \\
+  g_n(t, t-\theta) &= \lambda_n (-1)^{n} (2n+1)^{\frac{1}{2}}
+  .
+\end{align*}
+
+
+\paragraph{Derivatives}
+The derivative of the measure is
+\begin{align*}
+  \ppt \omega(t, x) &= \frac{1}{\theta} \delta_t - \frac{1}{\theta} \delta_{t-\theta}
+  .
+\end{align*}
+The derivative of Legendre polynomials can be expressed as linear combinations of
+other Legendre polynomials (cf.\ \cref{sec:legendre-properties}).
+\begin{align*}
+  \ppt g_n(t, x) &= \lambda_n (2n+1)^{\frac{1}{2}} \cdot \frac{-2}{\theta} P_n'\left( \frac{2(x-t)}{\theta} + 1 \right)
+  \\
+  &= \lambda_n (2n+1)^{\frac{1}{2}} \frac{-2}{\theta} \left[ (2n-1)P_{n-1}\left( \frac{2(x-t)}{\theta} + 1 \right) + (2n-5) P_{n-3}\left( \frac{2(x-t)}{\theta} + 1 \right) + \dots \right]
+  \\
+  &= - \lambda_n (2n+1)^{\frac{1}{2}} \frac{2}{\theta} \left[ \lambda_{n-1}^{-1} (2n-1)^{\frac{1}{2}} g_{n-1}(t, x) + \lambda_{n-3}^{-1} (2n-3)^{\frac{1}{2}} g_{n-3}(t, x) + \dots \right]
+  .
+\end{align*}
+We have used equation~\eqref{eq:legendre-d} here.
+
+\paragraph{Sliding Approximation}
+As a special case for the LegT measure, we need to consider an approximation due to the nature of the sliding window measure.
+
+When analyzing $\ddt c(t)$ in the next section, we will need to use the value $f(t-\theta)$.
+However, at time $t$ this input is no longer available.
+Instead, we need to rely on our compressed representation of the function:
+by the reconstruction equation \eqref{eq:reconstruction}, if the approximation is succeeding so far,
+we should have
+\begin{align*}
+  f_{\leq t}(x) &\approx \sum_{k=0}^{N-1} \lambda_k^{-1} c_k(t) (2k+1)^{\frac{1}{2}} P_k \left( \frac{2(x-t)}{\theta} + 1 \right)
+  \\
+  f(t-\theta) &\approx \sum_{k=0}^{N-1} \lambda_k^{-1} c_k(t) (2k+1)^{\frac{1}{2}} (-1)^{k}
+  .
+\end{align*}
+
+
+
+
+
+\paragraph{Coefficient Dynamics}
+We are ready to derive the coefficient dynamics.
+
+Plugging the derivatives of this measure and basis into equation~\eqref{eq:coefficient-dynamics} gives
+\begin{align*}
+  \frac{d}{dt} c_n(t)
+  &= \int f(x) \left(\ppt g_n(t, x)\right) \omega(t, x) \dd x
+  \\
+  &\qquad + \int f(x) g_n(t, x) \left(\ppt \omega(t, x)\right) \dd x
+  \\
+  &= -\lambda_n (2n+1)^{\frac{1}{2}} \frac{2}{\theta} \left[ \lambda_{n-1}^{-1} (2n-1)^{\frac{1}{2}} c_{n-1}(t) + \lambda_{n-3}^{-1} (2n-5)^{\frac{1}{2}} c_{n-3}(t) + \dots \right]
+  \\
+  &\qquad + \frac{1}{\theta} f(t) g_n(t, t) - \frac{1}{\theta} f(t-\theta) g_n(t, t-\theta)
+  \\
+  &\approx -\frac{\lambda_n}{\theta} (2n+1)^{\frac{1}{2}} \cdot 2 \left[ (2n-1)^{\frac{1}{2}} \frac{c_{n-1}(t)}{\lambda_{n-1}} + (2n-5)^{\frac{1}{2}} \frac{c_{n-3}(t)}{\lambda_{n-3}} + \dots \right]
+  \\
+  &\qquad + (2n+1)^{\frac{1}{2}} \frac{\lambda_n}{\theta} f(t)
+  - (2n+1)^{\frac{1}{2}} \frac{\lambda_n}{\theta} (-1)^n \sum_{k=0}^{N-1} (2k+1)^{\frac{1}{2}} \frac{c_k(t)}{\lambda_k} (-1)^{k}
+  \\
+  &= - \frac{\lambda_n}{\theta} (2n+1)^{\frac{1}{2}} \cdot 2 \left[ (2n-1)^{\frac{1}{2}} \frac{c_{n-1}(t)}{\lambda_{n-1}} + (2n-5)^{\frac{1}{2}} \frac{c_{n-3}(t)}{\lambda_{n-3}} + \dots \right]
+  \\
+  &\qquad - (2n+1)^{\frac{1}{2}} \frac{\lambda_n}{\theta} \sum_{k=0}^{N-1}  (-1)^{n-k} (2k+1)^{\frac{1}{2}} \frac{c_k(t)}{\lambda_{k}}
+  + (2n+1)^{\frac{1}{2}} \frac{\lambda_n}{\theta} f(t)
+  \\
+  &= - \frac{\lambda_n}{\theta} (2n+1)^{\frac{1}{2}} \sum_{k=0}^{N-1}  M_{nk} (2k+1)^{\frac{1}{2}} \frac{c_k(t)}{\lambda_{k}}
+  + (2n+1)^{\frac{1}{2}} \frac{\lambda_n}{\theta} f(t)
+  ,
+\end{align*}
+where
+\begin{align*}
+  M_{nk} = 
+  \begin{cases}
+    1 & \mbox{if } k \le n \\
+    (-1)^{n-k} & \mbox{if } k \ge n
+  \end{cases}.
+\end{align*}
+
+
+Now we consider two instantiations for $\lambda_n$.
+The first one is the more natural $\lambda_n = 1$, which turns $g_n$ into an orthonormal basis.
+We then get
+\begin{align*}
+  \ddt c(t) &= -\frac{1}{\theta} A c(t) + \frac{1}{\theta} B f(t)
+  \\
+  A_{nk} &=
+  (2n+1)^{\frac{1}{2}}(2k+1)^{\frac{1}{2}}
+  \begin{cases}
+    1 & \mbox{if } k \le n \\
+    (-1)^{n-k} & \mbox{if } k \ge n
+  \end{cases}
+  \\
+  B_n &= (2n+1)^{\frac{1}{2}}
+  .
+\end{align*}
+
+The second case takes $\lambda_n = (2n+1)^{\frac{1}{2}} (-1)^{n}$.
+This yields
+\begin{align*}
+  \ddt c(t) &= -\frac{1}{\theta} A c(t) + \frac{1}{\theta} B f(t)
+  \\
+  A_{nk} &=
+  (2n+1)
+  \begin{cases}
+    (-1)^{n-k} & \mbox{if } k \le n \\
+    1          & \mbox{if } k \ge n
+  \end{cases}
+  \\
+  B_n &= (2n+1) (-1)^{n}
+  .
+\end{align*}
+This is exactly the LMU update equation.
+
+
+\paragraph{Reconstruction}
+
+By equation~\eqref{eq:reconstruction}, at every time $t$ we have
+\begin{align*}
+  f(x) \approx g^{(t)}(x) = \sum_n \lambda_n^{-1} c_n(t) (2n+1)^{\frac{1}{2}} P_n\left( \frac{2(x-t)}{\theta} + 1 \right).
+\end{align*}
+
+
+
+\end{document}
+

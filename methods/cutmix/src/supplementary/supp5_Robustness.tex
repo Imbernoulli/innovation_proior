@@ -1,0 +1,46 @@
+\section{Robustness and Uncertainty}
+\label{appendix:robustness}
+
+In this section, we describe the details of the experimental setting and evaluation methods.
+
+\subsection{Robustness}
+
+We evaluate the model robustness to adversarial perturbations, occlusion and in-between samples using ImageNet trained models. For the base models, we use ResNet-50 structure and follow the settings in Section 4.1.1.
+For comparison, we use ResNet-50 trained without any additional regularization or augmentation techniques, ResNet-50 trained by Mixup strategy, ResNet-50 trained by Cutout strategy and ResNet-50 trained by our proposed CutMix strategy.
+
+\noindent\textbf{Fast Gradient Sign Method (FGSM): }
+We employ Fast Gradient Sign Method (FGSM) \cite{fgsm} to generate adversarial samples.
+For the given image $x$, the ground truth label $y$ and the noise size $\epsilon$, FGSM generates an adversarial sample as the following
+\begin{equation}
+    \hat x = x + \epsilon ~\texttt{sign}\left(\nabla_{x} L(\theta, x, y)\right),
+\end{equation}
+where $L(\theta, x, y)$ denotes a loss function, for example, cross entropy function.
+In our experiments, we set the noise scale $\epsilon = 8/255$.
+
+\noindent\textbf{Occlusion: }
+For the given hole size $s$, we make a hole with width and height equals to $s$ in the center of the image.
+For center occluded samples, we zeroed-out inside of the hole and for boundary occluded samples, we zeroed-out outside of the hole.
+In our experiments, we test the top-1 ImageNet validation accuracy of the models with varying hole size from $0$ to $224$.
+
+\noindent\textbf{In-between class samples: }
+To generate in-between class samples, we first sample $50,000$ pairs of images from the ImageNet validation set. For generating Mixup samples, we generate a sample $x$ from the selected pair $x_A$ and $x_B$ by $x = \lambda x_A + (1-\lambda) x_B$. We report the top-1 accuracy on the Mixup samples by varying $\lambda$ from $0$ to $1$.
+To generate CutMix in-between samples, we employ the center mask instead of the random mask. We follow the hole generation process used in the occlusion experiments. We evaluate the top-1 accuracy on the CutMix samples by varing hole size $s$ from $0$ to $224$.
+
+\input{tables/OOD_supplimentary.tex}
+
+\subsection{Uncertainty}
+
+Deep neural networks are often overconfident in their predictions. For example, deep neural networks produce high confidence number even for random noise \cite{hendrycks2016baseline}. One standard benchmark to evaluate the overconfidence of the network is Out-of-distribution (OOD) detection proposed by \cite{hendrycks2016baseline}. The authors proposed a threshold-baed detector which solves the binary classification task by classifying in-distribution and out-of-distribution using the prediction of the given network. Recently, a number of reserchs are proposed to enhance the performance of the baseline detector \cite{liang2017odin, lee2018simple} but in this paper, we follow only the baseline detector algorithm without any input enhancement and temperature scaling \cite{liang2017odin}.
+
+\noindent\textbf{Setup: }
+We compare the OOD detector performance using CIFAR-100 trained models described in Section 4.1.2. For comparison, we use PyramidNet-200 model without any regularization method, PyramidNet-200 model with Mixup, PyramidNet-200 model with Cutout and PyramidNet-200 model with our proposed CutMix.
+
+\noindent\textbf{Evaluation Metrics and Out-of-distributions: }
+In this work, we follow the experimental setting used in \cite{hendrycks2016baseline, liang2017odin}.
+To measure the performance of the OOD detector, we report the true negative rate (TNR) at 95\% true positive rate (TPR), the area under the receiver operating characteristic curve (AUROC) and detection accuracy of each OOD detector.
+We use seven datasets for out-of-distribution: TinyImageNet (crop), TinyImageNet (resize), LSUN \cite{yu2015lsun} (crop), LSUN (resize), iSUN, Uniform noise and Gaussian noise.
+
+\noindent\textbf{Results: } 
+We report OOD detector performance to seven OODs in Table~\ref{table:ood-sup}. Overall, CutMix outperforms baseline, Mixup and Cutout. Moreover, we find that even though Mixup and Cutout outperform the classification performance, Mixup and Cutout largely degenerate the baseline detector performance.
+Especially, for Uniform noise and Gaussian noise, Mixup and Cutout seriously impair the baseline performance while CutMix dramatically improves the performance.
+From the experiments, we observe that our proposed CutMix enhances the OOD detector performance while Mixup and Cutout produce more overconfident predictions to OOD samples than the baseline.

@@ -1,0 +1,37 @@
+
+
+\subsection{Robustness and Uncertainty}
+\label{sec:robustness}
+
+
+Many researches have shown that deep models are easily fooled by small and unrecognizable perturbations on the input images, a phenomenon referred to as adversarial attacks~\cite{fgsm, szegedy2013intriguing}.
+One straightforward way to enhance robustness and uncertainty is an input augmentation by generating unseen samples~\cite{madry2017towards}.
+We evaluate robustness and uncertainty improvements due to input augmentation methods including Mixup, Cutout, and CutMix.
+
+\noindent\textbf{Robustness: }
+We evaluate the robustness of the trained models to adversarial samples, occluded samples, and in-between class samples.
+We use ImageNet pre-trained ResNet-50 models with same setting as in Section~\ref{sec:imagenet_cls}.
+
+Fast Gradient Sign Method (FGSM)~\cite{fgsm} is used to generate adversarial perturbations and we assume that the adversary has full information of the models (\textit{white-box attack}).
+We report top-1 accuracies after attack on ImageNet validation set in Table~\ref{table:fgsm}. 
+CutMix significantly improves the robustness to adversarial attacks compared to other augmentation methods.
+
+For occlusion experiments, we generate occluded samples in two ways: center occlusion by filling zeros in a center hole and boundary occlusion by filling zeros outside of the hole.
+In Figure~\ref{fig:robustness_occ}, we measure the top-1 error by varying the hole size from $0$ to $224$. For both occlusion scenarios, Cutout and CutMix achieve significant improvements in robustness while Mixup only marginally improves it.
+Interestingly, CutMix almost achieves a comparable performance as Cutout even though CutMix has not observed any occluded sample during training unlike Cutout.
+
+Finally, we evaluate the top-1 error of Mixup and CutMix in-between samples. 
+The probability to predict neither two classes by varying the combination ratio $\lambda$ is illustrated in Figure~\ref{fig:robustness_inbetween}.
+We randomly select $50,000$ in-between samples in ImageNet validation set.
+In both experiments, Mixup and CutMix improve the performance while improvements due to Cutout are almost negligible.
+Similarly to the previous occlusion experiments, CutMix even improves the robustness to the unseen Mixup in-between class samples.
+
+
+\input{tables/OOD.tex}
+
+\noindent\textbf{Uncertainty: }
+We measure the performance of the out-of-distribution (OOD) detectors proposed by~\cite{hendrycks2016baseline} which determines whether the sample is in- or out-of-distribution by score thresholding.
+We use PyramidNet-200 trained on CIFAR-100 datasets with same setting as in Section~\ref{sec:CIFAR-100-classification}.
+In Table~\ref{table:OOD}, we report the averaged OOD detection performances against seven out-of-distribution samples from~\cite{hendrycks2016baseline, liang2017odin}, including TinyImageNet, LSUN~\cite{yu2015lsun}, uniform noise, Gaussian noise, etc. More results are illustrated in Appendix~\ref{appendix:robustness}.
+Mixup and Cutout augmentations aggravate the over-confidence of the base networks. Meanwhile, CutMix significantly alleviates the over-confidence of the model.
+

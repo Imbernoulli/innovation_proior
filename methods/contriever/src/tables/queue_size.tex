@@ -1,0 +1,125 @@
+\begin{table*}[t!]
+  \small
+  \center
+  \begin{tabular}{@{}l  c c c c c c c @{}}
+    \toprule
+    \textbf{Queue size} & 2k & 4k & 8k & 16k & 32k & 64k & 128k \\
+    \midrule
+    MSMARCO       & 12.6 & 12.7 & 14.1 & 14.9 & & 15.6 \\
+    TREC-COVID    & 21.8 & 24.8 & 22.8 & 23.9 & & 21.7 \\
+    NFCorpus      & 23.4 & 25.9 & 27.6 & 26.6 & & 27.6 \\
+    NQ            & 11.6 & 13.1 & 13.5 & 15.4 & & 17.7 \\
+    HotpotQA      & 31.2 & 35.5 & 38.5 & 39.7 & & 44.9 \\
+    FiQA-2018     & 12.8 & 12.9 & 13.6 & 16.8 & & 16.3 \\
+    ArguAna       & 32.6 & 32.8 & 30.1 & 33.2 & & 35.6 \\
+    T\'ouche-2020 & 11.8 & 12.8 & 11.2 & 14.0 & & 13.5 \\
+    Quora         & 67.8 & 69.0 & 72.1 & 72.9 & & 75.4 \\
+    DBPedia       & 15.3 & 18.9 & 18.6 & 19.4 & & 21.0 \\
+    SCIDOCS       & 11.3 & 12.2 & 12.7 & 12.8 & & 13.3 \\
+    FEVER         & 54.9 & 56.8 & 58.9 & 63.0 & & 64.5 \\
+    Climate-FEVER & 11.6 & 14.3 & 12.4 & 16.1 & & 14.4 \\
+    SciFact       & 58.8 & 60.3 & 59.6 & 63.0 & & 63.0 \\
+    \midrule
+    AVERAGE       & 28.1 & 29.9 & 30.1 & 32.0 & & 33.0 \\
+    \bottomrule
+  \end{tabular}
+  \caption{Zero-shot NDCG@10 depending on the queue size.}
+  \label{tab:ndcg_zs_queue_size}
+\end{table*}
+
+\begin{table*}[t!]
+  \small
+  \center
+  \begin{tabular}{@{}l  c c c c c c c @{}}
+    \toprule
+    \textbf{Queue size} & 2k & 4k & 8k & 16k & 32k & 64k & 128k \\
+    \midrule
+    MSMARCO       & 29.5 & 30.0 & 30.1 & 30.1 & & 30.7 \\
+    TREC-COVID    & 40.1 & 38.4 & 37.9 & 40.9 & & 41.7 \\
+    NFCorpus      & 30.9 & 31.1 & 31.6 & 31.1 & & 31.0 \\
+    NQ            & 37.6 & 37.2 & 37.5 & 37.0 & & 39.7 \\
+    HotpotQA      & 60.8 & 61.7 & 62.5 & 62.7 & & 64.4 \\
+    FiQA-2018     & 23.4 & 23.4 & 23.1 & 24.6 & & 25.0 \\
+    ArguAna       & 42.1 & 41.6 & 41.6 & 40.3 & & 41.3 \\
+    T\'ouche-2020 & 14.1 & 13.3 & 13.1 & 15.3 & & 13.7 \\
+    Quora         & 83.0 & 82.7 & 83.2 & 83.5 & & 83.9 \\
+    DBPedia       & 34.0 & 36.9 & 36.8 & 37.9 & & 38.5 \\
+    SCIDOCS       & 15.1 & 15.7 & 16.2 & 16.0 & & 15.9 \\
+    FEVER         & 71.5 & 71.5 & 72.2 & 73.8 & & 74.7 \\
+    Climate-FEVER & 18.1 & 19.3 & 18.8 & 19.2 & & 18.0 \\
+    SciFact       & 64.1 & 66.3 & 67.3 & 67.2 & & 66.4 \\
+    \midrule
+    AVERAGE       & 41.1 & 41.5 & 41.7 & 42.3 & & 42.6 \\
+    \bottomrule
+  \end{tabular}
+  \caption{Zero-shot NDCG@10 depending on the queue size, after training on MS MARCO.}
+  \label{tab:ndcg_msmarco_queue_size}
+\end{table*}
+
+
+
+
+
+
+
+
+
+
+
+\begin{table*}[t!]
+    \small
+    \center
+    \begin{tabular}{@{}l  c c c c c c c @{}}
+        \toprule
+        \textbf{Queue size} & $2^{11}$ & $2^{12}$ & $2^{13}$ & $2^{14}$ & $2^{15}$ & $2^{16}$ & $2^{17}$ \\
+        \midrule
+   MSMARCO       & 12.6	& 12.7 & \\
+   TREC-COVID    & 21.8 & \\
+   NFCorpus      & 23.4 & \\
+   NQ            & 11.6 & \\
+   HotpotQA      & 31.2 & \\
+   FiQA-2018     & 12.8 & \\
+   ArguAna       & 32.6 & \\
+   T\'ouche-2020 & 11.8 & \\
+   Quora         & 67.8 & \\
+   DBPedia       & 15.3 & \\
+   SCIDOCS       & 11.3 & \\
+   FEVER         & 54.9 & \\
+   Climate-FEVER & 11.6 & \\
+   SciFact       & 58.8 & \\
+   \midrule
+   AVERAGE       &  \\
+   \bottomrule
+    \end{tabular}
+    \caption{Zero-shot NDCG@10 depending on the queue size.}
+    \label{tab:ndcg_zs_queue_size}
+\end{table*}
+
+\begin{table*}[t!]
+    \small
+    \center
+    \begin{tabular}{@{}l  c c c c c c c @{}}
+        \toprule
+        \textbf{Queue size} & $2^{11}$ & $2^{12}$ & $2^{13}$ & $2^{14}$ & $2^{15}$ & $2^{16}$ & $2^{17}$ \\
+        \midrule
+   MSMARCO       & \\
+   TREC-COVID    & \\
+   NFCorpus      & \\
+   NQ            & \\
+   HotpotQA      & \\
+   FiQA-2018     & \\
+   ArguAna       & \\
+   T\'ouche-2020 & \\
+   Quora         & \\
+   DBPedia       & \\
+   SCIDOCS       & \\
+   FEVER         & \\
+   Climate-FEVER & \\
+   SciFact       & \\
+   \midrule
+   AVERAGE       &  \\
+   \bottomrule
+    \end{tabular}
+    \caption{Zero-shot NDCG@10 depending on the queue size.}
+    \label{tab:recall_zs_queue_size}
+\end{table*}

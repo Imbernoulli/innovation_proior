@@ -1,0 +1,67 @@
+\section{Generalized Double Descent}
+\label{sec:general}
+
+Here we present a generic (though informal) way of unifying the three types of
+double-descent phenomenon we observe. In particular, we introduce a notion of ``Effective Model Complexity'' along which double-descent occurs.
+
+\pnote{Todo, rewrite this.}
+
+\begin{definition}[Learning Algorithm]
+A \emph{learning algorithm $\cA$}
+$$\cA: (\cX \x \cY)^* \to M$$
+is a function mapping $n$ samples $\{(x_i, y_i)\}$
+to a \emph{Model} $M: \cX \to \cY$.
+\end{definition}
+We will consider learning-algorithms which take as input
+$n$ i.i.d. samples $(x_i, y_i) \sim \cD$ from a distribution $\cD$,
+and output a model $M$ (for example, by training a neural-network via SGD on the samples).
+
+
+\begin{definition}[Model Complexity]
+For a learning-algorithm $\cA$, distribution $\cD$, loss function $\cL$, and $0 \leq \eps \ll 1$,
+define the 
+\emph{ModelComplexity}$_{\cD, \cL, \eps}(\cA)$
+as the maximum number of samples from $\cD$ for which $\cA$ outputs a model with small train loss.
+Formally,
+$$
+\mathrm{ModelComplexity}_{\cD, \cL, \eps}(\cA)
+:=
+\argmax_n  \Pr_{\substack{
+\{(x_i, y_i)\} \sim \cD^n\\
+M \gets \cA(\{(x_i, y_i)\})
+}}\left[ \frac{1}{n} \sum_i \cL( M(x_i), y_i )  \leq \eps \right] \geq 1-o(1)
+$$
+\end{definition}
+
+Throughout, we consider learning-algorithms which output models by 
+training a neural network, optimizing the train loss via SGD or variants.
+In this case, let $\cA_{NN}[\text{Model-Size, Train-Steps}]$ be the learning algorithm
+which trains a neural-network of a given size and architecture for the given number of train steps.
+
+For $n$ training samples,
+we consider a learning-algorithm $\cA$ to be ``overparmeterized'' if
+$$
+\mathrm{ModelComplexity}_{\cD, \cL, \eps}(\cA)
+\gg n
+$$
+and ``underparameterized'' if
+$\mathrm{ModelComplexity}_{\cD, \cL, \eps}(\cA) \ll n$,
+and ``critically parameterized'' if
+$\mathrm{ModelComplexity}_{\cD, \cL, \eps}(\cA) \approx n$.
+
+
+We can now state our main thesis in terms of the above.
+\begin{claim}[Phase Transision, Informal]
+Neural-network learning algorithms $\cA_{NN}$ undergo
+a \emph{phase transition} in their test performance 
+in the ``critically parameterized'' regime, when
+the \emph{ModelComplexity} is equal to the size of the train set.
+That is, when
+$$
+\mathrm{ModelComplexity}_{\cD, \cL, \eps}(\cA_{NN})
+= n
+$$
+where $n$ is the number of training examples.
+\end{claim}
+
+

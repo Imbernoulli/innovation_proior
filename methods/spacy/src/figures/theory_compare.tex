@@ -1,0 +1,21 @@
+\change{
+\begin{table*}[t]
+\centering
+\begin{tabular}{lC{1.7cm}C{3cm}C{1.8cm}C{3cm}}
+\toprule
+\textbf{Methods} & \textbf{Non-linear SCM} & \textbf{Non-linear mapping from latents to observations} & \textbf{Instantaneous Links} & \textbf{Allows multiple latent parents}\\
+\midrule
+Mapped-PCMCI \citep{xavi2022teleconnection}     & \xmark & \xmark & \xmark & \xmark \\
+Linear-Response \citep{Falasca_2024} & \xmark & \xmark & \xmark & \xmark \\
+LEAP \citep{yao2021learning}   & \cmark & \cmark & \xmark & \cmark\\
+TDRL \citep{zhao2023generative}    & \cmark & \cmark & \xmark & \cmark \\
+CDSD \citep{brouillard2024causal}   & \cmark & \cmark& \xmark & \xmark \\
+\rowcolor{gray!20} 
+\textbf{SPACY (ours)}  & \cmark & \cmark$^*$ & \cmark & \cmark \\
+\bottomrule
+\end{tabular}
+
+\caption{{Assumptions of various spatiotemporal causal discovery algorithms. SPACY supports a non-linear mapping from latent variables to observations via an invertible transformation of the product between latent time series and spatial factors (denoted by $*$).}}
+\label{tab:comparison}
+\end{table*}
+}

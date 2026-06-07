@@ -1,0 +1,51 @@
+
+
+
+
+\section{Introduction}
+
+
+
+
+
+Creating sample-efficient continuous control methods that observe high-dimensional images has been a long standing challenge in reinforcement learning (RL)~\cite{}. Over the last three years, the RL community has made significant headway on this problem, improving sample-efficiency significantly. The key insight to solving visual control is the learning of better low-dimensional representations, either through autoencoders~\citep{yarats2019improving,finn2015deepspatialae}, variational inference~\citep{hafner2018planet,hafner2019dream,lee2019slac}, contrastive learning~\citep{srinivas2020curl,yarats2021proto}, self-prediction~\citep{schwarzer2020spr}, or data augmentations~\citep{yarats2021image,laskin2020reinforcement}. However, current state-of-the-art model-free methods are still limited in three ways. First, they are unable to solve the more challenging visual control problems such as quadruped and humanoid locomotion. Second, they often require significant computational resources, i.e.~lengthy training times using distributed multi-GPU infrastructure. Lastly, it is often unclear how different design choices affect overall system performance.
+
+
+\begin{figure}[t!]
+    \centering
+    % \vspace{-10mm}
+    \includegraphics[width=\linewidth]{figs/model.pdf}
+
+    \caption{(Left):~\drqs{} is an off-policy actor-critic algorithm for image-based RL. It alleviates encoder overfitting by applying random shift augmentation to pixel observations sampled from the replay buffer. (Right): Examples of walking and standing behaviors learned by~\drqs{} for a complex humanoid agent from DMC~\citep{tassa2018dmcontrol} with $21$ and $54$ dimensional action and state spaces, respectively.~\drqs{} does not have access to the internal state of the environment, only observing three consecutive pixel frames at a time. Despite this imperfect observational channel, our agent still manages to solve the tasks. To the best of our knowledge, this is the first successful demonstration by a model-free method, using pixel-based inputs of this tasks.}
+    %of our method is provided in~\cref{ ~minimizes the cross entropy loss to optimize the encoder $f_\theta$, projector $g_\phi$, and discrete prototypical vectors $\{{c_i}\}_{i=1}^M$. The representation $y_t$ obtained from the encoder $f_\theta$ and the prototypes $\{{c_i}\}_{i=1}^M$ are also passed to the RL module to learn a policy and a value function. Importantly, \proto~blocks the gradients from the RL loss function in order to learn \emph{task-agnostic} representations and prototypes, which are only trained with our self supervised loss.}
+    \label{fig:model}
+    % \vspace{-10pt}
+\end{figure}
+
+In this paper we present \drq{}, a simple model-free algorithm that builds on the idea of using data augmentations~\citep{yarats2021image,laskin2020reinforcement} to solve hard visual control problems. Most notably, it is the first model-free method that solves complex humanoid tasks directly from pixels. Compared to previous state-of-the-art model-free methods, \drqs{} provides significant improvements in sample efficiency across tasks from the DeepMind Control Suite~\citep{tassa2018dmcontrol}. Conceptually simple, \drqs{} is also computationally efficient, which allows solving most tasks in DeepMind Control Suite in just $8$ hours on a single GPU (see~\cref{fig:exp_dmc_main}). Recently, a model-based method, DreamerV2~\citep{hafner2020dreamerv2} was also shown to solve visual continuous control problems and it was first to solve the humanoid locomotion problem from pixels. While our model-free \drqs{} matches DreamerV2 in terms sample efficiency and performance, it does so $4\times$ faster in terms of wall-clock time to train. We believe this makes \drqs{} a more accessible approach to support research in visual continuous control and it reinforces the question on whether model-free or model-based is the more suitable approach to solve this type of tasks.
+
+DrQ-v2, which is detailed in~\cref{section:method}, improves upon DrQ~\citep{yarats2021image} by making several algorithmic changes: (i) switching the base RL algorithm from SAC~\citep{haarnoja2018sac} to DDPG~\citep{lillicrap2015ddpg}, (ii) this allows us straightforwardly incorporating multi-step return, (iii) adding bilinear interpolation to the random shift image augmentation, (iv) introducing an exploration schedule, (v) selecting better hyper-parameters including a larger capacity of the replay buffer. A careful ablation study of these design choices is presented in~\cref{section:ablation}. 
+Furthermore, we re-examine the original implementation of DrQ and identify several computational bottlenecks such as replay buffer management, data augmentation processing, batch size, and frequency of learning updates (see~\cref{section:code_details}). To remedy these, we have developed a new implementation that both achieves better performance and trains around $3.5$ times faster with respect to wall-clock time than the previous implementation on the same hardware with an increase in environment frame throughput (FPS) from $28$ to $96$ (i.e., it takes $10^6 / 96 / 3600 \approx 2.9$ hours to train for 1M environment steps). %The PyTorch implementation of \drqs{} is available at \url{https://github.com/facebookresearch/drqv2}.
+
+
+
+% to control dynamic agents from Continuous control from visual observations holds promise in solving a var
+
+% Over the last three years, several works 
+
+% para 1: Where we were 2 years ago. Where are we now? Hard tasks remain unsolved. Can current model-free algorithms solve these hard control problems?
+
+% para 2: What have we done in this tech report. Works on hard visual control problems. Method is significantly simpler than prior works. Is significantly faster in flops than prior work.
+
+% para 3: Code etc. will be released. Ablation study highlights the important factors that correlate with performance.
+
+% We examine several building components of DrQ to answer the question if it is possible to solve a 57 DOF humanoid tasks from DMC by a off-policy model-free algorithm or there is a fundamental limitation of such method (e.g. necessity of learning model, more rich observations, etc). Our extensive ablation study shows it is in fact possible to solve these tasks with a very simple algorithm.  We arrive at a much simplifier and faster version of DrQ that demonstrates superior performance, and for the first time demonstrates that it is possible to solve a 57 DOF humanoid directly from pixels. Our approach doesn't distributed training and is able to converges on a single GPU in just 72 hours.
+
+% Contributions:
+
+% \begin{itemize}
+
+%     \item A first successful demonstration that a model-free RL agent is capable of solving 57 DOF humanoid directly from pixels.\\
+%     \item An extensive ablation study that highlight the importance of individual components of the algorithm.\\
+%     \item A simple and extremely fast PyTorch implementation of the algorithm that allows solving most of the image-based tasks from DMC in under 3 hours on a single GPU. We hope that our implementation will allow to mitigate the resource demands of image-based RL.\\
+% \end{itemize}

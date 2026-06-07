@@ -1,0 +1,101 @@
+\begin{tikzpicture}
+\tikzstyle{every node}=[font=\footnotesize]
+
+
+\definecolor{color0}{rgb}{1,0.8,0.266666666666667}
+\definecolor{color1}{rgb}{1,0.533333333333333,0.533333333333333}
+\definecolor{color2}{rgb}{0.533333333333333,0.8,1}
+\definecolor{color3}{rgb}{0.4,0.933333333333333,0.4}
+
+\begin{axis}[
+legend cell align={left},
+legend style={
+  fill opacity=0.8,
+  draw opacity=1,
+  text opacity=1,
+  at={(0.97,0.03)},
+  anchor=south east,
+  draw=white!80!black,
+  nodes={scale=0.75, transform shape}
+},
+tick align=outside,
+tick pos=left,
+title={{\small \sffamily Gigapixel image: \sceneTokyo}},
+x grid style={white!69.0196078431373!black},
+xlabel={Training time (seconds)},
+xmin=103.421799862385, xmax=464.261781728268,
+xtick style={color=black},
+y grid style={white!69.0196078431373!black},
+ylabel={PSNR (dB)},
+ymin=20.2067203398071, ymax=42.0816579539985,
+ytick style={color=black}
+]
+\addplot [semithick, color0, mark=*, mark size=1, mark options={solid}]
+table {%
+228.929524421692 21.2010356859067
+154.858687400818 29.0460624157928
+181.510112047195 36.6448114475036
+230.502841949463 39.1480011664734
+321.705054044724 40.7173075832271
+};
+\addlegendentry{F=1}
+\addplot [semithick, color1, mark=*, mark size=1, mark options={solid}]
+table {%
+144.989725351334 21.6963558819769
+119.823617219925 32.692822251289
+156.119407176971 38.6662794062705
+219.022021532059 40.4591431395683
+337.516640901566 41.0321198738862
+};
+\addlegendentry{F=2}
+\addplot [semithick, color2, mark=*, mark size=1, mark options={solid}]
+table {%
+159.452895879745 22.474131419056
+134.288972377777 36.0011806809374
+181.115212202072 40.1872081125896
+253.08021569252 40.8744902370282
+397.49270939827 41.0873426078989
+};
+\addlegendentry{F=4}
+\addplot [semithick, color3, mark=*, mark size=1, mark options={solid}]
+table {%
+154.657912731171 23.3712799933527
+142.505985736847 38.1103421888565
+202.064184904099 40.330309274246
+288.764913082123 40.8040547987758
+447.859964370728 40.8710797587731
+};
+\addlegendentry{F=8}
+\draw (axis cs:233.568300902843,21.0058729669335) node[
+  scale=0.7,
+  anchor=base west,
+  text=white!15!black,
+  rotate=0.0
+]{$\levels = 2$};
+\draw (axis cs:159.497463881969,28.8508996968196) node[
+  scale=0.7,
+  anchor=base west,
+  text=white!15!black,
+  rotate=0.0
+]{$\levels = 4$};
+\draw (axis cs:186.148888528347,35.6689978526376) node[
+  scale=0.7,
+  anchor=base west,
+  text=white!15!black,
+  rotate=0.0
+]{$\levels = 8$};
+\draw (axis cs:235.141618430614,38.1721875716074) node[
+  scale=0.7,
+  anchor=base west,
+  text=white!15!black,
+  rotate=0.0
+]{$\levels = 16$};
+\draw (axis cs:319.849543452263,38.9608431124682) node[
+  scale=0.7,
+  anchor=base west,
+  text=white!15!black,
+  rotate=0.0
+]{$\levels = 32$};
+\end{axis}
+
+\end{tikzpicture}

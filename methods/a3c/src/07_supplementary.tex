@@ -1,0 +1,272 @@
+%
+%
+%
+\title{Supplementary Material for "Asynchronous Methods for Deep Reinforcement Learning"}
+\maketitle
+\thispagestyle{empty}
+
+\label{supplementary}
+
+\section{Optimization Details}
+\label{sec:opt}
+We investigated two different optimization algorithms with our asynchronous framework -- stochastic gradient descent and RMSProp.  Our implementations of these algorithms do not use any locking in order to maximize throughput when using a large number of threads.
+
+\textbf{Momentum SGD:}
+The implementation of SGD in an asynchronous setting is relatively straightforward and well studied~\citep{recht2011hogwild}.
+Let $\theta$ be the parameter vector that is shared across all threads and let $\Delta\theta_i$ be the accumulated gradients of the loss with respect to parameters $\theta$ computed by thread number $i$.
+Each thread $i$ independently applies the standard momentum SGD update $m_i = \alpha m_i + (1-\alpha) \Delta\theta_i$ followed by $\theta \gets \theta - \eta m_i$ with learning rate $\eta$, momentum $\alpha$ and without any locks.
+Note that in this setting, each thread maintains its own separate gradient and momentum vector.
+
+\textbf{RMSProp:} While RMSProp~\citep{tieleman2012lecture} has been widely used in the deep learning literature, it has not been extensively studied in the asynchronous optimization setting.  The standard non-centered RMSProp update is given by
+\begin{eqnarray}
+    \label{eq-rmsprop-s}
+    g = \alpha g + (1-\alpha)\Delta\theta^2 \\
+    \theta \gets \theta - \eta \frac{\Delta\theta}{\sqrt{g+\epsilon}},
+\end{eqnarray}
+where all operations are performed elementwise.
+In order to apply RMSProp in the asynchronous optimization setting one must decide whether the moving average of elementwise squared gradients $g$ is shared or per-thread.
+We experimented with two versions of the algorithm.
+In one version, which we refer to as RMSProp, each thread maintains its own $g$ shown in Equation~\ref{eq-rmsprop-s}.
+In the other version, which we call Shared RMSProp, the vector $g$ is shared among threads and is updated asynchronously and without locking.
+%
+Sharing statistics among threads also reduces memory requirements by using one fewer copy of the parameter vector per thread.
+
+We compared these three asynchronous optimization algorithms in terms of their sensitivity to different learning rates and random network initializations.
+%
+%
+%
+Figure~\ref{fig-optimization} shows a comparison of the methods for two different reinforcement learning methods (Async $n$-step Q and Async Advantage Actor-Critic) on four different games (Breakout, Beamrider, Seaquest and Space Invaders).
+Each curve shows the scores for 50 experiments that correspond to 50 different random learning rates and initializations.
+The x-axis shows the rank of the model after sorting in descending order by final average score and the y-axis shows the final average score achieved by the corresponding model.
+In this representation, the algorithm that performs better would achieve higher maximum rewards on the y-axis and the algorithm that is most robust would have its slope closest to horizontal, thus maximizing the area under the curve.
+RMSProp with shared statistics tends to be more robust than RMSProp with per-thread statistics, which is in turn more robust than Momentum SGD.
+
+\input{05_experimental_setup}
+
+
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+
+
+\input{05_experiment_mujoco}
+
+\begin{algorithm}[h]
+\caption{Asynchronous n-step Q-learning - pseudocode for each actor-learner thread.}
+\begin{algorithmic}
+\small
+\State \emph{// Assume global shared parameter vector $\theta$.}
+\State \emph{// Assume global shared target parameter vector $\theta^-$.}
+\State \emph{// Assume global shared counter $T=0$.}
+\State Initialize thread step counter $t\gets 1$
+\State Initialize target network parameters $\theta^- \gets \theta$
+\State Initialize thread-specific parameters $\theta' = \theta$
+\State Initialize network gradients $d\theta \gets 0$
+\Repeat
+\State Clear gradients $d\theta \gets 0$
+\State Synchronize thread-specific parameters $\theta'=\theta$
+\State $t_{start} = t$
+\State Get state $s_t$
+\Repeat
+\State Take action $a_t$ according to the $\epsilon$-greedy policy based on $Q(s_t,a;\theta')$
+\State Receive reward $r_t$ and new state $s_{t+1}$
+\State $t \gets t + 1$
+\State $T \gets T + 1$
+\Until terminal $s_t$ \textbf{or} $t - t_{start} == t_{max}$
+\State $R =
+    \left\{
+    \begin{array}{l l}
+      0  \quad & \text{for terminal } s_t\\
+      \max_a Q(s_t,a;\theta^-) \quad & \text{for non-terminal } s_t
+    \end{array} \right.$
+\For {$i \in \{t-1,\ldots,t_{start} \}$}
+\State $R \gets r_i + \gamma R$
+\State Accumulate gradients wrt $\theta'$: $d\theta \gets d\theta + \frac{\partial\left(R - Q(s_i,a_i;\theta')\right)^2}{\partial \theta'}$
+\EndFor
+\State Perform asynchronous update of $\theta$ using $d\theta$.
+%
+\If {$T\mod I_{target} == 0$}
+\State $\theta^- \gets \theta$
+\EndIf
+\Until $T > T_{max}$
+\end{algorithmic}
+\label{alg:msq}
+\end{algorithm}
+
+\begin{algorithm}[h]
+\caption{Asynchronous advantage actor-critic - pseudocode for each actor-learner thread.}
+\begin{algorithmic}
+\small
+\State \emph{// Assume global shared parameter vectors $\theta$ and $\theta_v$ and global shared counter $T=0$}
+\State \emph{// Assume thread-specific parameter vectors $\theta'$ and $\theta'_v$}
+\State Initialize thread step counter $t\gets 1$
+\Repeat
+\State Reset gradients: $d\theta \gets 0$ and $d\theta_v \gets 0$.
+\State Synchronize thread-specific parameters  $\theta'=\theta$ and $\theta'_v=\theta_v$ %
+\State $t_{start} = t$
+\State Get state $s_t$
+\Repeat
+\State Perform $a_t$ according to policy $\pi (a_t|s_t;\theta')$
+\State Receive reward $r_t$ and new state $s_{t+1}$
+%
+\State $t \gets t + 1$
+\State $T \gets T + 1$
+\Until terminal $s_t$ \textbf{or} $t-t_{start}==t_{max}$
+\State $R =
+    \left\{
+    \begin{array}{l l}
+      0  \quad & \text{for terminal } s_t\\
+        V(s_t,\theta'_v) \quad & \text{for non-terminal } s_t \text{// Bootstrap from last state}
+    \end{array}\right.$
+\For {$i \in \{t-1,\ldots,t_{start} \}$}
+\State $R \gets r_i + \gamma R$
+\State Accumulate gradients wrt $\theta'$: $d\theta \gets d\theta + \nabla_{\theta'} \log\pi(a_i|s_i;\theta') (R - V(s_i;\theta'_v))$
+\State Accumulate gradients wrt $\theta'_v$: $d\theta_v \gets d\theta_v + {\partial\left(R - V(s_i;\theta'_v)\right)^2}/{\partial \theta'_v}$
+\EndFor
+%
+\State Perform asynchronous update of $\theta$ using $d\theta$ and of $\theta_v$ using $d\theta_v$.
+%
+\Until $T > T_{max}$
+\end{algorithmic}
+\label{alg:reinforce}
+\end{algorithm}
+
+\clearpage
+
+%
+\clearpage
+
+\begin{figure}[t]
+\begin{center}
+\centerline{\includegraphics[width=0.8\columnwidth]{figures/optimization_msq}}
+\centerline{\includegraphics[width=0.8\columnwidth]{figures/optimization_a3c}}
+\caption{\label{fig-optimization} Comparison of three different optimization methods (Momentum SGD, RMSProp, Shared RMSProp) tested using two different algorithms (Async $n$-step Q and Async Advantage Actor-Critic) on four different Atari games (Breakout, Beamrider, Seaquest and Space Invaders). Each curve shows the final scores for 50 experiments sorted in descending order that covers a search over 50 random initializations and learning rates. The top row shows results using Async $n$-step Q algorithm and bottom row shows results with Async Advantage Actor-Critic. Each individual graph shows results for one of the four games and three different optimization methods. Shared RMSProp tends to be more robust to different learning rates and random initializations than Momentum SGD and RMSProp without sharing.}
+\vspace{-0.5cm}
+\end{center}
+\end{figure}
+
+\begin{figure}[h]
+\begin{center}
+\includegraphics[width=0.4\columnwidth]{figures/torcs_ar}
+\includegraphics[width=0.4\columnwidth]{figures/torcs_ar_bots} \\
+\includegraphics[width=0.4\columnwidth]{figures/torcs_f1}
+\includegraphics[width=0.4\columnwidth]{figures/torcs_f1_bots}
+\caption{\label{fig-torcs} Comparison of algorithms on the TORCS car racing simulator. Four different configurations of car speed and opponent presence or absence are shown. In each plot, all four algorithms (one-step Q, one-step Sarsa, $n$-step Q and Advantage Actor-Critic) are compared on score vs training time in wall clock hours. Multi-step algorithms achieve better policies much faster than one-step algorithms on all four levels. The curves show averages over the 5 best runs from 50 experiments with learning rates sampled from $LogUniform(10^{-4},10^{-2})$ and all other hyperparameters fixed.}
+\vspace{-0.5cm}
+\end{center}
+\end{figure}
+
+\begin{figure}[t]
+    \includegraphics[width=0.24\columnwidth]{figures/canada2d_lr.png}
+    \includegraphics[width=0.24\columnwidth]{figures/cart_lr.png}
+    \includegraphics[width=0.24\columnwidth]{figures/cartpole_lr.png}
+    \includegraphics[width=0.24\columnwidth]{figures/cheetah_lr.png}\\
+    \includegraphics[width=0.24\columnwidth]{figures/gripper_lr.png}
+    \includegraphics[width=0.24\columnwidth]{figures/pendulum_lr.png}
+    \includegraphics[width=0.24\columnwidth]{figures/reacher_lr.png}
+    \includegraphics[width=0.24\columnwidth]{figures/pointmass2d_lr.png}\\
+    \includegraphics[width=0.24\columnwidth]{figures/hopper_lr.png}
+    \includegraphics[width=0.24\columnwidth]{figures/walker2d_lr.png}
+    \includegraphics[width=0.24\columnwidth]{figures/jaco_lr.png}
+    \includegraphics[width=0.24\columnwidth]{figures/pendulum_rgb_lr.png}\\
+    \includegraphics[width=0.24\columnwidth]{figures/pointmass2d_rgb_lr.png}
+    \includegraphics[width=0.24\columnwidth]{figures/gripper_rgb_lr.png}
+    \caption{\label{fig-mujoco-lr} Performance for the Mujoco continuous action domains.
+        Scatter plot of the best score obtained against learning rates
+        sampled from $LogUniform(10^{-5},10^{-1})$.  For nearly all of the tasks
+    there is a wide range of learning rates that lead to good performance on the task.}
+\end{figure}
+
+
+
+\begin{figure}[t]
+    \includegraphics[width=0.24\columnwidth]{figures/canada2d_wallclock.png}
+    \includegraphics[width=0.24\columnwidth]{figures/cart_wallclock.png}
+    \includegraphics[width=0.24\columnwidth]{figures/cartpole_wallclock.png}
+    \includegraphics[width=0.24\columnwidth]{figures/cheetah_wallclock.png}\\
+    \includegraphics[width=0.24\columnwidth]{figures/gripper_wallclock.png}
+    \includegraphics[width=0.24\columnwidth]{figures/pendulum_wallclock.png}
+    \includegraphics[width=0.24\columnwidth]{figures/reacher_wallclock.png}
+    \includegraphics[width=0.24\columnwidth]{figures/pointmass2d_wallclock.png}\\
+    \includegraphics[width=0.24\columnwidth]{figures/hopper_wallclock.png}
+    \includegraphics[width=0.24\columnwidth]{figures/walker2d_wallclock.png}
+    \includegraphics[width=0.24\columnwidth]{figures/jaco_wallclock.png}
+    \includegraphics[width=0.24\columnwidth]{figures/pendulum_rgb_wallclock.png}\\
+    \includegraphics[width=0.24\columnwidth]{figures/pointmass2d_rgb_wallclock.png}
+    \includegraphics[width=0.24\columnwidth]{figures/gripper_rgb_wallclock.png}
+    \caption{\label{fig-mujoco-wallclock} Score per episode vs wall-clock time
+    plots for the Mujoco domains. Each plot shows error bars for the top 5 experiments.}
+\end{figure}
+
+\begin{figure}
+%
+\centerline{\includegraphics[width=\columnwidth]{figures/steps_vs_score__sarsa_nw}}
+%
+%
+\caption{\label{fig-scalability-data-sarsa} Data efficiency comparison of different numbers of actor-learners one-step Sarsa on five Atari games. The x-axis shows the total number of training epochs where an epoch corresponds to four million frames (across all threads).  The y-axis shows the average score. Each curve shows the average of the three best performing agents from a search over 50 random learning rates. Sarsa shows increased data efficiency with increased numbers of parallel workers.}
+%
+\end{figure}
+
+\begin{figure}
+%
+\centerline{\includegraphics[width=\columnwidth]{figures/time_vs_score__sarsa_nw}}
+%
+%
+\caption{\label{fig-scalability-time-sarsa} Training speed comparison of different numbers of actor-learners for all one-step Sarsa on five Atari games. The x-axis shows training time in hours while the y-axis shows the average score.  Each curve shows the average of the three best performing agents from a search over 50 random learning rates.  Sarsa shows significant speedups from using greater numbers of parallel actor-learners.}
+\end{figure}
+%
+
+%
+%
+%
+%
+%
+%
+
+%
+%
+
+\begin{figure}[t]
+\centerline{\includegraphics[width=\columnwidth]{figures/stability_q_nw}}
+\centerline{\includegraphics[width=\columnwidth]{figures/stability_sarsa_nw}}
+\centerline{\includegraphics[width=\columnwidth]{figures/stability_msq_nw}}
+%
+\caption{\label{fig-stability-lr} Scatter plots of scores obtained by one-step Q, one-step Sarsa, and $n$-step Q on five games (Beamrider, Breakout, Pong, Q*bert, Space Invaders) for $50$ different learning rates and random initializations. All algorithms exhibit some level of robustness to the choice of learning rate.}
+\end{figure}
+
+%
+%
+%
+%
+%
+%
+
+%
+%
+%
+%
+%
+%
+%
+%
+%
+
+\begin{table*}[h]
+    \centering
+    \begin{scriptsize}
+    \begin{tabular}{lrrrrrrrr}
+        \textbf{Game} & \textbf{DQN} & \textbf{Gorila} & \textbf{Double} & \textbf{Dueling} & \textbf{Prioritized} & \textbf{A3C FF, 1 day} & \textbf{A3C FF } & \textbf{A3C LSTM } \\
+\input{data/score_file.tex}
+    \end{tabular}
+    \end{scriptsize}
+    \caption{\label{fig-atari-full} Raw scores for the human start condition (30 minutes emulator time). DQN scores taken from~\cite{nair2015gorila}. Double DQN scores taken from~\cite{hado2015doubledqn}, Dueling scores from~\cite{wang2015dueling} and Prioritized scores taken from~\cite{schaul2015prioritized}}
+\end{table*}
+

@@ -1,0 +1,190 @@
+\documentclass{article} % For LaTeX2e
+\usepackage[final]{nips_2016}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{amsmath,amssymb}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage[usenames, dvipsnames]{color}
+\usepackage{colortbl,soul}
+\usepackage[compact]{titlesec}
+\usepackage{enumitem}
+\usepackage{appendix}
+\usepackage{multicol}
+\usepackage{graphicx} % more modern
+\usepackage{subfigure} 
+\usepackage{natbib}
+% \usepackage{algorithm}
+% \usepackage{algorithmic}
+\usepackage{hyperref}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+% \usepackage[all]{xy}
+%\newcommand{\theHalgorithm}{\arabic{algorithm}}
+\usepackage{bibunits}
+%\usepackage[options ]{algorithm2e}
+\usepackage{algorithm}% http://ctan.org/pkg/algorithms
+\usepackage{algpseudocode}% http://ctan.org/pkg/algorithmicx
+\usepackage{algorithmicx}
+\usepackage{xspace}
+
+\newcommand{\figref}[1]{Fig.~\ref{#1}}
+\newcommand{\tblref}[1]{Table~\ref{#1}}
+\newcommand{\sref}[1]{Sect.~\ref{#1}}
+\def\eg{\emph{e.g.}}
+\def\ie{\emph{i.e.}}
+\def\Eg{\emph{E.g.}}
+\def\etal{\emph{et al.}}
+\newcommand{\todo}[1]{\hl{TODO: #1}}
+
+\def\mainobj{$\mathcal{Q}$}
+\def\diffobj{$\hat{\mathcal{Q}}$}
+
+
+\newcommand{\wojcom}[1]{{\color{blue} Wojtek: #1}}
+\newcommand{\skocom}[1]{{\color{magenta} Simon: #1}}
+\newcommand{\maxcom}[1]{{\color{red} Max: #1}}
+\newcommand{\jefcom}[1]{{\color{green} Jeff: #1}}
+\newcommand{\karencom}[1]{{\color{cyan} Karen: #1}}
+\newcommand{\alicom}[1]{{\color{orange} Ali: #1}}
+\newcommand{\valcom}[1]{{\color{cyan} Valentin: #1}}
+\newcommand{\kkcom}[1]{{\color{RubineRed} Koray: #1}}
+\newcommand{\ocom}[1]{{\color{green} Oriol: #1}}
+
+
+\newcommand{\pbtexploit}{\texttt{exploit}\xspace}
+\newcommand{\pbtexplore}{\texttt{explore}\xspace}
+\newcommand{\pbtstep}{\texttt{step}\xspace}
+\newcommand{\pbteval}{\texttt{eval}\xspace}
+
+\definecolor{Gray}{gray}{0.95}
+
+
+\DeclareMathOperator*{\argmin}{arg\,min}
+
+\DeclareMathOperator*{\argmax}{arg\,max}
+% AZ maths
+% - Here are the defs:
+
+\newcommand{\dd}[2]{\frac{\partial{#1}}{\partial{#2}}}
+\newcommand{\eqdef}{\stackrel{def}{=}}
+\newcommand{\red}[1]{{\color{red}{#1}}}
+\newcommand{\blue}[1]{{\color{blue}{#1}}}
+
+\newcommand{\prob}[1]{\mathbb{P} \left[ #1 \right]}
+%\newcommand{\given}{\ | \ }
+\newcommand{\expect}[1]{\mathbb{E} \left[ #1 \right]}
+\newcommand{\expectx}[2]{\mathbb{E}_{#1} \left[ #2 \right]}
+\newcommand{\expecty}[2]{\mathbb{E}^{#1} \left[ #2 \right]}
+\newcommand{\expectxy}[3]{\mathbb{E}_{#1}^{#2} \left[ #3 \right]}
+
+% Stuff for doing vectors
+
+\def\vec#1{\mathchoice{\mbox{\boldmath $\displaystyle\bf#1$}}
+{\mbox{\boldmath $\textstyle\bf#1$}}
+{\mbox{\boldmath $\scriptstyle\bf#1$}}
+{\mbox{\boldmath $\scriptscriptstyle\bf#1$}}}
+\def\v#1{\protect\vec #1}
+
+\def\vecs#1{\mathchoice%
+        {\mbox{\boldmath \small $\displaystyle\bf#1$}}
+        {\mbox{\boldmath \small $\textstyle\bf#1$}}
+        {\mbox{\boldmath \small $\scriptstyle\bf#1$}}
+        {\mbox{\boldmath \small $\scriptscriptstyle\bf#1$}}}
+\def\vs#1{\protect\vecs #1}
+
+% Stuff for doing matrices
+
+\def\mat#1{\mathchoice{\mbox{\boldmath$\displaystyle\tt#1$}}
+{\mbox{\boldmath$\textstyle\tt#1$}}
+{\mbox{\boldmath$\scriptstyle\tt#1$}}
+{\mbox{\boldmath$\scriptscriptstyle\tt#1$}}}
+\def\m#1{\protect\mat #1}
+
+\newcommand{\tr}{\mbox{$^{\top}$}}
+\newcommand{\mtr}{\mbox{$^{-\top}$}}
+\newcommand{\thetam}{\theta}
+\newcommand{\thetao}{h}
+
+
+\title{Population Based Training of Neural Networks}
+
+\author{
+Max Jaderberg \\
+\And
+Valentin Dalibard \\
+\And
+Simon Osindero \\
+\And
+Wojciech M. Czarnecki \\
+\AND
+Jeff Donahue \\
+\And
+Ali Razavi \\
+\And
+Oriol Vinyals \\
+\And
+Tim Green \\
+\And
+Iain Dunning\\
+\AND
+Karen Simonyan \\
+\And
+Chrisantha Fernando \\
+\And
+Koray Kavukcuoglu
+}
+
+\begin{document}
+
+
+\maketitle
+
+\vspace{-3.0em}
+ \begin{center}
+ DeepMind, London, UK
+ \end{center}
+ \vspace{1em}
+
+
+
+\begin{abstract}
+
+
+Neural networks dominate the modern machine learning landscape, but their training and success still suffer from sensitivity to empirical choices of hyperparameters such as model architecture, loss function, and optimisation algorithm.
+%
+In this work we present \emph{Population Based Training (PBT)}, a simple asynchronous optimisation algorithm which effectively utilises a fixed computational budget to jointly optimise a population of models and their hyperparameters to maximise performance.
+%
+Importantly, PBT discovers a schedule of hyperparameter settings rather than following the generally sub-optimal strategy of trying to find a single fixed set to use for the whole course of training.
+%
+%
+With just a small modification to a typical distributed hyperparameter training framework, our method allows robust and reliable training of models. 
+%
+We demonstrate the effectiveness of PBT on deep reinforcement learning problems, showing faster wall-clock convergence and higher final performance of agents by optimising over a suite of hyperparameters. 
+%
+In addition, we show the same method can be applied to supervised learning for machine translation, where PBT is used to maximise the BLEU score directly, and also to training of Generative Adversarial Networks to maximise the Inception score of generated images.
+%
+In all cases PBT results in the automatic discovery of hyperparameter schedules and model selection which results in stable training and better final performance.
+
+
+\end{abstract}
+
+\input{01_introduction}
+\input{02_related}
+\input{03_pbt}
+\input{04_experiments}
+\input{05_conclusions}
+
+\subsubsection*{Acknowledgments}
+We would like to thank Yaroslav Ganin, Mihaela Rosca, John Agapiou, Sasha Vehznevets, Vlad Firoiu, and the wider DeepMind team for many insightful discussions, ideas, and support. 
+
+
+\bibliography{iclr2018_conference}
+\bibliographystyle{iclr2018_conference}
+
+\input{99_appendix}
+
+
+\end{document}

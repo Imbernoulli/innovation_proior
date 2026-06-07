@@ -1,0 +1,55 @@
+% \vspace{-.1cm}
+\section{Background}
+\label{sec:background}
+
+Our approach to planning is a learning-based analogue of past work in behavioral synthesis using trajectory optimization \citep{witkin1988spacetime, tassa2012synthesis}.
+In this section, we provide a brief background on the problem setting considered by trajectory optimization and the class of generative models we employ for that problem.
+
+\subsection{Problem Setting}
+\label{sec:background_traj_opt}
+Consider a system governed by the discrete-time dynamics $\stp = \vf(\st, \at)$ at state $\st$ given an action $\at$.
+Trajectory optimization refers to finding a sequence of actions $\ba_{0:T}^*$ that maximizes (or minimizes) an objective $\mathcal{J}$ factorized over per-timestep rewards (or costs) $r(\st, \at)$:
+% \vspace{-.1cm}
+\[
+\ba_{0:T}^* = \argmax_{\ba_{0:T}} \mathcal{J}(\bs_0, \ba_{0:T}) = \argmax_{\ba_{0:T}} \sum_{t=0}^{T} r(\st, \at)
+\]
+% \vspace{-.15cm}\\
+where $T$ is the planning horizon.
+We use the abbreviation $\btau{} = (\bs_0, \ba_0, \bs_1, \ba_1, \ldots, \bs_T, \ba_T)$ to refer to a trajectory of interleaved states and actions and $\mathcal{J}(\btau{})$ to denote the objective value of that trajectory.
+% Formulations involving stochastic dynamics are possible by optimizing for the expectation of summed rewards.
+
+
+\subsection{Diffusion Probabilistic Models}
+\label{sec:background_diffusion}
+Diffusion probabilistic models \citep{sohldickstein2015nonequilibrium,ho2020denoising} pose the data-generating process as an iterative denoising procedure $p_\theta(\btau{i-1} \mid \btau{i})$.
+This denoising is the reverse of a forward diffusion process $q(\btau{i} \mid \btau{i-1})$ that slowly corrupts the structure in data by adding noise.
+The data distribution induced by the model is given by:
+% \vspace{-.05cm}
+\[
+p_\theta(\btau{0}) =
+\int p(\btau{N}) \prod_{i=1}^{N} p_\theta(\btau{i-1} \mid \btau{i}) \mathrm{d} \btau{1:N}
+\]
+% \vspace{-1.cm} \\
+where $p(\btau{N})$ is a standard Gaussian prior and $\btau{0}$ denotes (noiseless) data.
+Parameters $\theta$ are optimized by minimizing a variational bound on the negative log likelihood of the reverse process:
+$
+\theta^* = \argmin_{\theta}
+-\expect{\btau{0}}{\log p_\theta(\btau{0})}.
+$
+The reverse process is often parameterized as Gaussian with fixed timestep-dependent covariances:
+\[
+p_\theta(\btau{i-1} \mid \btau{i}) = \mathcal{N}(\btau{i-1} \mid \mu_\theta(\btau{i}, i), \Sigma^i).
+\]
+% or alternatively as a learned gradient $\epsilon_\theta(\btau{i}, i)$ from which the mean can be solved in closed form:
+% \[
+% {\mu_\theta(\btau{i}, i) = \frac{1}{\sqrt{\alpha^i}}\left(\btau{i} - \frac{\beta^i}{\sqrt{1-\bar{\alpha}^i}} \epsilon_\theta(\btau{i}, i) \right)},
+% \]
+% in which $\beta^i$ is the forward process variance, $\alpha^i = 1 - \beta_i$, and $\bar{\alpha}^i = \prod_{j=1}^{i} \alpha_j$.
+The forward process $q(\btau{i} \mid \btau{i-1})$ is typically prespecified.
+
+\textbf{Notation.}~~
+There are two ``times" at play in this work: that of the diffusion process and that of the planning problem.
+We use superscripts ($i$ when unspecified) to denote diffusion timestep and subscripts ($t$ when unspecified) to denote planning timestep.
+For example, $\st^{0}$ refers to the $t^{\text{th}}$ state in a noiseless trajectory.
+When it is unambiguous from context, superscripts of noiseless quantities are omitted: $\btau{} = \btau{0}$.
+We overload notation slightly by referring to the $t^\text{th}$ state (or action) in a trajectory $\btau{}$ as $\btau{}_{\st}$ (or $\btau{}_{\at}$).

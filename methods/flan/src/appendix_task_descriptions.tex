@@ -1,0 +1,449 @@
+\clearpage 
+\section{Tasks and Datasets}\label{task_details}
+
+This appendix further details the datasets that we use in this paper.
+We group datasets into one of the following task clusters:
+
+\begin{itemize}[leftmargin=*]
+    \itemsep0em 
+    \item \textbf{Natural language inference} concerns how two sentences relate, typically asking, given a first sentence, whether a second sentence is true, false, or possibly true.
+    We use the following datasets:
+    \begin{enumerate}
+        \item ANLI \citep{anli}
+        \item CB \citep{de2019commitmentbank}
+        \item MNLI \citep{N18-1101}
+        \item QNLI \citep{rajpurkar-etal-2018-know}
+        \item SNLI \citep{bowman-etal-2015-large}
+        \item WNLI \citep{levesque2012winograd}
+        \item RTE \citep{10.1007/11736790_9,haim2006second,giampiccolo-etal-2007-third,bentivogli2009fifth}
+    \end{enumerate}
+    \item \textbf{Reading comprehension} tests the ability to answer a question when given a passage that contains the answer. 
+    We use the following datasets:
+    \begin{enumerate}
+        \item BoolQ \cite{clark-etal-2019-boolq}
+        \item DROP \citep{Dua2019DROP}
+        \item MultiRC \citep{khashabi-etal-2018-looking}
+        \item OBQA \citep{mihaylov-etal-2018-suit}
+        \item SQuADv1 \citep{rajpurkar-etal-2016-squad}
+        \item SQuADv2 \citep{rajpurkar-etal-2018-know}
+    \end{enumerate}
+    \item \textbf{Commonsense reasoning} evaluates the ability to perform physical or scientific reasoning with an element of common sense. 
+    We use the following datasets:
+    \begin{enumerate}
+        \item COPA \citep{SSS112418}
+        \item HellaSwag \citep{zellers-etal-2019-hellaswag}
+        \item PiQA \citep{Bisk2020}
+        \item StoryCloze \citep{mostafazadeh-etal-2016-corpus}
+    \end{enumerate}
+    \item \textbf{Sentiment analysis} is a classic NLP task aims to understand whether a piece of text is positive or negative. 
+    We use the following datasets:
+    \begin{enumerate}
+        \item IMDB \citep{maas-EtAl:2011:ACL-HLT2011}
+        \item Sentiment140 \citep{go2009twitter}
+        \item SST-2 \citep{socher-etal-2013-recursive}
+        \item Yelp \citep{yelpdataset}
+    \end{enumerate}
+    \item \textbf{Closed-book QA} asks models to answer questions about the world without specific access to information that contains the answer. 
+    We use the following datasets:
+    \begin{enumerate}
+        \item ARC \citep{clark2018think}
+        \item NQ \citep{orqa,kwiatkowski2019natural}
+        \item TriviaQA \cite{JoshiTriviaQA2017}
+    \end{enumerate}
+    \item \textbf{Paraphrase detection} asks a model to determine whether two sentences are semantically equivalent.\footnote{Although paraphrasing can be seen as positive entailment in both directions, it has been distinct from NLI in the academic literature.}
+    We use the following datasets:
+    \begin{enumerate}
+        \item MRPC \citep{dolan-brockett-2005-automatically}
+        \item QQP \citep[see]{wang-etal-2018-glue}
+        \item Paws Wiki \citep{zhang-etal-2019-paws}
+    \end{enumerate}
+    \item \textbf{Coreference resolution} tests the ability to identify expressions of the same entity in some given text.
+    We use the following datasets:
+    \begin{enumerate}
+        \item DPR \citep{rahman-ng-2012-resolving}
+        \item Winogrande \citep{sakaguchi2020winogrande}
+        \item WSC273 \citep{levesque2012winograd}
+    \end{enumerate}
+    \item \textbf{Reading comprehension with commonsense} combines elements of both reading comprehension with commonsense.
+    We use the following datasets:
+    \begin{enumerate}
+        \item CosmosQA \citep{huang-etal-2019-cosmos}
+        \item ReCoRD \citep{DBLP:journals/corr/abs-1810-12885}
+    \end{enumerate}
+    \item \textbf{Struct to text} tests the ability to describe some structured data using natural language. 
+    We use the following datasets:
+    \begin{enumerate}
+        \item CommonGen \citep{lin-etal-2020-commongen}
+        \item DART \citep{nan-etal-2021-dart}
+        \item E2ENLG \citep{dusek-etal-2019-semantic}
+        \item WebNLG \citep{gardent-etal-2017-webnlg}
+    \end{enumerate}
+    \item \textbf{Translation} is the task of translating text from one language into a different language. We use the following datasets:
+    \begin{enumerate}
+        \item En--Fr from WMT'14 \citep{wmt14}
+        \item En--De, En--Tr, En--Cs, En--Fi, En--Ro, and En--Ru from WMT'16 \citep{wmt16}
+        \item En--Es from Paracrawl \citep{banon-etal-2020-paracrawl}
+    \end{enumerate}
+    \item \textbf{Summarization} asks models to read a piece of text and generate an abbreviated summary of it.
+    We use the following datasets:
+    \begin{enumerate}
+        \item AESLC \citep{zhang2019slg}
+        \item CNN-DM \citep{see-etal-2017-get}
+        \item Gigaword \citep{napoles-etal-2012-annotated}
+        \item MultiNews \citep{fabbri-etal-2019-multi}
+        \item Newsroom \citep{grusky-etal-2018-newsroom}
+        \item Samsum \citep{gliwa-etal-2019-samsum}
+        \item XSum \citep{narayan-etal-2018-dont}
+        \item AG News \citep{NIPS2015_250cf8b5}
+        \item Opinion Abstracts - Rotten Tomatoes \citep{wang-ling-2016-neural}
+        \item Opinion Abstracts - iDebate \citep{wang-ling-2016-neural}
+        \item Wiki Lingua English \citep{ladhak-etal-2020-wikilingua}
+    \end{enumerate}
+    \item Additional datasets that we assign to a miscellaneous task cluster include:
+    \begin{enumerate}
+        \item Conversational question-answering: QuAC \citep{choi-etal-2018-quac} and CoQA  \citep{reddy-etal-2019-coqa}
+        \item Evaluating context-sentence word meanings: WiC \citep{pilehvar-camacho-collados-2019-wic}
+        \item Question classification: TREC \citep{li-roth-2002-learning,hovy-etal-2001-toward}
+        \item Linguistic acceptability: CoLA \citep{warstadt2018neural}
+        \item Math questions \citep{saxton2019analysing}
+    \end{enumerate}
+\end{itemize}
+
+For all tasks, our finetuning and evaluation code uses tensorflow datasets (TFDS) to load and process datasets.
+Regarding the number of training examples per dataset, we limited the training set size per dataset to 30,000 so that no dataset dominated the finetuning distribution.  
+When a test set with labels was available in TFDS, we used it; otherwise, we used the TFDS validation set as our test set, splitting the training set into a train and dev set.
+
+On the following pages, we show inputs and outputs for evaluation tasks where we compared with GPT-3. See the attached supplementary material for the templates for all other datasets.
+
+\newcommand{\taskio}[3]{
+    \begin{table}[h]
+        \centering
+        \begin{tabular}{ |p{0.95\linewidth}| } 
+             \hline
+             \vspace{-1mm} \textsc{\textbf{\underline{Input}}}  \\ 
+             #1 \\
+             \hline
+             \vspace{-1mm} \textsc{\textbf{\underline{Target}}}  \\ 
+             {#2} \\
+             \hline
+        \end{tabular}
+        \caption{#3}
+    \end{table}
+}
+
+\newcommand{\taskdescription}[8]{Example input and target for #1 (#2). #2 #3 #4. Of the #5, we use #6 for train and #7 for dev. We use #8 as our test set for reporting numbers.}
+
+\clearpage 
+\subsection{Natural Language Inference}\label{appen:b-nli}
+
+\taskio
+{Joey Heindle (born 14 May 1993 in Munich) is a German singer. He is best known for winning the seventh season of the game show Ich bin ein Star – Holt mich hier raus! and finishing in 5th place in season 9 of Deutschland sucht den Superstar, despite universally negative reviews from the jury each week.\\\\Based on the paragraph above can we conclude that "Joey Heindle was highly disliked by people on television."?\\\\OPTIONS:\\- Yes\\- It's impossible to say\\- No}
+{Yes}
+{   \taskdescription
+    {Adversarial NLI} %
+    {ANLI} %
+    {\citep{anli}} %
+    {is a large-scale NLI benchmark with adversarial examples collected iteratively with a human and model in the loop. The task is to determine whether a hypothesis is entailed by a premise (entailment, not entailment, or impossible to say). There are three rounds, R1--R3} %
+    {three training sets with 16,946, 45,460, and 100,459 examples} %
+    {16,946, 30,000, and 30,000} %
+    {200 from each of the three TFDS validation sets} %
+    {the TFDS ``test'' sets of 1,000, 1,000, and 1,200 examples} %
+}
+
+\taskio
+{A: so I watch the fish, you know. Whatever I can do to keep myself occupied. I like to have the TV on, because that usually keeps me, um, more occupied. It kind of takes the time away and I don't realize, that's really the only time I ever watch TV, is when I'm on the bike. and then usually after I'm done riding the bike, just to cool myself down, I usually take a walk, you know, and that just kind of uh, gets me, you know, to where I'm not quite as tired I guess. But it's definitely a task. B: You think so? A: I can't say that I really enjoy it.\\\\Based on the paragraph above can we conclude that "she really enjoys it"?\\\\OPTIONS:\\- Yes\\- No\\- It's impossible to say}
+{No}
+{
+    \taskdescription
+    {Commitment Bank} %
+    {CB} %
+    {\citep{de2019commitmentbank}} %
+    {is a corpus of texts in which a hypothesis is extracted from a premise, and the task is to determine whether the hypothesis is entailed by the premise (entailment, not entailment, or impossible to say)} %
+    {training set with 250 examples} %
+    {200} %
+    {50} %
+    {the TFDS validation set of 56 examples} %
+}
+
+
+
+\taskio
+{After years of study, the Vatican's doctrinal congregation has sent church leaders a confidential document concluding that "sex-change" procedures do not change a person's gender in the eyes of the church.\\\\Based on the paragraph above can we conclude that "Sex-change operations become more common."?\\\\OPTIONS:\\- yes\\- no}
+{no}
+{
+    \taskdescription
+    {Recognizing Textual Entailment} %
+    {RTE} %
+    {\citep{10.1007/11736790_9,haim2006second,giampiccolo-etal-2007-third,bentivogli2009fifth}} %
+    {asks whether a second sentence is entailed by a first (binary, either entailed or not entailed)} %
+    {training set with 2490 examples} %
+    {2,290} %
+    {200} %
+    {the TFDS validation set of 277 examples} %
+}
+
+
+
+
+\clearpage 
+\subsection{Reading Comprehension}\label{appen:b-reading-comp}
+
+\taskio
+{There are four ways an individual can acquire Canadian citizenship: by birth on Canadian soil; by descent (being born to a Canadian parent); by grant (naturalization); and by adoption. Among them, only citizenship by birth is granted automatically with limited exceptions, while citizenship by descent or adoption is acquired automatically if the specified conditions have been met. Citizenship by grant, on the other hand, must be approved by the Minister of Immigration, Refugees and Citizenship.\\\\Can we conclude that can i get canadian citizenship if my grandfather was canadian?\\\\OPTIONS:\\- no\\- yes}
+{no}
+{
+    \taskdescription
+    {Boolean Questions} %
+    {BoolQ} %
+    {\cite{clark-etal-2019-boolq}} %
+    {asks a yes/no question based on a passage and a question} %
+    {training set with 9,427 examples} %
+    {9,227} %
+    {200} %
+    {the TFDS validation set of 3,270 examples} %
+}
+
+
+
+\taskio
+{Imagine you are standing in a farm field in central Illinois. The land is so flat you can see for miles and miles. On a clear day, you might see a grain silo 20 miles away. You might think to yourself, it sure is flat around here. If you drive one hundred miles to the south, the landscape changes. In southern Illinois, there are rolling hills. Why do you think this is? What could have caused these features? There are no big rivers that may have eroded and deposited this material. The ground is capable of supporting grass and trees, so wind erosion would not explain it. To answer the question, you need to go back 12,000 years. Around 12,000 years ago, a giant ice sheet covered much of the Midwest United States. Springfield, Illinois, was covered by over a mile of ice. Its hard to imagine a mile thick sheet of ice. The massive ice sheet, called a glacier, caused the features on the land you see today. Where did glaciers go? Where can you see them today? Glaciers are masses of flowing ice. \\\\Question: "How big were the glaciers?"\\\\Response: "One mile"\\\\Does the response correctly answer the question?\\\\OPTIONS:\\- no\\- yes}
+{yes}
+{
+    \taskdescription
+    {Multi-Sentence Reading Comprehension} %
+    {MultiRC} %
+    {\cite{khashabi-etal-2018-looking}} %
+    {asks an open-ended question given a paragraph that contains the answer} %
+    {training set with 27,243 examples} %
+    {27,043} %
+    {200} %
+    {the TFDS validation set of 4,848 examples} %
+}
+
+\taskio
+{soil is a renewable resource for growing plants\\A plant that needs to expand will be able to have an endless resource in\\\\OPTIONS:\\- dirt\\- pesticides\\- pay\\- beans}
+{dirt}
+{
+    \taskdescription
+    {Openbook Question Answering} %
+    {OBQA} %
+    {\citep{mihaylov-etal-2018-suit}} %
+    {asks 4-way multiple choice questions based facts} %
+    {training set with 4,957 examples} %
+    {all} %
+    {200 in the TFDS validation set of 500 examples} %
+    {the TFDS test set of 500 examples} %
+}
+
+
+
+
+\clearpage 
+\subsection{Commonsense Reasoning}\label{appen:b-commonsense}
+
+\taskio
+{I packed up my belongings. What is the cause?\\\\OPTIONS:\\- I was hunting for a new apartment.\\- I was moving out of my apartment.}
+{I was moving out of my apartment.}
+{
+    \taskdescription
+    {Choice of Plausible Alternatives} %
+    {COPA} %
+    {\citep{SSS112418}} %
+    {is a causal reasoning task that asks to infer either a cause of effect of a premise from two choices} %
+    {training set with 400 examples} %
+    {350} %
+    {50} %
+    {the TFDS validation set of 100 examples} %
+}
+
+\taskio
+{What happens next in this paragraph?\\\\Once the rope is inside the hook, he begins moving up the wall but shortly after he stops and begins talking. The male then begins talking about the clip again and goes back up the wall. as he\\OPTIONS:\\- progresses, there are hooks everywhere on the wall and when he gets near them, he puts his rope inside of it for support and safety.\\- changes time, an instant replay of his initial move is shown a second time.\\- continues to talk, another male speaks about the move and shows another closeup of the plex by the male.\\- continues, other people start to arrive and begin to hang out with him as he makes a few parts of the rope.}
+{progresses, there are hooks everywhere on the wall and when he gets near them, he puts his rope inside of it for support and safety.}
+{
+\taskdescription
+    {Commonsense Sentence Completion} %
+    {HellaSwag} %
+    {\citep{zellers-etal-2019-hellaswag}} %
+    {tests for sentence completion that requires common sense, asking for the most probable ending given four contexts} %
+    {training set with 39,905 examples} %
+    {30,000} %
+    {200} %
+    {the TFDS validation set of 10,042 examples} %
+}
+
+\taskio
+{Here is a goal: Remove smell from garbage disposal.\\\\How would you accomplish this goal?\\\\OPTIONS:\\- Create soda ice cubes and grind through disposal.\\- Create vinegar ice cubes and grind through disposal.}
+{Create vinegar ice cubes and grind through disposal.}
+{
+    \taskdescription
+    {Physical Question Answering} %
+    {PiQA} %
+    {\citep{Bisk2020}} %
+    {is a commonsense QA benchmark for naive physics reasoning, where a solution to a goal must be selected from two choices} %
+    {training set with 16,113 examples} %
+    {16,013} %
+    {100} %
+    {the TFDS validation set of 1,838 examples} %
+}
+
+\taskio
+{Caroline never drinks carbonated beverages. Her friends pick on her because of it. One day they challenged her to drink a soda. Caroline wanted to win the challenge.\\\\Predict the next sentence.\\OPTIONS:\\- Caroline refused to open the soda.\\- Caroline opened the soda and drank it all in one gulp!}
+{Caroline opened the soda and drank it all in one gulp!}
+{
+    \taskdescription
+    {The Story Cloze Test} %
+    {StoryCloze} %
+    {\citep{mostafazadeh-etal-2016-corpus}} %
+    {is a commonsense reasoning framework for story generation, where a system chooses the correct ending to a four-sentence story. We use the 2016 version on TFDS} %
+    {validation set with 1,871 examples (no training set is available)} %
+    {1,671} %
+    {200} %
+    {the TFDS test set of 1,871 examples} %
+}
+
+
+
+
+
+
+
+
+
+
+
+
+\clearpage 
+\subsection{Closed-Book QA}\label{appen:b-open-qa}
+
+\taskio
+{What season is the Northern Hemisphere experiencing when it is tilted directly toward the Sun?\\\\OPTIONS:\\- fall\\- winter\\- spring\\- summer}
+{summer}
+{
+\taskdescription
+    {The AI2 Reasoning Challenge} %
+    {ARC} %
+    {\citep{clark2018think}} %
+    {asks grade-school level 4-way multiple choice science questions. There is a challenge set and an easy set, where the challenge set questions were answered incorrectly by both a retrieval-based algorithm and a co-occurrence algorithm} %
+    {training sets with 1,119 examples (challenge) and 2,251 (easy)} %
+    {we use 919 and 2,051 respectively} %
+    {200 each} %
+    {the TFDS test sets of 1,172 and 2,376 examples respectively} %
+}
+
+
+\taskio
+{Question: who is the girl in more than you know??\\Answer:}
+{Romi Van Renterghem.}
+{
+    \taskdescription
+    {Natural Questions (Open)} %
+    {NQ} %
+    {\citep{orqa,kwiatkowski2019natural}} %
+    {asks for an open-ended answer given a question, where all questions can be answered using the contents of Wikipedia} %
+    {training set of 87,925 examples} %
+    {30,000} %
+    {200} %
+    {the TFDS validation set of 3,610 examples} %
+}
+
+
+\taskio
+{Please answer this question: Henry Croft, an orphan street sweeper who collected money for charity, is associated with what organised charitable tradition of working class culture in London, England?}
+{pearly kings and queens}
+{
+    \taskdescription
+    {Trivia Question Answering} %
+    {TriviaQA} %
+    {\cite{JoshiTriviaQA2017}} %
+    {includes question-answer pairs authored by trivia enthusiasts} %
+    {training set of 87,622 examples} %
+    {30,000} %
+    {200} %
+    {7,993 examples from Wikipedia of the 11,313 examples in the TFDS validation set, which is the same validation set used in \citep{brown2020language}.} %
+}
+
+
+
+
+
+
+
+
+
+
+\clearpage 
+\subsection{Coreference Resolution}\label{appen:b-coreference}
+
+
+
+\taskio
+{How does the sentence end?\\\\Elena wanted to move out of her parents fast but Victoria wanted to stay for a while, \\\\OPTIONS:\\- Elena went to school.\\- Victoria went to school.}
+{Victoria went to school.}
+{
+    \taskdescription
+    {Adversarial Winograd Schema Challenge} %
+    {Winogrande} %
+    {\citep{sakaguchi2020winogrande}} %
+    {tests for coreference resolution by asking a model to fill in a masked token in a sentence by choosing an entity from two options} %
+    {40.4k examples in the XL training set} %
+    {30,000} %
+    {200} %
+    {the TFDS validation set of 1,267} %
+}
+
+\taskio
+{Jane knocked on Susan's door, but there was no answer.\\OPTIONS:\\- Jane was out.\\- Susan was out.}
+{Susan was out.}
+{
+    \taskdescription
+    {Winograd Schema Challenge} %
+    {WSC273} %
+    {\citep{levesque2012winograd}} %
+    {tests for coreference resolution by asking a model to complete the sentence in a fashion that requires understanding the entities in the sentence} %
+    {0 examples in the training set (WSC273 is test-set only)} %
+    {none} %
+    {none} %
+    {the TFDS test set} %
+}
+
+
+
+\clearpage
+\subsection{Reading Comprehension with Commonsense}\label{appen:b-read-comp-commonsense}
+
+
+
+\taskio
+{Complete the passage.\\\\(CNN) -- At first glance, "The Flat" might seem like an episode of "Hoarders," Israeli-style. The documentary film opens after an elderly woman dies in Tel Aviv. Her grandchildren assemble to clean out her apartment, packed with dusty books, vintage clothing (dozens of pairs of fancy gloves, for instance), enough purses to stock a department store, jewelry, mementoes and closets full of knickknacks. But buried among the detritus they chance upon something remarkable -- mysterious papers linking the grandparents to an important Nazi figure. How could such ardent Zionists, who left their native Germany in the early 1930s, have been involved with an SS official like Leopold von Mildenstein?\\\\What I found out was this journey, the Nazi (\\\\OPTIONS:\\- Arnon Goldfinger) and his wife were accompanied by my grandparents," Goldfinger told CNN.\\- CNN) and his wife were accompanied by my grandparents," Goldfinger told CNN.\\- Germany) and his wife were accompanied by my grandparents," Goldfinger told CNN.\\- Israeli) and his wife were accompanied by my grandparents," Goldfinger told CNN.\\- Leopold von Mildenstein) and his wife were accompanied by my grandparents," Goldfinger told CNN.\\- Nazi) and his wife were accompanied by my grandparents," Goldfinger told CNN.\\- SS) and his wife were accompanied by my grandparents," Goldfinger told CNN.\\- Tel Aviv) and his wife were accompanied by my grandparents," Goldfinger told CNN.\\- The Flat) and his wife were accompanied by my grandparents," Goldfinger told CNN.\\- Zionists) and his wife were accompanied by my grandparents," Goldfinger told CNN.}
+{Leopold von Mildenstein) and his wife were accompanied by my grandparents," Goldfinger told CNN.}
+{
+    \taskdescription
+    {Reading Comprehension with Commonsense Reasoning} %
+    {ReCoRD} %
+    {\citep{DBLP:journals/corr/abs-1810-12885}} %
+    {asks for the answer to a cloze-style question where an entity is masked out} %
+    {the training set of 100,730 examples} %
+    {30,000} %
+    {200} %
+    {the TFDS validation set of 10,000 examples} %
+}
+
+
+
+
+
+ 
+\subsection{Translation (7 languages)}\label{appen:data-to-text}
+
+\taskio
+{Here the largest town of the district is located: Nordenham , lying opposite to Bremerhaven at the Weser mouth.\\\\Translate to German}
+{An der B 211 befindet sich in Loyermoor der so genannte ``Geest-Abbruch'', der eine Höhendifferenz von gut 30 Meter überbrückt.}
+{
+Example input and output for translation. This example is from WMT'16 English--German; all languages use the same translation templates.
+}
+
+
+
+
+
+

@@ -1,0 +1,18 @@
+\begin{table*}[ptb]
+\centering
+\begin{tabular}{@{}l@{ }rl@{}} \toprule
+$x$: & \multicolumn{2}{l}{\nl{Jennifer \blank~formed the production company Excellent Cadaver.}} \\ \midrule
+BERT & &
+also (0.13), then (0.08), later (0.05), \dots \\
+REALM & (\unlabeled=20 Dec 2018 corpus) &
+smith (0.01), brown (0.01), jones (0.01) \\
+REALM & (\unlabeled=20 Jan 2020 corpus) & 
+\textbf{lawrence} (0.13), brown (0.01), smith (0.01), \dots \\
+\bottomrule
+\end{tabular}
+
+\caption{An example where REALM adapts to the updated knowledge corpus. The 
+Wikipedia page ``Excellent Cadaver'' was added in 2019, so the model was not about to recover
+the word when the knowledge corpus is outdated (2018). Interestingly, the same REALM model pre-trained on the 2018 corpus is able to retrieve the document in the updated corpus (2020) and generate the correct token, \nl {Lawrence}.}
+\label{tab:adapting}
+\end{table*}

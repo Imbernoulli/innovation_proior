@@ -1,0 +1,640 @@
+                                                                                                                                                    OPERATIONS RESEARCH
+                                                                                                                                                    Vol. 59, No. 3, May–June 2011, pp. 781–787
+                                                                                                                                                    issn 0030-364X  eissn 1526-5463  11  5903  0781                                                                      doi 10.1287/opre.1100.0913
+                                                                                                                                                                                                                                                                                      © 2011 INFORMS
+
+
+
+
+               INFORMS
+Copyright: INFORMS    holdsholds   copyright
+                                       to this toArticles
+                                                   this in
+                                                         article and distributed
+                                                              Advance             this is
+                                                                                        copy   as aavailable
+                                                                                                     courtesyto to the  author(s).
+                                                                                                                                                                                                                  TECHNICAL NOTE
+
+
+
+
+                             copyright                                 version, which      made                  subscribers. The ﬁle may not be
+                                                                                                                                                             Optimizing Strategic Safety Stock Placement in
+                                                                                                                                                                       General Acyclic Networks
+                                                                                                                                                                                                                    Salal Humair
+                                                                                                                                                                               School of Science and Engineering, Lahore University of Management Sciences, Lahore, Pakistan;
+                                                                                                                                                                          Department of Global Health and Population, Harvard School of Public Health, Boston, Massachusetts 02215,
+                                                                                                                                                                                                                 shumair@hsph.harvard.edu
+
+                                                                                                                                                                                                                 Sean P. Willems
+                                                                                                                                                                                    School of Management, Boston University, Boston, Massachusetts 02215, willems@bu.edu
+
+                                                                                                                                                            We present two significant enhancements to the guaranteed-service (GS) model for multiechelon safety stock placement.
+                                                                                                                                                            First, we let each stage’s expected inventory cost be a generalized nonconcave non-closed-form function of its incoming
+                                                                                                                                                            and outgoing service time. This allows the GS model to incorporate important phenomena such as variable stage times
+                                                                                                                                                            and nonnested review periods, which previous GS literature has not allowed. Second, we optimize the generalized cost
+                                                                                                                                                            GS model for directed acyclic networks, rather than assembly/distribution networks or trees. For the resulting NP-hard
+                                                                                                                                                            optimization problem, we present a provably optimal algorithm that runs within minutes for 29 chains from a data set
+                                                                                                                                                            of 38 real-world supply chains ranging from 8 to 2,025 stages. We also present two significantly faster yet near-optimal
+                                                                                                                                                            heuristics. One heuristic is motivated by the structure of the formulation’s dual space, whereas the other heuristic simply
+                                                                                                                                                            terminates the optimization algorithm after a fixed number of iterations. As a performance benchmark, on the 38 chains,
+                                                                                                                                                            the first heuristic has an average optimality gap of approximately 1.1% and average run time of 88 seconds, whereas the
+
+
+
+
+               Additional information, including   rightsite.
+                                                          andPlease
+                                                                permission policies, is available at http://journals.informs.org/.
+                                                                                                                                                            second heuristic has an average optimality gap of 2.8% and an average run time of 5.9 seconds.
+                                                                                                                                                            Subject classifications: multiechelon inventory system; safety stock optimization; dynamic programming application;
+                                                                                                                                                              general acyclic networks.
+                                                                                                                                                            Area of review: Manufacturing, Service, and Supply Chain Operations.
+
+
+
+
+posted on any other website,  including the  author’s                 send any   questions    regarding  this policy  to permissions@informs.org.
+                                                                                                                                                            History: Received November 2007; revisions received August 2008, January 2009, March 2009, April 2009;
+                                                                                                                                                              accepted May 2009.
+
+
+                                                                                                                                                    1. Introduction                                                               two-piece linear estimator, respectively, for the concave
+                                                                                                                                                    In this paper, we expand the applicability of the guaranteed-                 cost functions, successively iterating to refine the qual-
+                                                                                                                                                    service (GS) model for safety stock optimization by opti-                     ity of the approximation. Lesnaia (2004) shows that the
+                                                                                                                                                    mizing directed general acyclic networks for stage costs                      general network problem with concave costs is NP-hard.
+                                                                                                                                                    that are generalized functions of a stage’s service times.                    She uses the extreme point properties of the optimal solu-
+                                                                                                                                                    What allows us to handle such general costs while mov-                        tion within a branch-and-bound scheme to find the optimal
+                                                                                                                                                    ing beyond simpler network topologies is an algorithm                         solution, and considers the application of their algorithm
+                                                                                                                                                    that optimizes spanning tree relaxations of the network,                      for two-layer networks. Magnanti et al. (2006) develop a
+                                                                                                                                                    and then intelligently exploits the spanning tree algo-                       piecewise-linear approximation to concave stage cost func-
+                                                                                                                                                    rithm’s properties to move from tree-optimal solutions to                     tions that effectively solves sparse acyclic networks rang-
+                                                                                                                                                    the network-optimal solution.                                                 ing from 10 to 100 stages. Their solution method relies
+                                                                                                                                                       Minner (2000), Karimi et al. (2004), Lesnaia (2004),                       on adding redundant inequalities to the LP relaxation and
+                                                                                                                                                    and Magnanti et al. (2006) all consider the GS model                          refining the piecewise-linear approximation in an iterative
+                                                                                                                                                    in general acyclic structures that employ concave stage                       fashion. Humair and Willems (2006) consider nonconcave
+                                                                                                                                                    costs. Minner (2000) augments the state space of a node                       stage costs in a network topology they define as networks
+                                                                                                                                                    to consider all-or-nothing stocking policies at upstream or                   containing clusters of commonality; informally described
+                                                                                                                                                    downstream nodes, depending on the node’s relation to                         as networks of bipartite subgraphs that form spanning trees
+                                                                                                                                                    the subgraph containing commonality. Due to the com-                          when each bipartite subgraph is collapsed to a single node.
+                                                                                                                                                    binatorial nature of the exact formulation, he investigates                      We present the mathematical program underlying the
+                                                                                                                                                    several heuristic approaches, finding that tabu search per-                   GS model and examples of generalized cost functions
+                                                                                                                                                    forms best. Karimi et al. (2004) develop two heuristic                        in §2, our algorithm and its performance in §3, and some
+                                                                                                                                                    algorithms for dense acyclic networks ranging from 10                         faster heuristics in §4. The online supplement (OLS) is
+                                                                                                                                                    to 8,000 stages. The heuristics employ a continuous and                       available as an electronic companion to this article at
+                                                                                                                                                                                                                            781
+                                                                                                                                                                                                                                                                    Humair and Willems: Optimizing Strategic Safety Stock Placement
+                                                                                                                                                    782                                                                                                                                  Operations Research 59(3), pp. 781–787, © 2011 INFORMS
+
+
+                                                                                                                                                    http://or.journal.informs.org/. It contains a literature review,          Figure 1.                                              Simulated cost functions under variable stage
+                                                                                                                                                    overview of the GS model, additional run-time results, dis-                                                                      times.
+
+
+
+
+               INFORMS
+Copyright: INFORMS    holdsholds   copyright
+                                       to this toArticles
+                                                   this in
+                                                         article and distributed
+                                                              Advance             this is
+                                                                                        copy   as aavailable
+                                                                                                     courtesyto to the  author(s).
+                                                                                                                                                    cussion of the mathematical program’s dual space, and the
+                                                                                                                                                                                                                                                                                                  Expected inventory levels
+                                                                                                                                                    optimality proof for the modified spanning-tree algorithm.
+
+
+
+
+                                                                                                                                                                                                                                 Expected inventory level (units)
+                                                                                                                                                                                                                                                                    90
+                                                                                                                                                                                                                                                                    80
+
+
+
+
+                             copyright                                 version, which      made                  subscribers. The ﬁle may not be
+                                                                                                                                                    2. The GS Model for General Acyclic                                                                             70
+                                                                                                                                                       Networks and Generalized Cost                                                                                60
+                                                                                                                                                                                                                                                                    50
+                                                                                                                                                       Functions                                                                                                    40
+                                                                                                                                                    The GS model consists of an acyclic connected graph G =                                                         30
+                                                                                                                                                                                                                                                                                                                                            Stage A
+                                                                                                                                                    4V 1 A51 V  = n, where V is the set of all stages and A the                                                   20                                                                      Stage B
+                                                                                                                                                    set of all arcs. Si , SI i , and Ti denote stage i’s stage time,                                                10                                                                      Stage C
+                                                                                                                                                    outgoing service time, and incoming service time. Ve ⊂ V                                                         0
+                                                                                                                                                                                                                                                                         0          5         10          15      20           25           30        35
+                                                                                                                                                    and Vs ⊂ V denote sets of demand and supply stages,                                                                                                SI + T – S (days)
+                                                                                                                                                    respectively. Ei is the maximum Si quotable at a demand
+                                                                                                                                                    stage. With time discrete, per-unit inventory cost Ci , max-
+                                                                                                                                                                                                                              Assume that the constraints involving Ei are collapsed into
+                                                                                                                                                    imum demand over any interval of time x a concave func-
+                                                                                                                                                                                                                              the more general upper bound ui . If G is a spanning tree,
+                                                                                                                                                    tion Di 4x5, and the average demand i for stage i, the
+                                                                                                                                                                                                                              the stages can be labeled with an index k = 01 0 0 0 1 n such
+                                                                                                                                                    standard optimization problem P considered in the GS lit-
+                                                                                                                                                                                                                              that every stage except one (called root) has at most one
+                                                                                                                                                    erature is
+                                                                                                                                                                                                                              adjacent stage with an index higher than its own (called
+                                                                                                                                                                n
+                                                                                                                                                                X                                                             parent). Let pk be the index of stage k’s parent. With a
+                                                                                                                                                    P2    min         Ci 8Di 4SI i + Ti − Si 5 − i 4SI i + Ti − Si 59        slight abuse of notation, let Lk 4S5 = max4S − Tk 1 Lk 5 and
+                                                                                                                                                                i=1
+                                                                                                                                                                                                                              U±k = min4Mk − Tk 1 Uk 5. Similarly, let uk 4SI5 = min4SI +
+                                                                                                                                                           s.t. Si − SI i ⩽ Ti 1     i = 11 0 0 0 1 n1                        Tk 1 uk 5. If 4k1 pk 5 ∈ A, let fk 4S5 be the optimal cost of the
+                                                                                                                                                                                                                              subtree connected to k after removing pk if k’s outgoing
+
+
+
+
+               Additional information, including   rightsite.
+                                                          andPlease
+                                                                permission policies, is available at http://journals.informs.org/.
+                                                                                                                                                                Sj − SI i ⩽ 01      ∀ 4j1 i5 ∈ A1
+                                                                                                                                                                                                                              service time is S. If 4pk 1 k5 ∈ A, let gk 4SI5 be the opti-
+                                                                                                                                                                S i ⩽ Ei 1    ∀ i ∈ Ve 1    SI i = 01    ∀ i ∈ Vs 1           mal cost of the subtree connected to k after removing pk
+                                                                                                                                                                                 Si 1 SI i ⩾ 01 integral1 i = 11 0 0 0 1 n0   if the incoming service time to k is SI. Then the following
+                                                                                                                                                                                                                              dynamic program SDP0 solves P0 correctly if G is a span-
+
+
+
+
+posted on any other website,  including the  author’s                 send any   questions    regarding  this policy  to permissions@informs.org.
+                                                                                                                                                       We allow stage costs of any generalized form ci 4SI i 1 Si 5           ning tree, as the theorem below states (proof in the OLS).
+                                                                                                                                                    in P instead of only the concave form Ci 8Di 4SI i +                         If 4k1 pk 5 ∈ A and k ⩽ n − 1, then fk 4S5 =  if S < lk ,
+                                                                                                                                                    Ti − Si 5 − i 4SI i + Ti − Si 59. There are no structural lim-           S > uk , or if Lk 4S5 > U±k . Otherwise, for lk ⩽ S ⩽ uk ,
+                                                                                                                                                    itations on ci 4SI i 1 Si 5 as long as a stage’s cost depends                                                                             (
+                                                                                                                                                    on only its own service times, i.e., concavity, monotonic-                                                                                                   X
+                                                                                                                                                                                                                              fk 4S5 =                                            min         ck 4SI1 S5 +                min fi 4x5
+                                                                                                                                                    ity, or closed-formedness is not required. With general-                                                                        SI2
+                                                                                                                                                                                                                                                                                                                  i<k
+                                                                                                                                                                                                                                                                                                                          x2 x⩽SI
+                                                                                                                                                                                                                                                                              Lk 4S5⩽SI⩽U±k
+                                                                                                                                                    ized stage costs, the GS model can capture common and                                                                                                      4i1 k5∈A
+
+                                                                                                                                                    important real-world phenomena such as variable stage                                                                                                                       X
+                                                                                                                                                                                                                                                                                                                                                      )
+                                                                                                                                                    times, nonnested review periods and nonnested batch order-                                                                                                            +              min gj 4y5 0
+                                                                                                                                                                                                                                                                                                                                         y2 y⩾S
+                                                                                                                                                    ing. Variable stage times are the most common, as the                                                                                                                       j<k
+                                                                                                                                                                                                                                                                                                                              4k1 j5∈A
+                                                                                                                                                    38 industrial supply chains in Willems (2008) show, where
+                                                                                                                                                    26 chains from 22 different companies have variable stage
+                                                                                                                                                    times. Expected inventory levels under these phenomena                    Figure 2.                                              Simulated cost functions under nonnested
+                                                                                                                                                    produce nonconcave costs as shown in Figures 1 and 2,                                                                            review periods.
+                                                                                                                                                    and in the OLS, where it is also explained why these costs                                                                                    Expected inventory levels
+
+
+
+
+                                                                                                                                                                                                                              Expected inventory level (units)
+                                                                                                                                                    cannot be handled by existing GS algorithms and common                                                          140
+                                                                                                                                                                                                                                                                                   Stage A
+                                                                                                                                                    nonconvex optimization approaches.                                                                              120            Stage B
+                                                                                                                                                                                                                                                                                   Stage C
+                                                                                                                                                                                                                                                                    100
+                                                                                                                                                    3. The General Networks Algorithm                                                                                80
+
+                                                                                                                                                    3.1. A Modified Spanning-Tree Algorithm                                                                          60
+
+                                                                                                                                                                                                                                                                     40
+                                                                                                                                                    Our general networks algorithm uses a modified form of
+                                                                                                                                                    the dynamic program in Graves and Willems (2000, 2003)                                                          20
+                                                                                                                                                    (GW). Suppose P includes two extra constraints of the form                                                       0
+                                                                                                                                                    Li ⩽ SI i ⩽ Ui and li ⩽ Si ⩽ ui for each stage i, where Li ,                                                          0          5            10      15      20            25          30        35
+
+                                                                                                                                                    Ui , li , and ui are constants. Call the modified problem P0 .                                                                                     SI + T – S (days)
+                                                                                                                                                    Humair and Willems: Optimizing Strategic Safety Stock Placement
+                                                                                                                                                    Operations Research 59(3), pp. 781–787, © 2011 INFORMS                                                                                              783
+
+                                                                                                                                                      If 4pk 1 k5 ∈ A or if k = n, gk 4SI5 =  if SI < Lk ,                                 solution produced by SDP0 for the bound Sj > 0 remains
+                                                                                                                                                    SI > Uk , or if lk > uk 4SI5. Otherwise, for Lk ⩽ SI ⩽ Uk ,                             unchanged from Sj∗ = 1 and SI ∗i = 0. The claims below
+
+
+
+
+               INFORMS
+Copyright: INFORMS    holdsholds   copyright
+                                       to this toArticles
+                                                   this in
+                                                         article and distributed
+                                                              Advance             this is
+                                                                                        copy   as aavailable
+                                                                                                     courtesyto to the  author(s).
+                                                                                                                                                                                                                                            demonstrate the optimality of GNA, where Fì denotes the
+                                                                                                                                                                                                                                            set of feasible solutions for the constraint set ì.
+                                                                                                                                                                                (
+                                                                                                                                                                                                     X
+                                                                                                                                                    gk 4SI5 =      min              ck 4SI1 S5 +              min fi 4x5
+                                                                                                                                                                     S2
+                                                                                                                                                                                                      i<k
+                                                                                                                                                                                                              x2 x⩽SI                       GNA: Preprocessing and Initialization
+
+
+
+
+                             copyright                                 version, which      made                  subscribers. The ﬁle may not be
+                                                                                                                                                                lk ⩽S⩽uk 4SI5
+                                                                                                                                                                                                   4i1 k5∈A                                   Preprocessing: Select a spanning tree T from the
+                                                                                                                                                                                                                    X
+                                                                                                                                                                                                                                      )     given network G.
+                                                                                                                                                                                                              +              min gj 4y5 0     Initialization: Set z =  and both ìG , ì to be
+                                                                                                                                                                                                                             y2 y⩾S
+                                                                                                                                                                                                                    j<k                     the set of constraints of P.
+                                                                                                                                                                                                                  4k1 j5∈A
+                                                                                                                                                                                                                                              Call R: Call routine R with z, T , ìG , and ì
+                                                                                                                                                    Theorem 3.1. SDP0 correctly solves any instance of P0 ,                                 as inputs. Let z∗ be the optimal value returned
+                                                                                                                                                    i.e., P with additional bounds of the form li ⩽ Si ⩽ ui , Li ⩽                          by R and let S∗ be the optimal solution if one
+                                                                                                                                                    SI i ⩽ Ui , i = 11 0 0 0 1 n, if the underlying network for P0 is a                     exists. This is the solution to P.
+                                                                                                                                                    spanning tree.
+                                                                                                                                                                                                                                            Remark 3.2. Every execution of routine R results in
+                                                                                                                                                    3.2. The General Networks Algorithm                                                     exactly one of the following outcomes:
+                                                                                                                                                                                                                                               (1) SDP0 determines that Fì contains no better solution
+                                                                                                                                                    First, even for concave costs the general network opti-
+                                                                                                                                                                                                                                            than one already found.
+                                                                                                                                                    mization problem cannot be reduced to the problem of
+                                                                                                                                                                                                                                               (2) SDP0 determines that Fì = .
+                                                                                                                                                    finding an optimal spanning tree, i.e., whose solution is
+                                                                                                                                                                                                                                               (3) SDP0 finds a solution that is in Fì .
+                                                                                                                                                    network optimal, as an easily constructed example in the
+                                                                                                                                                                                                                                               (4) SDP0 finds a solution that is not in Fì . However, then
+                                                                                                                                                    OLS demonstrates. However, spanning tree relaxations are
+                                                                                                                                                                                                                                            after choosing an infeasible link 4j1 i5 ∈ A, Fì∪8Sj ⩽ °S9 ⊂ Fì ,
+                                                                                                                                                    still useful if (i) solved using SDP0 , which can handle
+                                                                                                                                                                                                                                            and Fì∪8SI k > °S1 ∀ k2 4j1k5∈A9 ⊂ Fì .
+                                                                                                                                                    nonconcave stage costs; and (ii) SDP0 ’s properties are
+                                                                                                                                                    appropriately exploited to move to better network solutions                             GNA: Routine R (arguments z, T , ìG , ì)
+
+
+
+
+               Additional information, including   rightsite.
+                                                          andPlease
+                                                                permission policies, is available at http://journals.informs.org/.
+                                                                                                                                                    iteratively, although how to do so is not obvious, as com-                                 Step 1: Let ìT be the subset of constraints in
+                                                                                                                                                    ments in §3.3 show.                                                                     ì that correspond to T , i.e., drop all
+                                                                                                                                                       Our general networks algorithm (GNA) consists of a                                   constraints from ì that correspond to links
+                                                                                                                                                    recursive routine R that uses SDP0 to solve P0 . Every call                             not in T . Call PT the problem of optimizing the
+
+
+
+
+posted on any other website,  including the  author’s                 send any   questions    regarding  this policy  to permissions@informs.org.
+                                                                                                                                                    to R contains the description of a new problem P0 to which                              cost function of P subject to ìT .
+                                                                                                                                                    more upper- and lower-bound constraints have been added.                                   Step 2: Use SDP0 to obtain an optimal solution
+                                                                                                                                                    We augment our notation with ì to refer to a set of con-                                to PT . Let zT be the optimal value of PT 1 and
+                                                                                                                                                    straints, and vector S = 4S1 1 SI 1 1 0 0 0 1 Sn 1 SI n 5 to compactly                  ST the optimal solution if one exists.
+                                                                                                                                                    describe the set of inbound and outbound service times, the                                Step 3: If zT ⩾ z or zT = , return  for the
+                                                                                                                                                    decision variables for P0 and P.                                                        cost.
+                                                                                                                                                       Routine R takes as arguments the cost of the best solu-                                 Step 4: Else, if ST satisfies the constraints
+                                                                                                                                                    tion found so far z, a spanning tree T , and two sets of                                in ìG , set z = zT and return zT , ST .
+                                                                                                                                                    constraints ìG and ì. It calls itself recursively and returns                              Step 5: Else, ST does not satisfy the
+                                                                                                                                                    the optimal value z∗ within the region described by ìG (for                             constraints in ìG . Let ẑ equal the cost of
+                                                                                                                                                    the cost function of P), as well as the associated solution S∗                          the solution Ŝ, which has S¹i = SiT , and SI        bi =
+                                                                                                                                                    if z∗ 6= .                                                                                          ¹
+                                                                                                                                                                                                                                            max4j1 i5∈A Sj for all stages i. If ẑ < z, set z = ẑ;
+                                                                                                                                                                                                                                            otherwise, leave z unchanged. Then carry out
+                                                                                                                                                    3.3. Optimality                                                                         the steps below.
+                                                                                                                                                    Unlike a standard branch and bound, which bounds a single                                     (a) Choose a link 4j1 i5 ∈ A for which SjT >
+                                                                                                                                                                                                                                               T
+                                                                                                                                                    variable in each iteration, GNA bounds two or more vari-                                SI i , i.e., a constraint in ìG is violated. Let
+                                                                                                                                                    ables in each iteration of R, because SDP0 cannot be used                               S° = SI Ti + 4SjT − SI Ti 5/2.
+                                                                                                                                                    to get an optimal solution by bounding a single variable.                                     (b) Carry out the Upperbound and Lowerbound
+                                                                                                                                                    For example, consider a network in which removing only                                  steps below in order.
+                                                                                                                                                    one link 4j1 i5 from the network forms a spanning tree. Sup-                                       Upperbound: Let zu 1 Su be the solution
+                                                                                                                                                    pose that the maximum possible value for Sj is 1 and that                               returned by R for arguments z, T , ìG , and the
+                                                                                                                                                    optimizing the spanning tree produces Sj∗ = 1 and SI ∗i = 0.                            updated constraint set ì ∪ 8Sj ⩽ S9.     °
+                                                                                                                                                    Then it is easy to see that following all the steps in GNA                                         Lowerbound: Let zl 1 Sl be the solution
+                                                                                                                                                    exactly, but using a standard branch and bound by bounding                              returned by R for arguments z, T , ìG , and the
+                                                                                                                                                    Sj ⩽ 0 first and then Sj > 0 instead of bounding Sj ⩽ 0 first                           updated constraint set ì∪8SI k > S1      ° ∀ k2 4j1 k5∈A9.
+                                                                                                                                                    and then SI i > 0 as GNA would, will cause the algorithm                                   Return min4ẑ1 zu 1 zl 5 and the associated solution
+                                                                                                                                                    to go into an infinite recursion. This is because the optimal                           (breaking any tie arbitrarily).
+                                                                                                                                                                                                                           Humair and Willems: Optimizing Strategic Safety Stock Placement
+                                                                                                                                                    784                                                                                  Operations Research 59(3), pp. 781–787, © 2011 INFORMS
+
+
+                                                                                                                                                       Outcomes 1, 2, and 3 in Remark 3.2 follow from The-              dual space and the other is a trivial heuristic that terminates
+                                                                                                                                                    orem 3.1 because PT is a relaxation of P0 . Outcome 4 is            the algorithm after only 100 spanning tree optimizations. In
+
+
+
+
+               INFORMS
+Copyright: INFORMS    holdsholds   copyright
+                                       to this toArticles
+                                                   this in
+                                                         article and distributed
+                                                              Advance             this is
+                                                                                        copy   as aavailable
+                                                                                                     courtesyto to the  author(s).
+                                                                                                                                                    easy to verify from how S° is constructed in Step 5(a) in R,        general, given the hardness of the problem with nonconcave
+                                                                                                                                                    and states that R calls itself with strictly smaller feasible       costs and arbitrary acyclic networks, the performance of the
+                                                                                                                                                    regions in each iteration, so the algorithm is finite. The only     algorithm is quite good and is typical of our experience in
+                                                                                                                                                    remaining requirement for GNA’s optimality is to show that          the last few years. The companies that contributed the data
+
+
+
+
+                             copyright                                 version, which      made                  subscribers. The ﬁle may not be
+                                                                                                                                                    the smaller feasible regions do not omit any part of the            set are using an industrial-strength multiechelon inventory
+                                                                                                                                                    original feasible region, shown by the following proposition        optimization software application based on the GS model
+                                                                                                                                                    (proof in OLS).                                                     that employs the TGNA heuristic defined in §4.1.
+                                                                                                                                                    Proposition 3.3. In any iteration of R, for any infeasible
+                                                                                                                                                    link 4j1 i5 ∈ A, Fì∪8Sj ⩽S9
+                                                                                                                                                                             ° ∪ Fì∪8SI k >S1
+                                                                                                                                                                                           ° ∀ k2 4j1 k5∈A9 ⊃ Fì .
+                                                                                                                                                                                                                        4. Faster Heuristics
+                                                                                                                                                                                                                        Results from Table 1 suggest that the optimal solution is
+                                                                                                                                                    3.4. Performance                                                    often found quickly by GNA. This motivates questions
+                                                                                                                                                    We report GNA’s performance for a set of 38 real-world              about deeper theoretical results, as well as a search for
+                                                                                                                                                    chains presented in Willems (2008). These chains repre-             heuristics that can terminate quickly and still be close to
+                                                                                                                                                    sent actual business problems from 29 companies. Some               optimal. Although we have not been able to fully character-
+                                                                                                                                                    data were disguised to protect company confidentiality,             ize the reasons yet, we do propose the following heuristic,
+                                                                                                                                                    and some data were standardized to facilitate comparisons           which works well in practice. It is based on an understand-
+                                                                                                                                                    between chains, but attributes including the exact supply           ing of the algorithm’s mechanics in the dual space (see
+                                                                                                                                                    chain topology and the characterization of stage times were         the OLS). This heuristic (HGNA) does three things differ-
+                                                                                                                                                    preserved.                                                          ently from GNA, keeping all other implementation details
+                                                                                                                                                       Two reasons motivate testing the algorithm on a real             as described in the OLS.
+                                                                                                                                                    data set instead of constructing an artificial test suite. First,      (1) During the Initialization step, creates a set of links ç
+                                                                                                                                                    the motivation for our algorithm was to optimize chains             initialized to , for which the Lowerbound step in rou-
+                                                                                                                                                    arising in practical settings. Second, problem P for arbi-          tine R is not to be tried.
+
+
+
+
+               Additional information, including   rightsite.
+                                                          andPlease
+                                                                permission policies, is available at http://journals.informs.org/.
+                                                                                                                                                    trary cost functions is so general that one can always con-            (2) Modifies the recursive routine R to know if it is
+                                                                                                                                                    struct uncommon examples to make the algorithm perform              being called from the Lowerbound step during an execution
+                                                                                                                                                    unacceptably. On the other hand, cost functions arising in          of R (adding a flag to R’s arguments). The first call to R
+                                                                                                                                                    practical settings, although not always closed form or con-         is with the flag Upperbound.
+
+
+
+
+posted on any other website,  including the  author’s                 send any   questions    regarding  this policy  to permissions@informs.org.
+                                                                                                                                                    cave, are still not completely arbitrary. Further, the empiri-         (3) Modifies Step 5 of R as described below.
+                                                                                                                                                    cal performance of branch-and-bound algorithms is known                The heuristic modifies the bounding rule for an infeasible
+                                                                                                                                                    to depend strongly on the problem structure, the quality of         link 4j1 i5 to upper-bound Sk for all stages upstream of i and
+                                                                                                                                                    relaxations used, the methods for solving these relaxations,        lower-bound only SI i . However, the reason for its efficiency
+                                                                                                                                                    and the partitioning rules. Testing on artificial problems          is that it prunes the branch-and-bound tree by never using
+                                                                                                                                                                                                                        the Lowerbound step again once the link has been added to
+                                                                                                                                                    would therefore give us less confidence about the algo-
+                                                                                                                                                                                                                        ç, no matter how many times that link is found infeasible
+                                                                                                                                                    rithm’s practicality than testing it on real-world problems.
+                                                                                                                                                                                                                        during the branch-and-bound recursion. The OLS presents
+                                                                                                                                                       Table 1 presents GNA’s performance. The chains tested
+                                                                                                                                                                                                                        the motivating intuition for the heuristic.
+                                                                                                                                                    are all general networks with 15 chains between 100 and
+                                                                                                                                                    499 stages, 6 between 500 and 999 stages, and 5 above               HGNA: Modified Routine R (arguments z, T , ìG , ì, ç,
+                                                                                                                                                    1,000 stages. They are reasonably dense, 17 having link-to-         Upperbound/Lowerbound flag)
+                                                                                                                                                    stage ratios greater than 1.5, 7 more than 3, and 1 greater            Step 1 to Step 4: Same as in GNA
+                                                                                                                                                    than 8. Another major determinant of run time is maximum               Step 5: Else, ST does not satisfy the
+                                                                                                                                                    supply chain length. The chains have substantial maximum            constraints in ìG . Let ẑ equal the cost of
+                                                                                                                                                    lengths; only 10 have length less than 50 days and 13 have          the solution Ŝ, which has S¹i = SiT , and SI       bi =
+                                                                                                                                                    lengths greater than 99 days.                                       max4j1 i5∈A S¹j for all stages i. If ẑ < z, set z = ẑ;
+                                                                                                                                                       GNA returns within approximately two minutes on 28               otherwise, leave z unchanged. Then carry out
+                                                                                                                                                    of the 38 chains (within a minute on 26 chains). On most            the steps below.
+                                                                                                                                                    of the chains where it exceeds 5 minutes, it does run very                (a) Choose a link 4j1 i5 ∈ A for which SjT >
+                                                                                                                                                                                                                           T
+                                                                                                                                                    long; but looking at these cases, it seems the algorithm finds      SI i , i.e., a constraint in ìG is violated. Let
+                                                                                                                                                    the optimal or a near-optimal solution in reasonable time,          S° = SI Ti + 4SjT − SI Ti 5/2.
+                                                                                                                                                    and spends the rest of the time checking infeasible solutions             (b) Carry out the Upperbound, Lowerbound, and
+                                                                                                                                                    in the branch-and-bound tree; the total iters column is the         Update ç steps below in order.
+                                                                                                                                                    total number of spanning-tree optimizations tried by the                      Upperbound: Let zu 1 Su be the solution
+                                                                                                                                                    algorithm and the optimal iter column is the iteration that         returned by R for arguments z, T , ìG , the
+                                                                                                                                                    produced the optimal cost. This motivates the development           updated constraint set ì ∪ 8Sk ⩽ S1     ° ∀ k2 4k1 i5∈A9,
+                                                                                                                                                    of two heuristics in §4. One is based on the structure of the       and the Upperbound flag.
+                                                                                                                                                    Humair and Willems: Optimizing Strategic Safety Stock Placement
+                                                                                                                                                    Operations Research 59(3), pp. 781–787, © 2011 INFORMS                                                                                  785
+
+                                                                                                                                                    Table 1.        GNA performance.
+
+
+
+
+               INFORMS
+Copyright: INFORMS    holdsholds   copyright
+                                       to this toArticles
+                                                   this in
+                                                         article and distributed
+                                                              Advance             this is
+                                                                                        copy   as aavailable
+                                                                                                     courtesyto to the  author(s).
+                                                                                                                                                                                                        Max chain                                  Optimal
+                                                                                                                                                    Chain           Stages            Links              length            Time (secs)             cost ($)            Total iters   Optimal iter
+                                                                                                                                                    01                  8                10                   38                 0000            3.35E + 04                   9              1
+                                                                                                                                                    02                 13                13                   64                 0003            9.51E + 06                   9              1
+
+
+
+
+                             copyright                                 version, which      made                  subscribers. The ﬁle may not be
+                                                                                                                                                    03                 17                18                   7908               0011            6.94E + 06                  19             17
+                                                                                                                                                    04                 22                39                  204                 0063            4.90E + 04                  19              9
+                                                                                                                                                    05                 27                31                   47035              0000            2.01E + 06                   1              1
+                                                                                                                                                    06                 28                28                   96                 0000            7.78E + 04                   1              1
+                                                                                                                                                    07                 38                78                   85                 1047            5.22E + 06                 101             15
+                                                                                                                                                    08                 40                48                   91004              0028            1.63E + 06                  11              5
+                                                                                                                                                    09                 49                52                   47038              0002            1.12E + 06                   1              1
+                                                                                                                                                    10                 58               176                  162                 0008            1.21E + 06                  15             11
+                                                                                                                                                    11                 68               108                   60                 9050            1.12E + 07                 267            226
+                                                                                                                                                    12                 88               107                  10806              10067            7.35E + 06                 391            359
+                                                                                                                                                    13                108               452                   26                22059            6.09E + 06              251695            132
+                                                                                                                                                    14                116               119                  128032              0013            7.16E + 04                   1              1
+                                                                                                                                                    15                133               164                   26                 0002            1.16E + 06                   1              1
+                                                                                                                                                    16                145               224                  163                30003            4.64E + 06                  79             63
+                                                                                                                                                    17                152               211                   57                 0002            1.09E + 06                   1              1
+                                                                                                                                                    18                154               224                  100                 2009            9.75E + 04                  33             26
+                                                                                                                                                    19                156               263                  125             31103063            3.15E + 05              591061         581681
+                                                                                                                                                    20                156               169                  16009             804039            2.91E + 05              161699         141514
+                                                                                                                                                    21                186               359                   96               140034            1.08E + 06               11983             59
+                                                                                                                                                    22                253               253                  691                12019            1.94E + 06                   1              1
+                                                                                                                                                    23                271               524                   77           1761722045            4.26E + 05          1010001000            108
+                                                                                                                                                    24                334             11245                   68053         101435067            1.41E + 07             1271521          51107
+                                                                                                                                                    25                409               853                   82           8831312055            1.14E + 06          1010001000      311381047
+                                                                                                                                                    26                468               605                  394007              8038            4.53E + 06                  21             11
+
+
+
+
+               Additional information, including   rightsite.
+                                                          andPlease
+                                                                permission policies, is available at http://journals.informs.org/.
+                                                                                                                                                    27                482               941                  105           7051636017            8.32E + 05          1010001000      814281498
+                                                                                                                                                    28                577             21262                  123               103002            4.63E + 06                 389            180
+                                                                                                                                                    29                617               753                   43                 0075            3.46E + 05                  11              6
+                                                                                                                                                    30                626               632                   71005              0069            9.60E + 05                   5              2
+                                                                                                                                                    31                706               908                   17092            116022            3.40E + 07               41065          31894
+
+
+
+
+posted on any other website,  including the  author’s                 send any   questions    regarding  this policy  to permissions@informs.org.
+                                                                                                                                                    32                844             11685                  11202       310891722084            7.09E + 05          1010001000      515351857
+                                                                                                                                                    33                976             11009                   72036              0028            4.22E + 05                   1              1
+                                                                                                                                                    34              11206             41063                   89                12066            8.64E + 05                 147             71
+                                                                                                                                                    35              11386             11857                   81                37088            1.79E + 06                 235            192
+                                                                                                                                                    36              11451             41812                   49055        1261583003            1.24E + 06             7811737         111235
+                                                                                                                                                    37              11479             21069                   27085             17028            9.99E + 05                 253            180
+                                                                                                                                                    38              21025            161225                   26003        5771190078            1.10E + 06           218391444         651507
+                                                                                                                                                    Notes. All chains were optimized from the starting solution Si = 0, i = 11 0 0 0 1 n. Total Iters were capped at 10 m.
+
+
+                                                                                                                                                           Lowerbound: If 4j1 i5 ∈ ç, let zl = .                                 for 28 of the 38 chains and is off by more than 1% for only
+                                                                                                                                                    Otherwise, let zl , Sl be the solution returned                               4 chains (2.32%, 3.61%, 15.67%, and 16.66%). TGNA runs
+                                                                                                                                                    by R for arguments z, T , ìG , the updated                                    within a minute on all chains, as expected, and finds the
+                                                                                                                                                    constraint set ì ∪ 8SI i > S9,      ° and the Lowerbound                      optimal solution for 25 of the 38 chains. More importantly,
+                                                                                                                                                    flag.                                                                         for the remaining chains, TGNA’s optimality gap is more
+                                                                                                                                                           Update ç: If R was called with the                                     than 5% for only 3 chains, although the worst-case opti-
+                                                                                                                                                    Lowerbound flag, set ç = ç ∪ 84j1 i59.                                        mality gaps are approximately 37% and 39%. However, the
+                                                                                                                                                       Return min4ẑ1 zu 1 zl 5 and the associated solution                       chain with 37% optimality gap is optimized by GNA in
+                                                                                                                                                    (breaking any tie arbitrarily).                                               132 iterations, so a slight increase in the truncation limit
+                                                                                                                                                                                                                                  would have allowed TGNA to find the optimal solution as
+                                                                                                                                                    4.1. Performance Comparison                                                   well. TGNA’s performance reinforces the results of Table 1,
+                                                                                                                                                                                                                                  i.e., that GNA finds the optimal or a near-optimal solution
+                                                                                                                                                    Table 2 compares the performance of GNA, HGNA, and                            quickly, but might take significant time trying to determine
+                                                                                                                                                    TGNA (the GNA algorithm truncated to at most 100 itera-                       if the solution it has found is the globally optimal solution.
+                                                                                                                                                    tions) relative to GNA’s results (a table with actual run time
+                                                                                                                                                    is provided in the OLS). HGNA runs within a minute for
+                                                                                                                                                    all 38 chains except 4, for which it runs in approximately                    5. Summary
+                                                                                                                                                    2.4, 3.7, 17.1, and 28.5 minutes, for which GNA run time                      We have extended the GS framework along two signif-
+                                                                                                                                                    is of the order of days. HGNA finds the optimal solution                      icant dimensions: incorporating generalized stage costs,
+                        INFORMS
+         Copyright: INFORMS    holdsholds   copyright
+                                      copyright                   article
+                                                            this in
+                                                to this toArticles        and distributed
+                                                                       Advance  version, which   copy
+                                                                                           this is  madeas aavailable
+                                                                                                              courtesyto to the  author(s).
+                                                                                                                          subscribers. The ﬁle may not be
+                        Additional
+         posted on any other       information,
+                             website,           including
+                                       including the  author’s
+                                                            rightsite.   permission
+                                                                   andPlease        policies, is
+                                                                               send any          available
+                                                                                          questions        at http://journals.informs.org/.
+                                                                                                       regarding  this policy  to permissions@informs.org.
+
+
+
+                                                                                                                                                                                             786
+Table 2.       Performance of HGNA and TGNA relative to GNA.
+                                                                                                                    HGNA heuristic                                TGNA heuristic
+                                                                 GNA algorithm                                       % change (%)                                  % change (%)
+                               MaxChain         Time           Optimal         Total        Optimal               Optimal      Total    Optimal                  Optimal   Total   Optimal
+Chain      Stages    Links      length          (secs)         cost ($)        iters          iter       Time      cost        iters      iter       Time         cost     iters     iter
+01           8          10        38                0000     3.35E + 04             9             1        0        0            0          0          2           0          0       0
+02          13          13        64                0003     9.51E + 06             9             1        0        0            0          0          3           0          0       0
+03          17          18        7908              0011     6.94E + 06            19            17      −43        0          −42        −47        −44           0        −42     −47
+04          22          39       204                0063     4.90E + 04            19             9      −15        0          −21        −67          2           0          0       0
+05          27          31        47035             0000     2.01E + 06             1             1        0        0            0          0          2           0          0       0
+06          28          28        96                0000     7.78E + 04             1             1        2        0            0          0          2           0          0       0
+07          38          78        85                1047     5.22E + 06           101            15      −81        0          −80        −60         −1           0         −1       0
+08          40          48        91004             0028     1.63E + 06            11             5       −5        0            0          0         −6           0          0       0
+09          49          52        47038             0002     1.12E + 06             1             1        0        0            0          0       −100           0          0       0
+10          58         176       162                0008     1.21E + 06            15            11      −21        0          −27        −18          0           0          0       0
+11          68         108        60                9050     1.12E + 07           267           226      −93        0          −93        −96        −73           0        −73     −86
+12          88         107       10806             10067     7.35E + 06           391           359      −91        0          −91        −94        −80           0        −80     −87
+13         108         452        26               22059     6.09E + 06        251695           132     −100        0         −100        −98       −100          36090    −100     −99
+14         116         119       128032             0013     7.16E + 04             1             1       13        0            0          0         12           0          0       0
+15         133         164        26                0002     1.16E + 06             1             1        7        0            0          0          0           0          0       0
+16         145         224       163               30003     4.64E + 06            79            63      −17        0          −18        −35        −12           0        −13     −16
+17         152         211        57                0002     1.09E + 06             1             1        0        0            0          0         94           0          0       0
+18         154         224       100                2009     9.75E + 04            33            26       18        0            9        −19        −26           0        −24     −31
+19         156         263       125            31103063     3.15E + 05        591061        581681     −100        0085      −100       −100       −100           1044    −100    −100
+20         156         169       16009            804039     2.91E + 05        161699        141514     −100        3061      −100       −100        −99           3052     −99    −100
+21         186         359        96              140034     1.08E + 06         11983            59      −95        0          −96        −44        −95           0        −95       0
+22         253         253       691               12019     1.94E + 06             1             1       −4        0            0          0          0           0          0       0
+23         271         524        77          1761722045     4.26E + 05    1010001000           108     −100        0         −100        −49       −100           0010    −100      −7
+24         334       11245        68053        101435067     1.41E + 07       1271521         51107     −100        2032      −100        −95       −100           2084    −100     −98
+25         409         853        82          8831312055     1.14E + 06    1010001000     311381047     −100        0012      −100       −100       −100           0075    −100    −100
+26         468         605       394007             8038     4.53E + 06            21            11      −57        0          −57        −55          0           0          0       0
+27         482         941       105          7051636017     8.32E + 05    1010001000     814281498     −100       −9040      −100       −100       −100           2039    −100    −100
+28         577       21262       123              103002     4.63E + 06           389           180      −82        0001       −83        −85        −74           2018     −74     −45
+29         617         753        43                0075     3.46E + 05            11             6        0        0            0          0          2           0          0       0
+30         626         632        71005             0069     9.60E + 05             5             2       87        0           80          0          0           0          0       0
+31         706         908        17092           116022     3.40E + 07         41065         31894      −95        0011       −94       −100        −98           2046     −98    −100
+32         844       11685       11202      310891722084     7.09E + 05    1010001000     515351857     −100        0001      −100       −100       −100           0002    −100    −100
+33         976       11009        72036             0028     4.22E + 05             1             1        6        0            0          0          0           0          0       0
+34       11206       41063        89               12066     8.64E + 05           147            71      −26        0          −33        −42        −32           0        −32       0
+35       11386       11857        81               37088     1.79E + 06           235           192      −81        0015       −82        −97        −57           0058     −57     −60
+36       11451       41812        49055       1261583003     1.24E + 06       7811737        111235      −99       15067       −99        −95       −100          15078    −100     −99
+37       11479       21069        27085            17028     9.99E + 05           253           180      −85        0          −85        −86        −60           0        −60     −78
+38       21025      161225        26003       5771190078     1.10E + 06     218391444        651507     −100       16066      −100       −100       −100          38079    −100    −100
+Note. Shows percent reduction in run time, total iterations required and the iteration when the best solution was found, and percent increase in optimal cost.
+                                                                                                                                                                                                                                                      Humair and Willems: Optimizing Strategic Safety Stock Placement
+                                                                                                                                                                                             Operations Research 59(3), pp. 781–787, © 2011 INFORMS
+                                                                                                                                                    Humair and Willems: Optimizing Strategic Safety Stock Placement
+                                                                                                                                                    Operations Research 59(3), pp. 781–787, © 2011 INFORMS                                                                                   787
+
+                                                                                                                                                    and optimizing safety stocks in directed acyclic gen-             References
+                                                                                                                                                    eral networks. We have presented the first algorithm in
+
+
+
+
+               INFORMSholdsholds   copyright
+                                       to this toArticles
+                                                   this in
+                                                         article and distributed  this is
+                                                                                        copy   as aavailable
+                                                                                                     courtesyto to the  author(s).
+                                                                                                                                                                                                                      Graves, S. C., S. P. Willems. 2000. Optimizing strategic safety stock place-
+
+
+
+
+Copyright: INFORMS                                            Advance
+                                                                                                                                                    our knowledge for the NP-hard problem of safety stock                  ment in supply chains. Manufacturing Service Oper. Management
+                                                                                                                                                                                                                           2(1) 68–83.
+                                                                                                                                                    optimization in general networks with generalized stage           Graves, S. C., S. P. Willems. 2003. Erratum: Optimizing strategic safety
+                                                                                                                                                    costs. We have presented a proof of its optimality. We                 stock placement in supply chains. Manufacturing Service Oper. Man-
+                                                                                                                                                    have presented the first computational results for a pub-
+
+
+
+
+                             copyright                                 version, which      made                  subscribers. The ﬁle may not be
+                                                                                                                                                                                                                           agement 5(2) 176–177.
+                                                                                                                                                    lished data set of real-world chains (from 8 to 2,025             Humair, S., S. P. Willems. 2006. Optimizing strategic safety stock place-
+                                                                                                                                                                                                                           ment in supply chains with clusters of commonality. Oper. Res. 54(4)
+                                                                                                                                                    stages) to demonstrate our algorithm’s performance and                 725–742.
+                                                                                                                                                    have found the algorithm’s performance consistently good          Karimi, I. A., J. Shu, M. Song. 2004. Heuristic methods for inven-
+                                                                                                                                                    in practice. We have also presented two near-optimal but               tory placement in general acyclic supply chains. Working paper,
+                                                                                                                                                    much faster heuristics and tested them on the same data                National University of Singapore and Logistics Institute–Asia Pacific,
+                                                                                                                                                                                                                           Singapore, 25.
+                                                                                                                                                    set. Finally, our investigation of the problem structure          Lesnaia, E. 2004. Optimizing safety stock placement in general network
+                                                                                                                                                    in the dual space (in the OLS) has revealed what we                    supply chains. Ph.D. thesis, Massachusetts Institute of Technology,
+                                                                                                                                                    believe are promising research directions for fast future              Cambridge, MA.
+                                                                                                                                                    algorithms.                                                       Magnanti, T. L., Z.-J. M. Shen, J. Shu, D. Simchi-Levi, C.-P. Teo. 2006.
+                                                                                                                                                                                                                           Inventory placement in acyclic supply chain networks. Oper. Res.
+                                                                                                                                                                                                                           Lett. 34(2) 228–238.
+                                                                                                                                                                                                                      Minner, S. 2000. Strategic Safety Stocks in Supply Chains. Lecture Notes
+                                                                                                                                                    6. Electronic Companion                                                in Economics and Mathematical Systems, Vol. 490. Springer-Verlag,
+                                                                                                                                                                                                                           Berlin.
+                                                                                                                                                    An electronic companion to this paper is available as part
+                                                                                                                                                                                                                      Willems, S. P. 2008. Real-world multiechelon supply chains used for
+                                                                                                                                                    of the online version that can be found at http://or.journal           inventory optimization. Manufacturing Service Oper. Management
+                                                                                                                                                    .informs.org/.                                                         10(1) 19–23.
+
+
+
+
+               Additional
+posted on any other       information,
+                    website,           including
+                              including the        rightsite.
+                                             author’s     andPlease
+                                                                permission policies, is
+                                                                      send any          available
+                                                                                 questions        at http://journals.informs.org/.
+                                                                                              regarding  this policy  to permissions@informs.org.
+

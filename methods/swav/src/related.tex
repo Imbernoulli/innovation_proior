@@ -1,0 +1,29 @@
+%!TEX root = main.tex
+
+\section{Related Work}
+\label{sec:related}
+
+\paragraph{Instance and contrastive learning.}
+Instance-level classification considers each image in a dataset as its own class~\cite{bojanowski2017unsupervised,dosovitskiy2016discriminative,wu2018unsupervised}.
+Dosovitskiy~\etal~\cite{dosovitskiy2016discriminative} assign a class explicitly to each image and learn a linear classifier with as many classes as images in the dataset.
+As this approach becomes quickly intractable, Wu~\etal~\cite{wu2018unsupervised} mitigate this issue by replacing the classifier with a memory bank that stores previously-computed representations.
+They rely on noise contrastive estimation~\cite{gutmann2010noise} to compare instances, which is a special form of contrastive learning~\cite{hjelm2018learning,oord2018representation}.
+He~\etal~\cite{he2019momentum} improve the training of contrastive methods by storing representations from a momentum encoder instead of the trained network.
+More recently, Chen~\etal~\cite{chen2020simple} show that the memory bank can be entirely replaced with the elements from the same batch if the batch is large enough.
+In contrast to this line of works, we avoid comparing every pair of images by mapping the image features to a set of trainable prototype vectors.
+
+\paragraph{Clustering for deep representation learning.}
+Our work is also related to clustering-based methods~\cite{asano2019self,bautista2016cliquecnn,caron2018deep,caron2019unsupervised,huang2019unsupervised,xie2016unsupervised,yang2016joint,zhuang2019local,gidaris2020learning,yan2020cluster}.
+Caron~\etal~\cite{caron2018deep} show that $k$-means assignments can be used as pseudo-labels to learn visual representations.
+This method scales to large uncurated dataset and can be used for pre-training of supervised networks~\cite{caron2019unsupervised}.
+However, their formulation is not principled and recently, Asano~\etal~\cite{asano2019self} show how to cast the pseudo-label assignment problem as an instance of the optimal transport problem.
+We consider a similar formulation to map representations to prototype vectors, but unlike~\cite{asano2019self} we keep the soft assignment produced by the Sinkhorn-Knopp algorithm~\cite{cuturi2013sinkhorn} instead of approximating it into a hard assignment.
+Besides, unlike Caron~\etal~\cite{caron2018deep,caron2019unsupervised} and Asano~\etal~\cite{asano2019self}, we obtain online assignments which allows our method to scale gracefully to any dataset size.
+
+\paragraph{Handcrafted pretext tasks.}
+Many self-supervised methods manipulate the input data to extract a supervised signal in the form of a pretext task~\cite{doersch2015unsupervised,agrawal2015learning,jenni2018self,kim2018learning,larsson2016learning,mahendran2018cross,misra2016shuffle,pathak2017learning,pathak2016context,wang2015unsupervised,wang2017transitive,zhang2017split}.
+We refer the reader to Jing~\etal~\cite{jing2019self} for an exhaustive and detailed review of this literature.
+Of particular interest, Misra and van der Maaten~\cite{misra2019self} propose to encode the jigsaw puzzle task~\cite{noroozi2016unsupervised} as an invariant for contrastive learning.
+Jigsaw tiles are non-overlapping crops with small resolution that cover only part (${\sim}20\%$) of the entire image area.
+In contrast, our \texttt{multi-crop} strategy consists in simply sampling multiple random crops with two different sizes: a standard size and a smaller one.
+

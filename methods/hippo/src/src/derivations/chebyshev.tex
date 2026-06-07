@@ -1,0 +1,148 @@
+\documentclass[../../hippo]{subfiles}
+\begin{document}
+
+\subsection{Derivation for Translated Chebyshev}
+\label{sec:derivation-chebyshev}
+
+The final family of orthogonal polynomials we analyze under the HiPPO framework are the Chebyshev polynomials.
+The Chebyshev polynomials can be seen as the purely real analog of the Fourier basis;
+for example, a Chebyshev series is related to a Fourier cosine series through a change of basis~\citep{boyd2001chebyshev}.
+
+
+\paragraph{Measure and Basis}
+
+
+The basic Chebyshev measure is $\omega^{\mathrm{cheb}} = (1-x^2)^{-1/2}$ on $(-1, 1)$.
+Following \cref{sec:chebyshev-properties}, we choose the following measure and orthonormal basis polynomials in terms of the Chebyshev polynomials of the first kind $T_n$.
+\begin{align*}%
+  \omega(t, x) &= \frac{2}{\theta\pi} \omega^{cheb}\left( \frac{2(x-t)}{\theta} + 1 \right) \mathbb{I}_{(t-\theta, t)}
+  \\
+  &= \frac{1}{\theta\pi} \left( \frac{x-t}{\theta} + 1 \right)^{-1/2} \left( -\frac{x-t}{\theta} \right)^{-1/2} \mathbb{I}_{(t-\theta, t)}
+  \\
+  p_n(t, x) &= \sqrt{2} T_n\left( \frac{2(x-t)}{\theta} + 1 \right) \qquad \text{for } n \geq 1,
+  \\
+  p_0(t, x) &= T_0\left( \frac{2(x-t)}{\theta} + 1 \right).
+\end{align*}
+
+Note that at the endpoints, these evaluate to
+\begin{align*}%
+  p_n(t, t) &=
+  \begin{cases}
+    \sqrt{2} T_n(1) = \sqrt{2} & n \ge 1
+    \\
+    T_n(1) = 1 & n = 0
+  \end{cases}
+  \\
+  p_n(t, t-\theta) &=
+  \begin{cases}%
+    \sqrt{2} T_n(-1) = \sqrt{2} (-1)^{n} & n \ge 1
+    \\
+    T_n(-1) = 1 & n = 0
+  \end{cases}
+\end{align*}
+
+\paragraph{Tilted Measure}
+
+
+Now we choose
+\begin{align*}
+  \chi^{(t)} = 8^{-1/2} \theta \pi \omega^{(t)},
+\end{align*}
+So
+\begin{align*}
+  \frac{\omega}{\chi^2} = \frac{1}{\frac{\theta^2\pi^2}{8}\omega} = \frac{8}{\theta \pi} \left( \frac{x-t}{\theta} + 1 \right)^{1/2} \left( -\frac{x-t}{\theta} \right)^{1/2} \mathbb{I}_{(t-\theta, t)}
+\end{align*}
+which integrates to $1$.
+
+
+We also choose $\lambda_n = 1$ for the canonical orthonormal basis, so
+\begin{align*}
+  g^{(t)} = p_n^{(t)} \chi^{(t)}
+\end{align*}
+
+
+\paragraph{Derivatives}
+
+The derivative of the density is
+\begin{align*}
+  \ppt \frac{\omega}{\chi} = \ppt \frac{8^{1/2}}{\theta\pi}\mathbb{I}_{(t-\theta, t)} = \frac{8^{1/2}}{\theta\pi}(\delta_t - \delta_{t-\theta}).
+\end{align*}
+
+We consider differentiating the polynomials separately for $n = 0$, $n$ even, and $n$ odd,
+using equation~\eqref{eq:chebyshev-derivative}.
+Defined $z = \frac{2(x-t)}{\theta} + 1$ for convenience.
+First, for $n$ even,
+\begin{align*}%
+  \ppt p_n(t, x) &= -\frac{2^{\frac{3}{2}}}{\theta} T_n'\left( \frac{2(x-t)}{\theta} + 1 \right)
+  \\
+  &= -\frac{2^{\frac{3}{2}}}{\theta} T_n'\left( z \right)
+  \\
+  &= -\frac{2^{\frac{3}{2}}}{\theta} \cdot 2n \left( T_{n-1}(z) + T_{n-3}(z) + \dots + T_1(z) \right)
+  \\&
+  = -\frac{4n}{\theta} \left( p_{n-1}(t, x) + p_{n-3}(t, x) + \dots + p_1(t, x) \right)
+\end{align*}
+For $n$ odd,
+\begin{align*}%
+  \ppt p_n(t, x) &= -\frac{2^{\frac{3}{2}}}{\theta} T_n'\left( \frac{2(x-t)}{\theta} + 1 \right)
+  \\
+  &= -\frac{2^{\frac{3}{2}}}{\theta} T_n'\left( z \right)
+  \\
+  &= -\frac{2^{\frac{3}{2}}}{\theta} \cdot 2n \left( T_{n-1}(z) + T_{n-3}(z) + \dots + T_1(z) + \frac{1}{2}T_0(z) \right)
+  \\&
+  = -\frac{4n}{\theta} \left( p_{n-1}(t, x) + p_{n-3}(t, x) + \dots + 2^{-\frac{1}{2}}p_0(t, x) \right)
+\end{align*}
+And
+\begin{align*}
+  \ppt p_0(t, x) &= 0.
+\end{align*}
+
+
+
+\paragraph{Coefficient Dynamics}
+
+\begin{align*}%
+  c_n(t) &= \int f(x) p_n(t, x) \frac{2^{3/2}}{\theta\pi} \mathbb{I}_{(t-\theta, t)} \dd x
+  \\
+  \ddt c_n(t) &= \int f(x) \ppt p_n(t, x) \frac{2^{3/2}}{\theta\pi} \mathbb{I}_{(t-\theta, t)} \dd x + \frac{2^{3/2}}{\theta\pi} f(t)p_n(t, t) - \frac{2^{3/2}}{\theta\pi} f(t-\theta)p_n(t, t-\theta)
+  \\&
+  = -\frac{4n}{\theta} (c_{n-1} + c_{n-3} + \dots)  + \frac{2^{3/2}}{\theta\pi} f(t) \begin{cases} \sqrt{2} & n \geq 1 \\ 1 & n = 0 \end{cases}
+  ,
+\end{align*}
+where we take $f(t - \theta) = 0$ as we no longer have access to it (this holds
+when $t < \theta$ as well).
+
+In the usual way, we can write this as linear dynamics
+\begin{align*}
+  \ddt c(t) &= -\frac{1}{\theta} A c(t) + \frac{1}{\theta} B f(t)
+  \\
+  A &=
+  4
+  \begin{bmatrix}
+    0 & & & & \dots \\
+    2^{-\frac{1}{2}} & 0 & & & \\
+    0 & 2 & 0 & & \dots \\
+    2^{-\frac{1}{2}} \cdot 3 & 0 & 3 & 0 & \\
+    & \ddots & & \ddots &
+  \end{bmatrix}
+  \\
+  B &=
+  \frac{2^{3/2}}{\pi}
+  \begin{bmatrix}
+    1 \\ \sqrt{2} \\ \sqrt{2} \\ \sqrt{2} \\ \vdots
+  \end{bmatrix}
+\end{align*}
+
+
+
+\paragraph{Reconstruction}
+In the interval $(t-\theta, t)$,
+\begin{align*}
+  f(x) \approx \sum_{n=0}^{N-1} c_n(t) p_n(t, x) \chi(t, x).
+\end{align*}
+
+
+
+
+
+\end{document}
+

@@ -1,0 +1,42 @@
+%!TEX root = nips_2018.tex
+
+\paragraph{Notation.}  
+For any vector $x_t \in \mathbb{R}^d$, either $x_{t,j}$ or $[x_t]_{j}$ are used to denote its $j^{\text{th}}$ coordinate where $j \in [d]$.  Let $\mathbb{I}$ be the $d \times d$ identity matrix, and let $\mathbb{I} = [\mathbb{I}_1, \mathbb{I}_2,...,\mathbb{I}_h]$ be its decomposition into column submatrices $\mathbb{I}_i = d \times d_h$. For $x \in \mathbb{R}^d$, let $x^{(i)}$ be the block of variables corresponding to the columns of $I_i$ i.e., $x^{(i)} = \mathbb{I}_i^\top x \in \mathbb{R}^{d_i}$  for
+$i = \{1, 2, \cdots ,h\}$. For any function $f:\mathbb{R}^d \rightarrow \mathbb{R}$, we use $\nabla_i f(x)$ to denote the gradient with respect to $x^{(i)}$. For any vectors $u, v \in \mathbb{R}^d$, we use $u^2$ and $u/v$ to denote elementwise square and division operators respectively.
+We use $\|.\|$ and $\|.\|_1$ to denote $l_2$-norm and $l_1$-norm of a vector respectively.
+
+We start our discussion by formally stating the problem setup.  In this paper, we study nonconvex stochastic optimization problems of the form
+\begin{align}
+\label{eq:1}
+\min_{x \in \mathbb{R}^d} f(x) := \mathbb{E}_{s \sim \mathbb{P}}[\ell(x, s)] + \frac{\lambda}{2} \|x\|^2,
+\end{align}
+where $\ell$ is a smooth (possibly nonconvex) function and $\mathbb{P}$ is a probability distribution on the domain $\mathcal{S} \subset \mathbb{R}^k$. 
+Here, $x$ corresponds to model parameters, $\ell$ is the loss function and $\mathbb{P}$ is an unknown data distribution. 
+
+We assume function $\ell(x)$ is $L_i$-\emph{smooth} with respect to $x^{(i)}$, i.e.,  there exists a constant $L_i$ such that
+\begin{equation}
+\label{eq:l-const}
+  \|\nabla_i \ell(x, s)-\nabla_i \ell(y, s)\| \le L_i\|x^{(i)}-y^{(i)}\|,\quad\forall\ x, y \in \reals^d, \text{ and  } s \in \mathcal{S},
+\end{equation}
+for all $i \in [h]$. We use $L = (L_1, \cdots, L_h)^\top$ to denote the $h$-dimensional vector of Lipschitz constants. 
+We use $L_\infty$ and $L_{avg}$ to denote $\max_i L_i$ and $\sum_i \tfrac{L_i}{h}$ respectively.  We assume the following bound on the variance in stochastic gradients: $\mathbb{E}\|\nabla_i \ell(x, s) - \nabla_i f(x)\|^2 \leq \sigma_i^2$ for all $x \in \mathbb{R}^d$ and $i \in [h]$.    
+Furthermore, we also assume $\mathbb{E}\|[\nabla \ell(x, s)]_i - [\nabla f(x)]_i\|^2 \leq \tilde{\sigma}_i^2$ for all $x \in \mathbb{R}^d$ and $i \in [d]$.  
+We use $\sigma = (\sigma_1, \cdots, \sigma_h)^\top$ and $\tilde{\sigma} = (\tilde{\sigma}_1, \cdots, \tilde{\sigma}_d)^\top$ to denote the vectors of standard deviations of stochastic gradient per layer and per dimension respectively.  
+Finally, we assume that the gradients are bounded i.e., $[\nabla l(x,s)]_j \leq G$ for all $i \in [d]$, $x \in \mathbb{R}^d$ and $s \in \mathcal{S}$. 
+Note that such assumptions are typical in the analysis of stochastic first-order methods (cf. \citep{Ghadimi13,Ghadimi14}). 
+
+Stochastic gradient descent (\sgd) is one of the simplest first-order algorithms for solving problem in Equation~\ref{eq:1}. The update at the $t^{\text{th}}$ iteration of $\sgd$ is of the following form:
+\begin{equation}
+\tag{$\sgd$}
+x_{t+1} = x_{t} - \eta_t  \frac{1}{|\mathcal{S}_t|} \sum_{s_t \in \mathcal{S}_t} \nabla \ell(x_t, s_t) + \lambda x_t,
+\end{equation}
+where $S_t$ is set of $b$ random samples drawn from the  distribution $\mathbb{P}$. For very large batch settings, the following is a well-known result for $\sgd$.
+\begin{theorem}[\citep{ghadimi2013stochastic}]
+With large batch $b=T$ and using appropriate learning rate, we have the following for the iterates of $\sgd$:
+\begin{align*}
+\mathbb{E}\left[\|\nabla f(x_a)\|^2\right] \leq O\left(\frac{(f(x_1) - f(x^*))L_{\infty}}{T} + \frac{\|\sigma \|^2}{T}\right).
+\end{align*}
+where $x^*$ is an optimal solution to the problem in \eqref{eq:1} and $x_a$ is an iterate uniformly randomly chosen from $\{x_1, \cdots, x_T\}$.
+\label{thm:sgd-conv}
+\end{theorem}
+However, tuning the learning rate $\eta_t$ in $\sgd$, especially in large batch settings, is difficult in practice. Furthermore, the dependence on $L_\infty$ (the maximum of smoothness across dimension) can lead to significantly slow convergence. In the next section, we discuss algorithms to circumvent this issue. 

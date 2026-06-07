@@ -1,0 +1,30 @@
+\begin{table}[t]
+    \centering\small
+    \caption{Comparison with Faster R-CNN with a ResNet-50 and ResNet-101 backbones on the COCO validation set.
+    The top section shows results for Faster R-CNN models in Detectron2~\cite{wu2019detectron2},
+    the middle section shows results for Faster R-CNN models
+    with GIoU~\cite{Rezatofighi_2018_CVPR}, random crops train-time augmentation, and the long \texttt{9x} training schedule.
+    \detr models achieve comparable results
+    to heavily tuned Faster R-CNN baselines, having lower \AP{S} but greatly improved \AP{L}.
+    \oldnew{}{We use torchscript Faster R-CNN and \detr models to measure FLOPS and FPS. Results without R101 in the name correspond to ResNet-50.}
+    }
+    \begin{tabular}{lcccccccc}
+        \toprule
+        Model & GFLOPS/FPS & \#params & AP & \AP{50} & \AP{75} & \AP{S} & \AP{M} & \AP{L} \\
+        \midrule
+        Faster RCNN-DC5 & 320/16 & 166M  & 39.0 & 60.5 & 42.3 & 21.4 & 43.5 & 52.5 \\
+        Faster RCNN-FPN & 180/26 & 42M & 40.2 & 61.0 & 43.8 & 24.2 & 43.5 & 52.0 \\
+        Faster RCNN-R101-FPN & 246/20 & 60M & 42.0 & 62.5 & 45.9 & 25.2 & 45.6 & 54.6 \\
+        \midrule
+        Faster RCNN-DC5+ & 320/16 & 166M & 41.1 & 61.4 & 44.3 & 22.9 & 45.9 & 55.0\\
+        Faster RCNN-FPN+ & 180/26 & 42M & 42.0 & 62.1 & 45.5 & 26.6 & 45.4 & 53.4\\
+        Faster RCNN-R101-FPN+ & 246/20 & 60M & 44.0 & 63.9 & \textbf{47.8} & \textbf{27.2} & 48.1 & 56.0\\
+        \midrule
+        {\detr} & 86/28 & 41M & 42.0  & 62.4  & 44.2  & 20.5  & 45.8  & 61.1 \\
+        {\detr}-DC5 & 187/12 & 41M & 43.3  & 63.1  & 45.9  & 22.5  & 47.3  & 61.1 \\
+        {\detr}-R101 & 152/20 & 60M & 43.5  & 63.8  & 46.4  & 21.9  & 48.0  & 61.8 \\
+        \detr-DC5-R101 & 253/10 & 60M & \textbf{44.9}  & \textbf{64.7}  & 47.7  & 23.7  & \textbf{49.5}  & \textbf{62.3} \\
+        \bottomrule
+    \end{tabular}
+    \label{table:frcnn}
+\end{table}

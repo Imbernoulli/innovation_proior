@@ -1,0 +1,47 @@
+\subsection{Error analysis: Least-to-most prompting}
+\label{app:drop-error-analysis}
+
+We randomly picked 20 failure cases, and found that out of those 20 failure cases:
+\begin{itemize}
+    \item 4 are due to wrong problem decomposition -- the decomposed problems do not make sense, or there is no decomposition at all.
+    \item 13 are due to wrong problem solving -- it gave the wrong answer for a decomposed problem.
+    \item 3 are due to wrong ``ground truth'' -- the given label is wrong regardless whether the prediction is correct or not (although, the model predictions for the sampled 4 cases are all correct).
+\end{itemize}
+
+\subsubsection{Example of wrong problem decomposition}
+
+In the following example, the decomposed question is just a rephrase of the original question.
+
+Q: Then, in 1544, five French galleys under Polin, including the superb Réale, accompanied Barbarossa's fleet, on a diplomatic mission to Suleiman. The French fleet accompanied Barbarossa during his attacks on the west coast of Italy on the way to Constantinople, as he laid waste to the cities of Porto Ercole, Giglio, Talamona, Lipari and took about 6,000 captives, but separated in Sicily from Barbarossa's fleet to continue alone to the Ottoman capital. Jerôme Maurand, a priest of Antibes who accompanied Polin and the Ottoman fleet in 1544, wrote a detailed account in Itinéraire d'Antibes à Constantinople. They arrived in Constantinople on 10 August 1544 to meet with Suleiman and give him an account of the campaign. Polin was back to Toulon on 2 October 1544. On his way to Constantinople, how many cities did Polin laid waste to?
+
+A: To answer the question "On his way to Constantinople, how many cities did Polin laid waste to?", we need to know: "How many cities did Polin laid waste to on his way to Constantinople?".
+
+\subsubsection{Example of wrong problem solving}
+
+In the following example, the answer to the decomposed question, ``How many percent of people were from 2 or more races in 2000?'' is wrong.
+
+As of 2011 the 88,112 residents of Orem had a racial and ethnic composition of 89.3\% White American, 0.9\% black or African American, 0.9\% Native Americans of the United States, 1.6\% Asian American, 0.5\% Pacific Islanders, 4\% non-Hispanics reporting some other race, 2.9\% two or more races reported and 14.8\% Hispanic, as Orem has a large Mexican American community with other Latinos residing in the city. This contrasts with the census of 2000, which showed a racial makeup of 90.80\% White (U.S. Census), 0.33\% African American (U.S. Census), 0.73\% Native American (U.S. Census), 1.45\% Asian (U.S. Census), 0.86\% Pacific Islander (U.S. Census), 3.64\% from Race (United States Census), and 2.18\% from two or more races. Hispanic (U.S. Census) or Latino (U.S. Census) of any race were 8.56\% of the population. The 2000 Census counted 84,324 people, 23,382 households, and 19,079 families. The population density at that time was 4,572.6 people per square mile (1,765.6/km$^2$). There were 24,166 housing units at an average density of 1,310.4 per square mile (506.0/km$^2$). There were 23,382 households out of which 48.8\% had children under the age of 18 living with them, 69.0\% were Marriage living together, 9.5\% had a female householder with no husband present, and 18.4\% were non-families. 12.4\% of all households were made up of individuals and 5.1\% had someone living alone who was 65 years of age or older. The average household size was 3.57 and the average family size was 3.93.
+
+Q: How many percent of people were from 2 or more races in 2000?\\
+A: ``3.64\% from Race (United States Census), and 2.18\% from two or more races''. So the answer is 3.64\% + 2.18\% = 5.82\%.
+
+Q: How many percent of people were not from 2 or more races in 2000?\\
+A: We know that 5.82\% were from 2 or more races. So 100\% - 5.82\% = 94.18\% were not from 2 or more races. So the answer is 94.18\%.
+
+\subsubsection{Example of wrong given label}
+
+In the example below, the given label is 417, which is incorrect. The correct ground truth should be 418. The model gives the correct answer via least-to-most prompting.
+
+There were 20,928 births in 2006. Of these, 19,757 (94.40\% of the births, 95.19\% of the population) were to Non-Hispanic Whites. There were 22 births to American Indians (0.11\% of the births and 0.54\% of the population), 177 births to Asians (0.85\% of the births and 0.68\% of the population), 219 births to Hispanics (1.05\% of the births and 0.88\% of the population) and 753 births to Blacks and others (3.60\% of the births and 3.56\% of the population).
+
+Q: How many births were there for Asians?\\
+A: ``177 births to Asians''. So the answer is 177.
+
+Q: How many births were there for Native Americans?\\
+A: ``22 births to American Indians''. So the answer is 22.
+
+Q: How many births were there for Hispanics?\\
+A:  ``219 births to Hispanics''. So the answer is 219.
+
+Q: How many total births were there for Asians, Native Americans and Hispanics?\\
+A: We know that there were 177 births for Asians. We also know that there were 22 births for Native Americans. We also know that there were 219 births for Hispanics. So 177 + 22 + 219 = 418 total births for Asians, Native Americans and Hispanics. So the answer is 418.

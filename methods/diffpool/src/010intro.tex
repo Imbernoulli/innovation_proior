@@ -1,0 +1,61 @@
+\section{Introduction}
+\label{sec:intro}
+% the background of graph representation learning task
+%In several domains such as biology, chemistry, as well as social network analysis data can be naturally modeled as graphs or networks. 
+In recent years there has been a surge of interest in developing graph neural networks (GNNs)---general deep learning architectures that can operate over graph structured data, such as social network data \cite{hamilton2017inductive,kipf2017semi,Vel+2018} or graph-based representations of molecules \cite{dai2016discriminative,Duv+2015,Gil+2017}.
+The general approach with GNNs is to view the underlying graph as a computation graph and learn neural network primitives that generate individual node embeddings by passing, transforming, and aggregating node feature information across the graph~\cite{Gil+2017,hamilton2017inductive}.
+%learn operators that transform and aggregate optimize a set of neural network ``message passing'' modules---which aggregate and pass feature information along a graph's edges---in order to generate embeddings for all the nodes in a graph \cite{Gil+2017,hamilton2017inductive}.
+%
+The generated node embeddings can then be used as input to any differentiable prediction layer, e.g., for node classification \cite{hamilton2017inductive} or link prediction \cite{Sch+2017}, and the whole model can be trained in an end-to-end fashion. 
+%GNNs draw inspiration from traditional convolutional neural networks (CNNs)---in that they aggregate local information from graph neighborhoods---and in the context of spectral graph theory, GNNs can be viewed as generalizations of CNNs to non-Euclidean data \cite{bronstein2017geometric}. This GNN framework has ushered in a new state-of-the-art for both (semi-)supervised node classification and link prediction \cite{Ham+2017a}.
+
+%\xiang{the transition here is a bit of sudden: so far we didn't talk about what aggregation of information is for. Maybe moving discussion about pooling/graph classification to here, then arguing against the flat pooling techniques in the past.}
+
+However, a major limitation of current GNN architectures is that they are inherently {\em flat} as they only propagate information across the edges of the graph and are unable to infer and aggregate the information in a \textit{hierarchical} way. 
+For example, in order to successfully encode the graph structure of organic molecules, one would ideally want to encode the local molecular structure (e.g., individual atoms and their direct bonds) as well as the coarse-grained structure of the molecular graph (e.g., groups of atoms and bonds representing functional units in a molecule).
+%
+%The fact that current methods fail to learn about such hierarchy is especially 
+This lack of hierarchical structure is especially problematic for the task of graph classification, where the goal is to predict the label associated with an \textit{entire graph}. When applying GNNs to graph classification, the standard approach is to generate embeddings for all the nodes in the graph and then to {\em globally pool} all these node embeddings together, e.g., using a simple summation or neural network that operates over sets \cite{dai2016discriminative,Duv+2015,Gil+2017,Li+2016}. This global pooling approach ignores any hierarchical structure that might be present in the graph, and it prevents researchers from building effective GNN models for predictive tasks over entire graphs.%, since the representations for all nodes in a graph are simply aggregated together in a
+
+%Ideally, we want deeper GNN models that can learn to operate on hierarchical representations of a graph. 
+%In order to solve the above problem one requires a graph analogue of the spatial pooling operation in CNNs, which allows for deep CNN architectures to iteratively operate on coarser and coarser representations of an image. The challenge in the GNN setting---compared to standard CNNs---is that graphs contain no natural notion of spatial locality, i.e., one cannot simply pool together all nodes in a ``$m \times m$ patch'' on a graph, because the complex topological structure of graphs precludes any straightforward, deterministic definition of a ``patch'' or ``cluster''. Moreover, unlike image data, graph datasets often contain graphs with varying numbers of nodes and edges, which makes defining a general graph pooling operator even more challenging. 
+%applying deep learning methods to the graph-structured data, such as social networks and graph-based representations of molecules. In order to apply these methods to this domain one has map the rich structural information encoded in the graph, including annotations attached to node and edges, to a fixed dimensional vector representation. 
+
+%Recently, graph neural networks (GNNs) have been successfully applied in the area of (semi-)supervised node and graph classification. Here the node features are iteratively computed from the features of the node's neighbors by using a differentialable neighborhood aggregation function. In order to adapt to the given data distribution, the parameters of this function are learned together with the parameters of the neural network used for the classification task in an end-to-end fashion. In most GNNs the parameters are shared for each neighborhood of the graph. In some sense this shares much similarity to the convolution operation in Convolutional Neural Networks (CNN).
+%A key ingredient here is the down-sampling mechanism, which is commonly implemented through a pooling layer. This mechanism helps to learn a hierarchical representation, where the top layers often encode high-level information and can then be used for global-level tasks such as  image classification. Since images have a regular grid structure, the design of a pooling layer is straightforward. 
+
+%On the contrary, the hierarchical information encoded in a graph together with the irregular, local connectivity, make graph pooling a challenging problem. For example, in order to successfully encode the graph structure of organic molecules, one has to encode the local molecular structure (e.g., individual atoms and their direct bonds) as well as the coarse-grained structure (e.g., groups of atoms and bonds representing functional units in a molecule). Up to now, the most common way is to simply apply global pooling, which ignore any hierarchical structure, or precomputed clustering methods, which need task-specific hand-engineering and are limited to specific types of graph. The lack of a more powerful pooling layer which adapt automatically to task at hand severely limits the power of GNNs.
+
+Here we propose \name, a differentiable graph pooling module that can be adapted to various graph neural network architectures in an hierarchical and end-to-end fashion (Figure~\ref{fig:illustration}). 
+%\chris{sentence was c\&p from abstract} 
+\name allows for developing deeper GNN models that can learn to operate on hierarchical representations of a graph. We develop a graph analogue of the spatial pooling operation in CNNs \cite{krizhevsky2012imagenet}, which allows for deep CNN architectures to iteratively operate on coarser and coarser representations of an image. The challenge in the GNN setting---compared to standard CNNs---is that graphs contain no natural notion of spatial locality, i.e., one cannot simply pool together all nodes in a ``$m \times m$ patch'' on a graph, because the complex topological structure of graphs precludes any straightforward, deterministic definition of a ``patch''. Moreover, unlike image data, graph data sets often contain graphs with varying numbers of nodes and edges, which makes defining a general graph pooling operator even more challenging.
+
+In order to solve the above challenges, we require a model that learns how to cluster together nodes to build a hierarchical multi-layer scaffold on top of the underlying graph. 
+Our approach \name learns a differentiable soft assignment at each layer of a deep GNN, mapping nodes to a set of clusters based on their learned embeddings. 
+In this framework, we generate deep GNNs by ``stacking'' GNN layers in a hierarchical fashion (Figure~\ref{fig:illustration}): the input nodes at the layer $l$ GNN module correspond to the clusters learned at the layer $l-1$ GNN module. 
+Thus, each layer of \name coarsens the input graph more and more, and \name is able to generate a hierarchical representation of any input graph after training.
+We show that \name\ can be combined with various GNN approaches, resulting in an average 7\% gain in accuracy and a new state of the art on four out of five benchmark graph classification tasks. 
+Finally,  we show that \name\ can learn interpretable hierarchical clusters that correspond to well-defined communities in the input graphs.
+%\rex{assignment fixes this because at higher layers, each 'node' is a cluster, and we learn 'local features' for clusters which correspond to larger and larger parts of the graph}
+\cut{
+\jure{Say much much more about our method, how it works and why it is cool.}
+
+\chris{Maybe add highlevel visualization of the idea.}
+
+\jure{ I strongly agree, we need a Figure 1 with an illustration of the method.
+For example, a graph and then a hierarchical multi-layer scaffold on top of it.
+Will, you are great at creating good figures. Do you want to give it a try?}
+\will{Yes, I will brainstorm with Rex today about a figure and put something together :)}
+
+\chris{Quickly sketched this. I think it somehow explains the high-level idea. Guess the equations are too much.}
+}
+
+\begin{figure}[t]\begin{center}
+    \includegraphics[scale=0.95]{figs/differentiable-pooling-V2.pdf}
+    \caption{High-level illustration of our proposed method \name. At each hierarchical layer, we run a GNN model to obtain embeddings of nodes. We then use these learned embeddings to cluster nodes together  and run another GNN layer on this coarsened graph. This whole process is repeated for $L$ layers and we use the final output representation to classify the graph. }
+    \label{fig:illustration}
+    \end{center}
+\end{figure}
+
+%\chris{I can't find a ref. to Fig. 1}
+  

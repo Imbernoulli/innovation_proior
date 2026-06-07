@@ -1,0 +1,49 @@
+\section{Consistency Models}\label{sec:consistency}
+
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\linewidth]{figures/teaser.jpg}
+    \caption{{\color{model}Consistency models} are trained to map points on any trajectory of the {\color{ode}PF ODE} to the trajectory's origin.}
+    \label{fig:teaser}
+\end{figure}
+We propose consistency models, a new type of models that support single-step generation at the core of its design, while still allowing iterative generation for trade-offs between sample quality and compute, and zero-shot data editing. Consistency models can be trained in either the distillation mode or the isolation mode. In the former case, consistency models distill the knowledge of pre-trained diffusion models into a single-step sampler, significantly improving other distillation approaches in sample quality, while allowing zero-shot image editing applications. In the latter case, consistency models are trained in isolation, with no dependence on pre-trained diffusion models. This makes them an independent new class of generative models.
+
+Below we introduce the definition, parameterization, and sampling of consistency models, plus a brief discussion on their applications to zero-shot data editing.
+
+\textbf{Definition}~ Given a solution trajectory $\{ \rvx_t \}_{t\in[\epsilon,T]}$ of the PF ODE in \cref{eq:pfode}, we define the \emph{consistency function} as $\vf: (\rvx_t, t) \mapsto \rvx_{\epsilon}$. A consistency function has the property of \emph{self-consistency}: its outputs are consistent for arbitrary pairs of $(\rvx_t, t)$ that belong to the same PF ODE trajectory, \ie, $\vf(\rvx_t, t) = \vf(\rvx_{t'}, t')$ for all $t, t' \in [\epsilon,T]$. %
+As illustrated in \cref{fig:teaser}, the goal of a \emph{consistency model}, symbolized as $\vf_\vtheta$, is to estimate this consistency function $\vf$ from data by learning to enforce the self-consistency property (details in \cref{sec:distillation,sec:generation}). Note that a similar definition is used for neural flows \cite{bilovs2021neural} in the context of neural ODEs \cite{chen2018neural}. Compared to neural flows, however, we do not enforce consistency models to be invertible.
+
+\textbf{Parameterization}~ For any consistency function $\vf(\cdot, \cdot)$, we have $\vf(\rvx_\epsilon, \epsilon) = \rvx_\epsilon$, \ie, $\vf(\cdot, \epsilon)$ is an identity function. We call this constraint the \emph{boundary condition}. All consistency models have to meet this boundary condition, as it plays a crucial role in the successful training of consistency models. This boundary condition is also the most confining architectural constraint on consistency models. For consistency models based on deep neural networks, we discuss two ways to implement this boundary condition \emph{almost for free}. Suppose we have a free-form deep neural network $F_\vtheta(\rvx, t)$ whose output has the same dimensionality as $\rvx$. The first way is to simply parameterize the consistency model as
+\begin{align}
+    \vf_\vtheta(\rvx, t) = \begin{cases}
+        \rvx &\quad t = \epsilon\\
+        F_\vtheta(\rvx, t) &\quad t \in (\epsilon, T]
+    \end{cases}\label{eq:param1}.
+\end{align}
+The second method is to parameterize the consistency model using skip connections, that is,
+\begin{align}
+    \vf_\vtheta(\rvx, t) = c_\text{skip}(t) \rvx + c_\text{out}(t) F_\vtheta(\rvx, t)\label{eq:param2},
+\end{align}
+where $c_\text{skip}(t)$ and $c_\text{out}(t)$ are differentiable functions such that $c_\text{skip}(\epsilon) = 1$, and $c_\text{out}(\epsilon) = 0$. This way, the consistency model is differentiable at $t = \epsilon$ if $F_\vtheta(\rvx, t), c_\text{skip}(t), c_\text{out}(t)$ are all differentiable, which is critical for training continuous-time consistency models (\cref{sec:ctcd,sec:ctct}). %
+The parameterization in \cref{eq:param2} bears strong resemblance to many successful diffusion models \cite{karras2022edm,balaji2022eDiff-I}, making it easier to borrow powerful diffusion model architectures for constructing consistency models. We therefore follow the second parameterization in all experiments.
+
+\textbf{Sampling}~ With a well-trained consistency model $\vf_\vtheta(\cdot, \cdot)$, we can generate samples by sampling from the initial distribution $\hat{\rvx}_T \sim \mcal{N}(\bm{0}, T^2 \mI)$ and then evaluating the consistency model for $\hat{\rvx}_\epsilon = \vf_\vtheta(\hat{\rvx}_T, T)$. This involves only one forward pass through the consistency model and therefore \emph{generates samples in a single step}. Importantly, one can also evaluate the consistency model multiple times by alternating denoising and noise injection steps for improved sample quality. Summarized in \cref{alg:sampling}, this \emph{multistep} sampling procedure provides the flexibility to trade compute for sample quality. It also has important applications in zero-shot data editing. In practice, we find time points $\{\tau_1, \tau_2, \cdots, \tau_{N-1}\}$ in \cref{alg:sampling} with a greedy algorithm, where the time points are pinpointed one at a time using ternary search to optimize the FID of samples obtained from \cref{alg:sampling}. This assumes that given prior time points, the FID is a unimodal function of the next time point. We find this assumption to hold empirically in our experiments, and leave the exploration of better strategies as future work.
+
+\begin{algorithm}[tb]
+    \caption{Multistep Consistency Sampling}
+    \label{alg:sampling}
+ \begin{algorithmic}
+    \STATE {\bfseries Input:} Consistency model $\vf_\vtheta(\cdot, \cdot)$, sequence of time points $\tau_1 > \tau_2 > \cdots > \tau_{N-1}$, initial noise $\hat{\rvx}_T$
+    \STATE $\rvx \gets \vf_\vtheta(\hat{\rvx}_T, T)$
+    \FOR{$n=1$ {\bfseries to} $N-1$}
+        \STATE Sample $\rvz \sim \mcal{N}(\bm{0}, \mI)$
+        \STATE $\hat{\rvx}_{\tau_n} \gets \rvx + \sqrt{\tau_n^2 - \epsilon^2} \rvz$
+        \STATE $\rvx \gets \vf_\vtheta(\hat{\rvx}_{\tau_n}, \tau_n)$
+    \ENDFOR
+    \STATE {\bfseries Output:} $\rvx$
+ \end{algorithmic}
+\end{algorithm}
+
+\textbf{Zero-Shot Data Editing}~ Similar to diffusion models, consistency models enable various data editing and manipulation applications in zero shot; they do not require explicit training to perform these tasks. For example, consistency models define a one-to-one mapping from a Gaussian noise vector to a data sample. Similar to latent variable models like GANs, VAEs, and normalizing flows, consistency models can easily interpolate between samples by traversing the latent space (\cref{fig:bedroom_interp}). As consistency models are trained to recover $\rvx_\epsilon$ from any noisy input $\rvx_t$ where $t \in [\epsilon, T]$, they can perform denoising for various noise levels (\cref{fig:bedroom_denoising}). Moreover, the multistep generation procedure in \cref{alg:sampling} is useful for solving certain inverse problems in zero shot by using an iterative replacement procedure similar to that of diffusion models \cite{song2019generative,song2021scorebased,ho2022video}. This enables many applications in the context of image editing, including inpainting (\cref{fig:bedroom_inpainting}), colorization (\cref{fig:bedroom_colorization}), super-resolution (\cref{fig:bedroom_superres_lite}) and stroke-guided image editing (\cref{fig:bedroom_sdedit}) as in SDEdit \cite{meng2021sdedit}. In \cref{sec:zeroshot}, we empirically demonstrate the power of consistency models on many zero-shot image editing tasks.
+

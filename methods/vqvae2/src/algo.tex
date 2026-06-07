@@ -1,0 +1,51 @@
+\algnewcommand{\LineComment}[1]{\Statex \(\triangleright\) #1}
+\begin{minipage}[t]{.44\textwidth}
+    \begin{algorithm}[H]
+        \caption{VQ-VAE training (stage 1)}  \label{algo:vqtrain}
+        \begin{algorithmic}[1]
+        \Require Functions $E_{top}$ , $E_{bottom}$, $D$, $\mathbf{x}$ (batch of training images)
+        \State $\mathbf{h}_{top} \gets E_{top}(\mathbf{x})$
+        \Statex
+        \LineComment{quantize with top codebook eq~\ref{eq:quantize}}
+        \State $\mathbf{e}_{top} \gets Quantize(\mathbf{h}_{top})$
+        \Statex
+        \State $\mathbf{h}_{bottom} \gets E_{bottom}(\mathbf{x}, \mathbf{e}_{top})$ 
+        \Statex
+        \LineComment{quantize with bottom codebook eq~\ref{eq:quantize}}
+        \State $\mathbf{e}_{bottom} \gets Quantize(\mathbf{h}_{bottom})$
+        \Statex
+        \State $\hat{\mathbf{x}} \gets D(\mathbf{e}_{top}, \mathbf{e}_{bottom})$
+        \Statex
+        \LineComment{Loss according to eq~\ref{eq:loss}}
+        \State $\mathbf{\theta} \gets Update(\mathcal{L}(\mathbf{x}, \hat{\mathbf{x}}))$ 
+        \end{algorithmic}
+    \end{algorithm}
+\end{minipage}
+\begin{minipage}[t]{.55\textwidth}
+    \vspace{0pt}
+    \begin{algorithm}[H]
+        \caption{Prior training (stage 2)} \label{algo:vqprior}
+        \begin{algorithmic}[1] 
+            \State $\mathbf{T}_{top}, \mathbf{T}_{bottom} \gets \emptyset$ \Comment{training set}
+            \For{$\mathbf{x} \in$ training set}
+                \State $\mathbf{e}_{top} \gets Quantize(E_{top}(\mathbf{x}))$
+                \State $\mathbf{e}_{bottom} \gets Quantize(E_{bottom}(\mathbf{x}, \mathbf{e}_{top}))$ 
+                \State $\mathbf{T}_{top} \gets \mathbf{T}_{top} \cup \mathbf{e}_{top}$
+                \State $\mathbf{T}_{bottom} \gets \mathbf{T}_{bottom} \cup \mathbf{e}_{bottom}$
+            \EndFor
+            \State $p_{top} = \mathtt{TrainPixelCNN}(\mathbf{T}_{top})$
+            \State $p_{bottom} = \mathtt{TrainCondPixelCNN}(\mathbf{T}_{bottom}, \mathbf{T}_{top})$
+            
+            \Statex
+            \LineComment{Sampling procedure}
+            \While {true}
+            \State $\mathbf{e}_{top} \sim p_{top}$
+            \State $\mathbf{e}_{bottom} \sim p_{bottom}(\mathbf{e}_{top})$
+            \State $\mathbf{x} \gets D(\mathbf{e}_{top}, \mathbf{e}_{bottom})$
+            \EndWhile
+            
+        \end{algorithmic}
+    \end{algorithm}
+\label{algo:vqvae}
+\end{minipage}
+

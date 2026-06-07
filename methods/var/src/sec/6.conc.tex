@@ -1,0 +1,22 @@
+\section{Limitations and Future Work} \label{sec:limit}
+\vspace{-2pt}
+
+In this work, we mainly focus on the design of learning paradigm and keep the VQVAE architecture and training unchanged from the baseline \cite{vqgan} to better justify VAR framework's effectiveness. We expect \textbf{advancing VQVAE tokenizer} \cite{movq,fsq,magvit2} as another promising way to enhance autoregressive generative models, which is orthogonal to our work. We believe iterating VAR by advanced tokenizer or sampling techniques in these latest work can further improve VAR's performance or speed.
+
+\textbf{Text-prompt generation}\, is an ongoing direction of our research. Given that our model is fundamentally similar to modern LLMs, it can easily be integrated with them to perform text-to-image generation through either an encoder-decoder or in-context manner. This is currently in our high priority for exploration.
+
+\textbf{Video generation}\, is not implemented in this work, but it can be naturally extended. By considering multi-scale video features as \textbf{3D pyramids}, we can formulate a similar ``\textbf{3D next-scale prediction}'' to generate videos via VAR.
+Compared to diffusion-based generators like SORA \cite{sora}, our method has inherent advantages in temporal consistency or integration with LLMs, thus can potentially handle longer temporal dependencies.
+This makes VAR competitive in the video generation field, because traditional AR models can be too inefficient for video generation due to their extremely high computational complexity and slow inference speed: it is becoming prohibitively expensive to generate high-resolution videos with traditional AR models, while VAR is capable to solve this.
+We therefore foresee a promising future for exploiting VAR models in the realm of video generation.
+
+
+\vspace{-4pt}
+\section{Conclusion} \label{sec:conc}
+\vspace{-4pt}
+
+% In this paper,
+We introduced a new visual generative framework named Visual AutoRegressive modeling (VAR) that 1) theoretically addresses some issues inherent in standard image autoregressive (AR) models, and 2) makes language-model-based AR models first surpass strong diffusion models in terms of image quality, diversity, data efficiency, and inference speed.
+Upon scaling VAR to 2 billion parameters, we observed a clear power-law relationship between test performance and model parameters or training compute, with Pearson coefficients nearing $-0.998$, indicating a robust framework for performance prediction.
+These scaling laws and the possibility for zero-shot task generalization, as hallmarks of LLMs, have now been initially verified in our VAR transformer models.
+We hope our findings and open sources can facilitate a more seamless integration of the substantial successes from the natural language processing domain into computer vision, ultimately contributing to the advancement of powerful multi-modal intelligence.

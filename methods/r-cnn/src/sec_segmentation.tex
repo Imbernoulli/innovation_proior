@@ -1,0 +1,93 @@
+\section{Semantic segmentation}
+\seclabel{segmentation}
+
+Region classification is a standard technique for semantic segmentation, allowing us to easily apply R-CNN to the PASCAL VOC segmentation challenge.
+To facilitate a direct comparison with the current leading semantic segmentation system (called \OtwoP for ``second-order pooling'') \cite{o2p}, we work within their open source framework.
+\OtwoP uses CPMC to generate 150 region proposals per image and then predicts the quality of each region, for each class, using support vector regression (SVR).
+The high performance of their approach is due to the quality of the CPMC regions and the powerful second-order pooling of multiple feature types (enriched variants of SIFT and LBP).
+We also note that Farabet \etal \cite{farabet-pami-13} recently demonstrated good results on several dense scene labeling datasets (not including PASCAL) using a CNN as a multi-scale per-pixel classifier.
+
+We follow \cite{arbelaez2012semantic,o2p} and extend the PASCAL segmentation training set to include the extra annotations made available by Hariharan \etal \cite{hariharan2012inverse}. 
+Design decisions and hyperparameters were cross-validated on the VOC 2011 validation set. Final test results were evaluated only once.
+
+\paragraph{CNN features for segmentation.} We evaluate three strategies for computing features on CPMC regions, all of which begin by warping the rectangular window around the region to $227 \times 227$.
+The first strategy (\textit{full}) ignores the region's shape and computes CNN features directly on the warped window, exactly as we did for detection.
+However, these features ignore the non-rectangular shape of the region.
+Two regions might have very similar bounding boxes while having very little overlap.
+Therefore, the second strategy (\textit{fg}) computes CNN features only on a region's foreground mask.
+We replace the background with the mean input so that background regions are zero after mean subtraction.
+The third strategy (\textit{full+fg}) simply concatenates the \textit{full} and \textit{fg} features; our experiments validate their complementarity.
+\begin{table}[h!]
+\centering
+{\small
+\begin{tabular}{@{}c|c|c|c|c|c|c}
+& \multicolumn{2}{c|}{\textit{full} R-CNN}
+& \multicolumn{2}{c|}{\textit{fg} R-CNN}
+& \multicolumn{2}{c}{\textit{full+fg} R-CNN}
+\\
+\hline
+\OtwoP \cite{o2p}
+& \fc{6} & \fc{7} & \fc{6} & \fc{7} & \fc{6} & \fc{7} \\
+\hline
+  46.4   % o2p
+& 43.0   % full    CNN fc6
+& 42.5   % full    CNN fc7
+& 43.7    % fg      CNN fc6
+& 42.1    % fg      CNN fc7
+& \textbf{47.9}   % full+fg CNN fc6
+& 45.8    % full+fg CNN fc7
+\end{tabular}
+}
+\caption{\textbf{Segmentation mean accuracy (\%) on VOC 2011 validation.}
+Column 1 presents \OtwoP;
+2-7 use our CNN pre-trained on ILSVRC 2012.
+}
+\tablelabel{voc2011val}
+\vspace{-1em}
+\end{table}
+\paragraph{Results on VOC 2011.}
+\tableref{voc2011val} shows a summary of our results on the VOC 2011 validation set compared with \OtwoP.
+(See \asecref{segperclass} for complete per-category results.)
+Within each feature computation strategy, layer \fc{6} always outperforms \fc{7} and the following discussion refers to the \fc{6} features.
+The \textit{fg} strategy slightly outperforms \textit{full}, indicating that the masked region shape provides a stronger signal, matching our intuition.
+However, \textit{full+fg} achieves an average accuracy of 47.9\%, our best result by a margin of 4.2\% (also modestly outperforming \OtwoP), indicating that the context provided by the \textit{full} features is highly informative even given the \textit{fg} features.
+Notably, training the 20 SVRs on our \textit{full+fg} features takes an hour on a single core, compared to 10+ hours for training on \OtwoP features.
+
+In \tableref{voc2011test} we present results on the VOC 2011 test set, comparing our best-performing method, \fc{6} (\textit{full+fg}), against two strong baselines.
+Our method achieves the highest segmentation accuracy for 11 out of 21 categories, and the highest overall segmentation accuracy of 47.9\%, averaged across categories (but likely ties with the \OtwoP result under any reasonable margin of error).
+Still better performance could likely be achieved by fine-tuning.
+
+\begin{table*}[t!]
+\centering
+\renewcommand{\arraystretch}{1.2}
+\renewcommand{\tabcolsep}{1.2mm}
+\resizebox{\linewidth}{!}{
+\begin{tabular}{@{}l|c|r*{19}{c}|c@{}}
+\textbf{VOC 2011 test} & bg & aero      & bike      & bird      & boat      & bottle     & bus        & car        & cat        & chair      & cow        & table      & dog        & horse      & mbike      & person     & plant      & sheep      & sofa       & train      & tv         & mean \\
+\hline
+R\&P \cite{arbelaez2012semantic} &
+83.4 &
+46.8 & 18.9 & 36.6 & 31.2 & 42.7 & 57.3 & 47.4 & 44.1 & \phz8.1 & 39.4 &
+\bf{36.1} & 36.3 & 49.5 & 48.3 & 50.7 & 26.3 & 47.2 & 22.1 & 42.0 & 43.2 &
+40.8 \\
+\OtwoP \cite{o2p} &
+\bf{85.4} &
+\bf{69.7} & 22.3 & 45.2 & \bf{44.4} & 46.9 & 66.7 & 57.8 & 56.2 & \bf{13.5} & \bf{46.1} &
+32.3 & 41.2 & \bf{59.1} & 55.3 & 51.0 & \bf{36.2} & 50.4 & \bf{27.8} & 46.9 & \bf{44.6} &
+47.6 \\
+\hline
+\textbf{ours} (\textit{full+fg} R-CNN \fc{6}) &
+84.2 &
+66.9 & \bf{23.7} & \bf{58.3} & 37.4 & \bf{55.4} & \bf{73.3} & \bf{58.7} & \bf{56.5} & \phz9.7 & 45.5 &
+29.5 & \bf{49.3} & 40.1 & \bf{57.8} & \bf{53.9} & 33.8 & \bf{60.7} & 22.7 & \bf{47.1} & 41.3 &
+\bf{47.9} \\
+\end{tabular}
+}
+\caption{\textbf{Segmentation accuracy (\%) on VOC 2011 test.}
+%All methods compete in the \textit{comp6} track due to use of outside data from \cite{hariharan2012inverse}.
+We compare against two strong baselines: the ``Regions and Parts'' (R\&P) method of~\cite{arbelaez2012semantic} and the second-order pooling (\OtwoP) method of~\cite{o2p}.
+Without any fine-tuning, our CNN achieves top segmentation performance, outperforming R\&P and roughly matching \OtwoP.
+}
+\tablelabel{voc2011test}
+\vspace{-1em}
+\end{table*}

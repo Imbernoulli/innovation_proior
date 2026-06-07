@@ -1,0 +1,34 @@
+\begin{table}[tbp]
+\small
+\begin{center}\begin{tabular}{c|c|c|c|c|c|c|c|c} 
+\hline
+ Batch & Ch. & Param (M)  & Shared & Skip-$z$ & Ortho. & Itr $\times 10^3$ & FID  & IS \\
+
+\hline   256& 64 & 81.5  &\multicolumn{3}{c|}{SA-GAN Baseline} & $1000$ &  $18.65$  & $ 52.52 $\\ % Baseline, params:  G: 42017412, D: 39448258, total 81465670
+\hline   512 & 64 & 81.5  & \xmark & \xmark & \xmark & $1000$ &  $15.30$  & $58.77 (\pm 1.18) $\\ % setting 1, params:  G: 42017412, D: 39448258, total 81465670
+
+\hline   1024 & 64 & 81.5  & \xmark & \xmark &\xmark & $1000$ &  $14.88$ & $63.03 (\pm 1.42)$\\ % setting 2, params: G: 42017412, D: 39448258, total 81465670
+
+\hline   2048 & 64 & 81.5  & \xmark & \xmark &\xmark & $732$ &  $12.39$ & $76.85 (\pm 3.83)$\\ % setting 3, params: G: 42017412, D: 39448258, total 81465670
+  
+\hline   2048 & 96 & 173.5  & \xmark & \xmark &\xmark & $295 (\pm 18)$ &  $9.54 (\pm 0.62)$ & $92.98 (\pm 4.27)$\\ % setting 2.1, params: G: 85556164, D: 87982370, total 173538534
+
+\hline   2048 & 96 & 160.6  & \cmark & \xmark &\xmark & $185 (\pm 11) $ &  $9.18 (\pm 0.13)$ & $94.94 (\pm 1.32)$\\ % setting 2.2, params:  G: 72664516, D: 87982370, total 160646886
+
+\hline   2048 & 96 & 158.3  & \cmark & \cmark &\xmark & $152 (\pm 7)$ & $8.73 (\pm 0.45)$ & $98.76 (\pm 2.84)$\\ % setting 2.3, params: G: 70305988, D: 87982370, total 158288358
+
+\hline   2048 & 96 & 158.3  & \cmark & \cmark &\cmark & $165 (\pm 13)$ &  $8.51 (\pm 0.32)$ & $99.31 (\pm 2.10)$\\ %  setting 2.4, params: G: 70305988, D: 87982370, total 158288358
+
+\hline   2048 & 64 & 71.3  & \cmark & \cmark &\cmark & $371 (\pm 7) $ &  $10.48 (\pm 0.10) $ & $ 86.90 (\pm 0.61)$\\ % setting 2.7, params: G: 31850628, D: 39448258, total 71298886
+
+\hline
+
+\end{tabular}
+\end{center}
+
+\caption{\label{ablation_table} Fr\'echet Inception Distance (FID, lower is better) and Inception Score (IS, higher is better) for ablations of our proposed modifications. \textit{Batch} is batch size, \textit{Param} is total number of parameters, \textit{Ch.} is the channel multiplier representing the number of units in each layer, \textit{Shared} is using shared embeddings, 
+% \textit{Skip-$z$} is using a hierarchical latent space,
+\textit{Skip-$z$} is using skip connections from the latent to multiple layers, 
+\textit{Ortho.} is Orthogonal Regularization, and \textit{Itr} indicates if the setting is stable to $10^6$ iterations, or it collapses at the given iteration. Other than rows 1-4, results are computed across 8 random initializations.
+}
+\end{table}

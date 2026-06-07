@@ -1,0 +1,194 @@
+\section{GSM8K}
+\label{app:gsm8k}
+
+\subsection{Experiment results: One-shot prompts}
+\label{app:gsm8k-results-one-shot}
+
+We compare here the effectiveness on compositional generalization of least-to-most prompting vs. chain-of-thought prompting by constructing for each prompting method a simple prompt context that contains a single example that is solvable with just 2 reasoning steps. We then evaluate accuracy on examples that may involve larger numbers of reasoning steps. The same example is used for both prompting methods. For the least-to-most prompting prompt, we adopt a simplified approach in which the problem decomposition and solution stages are merged into a single pass, with just one follow-up request being made to the language model to solicit the final answer.
+
+The accuracy (\%) of the two prompting methods with the GPT-3 \texttt{code-davinci-002} model, with breakdown by number of steps in the expected solution, are listed in Table~\ref{table: gsm8k-results-breakdown}.
+
+Accuracy numbers for all prompting methods are calculated after applying the same post-processing as described in Section~\ref{sec:numerical_reasoning} for DROP.
+
+While the least-to-most prompting accuracy is overall only moderately higher than that of chain-of-thought prompting, the accuracy breakdown by number of steps shows that least-to-most prompting significantly outperforms chain-of-thought prompting as the number of reasoning steps increases beyond what was illustrated in the prompt.
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{ |l|c|c|c|c|c|}
+\hline
+\textbf{Accuracy by Steps} & \textbf{All} & \textbf{2} & \textbf{3} & \textbf{4} & \textbf{5+}  \\
+  \hline
+Least-to-Most (1-shot): $a_L$ & 62.39 & 74.53 & 68.91 & 59.73 & 45.23 \\
+  \hline
+Chain-of-Thought (1-shot): $a_C$ & 60.87 & 76.68 & 67.29 & 59.39 & 39.07 \\
+  \hline
+Accuracy change: $(a_L / a_C) - 1$ & \textcolor{good}{\textbf{+2.49}} & \textcolor{bad}{\textbf{-2.80}} & \textcolor{good}{\textbf{+2.40}} & \textcolor{good}{\textbf{+0.58}} & \textcolor{good}{\textbf{+15.77}} \\
+\hline
+\end{tabular}
+\vspace{5pt}
+\caption{Accuracy (\%) of a simple 1-shot least-to-most prompt with the GPT-3 \texttt{code-davinci-002} model on GSM8K, compared to that of a corresponding chain-of-thought prompt, broken down by number of reasoning steps required in the expected solution. Examples with 3 or more reasoning steps would require generalizing to more steps than were shown in the demonstration example in the prompt (which contains just 2 steps).}
+\label{table: gsm8k-results-breakdown}
+\end{table}
+\subsection{Experiment results: Engineered prompts}
+\label{app:gsm8k-results-engineered}
+
+We compare here the overall accuracy of the above-reported ``Chain-of-Thought (1-shot)'' and ``Least-to-Most (1-shot)'' methods with alternative existing prompting methods, as well as with variants of chain-of-thought and least-to-most prompting in which the prompts were engineered using multiple in-domain examples taken from the GSM8K train set.
+
+The evaluated prompting methods are as follows (see Appendices~\ref{app:gsm8k-prompts-one-shot} and~\ref{app:gsm8k-prompts-engineered} for the exact prompt contexts):
+
+\begin{itemize}
+\item \textbf{Zero-Shot}: Simple zero-shot prompting.
+\item \textbf{Standard prompting}: Standard few-shot prompting, using the same 4 examples as in the ``problem solving'' prompt context of ``Least-to-Most (best)''.
+\item \textbf{Chain-of-Thought (original)}: Chain-of-thought prompting, using the original 8-shot prompt context described in \citet{wei2022chain}.
+\item \textbf{Chain-of-Thought (1-shot)}: The simple 1-shot chain-of-thought prompting method described in Appendix~\ref{app:gsm8k-results-one-shot} above.
+\item \textbf{Least-to-Most (1-shot)}: The simple 1-shot least-to-most prompting method described in Appendix~\ref{app:gsm8k-results-one-shot} above.
+\item \textbf{Chain-of-Thought (best)}: Chain-of-thought prompting, using the same 4 examples as in the ``problem solving'' prompt context of ``Least-to-Most (best)'', with the solutions adjusted to chain-of-thought format.
+\item \textbf{Least-to-Most (best)}: Least-to-most prompting using separate prompts for the ``problem decomposition'' and ``problem solution'' steps and with multiple examples selected from the GSM8K train set. The ``problem decomposition'' prompt context contains 7 examples, with hand-crafted problem decompositions. The ``problem solution'' prompt contains 4 examples, with hand-crafted solutions for each step.
+\end{itemize}
+
+The accuracies (\%) of these prompting methods with the GPT-3 \texttt{code-davinci-002} model are listed in Table~\ref{table: gsm8k-results}.
+
+It can be noted first that, although the ``Chain-of-Thought (1-shot)'' prompt context is considerably simpler than the 8-shot prompt context proposed in the original chain-of-thought paper, we find the overall accuracy achieved to be quite close (60.87\% for the 1-shot prompt, compared to 61.18\% for the original 8-shot prompt). This suggests that ``Chain-of-Thought (1-shot)'' is indeed a reasonable chain-of-thought baseline to analyze in comparison to ``Least-to-Most (1-shot)''.
+
+Further, while we find the proposed 1-shot prompt attractive due to its simplicity and lack of dataset-specific content, we do find that further improvements in overall accuracy of both chain-of-thought and least-to-most prompting can be achieved if additional prompt engineering is applied, using multiple in-domain examples of arbitrary complexity from the GSM8K train set, as seen in the accuracies of ``Chain-of-Thought (best)'' and ``Least-to-Most (best)''. We do not observe improvement in overall accuracy from least-to-most prompting compared to chain-of-thought prompting in this setting, where most of the test questions do not require more steps more steps to solve than the demonstration examples.
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{ |l|l|}
+\hline
+\textbf{Prompting method} & \textbf{Accuracy}  \\
+  \hline
+Zero-Shot & 16.38 \\
+\hline
+Standard prompting & 17.06\footnotemark{} \\
+\hline
+Chain-of-Thought (original) & 61.18 \\
+\hline
+Chain-of-Thought (1-shot) & 60.88 \\
+\hline
+Least-to-Most (1-shot) & 62.39 \\
+\hline
+Chain-of-Thought (best) & \textbf{68.61}\footnotemark[\value{footnote}] \\
+\hline
+Least-to-Most (best) & 68.01 \\
+\hline\end{tabular}
+\vspace{5pt}
+\caption{Accuracies (\%) of various prompting methods with the GPT-3 \texttt{code-davinci-002} model on GSM8K.}
+\label{table: gsm8k-results}
+\end{table}
+
+\footnotetext{Note that in two of the prompt contexts used in an earlier pre-print of this paper, one of the examples had contained a mistake, which has been corrected in this version of the paper. Specifically, in the ``Chain-of-Thought (best)'' context, the last example had mistakenly omitted the final step, such that it ended incorrectly with ``The answer is 17.'' rather than ``which means that sandy will get \$20 - \$17 = \$3 as change. The answer is 3.'' Similarly, the ``Standard prompting'' context incorrectly stated the answer as ``17'' rather than ``3'' for this example.  The earlier versions of the prompts yielded the following accuracies: Standard prompting = 18.65, Chain-of-Thought (best) = 62.77.}
+
+\subsection{Prompt contexts: One-shot prompts}
+\label{app:gsm8k-prompts-one-shot}
+
+We include here the prompt contexts used in the experiments reported in Appendix~\ref{app:gsm8k-results-one-shot}.
+
+In this section and in the following one, the placeholder ``\{question\}'' indicates the place where the original question is to be inserted, in cases where the format would not be obvious (e.g., where instead of simply ending the prompt with ``A:'', we include some additional prompt text like ``A: The answer is'').
+
+In the case of ``Least-to-Most (1-shot)'', the prompt prefix for the initial request ends in ``Let's break down this problem:''. We then append to that prompt the initial reply that was received from the language model, followed by a newline and the string ``The answer is:'', which we then use as the prompt in a second request, whose reply we treat as the final answer.
+
+\subsubsection{Chain-of-Thought (1-shot)}
+
+Q: Elsa has 5 apples. Anna has 2 more apples than Elsa. How many apples do they have together? \\
+A: Anna has 2 more apples than Elsa, so Anna has 2 + 5 = 7 apples. Elsa and Anna have 5 + 7 = 12 apples together. The answer is 12. \\
+
+\subsubsection{Least-to-Most (1-shot)}
+
+Q: Elsa has 5 apples. Anna has 2 more apples than Elsa. How many apples do they have together? \\
+A: Let's break down this problem: 1. How many apples does Anna have? 2. How many apples do Elsa and Anna have together? \\
+1. Anna has 2 more apples than Elsa. So Anna has 2 + 5 = 7 apples. \\
+2. Elsa and Anna have 5 + 7 = 12 apples together. \\
+ \\
+Q: \{question\} \\
+A: Let's break down this problem: \\
+----- \\
+The answer is: \\
+
+\subsection{Prompt contexts: Engineered prompts}
+\label{app:gsm8k-prompts-engineered}
+
+We include here the additional prompt templates used in the experiments reported in Appendix~\ref{app:gsm8k-results-engineered}, with the exception of ``Chain-of-Thought (original)``, which is the same as the ``Prompt for Math Word Problems'' reported in Appendix G of \citet{wei2022chain}.
+
+\subsubsection{Zero-Shot}
+
+Q: \{question\}\\
+A: The answer is
+
+\subsubsection{Standard prompting: 4 examples}
+Q: Four years ago, Kody was only half as old as Mohamed. If Mohamed is currently twice 30 years old, how old is Kody? \\
+A: The answer is 32. \\
+ \\
+Q: Carla bought 2 bags of mini peanut butter cups on clearance. Each bag was \$6.00 but was 75\% off. How much did she spend on 2 bags of candy? \\
+A: The answer is 3. \\
+ \\
+Q: If Pam is currently twice as young as Rena is, and in 10 years Rena will be 5 years older than her, how old is Pam now? \\
+A: The answer is 5. \\
+ \\
+Q: Cappuccinos cost \$2, iced teas cost \$3, cafe lattes cost \$1.5 and espressos cost \$1 each. Sandy orders some drinks for herself and some friends. She orders three cappuccinos, two iced teas, two cafe lattes, and two espressos. How much change does she receive back for a twenty-dollar bill? \\
+A: The answer is 3. \\
+
+\subsubsection{Chain-of-Thought (best): 4 examples}
+
+Q: Four years ago, Kody was only half as old as Mohamed. If Mohamed is currently twice 30 years old, how old is Kody? \\
+A: We were told that Mohamed is currently twice 30 years old, so he is currently 30 * 2 = 60 years old. That means that four years ago he must have been 60 - 4 = 56 years old. Four years ago, Kody was half as old as Mohamed, so Kody must have been 56 / 2 = 28 years old then. Since Kody was 28 years old four years ago, she must now be 28 + 4 = 32 years old. The answer is 32. \\
+ \\
+Q: Carla bought 2 bags of mini peanut butter cups on clearance. Each bag was \$6.00 but was 75\% off. How much did she spend on 2 bags of candy? \\
+A: Each bag was \$6.00 but was 75\% off. So each bag cost \$6.00 * (1 - 0.75) = \$6.00 * 0.25 = \$1.50. Carla bought 2 bags. So she spent \$1.50 * 2 = \$3.00. The answer is 3. \\
+ \\
+Q: If Pam is currently twice as young as Rena is, and in 10 years Rena will be 5 years older than her, how old is Pam now? \\
+A: Since Rena will be 5 years older than Pam in 10 years, she must be 5 years older than Pam now as well. If Pam is currently twice as young as Rena, that means that Rena is currently twice as old as Pam is. So if P stands for Pam's age now and R stands for Rena's age now, then we know that R = 2 * P And since Rena is 5 years older than Pam now, we know that R = P + 5. By substitution, we have P + 5 = 2 * P, which means that P = 5. The answer is 5. \\
+ \\
+Q: Cappuccinos cost \$2, iced teas cost \$3, cafe lattes cost \$1.5 and espressos cost \$1 each. Sandy orders some drinks for herself and some friends. She orders three cappuccinos, two iced teas, two cafe lattes, and two espressos. How much change does she receive back for a twenty-dollar bill? \\
+A: Sandy ordered three cappuccinos, which cost \$2 each, so she spent \$2 * 3 = \$6 on cappuccinos. She ordered two iced teas, which cost \$3 each, so she spent \$3 * 2 = \$6 dollars on ice teas. She ordered two cafe lattes, which cost \$1.5 each, so she spent \$1.5 * 2 = \$3 on cafe lattes. She ordered two espressos, which cost \$1 each, so she spent \$1 * 2 = \$2 on espressos. So altogether, Sandy spent \$6 + \$6 + \$3 + \$2 = \$17 on drinks, which means that sandy will get \$20 - \$17 = \$3 as change. The answer is 3. \\
+
+\subsubsection{Least-to-Most (best) I - problem decomposition: 7 examples}
+
+Q: Four years ago, Kody was only half as old as Mohamed. If Mohamed is currently twice 30 years old, how old is Kody? \\
+A: To answer the question ``How old is Kody?'', we need to know: ``How old is Mohamed?'', ``How old was Mohamed four years ago?'', ``How old was Kody four years ago?''. \\
+ \\
+Q: If Pam is currently twice as young as Rena is, and in 10 years Rena will be 5 years older than her, how old is Pam now? \\
+A: To answer the question ``How old is Pam now?'', we need to know: ``How much older is Rena than Pam currently?''. \\
+ \\
+Q: As a freelancer, Baylor is paid for every finished work of a client he does on a freelance marketplace. Currently, he has \$4000 on his dashboard from previous work done. He is currently working for three clients, with the first client paying him half the amount of money he currently has on his dashboard once the job is done. The second client will pay him 2/5 times more money than the first client once Baylor finishes his work. The third client will pay him twice the amount of money the first and second clients pay him together once he finishes the job. How much money will Baylor have in his dashboard after all the clients pay him for his work? \\
+A: To answer the question ``How much money will Baylor have in his dashboard after all the clients pay him for his work?'', we need to know: ``How much will Baylor's first client pay him for his work?'', ``How much more will Baylor's second client pay him for his work compared to the first client?'', ``How much will Baylor's second client pay him for his work?'', ``How much will the first and second clients pay him together once he finishes the job?'', ``How much will Baylor's third client pay him for his work?'', ``How much money will all the clients pay Baylor for his work?''. \\
+ \\
+Q: Cappuccinos cost \$2, iced teas cost \$3, cafe lattes cost \$1.5 and espressos cost \$1 each. Sandy orders some drinks for herself and some friends. She orders three cappuccinos, two iced teas, two cafe lattes, and two espressos. How much change does she receive back for a twenty-dollar bill? \\
+A: To answer the question ``How much change does she receive back for a twenty-dollar bill?'', we need to know: ``How much did the cappuccinos cost in total?'', ``How much did the iced teas cost in total?'', ``How much did the cafe lattes cost in total?'', ``How much did the espressos cost in total?'', ``How much did the drinks cost in total?''. \\
+ \\
+Q: Betty \& Paige are raising money for their kids' little league team by hosting a bake sale. Betty has baked 4 dozen chocolate chip cookies, 6 dozen oatmeal raisin cookies and 2 dozen regular brownies. Paige baked 6 dozen sugar cookies, 3 dozen blondies and 5 dozen cream cheese swirled brownies. If they sell the cookies for \$1.00 apiece and the blondies/brownies at \$2.00 apiece, how much money will they raise? \\
+A: To answer the question ``How much money will they raise?'', we need to know: ``How many dozen cookies did they bake (not including blondies/brownies)?'', ``How many cookies did they bake (not including blondies/brownies)?'', ``How many dozen blondies/brownies did they bake (not including cookies)?'', ``How many blondies/brownies did they bake (not including cookies)?'', ``How much money will they raise from the cookies (not including blondies/brownies)?'', ``How much money will they raise from the blondies/brownies (not including cookies)?''. \\
+ \\
+Q: On a moonless night, three fireflies danced in the evening breeze. They were joined by four less than a dozen more fireflies, before two of the fireflies flew away. How many fireflies remained? \\
+A: To answer the question ``How many fireflies remained?'', we need to know: ``How many fireflies joined?''. \\
+ \\
+Q: Sam, Sid, and Steve brought popsicle sticks for their group activity in their Art class. Sam has thrice as many as Sid, and Sid has twice as many as Steve. If Steve has 12 popsicle sticks, how many popsicle sticks can they use for their Art class activity? \\
+A: To answer the question ``How many popsicle sticks can they use for their Art class activity?'', we need to know: ``How many popsicle sticks does Sid have?'', ``How many popsicle sticks does Sam have?''. \\
+
+\subsubsection{Least-to-Most (best) II - problem solving: 4 examples}
+
+Four years ago, Kody was only half as old as Mohamed. If Mohamed is currently twice 30 years old, how old is Kody? \\
+ \\
+Q: How old was Mohamed four years ago? \\
+A: We were told that Mohamed is currently twice 30 years old, so he is currently 30 * 2 = 60 years old. That means that four years ago he must have been 60 - 4 = 56 years old. The answer is 56. \\
+ \\
+Q: How old is Kody? \\
+A: Four years ago, Kody was half as old as Mohamed, so Kody must have been 56 / 2 = 28 years old then. Since Kody was 28 years old four years ago, she must now be 28 + 4 = 32 years old. The answer is 32. \\
+ \\
+Carla bought 2 bags of mini peanut butter cups on clearance. Each bag was \$6.00 but was 75\% off. How much did she spend on 2 bags of candy? \\
+ \\
+Q: How much did she spend on 2 bags of candy? \\
+A: Each bag was \$6.00 but was 75\% off. So each bag cost \$6.00 * (1 - 0.75) = \$6.00 * 0.25 = \$1.50. Carla bought 2 bags. So she spent \$1.50 * 2 = \$3.00. The answer is 3. \\
+ \\
+If Pam is currently twice as young as Rena is, and in 10 years Rena will be 5 years older than her, how old is Pam now? \\
+ \\
+Q: How much older is Rena than Pam currently? \\
+A: Since Rena will be 5 years older than Pam in 10 years, she must be 5 years older than Pam now as well. The answer is 5. \\
+ \\
+Q: How old is Pam now? \\
+A: If Pam is currently twice as young as Rena, that means that Rena is currently twice as old as Pam is. So if P stands for Pam's age now and R stands for Rena's age now, then we know that R = 2 * P And since Rena is 5 years older than Pam now, we know that R = P + 5. By substitution, we have P + 5 = 2 * P, which means that P = 5. The answer is 5. \\
+ \\
+Cappuccinos cost \$2, iced teas cost \$3, cafe lattes cost \$1.5 and espressos cost \$1 each. Sandy orders some drinks for herself and some friends. She orders three cappuccinos, two iced teas, two cafe lattes, and two espressos. How much change does she receive back for a twenty-dollar bill? \\
+ \\
+Q: How much did Sandy spend on drinks? \\
+A: Sandy ordered three cappuccinos, which cost \$2 each, so she spent \$2 * 3 = \$6 on cappuccinos. She ordered two iced teas, which cost \$3 each, so she spent \$3 * 2 = \$6 dollars on ice teas. She ordered two cafe lattes, which cost \$1.5 each, so she spent \$1.5 * 2 = \$3 on cafe lattes. She ordered two espressos, which cost \$1 each, so she spent \$1 * 2 = \$2 on espressos. So altogether, Sandy spent \$6 + \$6 + \$3 + \$2 = \$17 on drinks. The answer is 17. \\

@@ -1,0 +1,24 @@
+% !TEX encoding = UTF-8
+% !TEX Root = 0_main.tex
+
+\section{Related Work}
+
+There exist two aspects of related work regarding the topic here, which are training stabilization and adaptive gradient descent.
+
+\subsection{Stabilization}
+Many efforts have been made to stabilize the training procedure of deep neural networks, including gradient clipping~\citep{bengio2013advances}, better initialization~\citep{balduzzi2017shattered,zhang2019fixup}, normalization in many machine learning problems. 
+
+Learning rate warmup \citep{vaswani2017attention,goyal2017accurate} also serves as an important heuristics in stabilizing training procedure. Despite the lack of rigorous analysis, it has been found by experience that the warmup stage can stabilize the initial stage of training, with a high learning rate and advanced network architecture, including ResNet and Transformer. 
+Recent work \citep{gotmare2018a} showed the warmup stage prevent the deeper layers from creating training instability. 
+
+Different from previous work, we dissect the problem from the variance of the gradient statistics (i.e. adaptive learning), which is too large in the early stage of training and thus induce instability. On the other hand \citep{balduzzi2017shattered} showed the variance of the gradient of residual network keep increasing as the network become deeper and the large variance make the training  difficult. As a result, wamup and RAdam mainly focusing on fixing the deep layers, which is in consistent with \citep{gotmare2018a}.
+
+
+
+% Our work is inspired by recent advances in  stabilizing the training procedure of deep neural network, including gradient clipping \citep{bengio2013advances}, better initialization \citep{balduzzi2017shattered,zhang2019fixup}, and normalization in many machine learning problems. 
+
+% Learning rate warmup \citep{vaswani2017attention,goyal2017accurate} also serves as an important heuristics in stabilizing training procedure. Despite the lack of rigorous analysis, it has been found by experience that the warmup stage can stabilize the initial stage of training, with a high learning rate and advanced network architecture, including ResNet and Transformer. 
+% Recent work \citep{gotmare2018a} showed the warmup stage prevent the deeper layers from creating training instability. 
+
+% Different from previous work, we dissect the problem from the variance of the gradient statistics (i.e. adaptive learning), which is too large in the early stage of training and thus induce instability. On the other hand \citep{balduzzi2017shattered} showed the variance of the gradient of residual network keep increasing as the network become deeper and the large variance make the training  difficult. As a result, wamup and RAdam mainly focusing on fixing the deep layers, which is in consistent with \citep{gotmare2018a}.
+

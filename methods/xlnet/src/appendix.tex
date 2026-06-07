@@ -1,0 +1,354 @@
+\appendix
+
+\section{Target-Aware Representation via Two-Stream Self-Attention}
+
+\subsection{A Concrete Example of How Standard LM Parameterization Fails}
+\label{sec:tgt-aware-example}
+%Despite the aforementioned advantages of Transformer, naively implementing the permutation language modeling objective with standard parameterization may not work.
+%To see the problem, assume we parameterize the next-token distribution $p_\theta(X_{z_t} \mid \rvx_{\rvz_{<t}})$ using the standard Softmax formulation, i.e.,
+%\begin{equation}
+%\label{eqn:naive}
+%p_\theta(X_{z_t} = x \mid \rvx_{\rvz_{<t}})
+%= \frac{\expo{ e(x)^\top h_\theta(\rvx_{\rvz_{<t}}) }}{\sum_{x'} \expo{ e(x')^\top h_\theta(\rvx_{\rvz_{<t}}) }},
+%\end{equation}
+%where $h_\theta(\rvx_{\rvz_{<t}})$ denotes the hidden representation of $\rvx_{\rvz_{<t}}$ produced by the shared Transformer network after properly masking.
+%Now notice that the representation $h_\theta(\rvx_{\rvz_{<t}})$ does not depend on which position it will predict, i.e., the value of $z_t$.
+%In other words, regardless of target position, the naive parameterization will produce the same predictive distribution, which is clearly not optimal.
+
+In this section, we provide a concrete example to show how the standard language model parameterization fails under the permutation objective, as discussed in Section \ref{sec:tgt-aware}.
+Specifically, let's consider two different permutations $\rvz^{(1)}$ and $\rvz^{(2)}$ satisfying the following relationship
+\[ 
+  \rvz_{<t}^{(1)} = \rvz_{<t}^{(2)} = \rvz_{<t} \quad\text{but}\quad z_t^{(1)} = i \neq j = z_t^{(2)}.
+\]
+Then, substituting the two permutations respectively into the naive parameterization, we have
+\begin{align*}
+\underbrace{ p_\theta( X_{i} = x \mid \rvx_{{\rvz}_{<t}}) }_{ z_t^{(1)} = i,\; \rvz_{<t}^{(1)} = \rvz_{<t} } 
+= 
+\underbrace{ p_\theta( X_{j} = x \mid \rvx_{{\rvz}_{<t}}) }_{ z_t^{(1)} = j,\; \rvz_{<t}^{(2)} = \rvz_{<t} } 
+= \frac
+{\expo{e(x)^\top h(\rvx_{{\rvz}_{<t}})}}
+{\sum_{x'} \expo{e(x')^\top h(\rvx_{{\rvz}_{<t}})}}.
+\end{align*}
+Effectively, two different target positions $i$ and $j$ share exactly the same model prediction. 
+However, the ground-truth distribution of two positions should certainly be different. 
+
+%To avoid this problem, we propose to re-parameterize the next-token distribution such that the hidden representation is target position aware. 
+%In concrete, the distribution can be written as
+%\begin{equation}
+%\label{eqn:tgt-aware}
+%p_\theta(X_{z_t} = x \mid \rvx_{z_{<t}})
+%= \frac{\expo{ e(x)^\top g_\theta(\rvx_{\rvz_{<t}}, z_t) }}{\sum_{x'} \expo{ e(x')^\top g_\theta(\rvx_{\rvz_{<t}}, z_t) }},
+%\end{equation}
+%where $g_\theta(\rvx_{\rvz_{<t}}, z_t)$ denotes a new type of hidden representation which additionally takes the target position $z_t$ as input. 
+%As a result, the model distributions for different target positions can be differentiated.
+
+
+\subsection{Two-Stream Attention}
+\label{sec:two-stream-detail}
+Here, we provide the implementation details of the two-stream attention with a Transformer-XL backbone.
+\begin{align*}
+\intertext{Initial represetation:}
+\forall t = 1, \dots, T: \quad h_t &= e(x_t) \quad\text{and}\quad g_t = w \\
+\intertext{Cached layer-$m$ content represetation (memory) from previous segment: $\tilde{\rvh}^{(m)}$}
+\intertext{For the Transformer-XL layer $m = 1, \cdots, M$, attention with relative positional encoding and position-wise feed-forward are consecutively employed to update the represetntations:} 
+\forall t = 1, \dots, T: \quad 
+\hat{h}_{z_t}^{(m)} &= \text{LayerNorm}\rbr{ h_{z_t}^{(m-1)} + 
+	\text{RelAttn} \rbr{ 
+		h_{z_t}^{(m-1)}, 
+		\sbr{\tilde{\rvh}^{(m-1)}, \rvh_{\rvz_{\leq t}}^{(m-1)}} } } \\
+h_{z_t}^{(m)} &= \text{LayerNorm}\rbr{ \hat{h}_{z_t}^{(m)} + 
+	\text{PosFF} \rbr{  \hat{h}_{z_t}^{(m)} } } \\
+\hat{g}_{z_t}^{(m)} &= \text{LayerNorm}\rbr{ g_{z_t}^{(m-1)} + 
+	\text{RelAttn}\rbr{ 
+		g_{z_t}^{(m-1)}, 
+		\sbr{\tilde{\rvh}^{(m-1)}, \rvh_{\rvz_{< t}}^{(m-1)}} } } \\
+g_{z_t}^{(m)} &= \text{LayerNorm}\rbr{ \hat{g}_{z_t}^{(m)} + 
+	\text{PosFF} \rbr{  \hat{g}_{z_t}^{(m)} } } \\
+\intertext{Target-aware prediction distribution:}
+p_\theta(X_{z_t} = x \mid \rvx_{z_{<t}})
+	&= \frac{\expo{ e(x)^\top g_{z_t}^{(M)} }}{\sum_{x'} \expo{ e(x')^\top g_{z_t}^{(M)} }},
+\end{align*}
+
+%Schematically, the intuition could be translated into the following computation similar to the standard encoder-decoder attention
+%\begin{equation}
+%\label{eqn:tgt-centered-attn}
+%g_\theta(\rvx_{\rvz_{<t}}, z_t) = \sum_{i \in \rvz_{<t}} \text{Softmax}(q_{z_t}^\top k_{i}) v_{i},
+%\end{equation}
+%where $q_{z_t}$ is a query vector representing the target position $z_t$, $k_{i} = W_k h_i$ and $v_{i} = W_v h_i$ are respectively the key and value vectors representing the content of the corresponding locations, and the Softmax is taken w.r.t. to all allowed context locations in $\rvz_{<t}$.
+%Importantly, the query vector $q_{z_t}$ should not be directly conditioned on the target token $x_{z_t}$. 
+%Otherwise, the next-token prediction would be trivial. 
+%%On the other hand, the key and value vectors $\set{k_i, v_i}_{i \in \rvz_{<t}}$  should contain information of the corresponding token $x_i$ in order to provide the context information for $h_\theta(\rvx_{\rvz_{<t}}, z_t)$ to construct the target distribution.
+
+\subsection{Datasets} \label{sec:datasets}
+
+\subsubsection{RACE Dataset}
+
+The RACE dataset \cite{lai2017large} contains near 100K questions taken from the English exams for middle and high school Chinese students in the age range between 12 to 18, with the answers generated by human experts. This is one of the most difficult reading comprehension datasets that involve challenging reasoning questions. Moreover, the average length of the passages in RACE are longer than 300, which is significantly longer than other popular reading comprehension datasets such as SQuAD \cite{rajpurkar2018know}. As a result, this dataset serves as a challenging benchmark for long text understanding. We use a sequence length of 512 during finetuning.
+
+\subsubsection{SQuAD}
+
+SQuAD is a large-scale reading comprehension dataset with two tasks. SQuAD1.1 \cite{rajpurkar2016squad} contains questions that always have a corresponding answer in the given passages, while SQuAD2.0 \cite{rajpurkar2018know} introduces unanswerable questions. To finetune an XLNet on SQuAD2.0, we jointly apply a logistic regression loss for answerability prediction similar to classification tasks and a standard span extraction loss for question answering \cite{devlin2018bert}.
+%Since v1.1 and v2.0 share the same answerable questions in the training set, we simply remove the answerability prediction part from the model finetuned on v2.0 for evaluation on v1.1. As the top leaderboard entries all employ some form of data augmentation, we jointly train an XLNet on SQuAD2.0 and NewsQA \cite{trischler2016newsqa} for our leaderboard submission.
+
+\subsubsection{Text classification Datasets}
+
+Following previous work on text classification \cite{zhang2015character,miyato2016adversarial}, we evaluate XLNet on the following benchmarks: IMDB, Yelp-2, Yelp-5, DBpedia, AG, Amazon-2, and Amazon-5.
+
+\subsubsection{GLUE Dataset}
+
+The GLUE dataset \cite{wang2019glue} is a collection of 9 natural language understanding tasks. 
+The test set labels are removed from the publicly released version, and all the practitioners must submit their predictions on the evaluation server to obtain test set results. In Table \ref{tab:sota-glue}, we present results of multiple settings, including single-task and multi-task, as well as single models and ensembles. In the multi-task setting, we jointly train an XLNet on the four largest datasets---MNLI, SST-2, QNLI, and QQP---and finetune the network on the other datasets. Only single-task training is employed for the four large datasets. For QNLI, we employed a pairwise relevance ranking scheme as in \cite{liu2019multi} for our test set submission. However, for fair comparison with BERT, our result on the QNLI dev set is based on a standard classification paradigm. For WNLI, we use the loss described in \cite{kocijan2019surprisingly}.
+
+\subsubsection{ClueWeb09-B Dataset}
+
+Following the setting in previous work \cite{dai2018convolutional}, we use the ClueWeb09-B dataset to evaluate the performance on document ranking. The queries were created by the TREC 2009-2012 Web Tracks based on 50M documents and the task is to rerank the top 100 documents retrieved using a standard retrieval method. Since document ranking, or ad-hoc retrieval, mainly concerns the low-level representations instead of high-level semantics, this dataset serves as a testbed for evaluating the quality of word embeddings. We use a pretrained XLNet to extract word embeddings for the documents and queries without finetuning, and employ a kernel pooling network \cite{xiong2017end} to rank the documents.
+
+\subsection{Hyperparameters} \label{sec:hp}
+
+\subsubsection{Pretraining Hyperparameters}
+
+\begin{table}[h!]
+  \small
+  \centering
+  
+  \begin{tabular}{lc}
+    \toprule
+    \bf Hparam & \bf Value \\
+    \midrule
+    Number of layers & 24 \\
+    Hidden size & 1024 \\
+    Number of attention heads & 16 \\
+    Attention head size & 64 \\
+    FFN inner hidden size & 4096 \\
+    Hidden Dropout & 0.1 \\
+    GeLU Dropout & 0.0 \\
+    Attention dropout & 0.1 \\
+    Partial prediction $K$ & 6 \\
+    Max sequence length & 512 \\
+    Batch size & 8192 \\
+    Learning rate & 4e-4 \\
+    Number of steps & 500K \\
+    Warmup steps & 40,000 \\
+    Learning rate decay & linear \\
+    Adam epsilon  & 1e-6 \\
+    Weight decay & 0.01 \\
+    \bottomrule
+  \end{tabular}
+  \caption{\small
+    Hyperparameters for pretraining.
+  }
+  \label{tab:hp-pretrain}
+  \vspace{-1em}
+\end{table}
+
+The hyperparameters used for pretraining XLNet are shown in Table \ref{tab:hp-pretrain}.
+
+\subsubsection{Hyperparameters for Finetuning}
+
+\begin{table}[h!]
+  \small
+  \centering
+  
+  \begin{tabular}{lcccc}
+    \toprule
+    \bf Hparam & \bf RACE & \bf SQuAD & \bf MNLI & \bf Yelp-5 \\
+    \midrule
+    Dropout             & \multicolumn{4}{c}{0.1}    \\
+    Attention dropout   & \multicolumn{4}{c}{0.1}    \\
+    Max sequence length & 512  & 512  & 128  & 512   \\
+    Batch size          & 32   & 48   & 128  & 128   \\
+    Learning rate       & 2e-5 & 3e-5 & 2e-5 & 1e-5  \\
+    Number of steps     & 12K  & 8K   & 10K  & 10K   \\
+    Learning rate decay & \multicolumn{4}{c}{linear} \\
+    Weight decay        & \multicolumn{4}{c}{0.01}   \\
+    Adam epsilon        & 1e-6 & 1e-6 & 1e-6 & 1e-6  \\
+    Layer-wise lr decay & 1.0  & 0.75 & 1.0  & 1.0   \\
+    \bottomrule
+  \end{tabular}
+  \caption{\small
+    Hyperparameters for finetuning.
+  }
+  \label{tab:hp-finetune}
+  \vspace{-1em}
+\end{table}
+
+The hyperparameters used for finetuning XLNet on various tasks are shown in Table \ref{tab:hp-finetune}. ``Layer-wise decay'' means exponentially decaying the learning rates of individual layers in a top-down manner. For example, suppose the $24$-th layer uses a learning rate $l$, and the Layer-wise decay rate is $\alpha$, then the learning rate of layer $m$ is $l \alpha^{24 - m}$.
+
+
+\subsection{Discussion and Analysis}
+\label{sec:discussion}
+\subsubsection{Comparison with BERT}
+\label{sec:compare-bert}
+
+% Comparing Eq. (\ref{eqn:ae}) and (\ref{eqn:partial-plm}), we observe that both BERT and XLNet perform partial prediction, i.e., only predicting a subset of tokens in the sequence. 
+% This is a necessary choice for BERT because if all tokens are masked, it is impossible to make any meaningful predictions. 
+% In addition, for both BERT and XLNet, partial prediction plays a role of reducing optimization difficulty by only predicting tokens with sufficient context. 
+% However, the independence assumption discussed in Section \ref{sec:background} disables BERT to model dependency between targets.
+
+% To better understand the difference, let's consider a concrete example [New, York, is, a, city]. Suppose both BERT and XLNet select the two tokens [New, York] as the prediction targets and maximize $\log p(\text{New York} \mid \text{is a city})$. Also suppose that XLNet samples the factorization order [is, a, city, New, York]. In this case, BERT and XLNet respectively reduce to the following objectives:
+% \[
+% \mathcal{J}_{\text{BERT}} = \log p(\text{New} \mid \text{is a city}) + \log p(\text{York} \mid \text{is a city}),
+% \]
+% \[
+% \mathcal{J}_{\text{XLNet}} = \log p(\text{New} \mid \text{is a city}) + \log p(\text{York} \mid \magenta{\text{New}}, \text{is a city}).
+% \]
+% Notice that XLNet is able to capture the dependency between the pair (New, York), which is omitted by BERT. 
+% Although in this example, BERT learns some dependency pairs such as (New, city) and (York, city), it is obvious that XLNet always learns \textbf{more} dependency pairs given the same target and contains ``denser'' effective training signals.
+
+To prove a general point beyond one example, we now turn to more formal expressions. Inspired by previous work~\cite{yang2017breaking}, given a sequence $\mathbf{x} = [x_1, \cdots, x_T]$, we define a set of target-context pairs of interest, $\mathcal{I} = \{(x, \mc{U})\}$, where $\mc{U}$ is a set of tokens in $\mathbf{x}$ that form a context of $x$. Intuitively, we want the model to learn the dependency of $x$ on $\mathcal{U}$ through a pretraining loss term $\log p(x \mid \mc{U})$.
+%Note that $\mc{I}$ is a virtual notion, and our analysis will hold regardless of how $\mc{I}$ is instantiated. 
+%For example, given the above sentence, we might instantiate the following context in $\mc{I}$:
+For example, given the above sentence, the pairs of interest $\mc{I}$ could be instantiated as:
+\[
+\mc{I} = \Big\{ 
+\rbr[\big]{x = \text{York}, \mc{U} = \{\text{New}\}},\;
+\rbr[\big]{x = \text{York}, \mc{U} = \{\text{city}\}},\; 
+\rbr[\big]{x = \text{York}, \mc{U} = \{\text{New, city}\}},\;
+\cdots
+\Big\}.
+\]
+Note that $\mc{I}$ is merely a virtual notion without unique ground truth, and our analysis will hold regardless of how $\mc{I}$ is instantiated. 
+
+Given a set of target tokens $\mc{T}$ and a set of non-target tokens $\mc{N} = \rvx \backslash \mc{T}$, BERT and XLNet both maximize $\log p(\mc{T} \mid \mc{N})$ but with different formulations:
+\[
+\mathcal{J}_{\text{BERT}} = \sum_{x \in \mc{T}} \log p(x \mid \mc{N}); \quad \mc{J}_{\text{XLNet}} = \sum_{x \in \mc{T}} \log p(x \mid \mc{N} \cup \mc{T}_{<x})
+\]
+where $\mc{T}_{< x}$ denote tokens in $\mc{T}$ that have a factorization order prior to $x$. 
+Both objectives consist of multiple \textit{loss terms} in the form of $\log p(x \mid \mc{V}_x)$. 
+Intuitively, if there exists a target-context pair $(x, \mc{U}) \in \mc{I}$ such that $\mc{U} \subseteq \mc{V}_x$, then the loss term $\log p(x \mid \mc{V}_x)$ provides a training signal to the dependency between $x$ and $\mc{U}$.
+For convenience, we say a target-context pair $(x, \mc{U}) \in \mc{I}$ is \textit{covered} by a model (objective) if $\mc{U} \subseteq \mc{V}_x$.
+
+%We define that a target-context pair $(x, \mc{U}) \in \mc{I}$ is \textit{covered} by the model if $\mc{U} \subseteq \mc{V}_x$, which intuitively means such a dependency is captured by the model. 
+Given the definition, let's consider two cases:
+\begin{itemize}[leftmargin=*,topsep=0em,itemsep=0em]
+	\item If $\mc{U} \subseteq \mc{N}$, the dependency $(x, \mc{U})$ is covered by both BERT and XLNet.
+	\item If $\mc{U} \subseteq \mc{N} \cup \mc{T}_{<x}$ and $\mc{U} \cap \mc{T}_{<x} \not= \emptyset$, the dependency can only be covered by XLNet but not BERT. 
+	As a result, XLNet is able to cover more dependencies than BERT. 
+	In other words, the XLNet objective contains more effective training signals, which empirically leads to better performance in Section \ref{sec:exp}.
+\end{itemize}
+
+\subsubsection{Comparison with Language Modeling} \label{sec:compare-lm}
+
+Borrowing examples and notations from Section \ref{sec:compare-bert}, a standard AR language model like GPT \cite{radford2018improving} is only able to cover the dependency $(x = \text{York}, \mc{U} = \{\text{New}\})$ but not $(x = \text{New}, \mc{U} = \{\text{York}\})$. XLNet, on the other hand, is able to cover both in expectation over all factorization orders. Such a limitation of AR language modeling can be critical in real-world applications. For example, consider a span extraction question answering task with the context ``Thom Yorke is the singer of Radiohead'' and the question ``Who is the singer of Radiohead''. The representations of ``Thom Yorke'' are not dependent on ``Radiohead'' with AR language modeling and thus they will not be chosen as the answer by the standard approach that employs softmax over all token representations. More formally, consider a context-target pair $(x, \mc{U})$:
+\begin{itemize}[leftmargin=*,topsep=0em,itemsep=0em]
+	\item If $\mc{U} \not\subseteq \mc{T}_{< x}$, where $\mc{T}_{<x}$ denotes the tokens prior to $x$ in the original sequence, AR language modeling is not able to cover the dependency.
+	\item In comparison, XLNet is able to cover all dependencies in expectation.
+\end{itemize}
+
+Approaches like ELMo \cite{peters2018deep} concatenate forward and backward language models in a shallow manner, which is not sufficient for modeling deep interactions between the two directions.
+
+\subsubsection{Bridging the Gap Between Language Modeling and Pretraining}
+
+With a deep root in density estimation\footnote{The problem of language modeling is essentially density estimation for text data.} \cite{bengio2000modeling,uria2016neural,oord2016pixel}, language modeling has been a rapidly-developing research area \cite{dai2019transformer,al2018character,baevski2018adaptive}. However, there has been a gap between language modeling and pretraining due to the lack of the capability of bidirectional context modeling, as analyzed in Section \ref{sec:compare-lm}. It has even been challenged by some machine learning practitioners whether language modeling is a meaningful pursuit if it does not directly improve downstream tasks \footnote{\url{https://openreview.net/forum?id=HJePno0cYm}}. XLNet generalizes language modeling and bridges such a gap. As a result, it further ``justifies'' language modeling research. Moreover, it becomes possible to leverage the rapid progress of language modeling research for pretraining. As an example, we integrate Transformer-XL into XLNet to demonstrate the usefulness of the latest language modeling progress.
+
+\subsection{Qualitative Analysis of Attention Patterns} \label{sec:qual}
+
+We compare the attention pattern of BERT and XLNet without finetuning. Firstly, we found 4 typical patterns shared by both, as shown in Fig. \ref{fig:shared_attn}.
+\begin{figure}[!h]
+  \vspace{-1em}
+  \centering
+  \begin{subfigure}[b]{0.22\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{fig/content_stripe.png}
+    \caption{\footnotesize Content stripes}
+    \label{fig:content_stripe}
+    \vspace{-0.3em}
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[b]{0.235\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{fig/diag_self.png}
+    \caption{\footnotesize Local/Self focus}
+    \label{fig:diag_self}
+    \vspace{-0.3em}
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[b]{0.22\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{fig/two_segm.png}
+    \caption{\footnotesize Two segments}
+    \label{fig:two_segm}
+    \vspace{-0.3em}
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[b]{0.23\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{fig/diag_symm.png}
+    \caption{\footnotesize Content-based symmetry}
+    \label{fig:diag_symm}
+    \vspace{-0.3em}
+  \end{subfigure}
+  \caption{\footnotesize Attention patterns \textbf{shared by XLNet and BERT}. Rows and columns represent query and key respectively.}
+  \label{fig:shared_attn}
+  \vspace{-1.5em}
+\end{figure}
+
+More interestingly, in Fig. \ref{fig:xlnet_unique}, we present 3 patterns that only appear in XLNet but not BERT:
+(a) The self-exclusion pattern attends to all other tokens but itself, probably offering a fast way to gather global information; (b) The relative-stride pattern attends to positions every a few stride apart \textit{relative} to the query position; (c) The one-side masked pattern is very similar to the lower-left part of Fig. 1-(d), with the upper-right triangle masked out. It seems that the model learns not to attend the \textit{relative} right half. 
+Note that all these three unique patterns involve the \textit{relative} positions rather than absolute ones, and hence are likely enabled by the ``relative attention'' mechanism in XLNet. 
+We conjecture these unique patterns contribute to the performance advantage of XLNet.
+On the other hand, the proposed permutation LM objective mostly contributes to a better data efficiency, whose effects may not be obvious from qualitative visualization.
+\begin{figure}[!h]
+  \vspace{-1em}
+  \centering
+  \begin{subfigure}[b]{0.22\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{fig/self_exclusion.png}
+    \caption{\footnotesize Self exclusion}
+    \label{fig:self_exclusion}
+    \vspace{-0.3em}
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[b]{0.22\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{fig/rel_stride.png}
+    \caption{\footnotesize Relative stride}
+    \label{fig:rel_stride}
+    \vspace{-0.3em}
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[b]{0.22\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{fig/one_sided.png}
+    \caption{\footnotesize One-side masked}
+    \label{fig:one_sided}
+    \vspace{-0.3em}
+  \end{subfigure}
+  \caption{\footnotesize Attention patterns that \textbf{appear only in XLNet}. Rows and columns represent query and key respectively.}
+  \label{fig:xlnet_unique}
+  \vspace{-1.5em}
+\end{figure}
+
+
+\subsection{Visualizing Memory and Permutation}
+\label{sec:vis}
+\begin{figure}[!h]
+	\centering
+	\includegraphics[width=\linewidth]{fig/fix_pos.pdf}
+	\caption{Illustration of the permutation language modeling objective for predicting $x_3$ given the same input sequence $\rvx$ but with different factorization orders.}
+	\label{fig:obj_overview}
+\end{figure}
+
+In this section, we provide a detailed visualization of the proposed permutation language modeling objective, including the mechanism of reusing memory (aka the recurrence mechanism), how we use attention masks to permute the factorization order, and the difference of the two attention streams. 
+
+
+As shown in Figure \ref{fig:vis_content} and \ref{fig:vis_query}, given the current position $z_t$, the attention mask is decided by the permutation (or factorization order) $\mathbf{z}$ such that only tokens the occur before $z_t$ in the permutation can be attended; i.e., positions $z_i$ with $i < t$. Moreover, comparing Figure \ref{fig:vis_content} and \ref{fig:vis_query}, we can see how the query stream and the content stream work differently with a specific permutation through attention masks. The main difference is that the query stream cannot do self-attention and does not have access to the token at the position, while the content stream performs normal self-attention.
+
+
+\begin{figure}
+	\centering
+	\includegraphics[width=\linewidth]{fig/content_split.pdf}
+	\caption{A detailed illustration of the \textbf{content stream} of the proposed objective with both the joint view and split views based on a length-4 sequence under the factorization order [3, 2, 4, 1].
+		\\
+		Note that if we ignore the query representation, the computation in this figure is simply the standard self-attention, though with a particular attention mask.}
+	\label{fig:vis_content}
+\end{figure}
+
+\begin{figure}
+	\centering
+	\includegraphics[width=\linewidth]{fig/query_split.pdf}
+	\caption{A detailed illustration of the \textbf{query stream} of the proposed objective with both the joint view and split views based on a length-4 sequence under the factorization order [3, 2, 4, 1].
+		\\
+		The dash arrows indicate that the query stream cannot access the token (content) at the same position, but only the location information.}
+	\label{fig:vis_query}
+\end{figure}

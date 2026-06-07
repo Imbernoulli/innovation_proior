@@ -1,0 +1,49 @@
+%!TEX root = main.tex
+
+\section{Introduction}
+
+Unsupervised visual representation learning, or self-supervised learning, aims at obtaining features without using manual annotations and is rapidly closing the performance gap with supervised pretraining in computer vision~\cite{chen2020simple,he2019momentum,misra2019self}.
+Many recent state-of-the-art methods build upon the instance discrimination task that considers each image of the dataset (or ``instance'') and its transformations as a separate class~\cite{dosovitskiy2016discriminative}. 
+This task yields representations that are able to discriminate between different images, while achieving some invariance to image transformations. 
+Recent self-supervised methods that use instance discrimination rely on a combination of two elements: (i) a contrastive loss~\cite{hadsell2006dimensionality} and (ii) a set of image transformations. 
+The contrastive loss removes the notion of instance classes by directly comparing image features while the image transformations define the invariances encoded in the features.
+Both elements are essential to the quality of the resulting networks~\cite{misra2019self,chen2020simple} and our work improves upon both the objective function and the transformations.
+
+The contrastive loss explicitly compares pairs of image representations to push away representations from different images while pulling together those from transformations, or views, of the same image.
+Since computing all the pairwise comparisons on a large dataset is not practical, most implementations approximate the loss by reducing the number of comparisons to random subsets of images during training~\cite{chen2020simple,he2019momentum,wu2018unsupervised}.
+An alternative to approximate the loss is to approximate the task---that is to relax the instance discrimination problem.
+For example, clustering-based methods discriminate between groups of images with similar features instead of individual images~\cite{caron2018deep}. 
+The objective in clustering is tractable, but it does not scale well with the dataset as it requires a pass over the entire dataset to form image ``codes'' (\ie, cluster assignments) that are used as targets during training.
+In this work, we use a different paradigm and propose to compute the codes online while enforcing consistency between codes obtained from views of the same image.
+Comparing cluster assignments allows to contrast different image views while not relying on explicit pairwise feature comparisons.
+Specifically, we propose a simple ``swapped'' prediction problem where we predict the code of a view from the representation of another view.
+We learn features by \textbf{Sw}apping \textbf{A}ssignments between multiple \textbf{V}iews of the same image (\textbf{\OURS}).
+The features and the codes are learned online, allowing our method to scale to potentially unlimited amounts of data.
+In addition, \OURS works with small and large batch sizes and does not need a large memory bank~\cite{wu2018unsupervised} or a momentum encoder~\cite{he2019momentum}.
+
+Besides our online clustering-based method, we also propose an improvement to the image transformations.
+Most contrastive methods compare one pair of transformations per image, even though there is evidence that comparing more views during training improves the resulting model~\cite{misra2019self}. 
+In this work, we propose \texttt{multi-crop} that uses smaller-sized images to increase the number of views while not increasing the memory or computational requirements during training. 
+We also observe that mapping small parts of a scene to more global views significantly boosts the performance.
+Directly working with downsized images introduces a bias in the features~\cite{touvron2019fixing}, which can be avoided by using a mix of different sizes. 
+Our strategy is simple, yet effective, and can be applied to many self-supervised methods with consistent gain in performance.
+
+We validate our contributions by evaluating our method on several standard self-supervised benchmarks.
+In particular, on the ImageNet linear evaluation protocol, we reach $75.3\%$ top-$1$ accuracy with a standard ResNet-50, and $78.5\%$ with a wider model.
+We also show that our \texttt{multi-crop} strategy is general, and improves the performance of different self-supervised methods, namely SimCLR~\cite{chen2020simple}, DeepCluster~\cite{caron2018deep}, and SeLa~\cite{asano2019self}, between $2\%$ and $4\%$ top-1 accuracy on ImageNet.
+%Finally, we show the potential of our approach at a larger scale, by pre-training models on $1$ billion uncurated images from Instagram. 
+%This pre-training improves the performance of supervised models by $0.9\%$ on ImageNet.
+Overall, we make the following contributions:
+\begin{itemize}[leftmargin=*]
+\itemsep0.05em 
+
+\item
+We propose a scalable online clustering loss that improves performance by $+2\%$ on ImageNet and works in both large and small batch settings without a large memory bank or a momentum encoder.
+\item
+We introduce the \texttt{multi-crop} strategy to increase the number of views of an image with no computational or memory overhead.
+We observe a consistent improvement of between $2\%$ and $4\%$ on \ImNet with this strategy on several self-supervised methods.
+\item
+Combining both technical contributions into a single model, we improve the performance of self-supervised by $+4.2\%$ on ImageNet with a standard ResNet and outperforms supervised ImageNet pretraining on multiple downstream tasks.
+This is the first method to do so without finetuning the features, \ie, only with a linear classifier on top of frozen features.
+%Besides, we show that pre-training a ResNet-$50$ on $1$ billion uncurated images from Instagram allows to reach a top-$1$ accuracy of $77.4\%$, which is an improvement of $+0.9\%$ over the same model trained from scratch.
+\end{itemize}

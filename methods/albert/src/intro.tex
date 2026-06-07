@@ -1,0 +1,100 @@
+\section{Introduction}
+Full network pre-training \citep{dai2015semi,radford2018improving, devlin2018bert,howard2018universal} has led to a series of breakthroughs in language representation learning. Many nontrivial NLP tasks, including those that have limited training data, have greatly benefited from these pre-trained models. One of the most compelling signs of these breakthroughs is the evolution of machine performance on a reading comprehension task designed for middle and high-school English exams in China, the RACE test~\citep{lai2017race}: the paper that originally describes the task and formulates the modeling challenge reports then state-of-the-art machine accuracy at $44.1\%$; the latest published result reports their model performance at $83.2\%$~\citep{liu2019roberta}; the work we present here pushes it even higher to $89.4\%$, a stunning $45.3\%$ improvement that is mainly attributable to our current ability to build high-performance pretrained language representations.
+
+%{\em generic}\footnote{We call them generic because they improve performance not only on a specific task like RACE, but over a large battery of both language understanding and language generation tasks.}
+
+
+
+Evidence from these improvements reveals that a large network is of crucial importance for achieving state-of-the-art performance \citep{devlin2018bert, radford2019language}. It has become common practice to pre-train large models and distill them down to smaller ones \citep{sun2019patient, turc2019well} for real applications. Given the importance of model size, we ask: \textit{Is having better NLP models as easy as having larger models}? 
+
+
+%that larger pre-trained models often lead to better performance.
+
+
+
+% A major lesson from these improvements is having large pre-trained models \citep{devlin2018bert, radford2019language} and distilling them down to smaller ones \citep{sun2019patient, turc2019well} for real applications.
+% Evidence shows that larger pre-trained models often lead to better performance~\citep{devlin2018bert, radford2019language}.
+% Given the importance of model size, we ask: \textit{Is having better NLP models as easy as having larger models}? 
+
+
+% Past work has shown that increasingly larger models improve performance on downstream tasks~\citep{devlin2018bert, radford2018improving}.
+% However, our answer to the question ``Is getting better NLU performance as simple as increasing the capacity\footnotemark[1] of the current models?'' is ``unlikely'', as supported by the following observation: when keeping the optimization procedure fixed (number of optimization steps and learning rate), doubling the hidden size of the BERT-large model leads to worse performance.
+% This is illustrated by the results in Table~\ref{table:large_vs_extra_large} and the graphs in Fig.~\ref{fig:large_vs_extra_large}.
+% Given that we see no evidence of overfitting in Fig.~\ref{fig:large_vs_extra_large}, we hypothesize that this is similar to the model degradation problem shown by~\cite{resnet2016}, where they conclude that not all models are similarly easy to optimize.
+
+% This leads us to our second question: ``Is the existing capacity\footnotemark[1] of current BERT models used most efficiently?''
+% The answer here is a definite ``no''.
+% We show that our alternative model formulation, which we call ALBERT -- A Lite BERT --
+% achieves similar or better performance while having lower model capacity, and achieves significantly better performance as its capacity increases.
+
+% \footnotetext[1]{While it is unclear how to best compare model capacity across neural architectures, number of parameters is a useful coarse measure of capacity, especially if the architectures are similar.}
+
+% \begin{figure}[!htbp] 
+% \begin{subfigure}{.5\textwidth}
+%   \centering
+%   \includegraphics[width=.8\linewidth]{large_vs_extra_large_train}
+%   \label{fig:large_vs_extra_large_train}
+% \end{subfigure}%
+% \begin{subfigure}{.5\textwidth}
+%   \centering
+%   \includegraphics[width=.8\linewidth]{large_vs_extra_large_dev_accuracy}
+%   \label{fig:large_vs_extra_large_dev}
+% \end{subfigure}
+% \caption[[Caption for LOF]{Training loss (left) and dev masked LM accuracy (right) of BERT-large and BERT-xlarge (2x larger than BERT-large in terms of hidden size). The larger model has lower masked LM accuracy while showing no obvious sign of over-fitting.}
+% \label{fig:large_vs_extra_large}
+% \end{figure}
+
+
+An obstacle to answering this question is the memory limitations of available hardware.
+Given that current state-of-the-art models often have hundreds of millions or even billions of parameters, it is easy to hit these limitations as we try to scale our models.
+Training speed can also be significantly hampered in distributed training, as the communication overhead is directly proportional to the number of parameters in the model.
+% We also observe that simply growing the hidden size of a model such as \bertsize{large} \citep{devlin2018bert} can lead to worse performance.
+% Table \ref{table:large_vs_extra_large} and Fig.~\ref{fig:large_vs_extra_large} show a typical example, where we simply increase the hidden size of BERT-large to be 2x larger and get worse results with this BERT-xlarge model. 
+
+
+% \begin{table}[!htbp] 
+% \small
+% \centering
+% \begin{tabular}{l   | c c c}
+% Model  & Hidden Size & Parameters	 & RACE (Accuracy)	 \\
+% \hline
+%     \bertsize{large} \citep{devlin2018bert}      &1024 &334M    &72.0\% \\
+%     \hline 
+%     \bertsize{large} (ours)	        & 1024                          &334M	 &73.9\%\\
+%     \bertsize{xlarge} (ours)      & 2048              	&1270M	 &54.3\%\\
+%     %\hline
+% \end{tabular}
+% \caption{Increasing hidden size of BERT-large leads to worse performance on RACE.}
+% \label{table:large_vs_extra_large}
+% \vspace{-5pt}
+% \end{table}
+
+
+
+%\footnotetext{A sliding window smoothing is used on training loss to reduce noise from evaluating different batches.}
+
+
+Existing solutions to the aforementioned problems include model parallelization \citep{shazeer2018mesh,shoeybi2019megatronlm} and clever memory management \citep{chen2016training,gomez2017reversible}.
+These solutions address the memory limitation problem, but not the communication overhead.
+In this paper, we address all of the aforementioned problems, by designing A Lite BERT (ALBERT) architecture that has significantly fewer parameters than a traditional BERT architecture. 
+
+ALBERT incorporates two parameter reduction techniques that lift the major obstacles in scaling pre-trained models.
+The first one is a factorized embedding parameterization.
+By decomposing the large vocabulary embedding matrix into two small matrices, we separate the size of the hidden layers from the size of vocabulary embedding.
+This separation makes it easier to grow the hidden size without significantly increasing the parameter size of the vocabulary embeddings.
+The second technique is cross-layer parameter sharing.
+This technique prevents the parameter from growing with the depth of the network.
+Both techniques significantly reduce the number of parameters for BERT without seriously hurting performance, thus improving  parameter-efficiency.
+An ALBERT configuration similar to BERT-large has 18x fewer parameters and can be trained about 1.7x faster.
+The parameter reduction techniques also act as a form of regularization that stabilizes the training and helps with generalization. 
+
+To further improve the performance of ALBERT, we also introduce a self-supervised loss for sentence-order prediction (SOP). SOP primary focuses on inter-sentence coherence and is designed to address the ineffectiveness \citep{yang2019xlnet, liu2019roberta} of the next sentence prediction (NSP) loss proposed in the original \bert. 
+
+
+As a result of these design decisions, we are able to scale up to much larger ALBERT configurations that still have fewer parameters than BERT-large but achieve significantly better performance.
+We establish new state-of-the-art results on the well-known GLUE, SQuAD, and RACE benchmarks for natural language understanding.
+Specifically, we push the RACE accuracy to $89.4\%$, the GLUE benchmark to 89.4,  and the F1 score of SQuAD 2.0 to 92.2.
+
+% capacity reallocation \footnote{While it is unclear how to best compare model capacity across neural architectures, number of parameters is a useful coarse measure of capacity, especially if the architectures are similar.}
+
+% of the parameter reduction techniques and the new self-supervised loss

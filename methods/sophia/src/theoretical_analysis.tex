@@ -1,0 +1,32 @@
+\section{Theoretical Analysis}\label{sec:theoretical_analysis}
+
+
+\newcommand{\sub}[1]{_{[#1]}}
+
+This section provides runtime bounds for the deterministic version of Sophia that does not depend on the local condition number (the ratio between maximum and minimum curvature at the local minimum) and the worst-case curvature (that is, the smoothness parameter), demonstrating the advantage of Sophia in adapting to heterogeneous curvatures across parameter dimensions.   
+
+We start with standard assumptions on the differentiability and uniqueness of the minimizer.
+\begin{assumption}\label{assum:existence_local_minimizer_w_hessian_pd}
+$L:\R^d\to\R$ is a twice continuously differentiable, strictly convex function with $\theta^*$ being its minimizer. For convenience, we denote $\lambda_{\min}(\nabla^2 L(\theta^*))$ by $\mu$.
+\end{assumption}
+The following assumptions state that the Hessian has a certain form of continuity---within a neighborhood of size $R$, the ratio between the Hessians, $\nabla^2 L(\theta')^{-1} \nabla^2 L(\theta)$, is assumed to be bounded by a constant 2. 
+\begin{assumption}\label{assum:hessian_multiplicative_lipschitz}
+	There exists a constant $R>0$, such that 
+	\begin{align}
+		\forall \theta,\theta'\in \R^d, \norm{\theta-\theta'}_2\le R \implies \norm{\nabla^2 L(\theta')^{-1} \nabla^2 L(\theta)}_2\le 2
+	\end{align}
+\end{assumption}
+
+We analyze the convergence rate of the deterministic version of the Sophia on convex functions,  
+\begin{align}\label{eq:clipped_newton_for_convex_loss}
+	\theta_{t+1} = \theta_t - \eta V_t^\top\clip(V_t(\nabla^2L(\theta_t))^{-1}\nabla L(\theta_t),\rho),
+\end{align}
+where $\nabla^2 L(\theta_t) = V_t^\top \Sigma_t V_t$ is an eigendecomposition of $\nabla^2 L(\theta_t)$. Here, we use the full Hessian as the pre-conditioner because the diagonal Hessian pre-conditioner cannot always work for general functions which may not have any alignment with the natural coordinate system. Moreover, the  matrix $V_t$ transforms $(\nabla^2L(\theta_t))^{-1}\nabla L(\theta_t)$ into eigenspace and thus the clipping can be done element-wise in the eigenspace. We do not need the max between Hessian and $\epsilon$ in the original version of Sophia because the Hessian is always PSD for convex functions. Finally, the matrix $V_t^\top$ transforms the update back to the original coordinate system for the parameter update. 
+
+\begin{theorem}\label{thm:convex_main}
+Under \Cref{assum:existence_local_minimizer_w_hessian_pd} and \Cref{assum:hessian_multiplicative_lipschitz},  let $\eta=1/2,\rho = \frac{R}{2\sqrt{d}}$, 
+the update in~\Cref{eq:clipped_newton_for_convex_loss} reaches a loss at most $\epsilon$ in $
+	T\lesssim d\cdot \frac{ L(\theta_0)-\min L}{\mu R^2} + \ln \frac{\mu R^2}{32d\eps}
+	$ steps. 
+\end{theorem}	
+The first term in the runtime bound is a burn-in time before reaching a local region, where the error decays exponentially fast so that the runtime bound is logarithmic in $1/\epsilon$ as the second term in the runtime bound shows. We remark that the bound does not depend on the condition number (the ratio between the maximum and minimum eigenvalue of Hessian), as opposed to the typical dependency on the maximum eigenvalue of the Hessian (or the smoothness parameter) in standard analysis of gradient descent in convex optimization~\citep{boyd2004convex}. Moreover, even on simple quadratic functions, the convergence rate of simplified Adam (SignGD) depends on the condition number (Appendix~\ref{sec:proofs:lowbound}). This demonstrates the advantage of Sophia in adapting to heterogeneous curvatures across parameter dimensions.

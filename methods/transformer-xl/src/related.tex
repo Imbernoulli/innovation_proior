@@ -1,0 +1,17 @@
+\section{Related Work}
+In the last few years, the field of language modeling has witnessed many significant advances, including but not limited to devising novel architectures to better encode the context~\citep{bengio2003neural,mikolov2010recurrent,
+% zilly2016recurrent,krause2016multiplicative,grave2016improving,dauphin2016language,chung2016hierarchical,kalchbrenner2016neural,
+merity2016pointer,al2018character}, improving regularization and optimization algorithms~\cite{gal2016theoretically}
+% zaremba2014recurrent,inan2016tying,press2016using,merity2017regularizing,gal2016theoretically}
+, speeding up the Softmax computation~\citep{grave2016efficient}
+% morin2005hierarchical,kuchaiev2017factorization,jozefowicz2016exploring
+, and enriching the output distribution family~\citep{yang2017breaking}.
+% ,kanai2018sigsoftmax
+
+To capture the long-range context in language modeling, a line of work directly feeds a representation of the wider context into the network as an additional input.
+Existing works range from ones where context representations are manually defined~\citep{mikolov2012context,ji2015document,wang2015larger} to others that rely on document-level topics learned from data~\citep{dieng2016topicrnn,wang2017topic}.
+
+More broadly, in generic sequence modeling, how to capture long-term dependency has been a long-standing research problem.
+From this perspective, since the ubiquitous adaption of LSTM, many efforts have been spent on relieving the vanishing gradient problem, including better initialization~\citep{le2015simple}, additional loss signal~\citep{trinh2018learning}, augmented memory structure~\citep{ke2018sparse} and others that modify the internal architecture of RNNs to ease the optimization~\cite{wu2016multiplicative,li2018independently}.
+% mikolov2014learning,koutnik2014clockwork
+Different from them, our work is based on the Transformer architecture and shows that language modeling as a real-world task benefits from the ability to learn longer-term dependency.

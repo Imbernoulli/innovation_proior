@@ -1,0 +1,233 @@
+\appendix
+
+\counterwithin{figure}{section}
+\counterwithin{table}{section}
+
+\section{Appendix}
+
+\subsection{Experimental details}
+\label{sec:exp_details}
+
+{\noindent \bf Datasets details.} 
+We present additional details and statistics over the datasets used for training in Table~\ref{tab:datasets}. Notice that for some datasets, each sub-source or sample has its own license and we then refer the reader to the respective dataset details for more information. 
+We create our datasets splits as followed. For Common Voice, we randomly sample 99.5\% of the dataset for train, 0.25\% for valid and the rest for test splits. Similarly, we sample 98\% of the clean segments from DNS Challenge 4 for train, 1\% for valid and 1\% for test.
+For AudioSet, we use the unbalanced train segments as training data and randomly selected half of the eval segments as validation set and the other half as test set. We follow the same procedure for FSD50K using the dev set for training and splitting the eval set between validation and test. Finally for the Jamendo dataset, we randomly take 96\% of the artists and their corresponding tracks for train, 2\% for valid and 2\% for test, hence there is no artists overlap in the different sets.
+
+{\noindent \bf SoundStream model.}
+We additionally re-implemented SoundStream. We follow the implementation details in ~\citet{zeghidour2021soundstream} to develop our own SoundStream version as the original implementation is not open sourced.  
+We implement Residual Vector Quantization with k-means initialization, exponential moving average updates and random restart as pointed by the original implementation.
+For the wave-based discriminator, we follow the details provided in ~\citet{zeghidour2021soundstream} and refer to the original Multi-Scale Discriminator implementation proposed in~\citet{melgan} for additional information. We use LeakyReLU as non-linear activation function and following \citet{hifigan}, we use spectral normalization for the original resolution and weight normalization for other resolutions. For the STFT-based discriminator, we experimented with multiple normalization methods and found that using LayerNorm~\citep{ba2016layer} was the only one that prevented the discriminator from diverging. We used LeakyReLU as non-linear activation function.
+Finally, training hyper parameters are not shared either so we use the same parameters as for our $\encodec$ model.  
+
+\begin{table}[t!]
+  \caption{Datasets description. License with asterisk annotation * imply that the specific license varies across the dataset and is specific to each sample.
+  \label{tab:datasets}}
+  \centering
+  \resizebox{0.9\textwidth}{!}{
+  \begin{tabular}{llrrrl}
+    \toprule
+    Dataset & Audio domain & Sampling rate & Channels & Duration & License\\
+    \midrule
+    Common Voice 7.0 & Speech & 48 kHz & 1 & 9,096 h & CC-0\\
+    DNS Challenge 4 (speech) & Speech & 48 kHz & 1 & 2,425 h & Multiples*\\
+    AudioSet & General audio & 48 kHz & 2 & 4,989 h & CC BY 4.0*\\
+    FSD50K & General audio & 44.1 kHz & 1 & 108 h & CC*\\
+    Jamendo & Music & multiples & 2 & 919 h & CC*\\
+    \bottomrule
+  \end{tabular}}
+\end{table}
+
+
+\subsection{Alternative quantizers}
+\label{sec:abb_quant}
+
+\subsubsection{DiffQ Quantizer}
+\label{model:diffq}
+\textbf{Pseudo quantization noise.}
+We perform scalar quantization of the latent representation. As quantization is non differentiable,
+we use properly scaled additive independent noise, a.k.a pseudo quantization noise, at train time to simulate it. This approach was first use for analog-to-digital converters design~\citep{widrow1996statistical}, then for image compression~\citep{balle2017end},
+and finally by the DiffQ model compression method~\citep{defossez2021differentiable} with a differentiable bandwidth estimate. 
+We extend the DiffQ approach for latent space quantization, adding
+support for streamable 
+% causal 
+rescaling, proper sparsity, and improved prior coding. Formally, we introduce 
+a learnt parameter $B\in \mathbb{R}^D$ (with $D$ the dimension of the latent space) such that $B^{(i)}$ represents the number of bits to use of the $i$-th dimension. 
+In practice $B$ is parameterized as $B = B_{\max} \cdot \mathrm{sigmoid}(\alpha v)$, with $B_{\max} = 15$, and the $\alpha = 5$ factor is used for boosting the learning rate of $v$, the learnt parameter. We then define the pseudo quantized representation $\vz_{q,\mathrm{train}}$ used at train time,
+\begin{equation}
+    \label{eq:dq_train}
+    \vz_{q,\mathrm{train}} = \mathrm{clamp}(\vz, m - L\cdot\sigma, m + L\cdot\sigma) + L\cdot\sigma\cdot  \frac{\mathcal{U}[-1, 1]}{2^B},
+\end{equation}
+with $m$ (resp. $\sigma$) the mean (resp. standard deviation) of $z$ along the time and batch axis, and $\mathcal{U}[-1, 1]$ uniform i.i.d noise.
+The limit $L$ is chosen so that when $B$ goes to 0, the noise covers most of the range of values accessible to a Gaussian variable of variance $\sigma$.
+In order to prevent outlier values, we clamp the input $\vz$ to this expected range of values. If $L$ is too large,
+the dynamic range of the quantization will be poorly used. If $L$ is too low, many values will get clamped and lose gradients. In practice we choose $L = 3$, which verifies that values are not clamped 99.5\% of the time (against 99.8\% if the input were gaussian).
+In order to learn $B$, we approximate at train time the bandwidth used by the model by $w_\mathrm{diffq} = T' \sum_{i=1}^D B^{(i)} / d$ with $T'$ the number of latent time steps, $d$ the duration of the sample,
+and add to the training loss a penalty term of the form $\lambda w_\mathrm{diffq}$, as long as $w_\mathrm{diffq}$ is over a given target, as used in Section~\ref{model:losses}.
+
+\textbf{Test time quantization. }At validation and test time, we replace the batch-level statistic with an exponential moving average with a decay of $0.9$ computed over the train set,
+similar to batch norm~\citep{batchnorm}.
+We first normalize and clamp $\vz$ to the segment $[0, 1]$ as $u = \mathrm{clamp}((L + \sigma^{-1} (\vz - m)) / 2L, 0 , 1)$ and define the number of quantized
+levels $N_B = \mathrm{round}(2^B)$ and the quantized index as
+\begin{equation}
+    \label{eq:quant_index}
+    \vi = \min\left[\mathrm{floor}(N_B \cdot u), N_B - 1\right] \in [0..N_B - 1],
+\end{equation}
+with the minimum taken to avoid the edge case $u = 1$. We know we can code each entry in $\vi$ on at most $\log_2(N_B)$ bits.
+The quantized latent $\vz_q$ is finally defined as
+    $\vz_q = m + L \sigma \left(2 \frac{\vi + 0.5}{N_B} - 1\right)$.
+% Remember that $m$ and $\sigma$ are frozen into the model as the exponential moving average result, so that the method is causal at test time.
+
+\textbf{Sparsity. }
+We want to allow $B$ to go to 0, however additive noise fails to remove all information contained in the latent in that case.
+Indeed, if $\vz < m$ for instance, then even after adding the largest possible amount of noise, $\vz_{q, \mathrm{train}}$ is still biased
+towards values smaller than $m$. In order to remove all information about $\vz$ from $\vz_{q,\mathrm{train}}$, the scale of the noise
+relative to the scale of the signal must go to infinity. This is achieved by scaling down $\vz$ by a factor $\min(B, 1)$
+in \eqref{eq:dq_train}, while scaling down the additive noise only by a factor $\sqrt{\min(B, 1)}$. Thus, the decoder
+cannot invert the downscaling of $\vz$ without blowing up the noise. In the limit of $B \rightarrow 0$, we recover a sparse representation.
+
+% \textbf{Improved prior and multi-bandwidth.}
+% The quantized code can easily be coded over $\log_2(N_B)$ bits, assuming a uniform prior. A small gain is obtained by instead using a discretized gaussian prior 
+% of mean $m$ and variance $\sigma$ at test time and using arithmetic coding.
+% Arithmetic coding is convenient for the streaming setup as incomplete bytes from coding one latent time step can be be used to code the next one, allowing
+% for near optimal coding at the code of one overall stride of latency. When using this prior, there is a mismatch between the train and test bandwidth. We account
+% for that by using the $\lambda w_{\mathrm{diffq}}$ term only when the effective test time bandwidth is over the target.
+% Finally, we simply support multi-bandwidths quantization by training one set of $B$ parameters per target bandwidth.
+
+% When using the DiffQ quantizer from Section~\ref{model:diffq} or the Gumbel-softmax one (Section~\ref{sec:model:gs}), we leverage the differentiable bandwidth estimator $w$ given by either method. Given a target bandwidth $w_\mathrm{target}$,
+% we add a bandwidth penalty term $\ell_w(w) = \max(w, w_\mathrm{target})$.
+
+\subsubsection{Gumbel softmax quantizer}
+\label{sec:model:gs}
+
+We introduce a second fully differentiable vector quantizer
+composed of $N_C$ codebooks each with $\Omega$ entries. The $i$-th codebook is composed of a set of centroids $\mc_i\in \mathbb{R}^{\Omega\times D}$, a logit bias $b_i\in \mathbb{R}^{\Omega}$, and a learnt prior logit $l_i \in \mathbb{R}^{\Omega}$. Assuming for simplicity a latent vector for the $j$-th time step $\vz_j \in\mathbb{R}^D$, we define a probability distribution over each codebook entries as $q_i(z) = \mathrm{softmax}(\mc_i \vz_j + b_i)$. We then sample from the corresponding gumbel-softmax~\citep{jang2016categorical} with a temperature $\tau = 0.5$. This gives
+us a differentiable approximately 1-hot vector over the codebooks, i.e., noting $\mathrm{GS}$ the gumbel-softmax,
+\begin{equation}
+    \vz_{q, \mathrm{train}} = \sum_{i=1}^{N_C} \mathrm{GS}(\log(q_i(\vz)), \tau)^T \mc_i.
+\end{equation}
+At test time, we replace the gumbel-softmax with a sampling from the distribution $q_i$. We define for all $i$, $p_i = \mathrm{softmax}(l_i)$ the prior
+distribution over the codebooks entries which is used for coding the quantized value $\vz_q$ with an arithmetic coder. 
+We can both train the prior and minimize the bandwidth with a single 
+loss term given by the cross entropy between the prior $p_i$ and the posterior $q_i(\vz)$, i.e. the differentiable bandwidth estimate for this method is given by $w_\mathrm{gs} = \sum_{i=1}^{N_C}  \sum_{k=1}^{\Omega} -q_i(\vz) \log(p_i)$.
+
+% \subsection{Model Details}
+% \label{sec:model_details}
+% {\noindent \bf MS-STFT Discriminator.} 
+% The MS-STFT Discriminator model architecture is detailed in Figure~\ref{fig:dics}. We use LeakyReLU as a non-linear activation function and apply weight normalization~\cite{salimans2016weight} to our discriminator network.
+% For our discriminator study, we use the MSD and STFT implementation specified in~\cite{zeghidour2021soundstream}, and the MPD architecture detailed in~\cite{hifigan}.
+% with the difference that we set the periods to [1, 2, 3, 4, 5] on 24 kHz audio. We noticed that this set of periods greatly improves the audio reconstruction quality compared to the original periods of [2, 3, 5, 7, 11] that appears to be better suited for 48 kHz.
+
+
+\subsection{Additional Results}
+\label{sec:add_res}
+
+
+{\noindent \bf Comparing to SoundStream.}
+For fair evaluation, we also compare \encodec to our reimplementation of SoundStream~\citep{zeghidour2021soundstream}. For which, the quantizer corresponds to RVQ in and the discriminator corresponds to STFTD+MSD. Results are reported in Table~\ref{tab:comp}. The results of our SoundStream implementation are slightly worse than \encodec using DiffQ quantizer. However, when considering the RVQ as the latent quantizer, \encodec is superior to the SoundStream model. Both \encodec and SoundStream methods are significantly better than Opus and EVS at 6.0kbps.
+
+\begin{table}[t!]
+  \caption{A comparison between \encodec using either DiffQ or RVQ as latent quantizers against our implementation of the SoundStream model at 3kbps. We additionally include the results of Opus and EVS at 6.0kbps for reference.\label{tab:comp}}
+  \centering
+  \begin{tabular}{lcc}
+    \toprule
+    Model  & Bandwidth & MUSHRA \\
+    \midrule
+    Reference        & -   & 96.1\pmr{1.41}\\
+    \midrule
+    Opus             & 6.0 & 21.1\pmr{2.62}\\
+    EVS              & 6.0 & 62.9\pmr{2.18}\\
+    SoundStream      & 3.0 & 71.8\pmr{1.51}\\
+    \encodec (DiffQ) & 3.0 & 72.3\pmr{1.18}\\
+    \encodec (RVQ)   & 3.0 & \textbf{76.8\pmr{1.31}}\\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+{\noindent \bf The effect of the model architecture.} 
+We investigate the impact of different architectural decisions of our $\encodec$ model and we present our results with objective metrics and real-time factor in Table~\ref{tab:arch}. For all models, we consider the streamable setup and our reference $\encodec$ base model has the number of channels $C$ set to 32 and a single residual unit. The real-time factor reported here is defined as the ratio between the duration of the input audio and the processing time needed for encoding (respectively decoding) it. We profiled streamable multi-target 24 kHz models during inference at 6 kbps on a single thread of a MacBook Pro 2019 CPU. 
+First, we validate that the selected number of channels provide good trade offs in terms of perceived quality and inference speed. We observe that increasing the capacity of the model only marginally affects the scores on objective metrics while it has a high impact on the real-time factor. 
+The results also demonstrate that presence of LSTM improves the SI-SNR and the final reconstruction quality, at the detriment of the real-time factor. We also experiment with increasing the number of residual units instead of relying on a LSTM in our architecture. To do so, we use 3 Residual Units and we double the dilation used in the first convolutional layer of the residual unit for each subsequent unit. We observe that using Residual Units has more impact on the real-time factor and we note a small degradation of the SI-SNR compared to the LSTM-based version. 
+
+
+\begin{table}[t!]
+  \caption{Model architecture Analysis. We explore variations of our architecture including the impact of the number of Residual Units (ResUnits), the sequence modeling with LSTM, the number of channels (C) on objective metrics and real-time factor (RTF greater than 1 is faster than real time).
+  \label{tab:arch}}
+  \centering
+  \begin{tabular}{lrrcc}
+    \toprule
+    Model           & RTF Enc & RTF Dec & SI-SNR & ViSQOL \\
+    \midrule
+    $\encodec$ base              & 9.8 & 10.4 & 6.67 & 4.35\\
+    \midrule
+    Channels = 16                & 26.0 & 25.7 & 6.40 & 4.32\\
+    Channels = 64                &  1.3 &  3.1 & 6.70 & 4.38\\
+    norm = None                  & 10.1 & 10.4 & 6.45 & 4.29\\
+    LSTM = 0                     & 15.0 & 14.6 & 6.40 & 4.35\\
+    Residual Layer = 3, LSTM = 0 & 6.0 & 7.3 & 6.32 & 4.35\\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+
+{\noindent \bf The effect of the balancer.}
+Lastly, we present results evaluating the impact of the balancer. In which, we train the $\encodec$ model considering various levels of balancing the loss. For this set of experiments we use the DiffQ quantizer other RVQ. All models were trained on Jamando music dataset (see Table~\ref{tab:balancer}). Results suggest the balancer significantly stabilizes the training process. This is especially useful while considering the different terms in the objective together where each term operates at a different scale. Following the balancer approach significantly reduce the effort needed for tuning the objective coefficients (i.e., $\lambda_t$, $\lambda_f$, $\lambda_g$, $\lambda_{feat}$). We demonstrate that the use of the balancer shows no degradation compared to an identified combination of coefficients. 
+
+
+\begin{table}[t!]
+    \centering
+    \caption{ViSQOL and SI-SNR results for $\encodec$ using DiffQ considering various coefficients to balance the overall objective. All models were trained using Jamando music dataset.}
+    \label{tab:balancer}
+    \begin{tabular}{lllll|rr}
+        \toprule
+        $\lambda_t$ & $\lambda_f$ & $\lambda_{g}$ & $\lambda_{feat}$ & Balancer & SI-SNR & ViSQOL \\
+        \midrule
+        1 & 1 & 1 & 1 & \ding{51} & \bf 10.32 & \bf 4.16\\
+        1 & 1 & 1 & 1 & \ding{55} & 6.16  & 3.89\\
+        \midrule
+        1 & 1 & 2 & 1 & \ding{51} & \bf 10.08 & \bf 4.12\\
+        1 & 1 & 2 & 1 & \ding{55} & 5.01  & 3.77\\
+        \midrule
+        1 & 2 & 2 & 1 & \ding{51} & \bf 10.06 & \bf 4.17\\
+        1 & 2 & 2 & 1 & \ding{55} & 3.84  & 3.67\\
+        \midrule
+        1 & 2 & 4 & 1 & \ding{51} & \bf 9.93   & \bf 4.17\\
+        1 & 2 & 4 & 1 & \ding{55} & 1.72  & 3.52\\
+        \midrule
+        1 & 2 & 100 & 1 & \ding{51} & \bf 8.41 & \bf 4.05\\
+        1 & 2 & 100 & 1 & \ding{55} & -35.83& 2.82\\
+        \midrule
+        2 & 1 & 1 & 4 & \ding{51} & \bf 10.53 & \bf 4.06\\
+        2 & 1 & 1 & 4 & \ding{55} & 7.66 & 4.03\\
+        \midrule
+        2 & 2 & 2 & 4 & \ding{51} & \bf 10.19 & \bf 4.13\\
+        2 & 2 & 2 & 4 & \ding{55} & 7.16 & 3.98\\
+        \midrule
+        2 & 2 & 10 & 4 & \ding{51} & \bf 9.82 & \bf 4.11\\
+        2 & 2 & 10 & 4 & \ding{55} & 3.98 & 3.66\\
+        \midrule
+        2 & 2 & 100 & 4 & \ding{51} &  \bf 8.52 & \bf 4.03\\
+        2 & 2 & 100 & 4 & \ding{55} & -34.31 & 2.91\\
+        \midrule
+        10 & 1 & 1 & 1 & \ding{51} & \bf 10.53 & 3.65\\
+        10 & 1 & 1 & 1 & \ding{55} & 8.16 & \bf 4.00\\
+        \midrule
+        10 & 1 & 4 & 1 & \ding{51} & \bf 10.72 & 3.62\\
+        10 & 1 & 4 & 1 & \ding{55} &  5.99 & \bf 3.74\\
+        \midrule
+        10 & 1 & 4 & 2 & \ding{51} & \bf 10.71 & 3.73\\
+        10 & 1 & 4 & 2 & \ding{55} & 7.03 & \bf 3.88\\
+        \midrule
+        10 & 2 & 100 & 2 & \ding{51} & \bf 9.23 & \bf 4.07\\
+        10 & 2 & 100 & 2 & \ding{55} & -33.78 & 2.85\\
+        \midrule
+        10 & 2 & 100 & 4 & \ding{51} & \bf 9.22 & \bf 4.09\\
+        10 & 2 & 100 & 4 & \ding{55} & -16.39 & 2.95\\
+        \bottomrule
+    \end{tabular}
+\end{table}
+\subsection{Societal impact}
+\label{societal_impact}
+
+The majority of the internet traffic is represented by audio and video streams (82\% in 2021 according to~\citet{internet_traffic_cisco}). This share of content is boosted by user-generated content, phone and video calls and by the development of HD music streaming and video streaming services. Compression methods are used to reduce the storage requirements and network bandwidth used to serve this content. Furthermore, the growing adoption of wearable devices contributes to making efficient compression an increasingly important problem. 
+
+Different audio codecs, including Opus and EVS, have been developed and widely adopted over the past years. Those codecs support audio coding at low latency with high audio quality at low to medium bitrates (in the range of 12 to 24 kbps) but the audio quality deteriorates at very low bitrates (eg. 3 kbps) on non-speech audio. Addressing very low bitrate compression with high fidelity remains an essential challenge to solve as very low bitrate codecs enable communication and improve experiences such as videoconferencing or streaming content even with a poor internet connection and therefore allows the internet services to become more inclusive. While further work needs to be done, we hope that sharing the result of this work to the broader community can further contribute to this direction.

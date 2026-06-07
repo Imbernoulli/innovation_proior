@@ -1,0 +1,123 @@
+\section{Experiments} \label{sec:exp}
+Objective evaluation and comparison of generative models, specially across model families, remains a challenge \cite{Theis2016a}. Current image generation models trade-off sample quality and diversity (or precision vs recall \cite{sajjadi2018assessing}). 
+In this section, we present quantitative and qualitative results of our model trained on ImageNet $256\times256$.
+Sample quality is indeed high and sharp, across several representative classes as can be seen in the class conditional samples provided in \figref{fig:diversity}. In terms of diversity, we provide samples from our model juxtaposed with those of BigGAN-deep \cite{biggan}, the state of the art GAN model \footnote{Samples are taken from BigGAN's colab notebook in TensorFlow hub:\\ \texttt{\url{https://tfhub.dev/deepmind/biggan-deep-256/1}}} in  \figref{fig:diversity}. As can be seen in these side-by-side comparisons, VQ-VAE is able to provide samples of comparable fidelity and higher diversity.
+
+\begin{figure}[p]
+\centering
+\includegraphics[width=\textwidth]{samples_jpg/samples_grid_t1_1.jpeg}
+\caption{Class conditional random samples. Classes from the top row are: 108 sea anemone, 109 brain coral, 114 slug, 11 goldfinch, 130 flamingo, 141 redshank, 154 Pekinese, 157 papillon, 97 drake, and 28 spotted salamander.}
+\label{fig:im-samples}
+\end{figure}
+
+\begin{figure}[hp!]
+    \centering
+
+    \includegraphics[width=0.49\textwidth]{samples_jpg/class_000_tench_4x4.jpeg}
+    \includegraphics[width=0.49\textwidth]{samples_jpg/biggan_000_tench_4x4_t1_0.jpeg}    
+    \includegraphics[width=0.49\textwidth]{samples_jpg/class_001_goldfish_4x4.jpeg}
+    \includegraphics[width=0.49\textwidth]{samples_jpg/biggan_class_001_goldfish_4x4_t1.jpeg}
+
+
+    \includegraphics[width=0.49\textwidth]{samples_jpg/class_009_ostrich_4x4.jpeg}
+    \includegraphics[width=0.49\textwidth]{samples_jpg/biggan_class_009_ostrich_4x4_t1.jpeg}
+    \parbox{0.49\textwidth}{\center \textbf{VQ-VAE (Proposed)}}
+    \parbox{0.49\textwidth}{\center \textbf{BigGAN deep}}
+
+    \caption{Sample diversity comparison for the proposed method and BigGan Deep for Tinca-Tinca (1st ImageNet class) and Ostrich (10th ImageNet class). BigGAN samples were taken with the truncation level $1.0$, to yield its maximum diversity. There are several kinds of samples such as top view of the fish or different kinds of poses such as a close up ostrich absent from BigGAN's samples. Please zoom into the pdf version for more details and refer to the Supplementary material for diversity comparison on more classes.
+    }
+    \label{fig:diversity}
+\end{figure}
+
+
+\subsection{Modeling High-Resolution Face Images}
+To further assess the effectiveness of our multi-scale approach for capturing extremely long range dependencies in the data, we train a three level hierarchical model over the FFHQ dataset \cite{FFHQ} at $1024\times1024$ resolution. This dataset consists of 70000 high-quality human portraits with a considerable diversity in gender, skin colour, age, poses and attires. Although modeling faces is generally considered less difficult compared to ImageNet, at such a high resolution there are also unique modeling challenges that can probe generative models in interesting ways. For example, the symmetries that exist in faces require models capable of capturing long range dependencies: a model with restricted receptive field may choose plausible colours for each eye separately, but can miss the strong correlation between the two eyes that lie several hundred pixels apart from one another, yielding samples with mismatching eye colours. 
+
+\begin{figure}[hp!]
+    \centering
+    \includegraphics[width=0.49\textwidth]{samples_jpg/ffhq/334_3.jpeg}
+    \includegraphics[width=0.49\textwidth]{samples_jpg/ffhq/328_2.jpeg}
+    \includegraphics[width=0.49\textwidth]{samples_jpg/ffhq/289_2.jpeg}
+    \includegraphics[width=0.49\textwidth]{samples_jpg/ffhq/more/348_3.jpeg}
+    \includegraphics[width=0.49\textwidth]{samples_jpg/ffhq/more/73_1.jpeg}
+    \includegraphics[width=0.49\textwidth]{samples_jpg/ffhq/more/182_1.jpeg}
+
+   
+    \label{fig:ffhq_main}
+    \caption{Representative samples from the three level hierarchical model trained on FFHQ-$1024 \times 1024$. The model generates realistic looking faces that respect long-range dependencies such as matching eye colour or symmetric facial features, while covering lower density modes of the dataset (e.g., green hair). Please refer to the supplementary material for more samples, including full resolution samples.}
+\end{figure}
+
+\clearpage
+
+
+\subsection{Quantitative Evaluation}
+In this section, we report the results of our quantitative evaluations based on several metrics aiming to measure the quality as well as diversity of our samples.
+
+\subsubsection{Negative Log-Likelihood and Reconstruction Error}
+One of the chief motivations to use likelihood based generative models is that negative log likelihood (NLL) on the test and training sets give an objective measure for generalization and allow us to monitor for over-fitting. We emphasize that other commonly used performance metrics such as FID and Inception Score completely ignore the issue of generalization; a model that simply memorizes the training data can obtain a perfect score on these metrics. The same issue also applies to some recently proposed metrics such as Precision-Recall \cite{sajjadi2018assessing, NvidiaPR} and Classification Accuracy Scores \cite{ravuri2019classification}. These sample-based metrics only provide a proxy for the quality and diversity of samples, but are oblivious to generalization to \emph{held-out} images.
+
+\par
+The NLL values for our top and bottom priors, reported in \figref{tbl:nll-imnet},  are close for training and validation, indicating that neither of these networks overfit.  We note that these NLL values are only comparable between prior models that use the same pretrained VQ-VAE encoder and decoder. 
+
+\begin{table}[ht!]
+\centering
+\begin{tabular}{@{}l|cccc@{}}
+    &  Train NLL &  Validation NLL  & Train MSE & Validation MSE\\
+\hline    
+Top prior & $3.40$ & $3.41$ & - & -\\
+Bottom prior & $3.45$ & $3.45$ & - & -\\
+\hline
+VQ Decoder & - & - & 0.0047 & 0.0050 \\
+\bottomrule
+\end{tabular}
+\caption{Train and validation negative log-likelihood (NLL) for top and bottom prior measured by encoding train and validation set resp., as well as Mean Squared Error for train and validation set. The small difference in both NLL and MSE suggests that neither the prior network nor the VQ-VAE overfit.}
+\label{tbl:nll-imnet}
+\end{table}
+
+
+\subsubsection{Precision - Recall Metric}
+Precision and Recall metrics are proposed as an alternative to FID and Inception score for evaluating the performance of GANs \cite{sajjadi2018assessing, NvidiaPR}. These metrics aim to explicitly quantify the trade off between coverage (recall) and quality (precision). We compare samples from our model to those obtained from BigGAN- deep using the improved version of precision-recall with the same procedure outlined in \cite{NvidiaPR} for all 1000 classes in ImageNet. 
+
+\figref{fig:pr} shows the Precision-Recall results for VQ-VAE and BigGan with the classifier based rejection sampling ('critic', see section \ref{critic}) for various rejection rates and the BigGan-deep results for different levels of truncation. VQ-VAE results in slightly lower levels of precision, but higher values for recall.
+
+\begin{figure*}[ht!]
+\centering
+\begin{subfigure}[t]{0.49\textwidth}
+    \includegraphics[width=\textwidth]{figures/fid2.png}
+    \caption{Inception Scores \cite{IS} (IS) and Fr\'echet Inception Distance scores (FID) \cite{FID}.}
+    \label{fig:fid}
+\end{subfigure}
+\begin{subfigure}[t]{0.49\textwidth}
+    \includegraphics[width=\textwidth]{figures/pr2.png}
+    \caption{Precision - Recall metrics \cite{sajjadi2018assessing, NvidiaPR}.}
+    \label{fig:pr}
+\end{subfigure}
+\caption{Quantitative Evaluation of Diversity-Quality trade-off with FID/IS and Precision/Recall.}
+\end{figure*}
+
+\subsection{Classification Accuracy Score}
+ We also evaluate our method using the recently proposed Classification Accuracy Score (CAS) \cite{ravuri2019classification}, which requires training an ImageNet classifier only on samples from the candidate model, but then evaluates its classification accuracy on real images from the test set, thus measuring sample quality and diversity. The result of our evaluation with this metric are reported in \tblref{tbl:cas}. In the case of VQ-VAE, the ImageNet classifier is only trained on samples, which lack high frequency signal, noise, etc. (due to compression). Evaluating the classifier on VQ-VAE reconstructions of the test images closes the ``domain gap'' and improves the CAS score without need for retraining the classifier.
+ 
+\begin{table}[ht]
+\centering
+\begin{tabular}{@{}l|cc@{}}
+    &  Top-1 Accuracy &  Top-5 Accuracy  \\
+\hline    
+BigGAN deep & 42.65 & 65.92 \\
+VQ-VAE      & 54.83 & 77.59 \\
+VQ-VAE after reconstructing      & 58.74 & 80.98 \\
+Real data      & 73.09 & 91.47 \\
+\bottomrule
+\end{tabular}
+\caption{Classification Accuracy Score (CAS) \cite{ravuri2019classification} for the real dataset, BigGAN-deep and our model.}
+\label{tbl:cas}
+\end{table}
+
+
+
+\subsubsection{FID and Inception Score}\label{sec:fid}
+
+
+The two most common metrics for comparing GANs are Inception Score \cite{IS} and Fr\'echet Inception Distance (FID) \cite{FID}. Although these metrics have several drawbacks \cite{barratt2018note, sajjadi2018assessing, NvidiaPR} and enhanced metrics such as the ones presented in the previous section may prove more useful, we report our results in \figref{fig:fid}. We use the classifier-based rejection sampling as a way of trading off diversity with quality (Section \ref{critic}). For VQ-VAE this improves both IS and FID scores, with the FID going from roughly $\sim30$ to $\sim10$. For BigGan-deep the rejection sampling (referred to as critic) works better than the truncation method proposed in the BigGAN paper \cite{biggan}. We observe that the inception classifier is quite sensitive to the slight blurriness or other perturbations introduced in the VQ-VAE reconstructions, as shown by an FID $\sim10$ instead of $\sim2$ when simply compressing the originals. For this reason, we also compute the FID between VQ-VAE samples and the reconstructions (which we denote as FID*) showing that the inception network statistics are much closer to real images data than what the FID would otherwise suggest.
+
+

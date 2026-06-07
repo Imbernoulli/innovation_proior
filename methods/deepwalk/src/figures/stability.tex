@@ -1,0 +1,99 @@
+\begin{figure*}[t!]
+	\centering	
+		% first block, stability over dimensions
+		\begin{subfigure}[b]{\columnwidth}	
+			\begin{subfigure}[b]{\columnwidth}
+    		    \begin{subfigure}[b]{0.5\columnwidth}    
+    		    		\centering
+    	            \includegraphics[width=\columnwidth]{figures/stability/flickr_training_vs_dimensions}%
+			        \renewcommand\thesubfigure{\alph{subfigure}1}%  	                
+	                \caption{\flickr, $\gamma=30$}    	            
+    	            \label{fig:stability_flickr-dims_vs_training}
+	    	    \end{subfigure}%
+	        \begin{subfigure}[b]{0.5\columnwidth}
+    		    		\centering	        
+	                \includegraphics[width=\columnwidth]{figures/stability/flickr_walks_per_node_vs_dimensions}%
+				    \addtocounter{subfigure}{-1}%
+			        \renewcommand\thesubfigure{\alph{subfigure}2}%  	                
+	                \caption{\flickr, $T_R=0.05$}
+	                \label{fig:stability_flickr-dims_vs_passes}
+	        \end{subfigure}%  	        
+%        \addtocounter{subfigure}{-1}
+%        \renewcommand\thesubfigure{\alph{subfigure}1}		  
+%        \caption{flickr}
+%        \label{fig:stability_flickr-dims}
+        \end{subfigure}%        
+		\hfill
+		\begin{subfigure}[b]{\columnwidth} %        
+        \begin{subfigure}{0.5\columnwidth} %
+                \includegraphics[width=\columnwidth]{figures/stability/blogcatalog_training_vs_dimensions.pdf}%
+				    \addtocounter{subfigure}{-1}%
+			        \renewcommand\thesubfigure{\alph{subfigure}3}%
+	                \caption{\blogcatalog, $\gamma=30$}                
+        \label{fig:stability_blogcatalog-dims_vs_training}	                
+        \end{subfigure}%
+        \begin{subfigure}{0.5\columnwidth}%
+                \includegraphics[width=\columnwidth]{figures/stability/blogcatalog_walks_per_node_vs_dimensions.pdf}%
+				    \addtocounter{subfigure}{-1}%
+			        \renewcommand\thesubfigure{\alph{subfigure}4} %
+	                \caption{\blogcatalog, $T_R=0.5$} %
+		        \label{fig:stability_blogcatalog-dims_vs_passes}   
+        \end{subfigure}        
+%        \addtocounter{subfigure}{-1}
+%        \renewcommand\thesubfigure{\alph{subfigure}2}                
+%        \caption{BlogCatalog}
+        \label{fig:stability_blogcatalog-dims}
+        \end{subfigure}%               
+        \addtocounter{subfigure}{-1}        
+		\caption{Stability over dimensions, $d$}
+		\label{fig:stability_dimensions}
+		\end{subfigure}%     
+		\hfill
+		%second block, stability over Epochs
+		\begin{subfigure}[b]{\columnwidth}			
+		\begin{subfigure}[b]{\columnwidth}
+    		    \begin{subfigure}[b]{0.5\columnwidth}
+    	            \includegraphics[width=\columnwidth]{figures/stability/flickr_dims_vs_walks_per_node}%
+			        \renewcommand\thesubfigure{\alph{subfigure}1}%  	                
+	                \caption{\flickr, $T_R=0.05$}    	            
+    	            \label{fig:stability_flickr-passes_vs_dims}    	            
+	    	    \end{subfigure}%
+	        \begin{subfigure}[b]{0.5\columnwidth}
+	                \includegraphics[width=\columnwidth]{figures/stability/flickr_training_vs_walks_per_node}%
+				    \addtocounter{subfigure}{-1}%
+			        \renewcommand\thesubfigure{\alph{subfigure}2}%  	                
+	                \caption{\flickr, $d=128$}
+	                \label{fig:stability_flickr-passes_vs_training}	                
+	        \end{subfigure}%  	   
+%        \renewcommand\thesubfigure{\alph{subfigure}1}		             
+%        \caption{flickr}
+%        \label{fig:stability_flickr-passes}
+        \end{subfigure}%        
+		\hfill
+		\begin{subfigure}[b]{\columnwidth}        
+        \begin{subfigure}{0.5\columnwidth}
+                \includegraphics[width=\columnwidth]{figures/stability/blogcatalog_dims_vs_walks_per_node.pdf}%
+			    \addtocounter{subfigure}{-1}%
+		       \renewcommand\thesubfigure{\alph{subfigure}3}%
+               \caption{\blogcatalog,  $T_R=0.5$}                
+			   \label{fig:stability_blogcatalog-passes_vs_dims}	                   
+        \end{subfigure}%
+        \begin{subfigure}{0.5\columnwidth}
+                \includegraphics[width=\columnwidth]{figures/stability/blogcatalog_training_vs_walks_per_node.pdf}%
+			    \addtocounter{subfigure}{-1}%
+		        \renewcommand\thesubfigure{\alph{subfigure}4} %
+                \caption{\blogcatalog, $d=128$} %
+		        \label{fig:stability_blogcatalog-passes_vs_training}                  
+        \end{subfigure}  
+        \addtocounter{subfigure}{-1}
+%        \renewcommand\thesubfigure{\alph{subfigure}2}                        
+%        \caption{BlogCatalog}
+%        \label{fig:stability_blogcatalog-passes}		
+        \end{subfigure}%    
+        \addtocounter{subfigure}{-1}                                 
+		\caption{Stability over number of walks, $\gamma$}
+		\label{fig:stability_passes}
+		\end{subfigure}%                
+\caption{Parameter Sensitivity Study}
+\label{fig:stability}
+\end{figure*}

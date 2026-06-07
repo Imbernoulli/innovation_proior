@@ -1,0 +1,61 @@
+%Pruning large neural networks with minimal or no loss in performance is highly desirable for real-time applications on mobile devices.
+%Popular methods in network pruning attempt to find a subset of weights from the pretrained reference network based on a saliency criterion (\eg, the magnitude of the weights).
+%Unfortunately, since pruning is included as a part of the iterative optimization procedure, existing methods are prohibitively slow due to many expensive prune -- retrain cycles, and require highly heuristic design choices making them non-trivial to extend to new architectures and/or tasks.
+%Unfortunately, since existing criteria depend on the scale of the weights, pruning and learning steps are alternated several times.
+%This make them prohibitively slow due to expensive prune -- retrain cycles, and their highly heuristic design choices made them non-trivial to extend to new architectures and/or tasks.
+%Existing methods attempt to find a subset of weights from the pretrained reference network \NOTE{1. no need to mention pretrain here, 2. not 100\% true, some work says they can start pruning at warm start} either based on a saliency criterion or utilizing sparsity enforcing penalties.
+%Unfortunately, since pruning is included as a part of the iterative optimization procedure, all these methods are prohibitively slow due to many expensive {\em prune -- retrain cycles}, and require highly heuristic design choices making them non-trivial to extend to new architectures and/or tasks.
+%\NOTE{1. Not all require prune--retrain cycles, 2. complex rather than slow.}
+%In this work, we introduce a saliency criterion that identifies connections in the network that are important to the given task in a data-dependent way even before any training.
+%\NOTE{This description needs improvement}
+%This eliminates the need for both pretraining as well as the expensive prune -- retrain cycles, and the pruned network can be trained in the standard way.
+%In addition to that, our saliency criterion chooses structurally important connections regardless of the weights making it robust to variations in the architecture.
+%Despite being simple \NOTE{not fully motivated whether it's simple}, our method obtains extremely sparse networks with virtually the same accuracy as the existing baselines across various architectures including convolutional, residual and recurrent networks on image classification tasks. 
+%\NOTE{Mention various other experiments}
+%\NOTE{
+%1. we did not mention connection sensitivity,
+%2. One global story in mind. For example, using our new pruning method based on connection sensitivity, a variety of neural networks can be pruned single-shot at random initialization for extreme sparsity,
+%3. Fresh mind-blowing English terms may help.. 
+%}
+\SKIP{
+Pruning large neural networks without loss in performance is highly desirable for reduced time and space complexities.
+Despite the received usefulness, existing methods require either heuristically designed prune -- retrain cycles or non-trivial hyperparameters used within an iterative optimization procedure, undermining the usability.
+In this work, we present a new approach that prunes a given network single-shot at random initialization.
+Specifically, we introduce a saliency criterion based on connection sensitivity that identifies structurally important connections in the network for the given task before any training.
+This eliminates the need for both pretraining as well as the complex pruning schedule, while making it easy to be deployed and robust to architecture variations.
+Our method obtains extremely sparse networks with virtually the same accuracy as the existing baselines across various architectures including convolutional, residual and recurrent networks on image classification tasks. 
+We further demonstrate that our approach indeed prunes valid connections that are irrelevant to perform the given task, and also, has a regularization effect by failing to fit random labels.
+}
+\SKIP{
+Pruning large neural networks while maintaining the performance is highly desirable due to the reduced space and time complexity. %\NOTE{I would say ``real-time applications''}
+%Existing methods attempt to optimize for pruning and learning together, leading to heuristically designed pruning schedules with additional hyperparameters, making them non-trivial to extend to various architectures and tasks.
+In existing methods, pruning is incorporated within the iterative optimization procedure requiring either heuristically designed pruning schedules or additional hyperparameters, making them non-trivial to extend to various architectures.
+In this work, we present a new approach that prunes a given network once at random initialization, and the pruned network can be trained in the standard way.
+Specifically, we introduce a saliency criterion based on connection sensitivity that identifies structurally important connections in the network for the given task even before training.
+This eliminates the need for both pretraining as well as the complex pruning schedule while making it robust to architecture variations.
+Our method obtains extremely sparse networks with virtually the same accuracy as the existing baselines across various architectures including convolutional, residual and recurrent networks on image classification tasks. 
+Furthermore, unlike existing methods, our approach enables us to demonstrate that the retained connections are indeed relevant to the given task. 
+%and provide empirical evidence that our method can be easily employed to show that the pruned network is unable to fit the random labels. 
+}
+\SKIP{
+Pruning large neural networks while maintaining the performance is often highly desirable due to the reduced space and time complexity.
+In existing methods, pruning is incorporated within an iterative optimization procedure with either heuristically designed pruning schedules or additional hyperparameters, undermining their utility.
+In this work, we present a new approach that prunes a given network once at initialization.
+Specifically, we introduce a saliency criterion based on connection sensitivity that identifies structurally important connections in the network for the given task even before training.
+This eliminates the need for both pretraining as well as the complex pruning schedule while making it robust to architecture variations.
+After pruning, the sparse network is trained in the standard way.
+%Our method obtains extremely sparse networks with virtually the same accuracy as the reference network on image classification tasks and is broadly applicable to various architectures including convolutional, residual and recurrent networks. 
+Our method obtains extremely sparse networks with virtually the same accuracy as the reference network on the \mnist{}, \cifar{-10, and \timagenet{}} classification tasks and is broadly applicable to various architectures including convolutional, residual and recurrent networks. 
+Unlike existing methods, our approach enables us to demonstrate that the retained connections are indeed relevant to the given task. 
+%and provide empirical evidence that our method can be easily employed to show that the pruned network is unable to fit the random labels. 
+}
+Pruning large neural networks while maintaining their performance is often desirable due to the reduced space and time complexity.
+In existing methods, pruning is done within an iterative optimization procedure with either heuristically designed pruning schedules or additional hyperparameters, undermining their utility.
+In this work, we present a new approach that prunes a given network once at initialization prior to training.
+To achieve this, we introduce a saliency criterion based on connection sensitivity that identifies structurally important connections in the network for the given task.
+This eliminates the need for both pretraining and the complex pruning schedule while making it robust to architecture variations.
+After pruning, the sparse network is trained in the standard way.
+%Our method obtains extremely sparse networks with virtually the same accuracy as the reference network on image classification tasks and is broadly applicable to various architectures including convolutional, residual and recurrent networks.
+Our method obtains extremely sparse networks with virtually the same accuracy as the reference network on the \mnist{}, \cifar{-10, and \timagenet{}} classification tasks and is broadly applicable to various architectures including convolutional, residual and recurrent networks.
+Unlike existing methods, our approach enables us to demonstrate that the retained connections are indeed relevant to the given task.
+%and provide empirical evidence that our method can be easily employed to show that the pruned network is unable to fit the random labels.

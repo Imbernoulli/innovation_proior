@@ -1,0 +1,86 @@
+\input{figures/adapting.tex}
+
+\section{Derivation of the gradient with respect to the knowledge retriever}
+
+We compute the gradient of the \thename pre-training objective (a log-likelihood)
+with respect to the parameters of the knowledge retriever, $\theta$:
+\begin{align*}
+\nabla\log p(y\mid x) &= p(y\mid x)^{-1}\nabla p(y\mid x) \\
+ &= p(y\mid x)^{-1}\sum_{z}p(y\mid z,x)\nabla p(z\mid x) \\
+ &= p(y\mid x)^{-1}\sum_{z}p(y\mid z,x)p(z\mid x)\nabla\log p(z\mid x) \\
+ & =\sum_{z}p(z\mid y,x)\nabla\log p(z\mid x),
+\end{align*}
+where the last line follows from applying conditional Bayes' rule.
+We can then expand $\nabla\log p\left(z\mid x\right)$ as:
+%
+\begin{align*}
+\nabla\log p(z\mid x) &= \nabla\log\frac{\exp f(x,z)}{\sum_{z'}\exp f(x,z')} \\
+ &= \nabla\left[f(x,z)-\log\sum_{z'}\exp f(x,z')\right] \\
+ &= \nabla f(x,z)-\sum_{z'}p(z'\mid x)\nabla f(x,z')
+\end{align*}
+Plugging this back into the first set of equations yields:
+%
+\resizebox{0.48\textwidth}{!}{
+\begin{minipage}{1.2\linewidth}
+\begin{align*}
+\nabla\log p\left(y\mid x\right) & =\sum_{z}p\left(z\mid y,x\right)\left[\nabla f(x,z)-\sum_{z'}p\left(z'\mid x\right)\nabla f(x,z')\right]\\
+ & =\sum_{z}p\left(z\mid y,x\right)\nabla f(x,z)-\sum_{z'}p\left(z'\mid x\right)\nabla f(x,z')\\
+ & =\sum_{z}\left[p\left(z\mid y,x\right)-p\left(z\mid x\right)\right]\nabla f(x,z)\\
+ & =\sum_{z}\left[\frac{p\left(y\mid z,x\right)p\left(z\mid x\right)}{p\left(y\mid x\right)}-p\left(z\mid x\right)\right]\nabla f(x,z)\\
+ & =\sum_{z}\left[\frac{p\left(y\mid z,x\right)}{p\left(y\mid x\right)}-1\right]p\left(z\mid x\right)\nabla f(x,z).
+\end{align*}
+\end{minipage}
+}
+
+In the second line, we used the fact that the overall expression is
+an expectation with respect to $p\left(z\mid y,x\right)$, and the
+terms which depend on $z'$ but not $z$ can be moved out of that
+expectation.
+
+
+\section{Connection between \thename and supervised learning}
+%
+From the equations in Appendix A, we saw that 
+\[
+\nabla\log p\left(y\mid x\right)=\sum_{z}\left[p\left(z\mid y,x\right)-p\left(z\mid x\right)\right]\nabla f(x,z).
+\]
+Suppose that there exists one document $z^{*}$ which causes the model
+to achieve perfect prediction accuracy (i.e., $p\left(y\mid z^{*},x\right)=1$), while all other documents $z'$ result in zero accuracy (i.e., $p\left(y\mid z',x\right)=0$).
+Under this setting, $p\left(z^{*}\mid y,x\right)=1$ (provided that
+$p\left(z^{*}\mid x\right)$ is non-zero), which causes the gradient
+to become
+\begin{align*}
+\nabla\log p\left(y\mid x\right) & =\nabla f\left(x,z^{*}\right)-\sum_{z}p\left(z\mid x\right)\nabla f(x,z)\\
+ & =\nabla\log p\left(z^{*}\mid x\right).
+\end{align*}
+From this, we see that gradient descent on the \thename objective is
+equivalent to gradient descent on $\log p\left(z^{*}\mid x\right)$.
+This is none other than the typical maximum likelihood training objective
+used in supervised learning, where $z^{*}$ is the ``gold'' document.
+
+
+\section{Adapting to new knowledge}
+
+An explicit retrieval system allows us to adapt to new world knowledge
+simply by modifying the corpus documents.
+To demonstrate this ability,
+we replace the knowledge corpus with a more recent version of Wikipedia corpus after pre-training is done.
+When the input query is about a fact where the two corpora disagree,
+\thename can change the prediction to reflect the updated information,
+as exemplified in Table~\ref{tab:adapting}.
+However, even with an explicit retrieval mechanism,
+the knowledge-augmented encoder will still end up remembering some world knowledge,
+making the prediction of some input sentences not updated with the new corpus.
+(For instance, the model predicts \nl{Thatcher} for \nl{\blank~is the prime minister of United Kingdom.} on both corpora, perhaps due to the frequent mention of her name in Wikipedia articles.)
+
+
+\section{Retrieval Utility}
+The null document $\znull$ described in Section~\ref{sec:inductive-bias}
+provides a way to measure the importance of a retrieved document $z$: we define the \emph{retrieval utility} (RU) of $z$ for the masked input $x$ as
+the difference between the log-likelihood of the knowledge-augmented encoder when conditioning on $z$ versus on $\znull$:
+\begin{equation}
+\text{RU}(z \mid x) = \log p(y \mid z, x) - \log p(y \mid \znull, x). 
+\label{eq:retrieval_utility}
+\end{equation}
+A negative RU shows that $z$ is less useful for predicting $y$ than the null document. This could mean that $z$ is irrelevant to $x$, but could also mean that the masked tokens in $x$ do not require world knowledge to predict, or that the world knowledge is sufficiently commonplace it has been baked into the model's parameters. In practice, we find that RU increases steadily over the course of pre-training, and is more predictive of good performance on the downstream task of \openqa than even the overall log-likelihood. An example of how RU behaves over time and across different settings is in Figure~\ref{fig:retrieval_utility}.
+\input{figures/retrieval_utility.tex}

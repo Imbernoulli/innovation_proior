@@ -1,0 +1,307 @@
+\newpage
+\appendix
+\onecolumn
+\section{Appendix}
+\subsection{Dataset details}
+\label{sec:appdx:datasets}
+We adopt three existing test cases: Cylinder (Flow), Airfoil, and (Deforming) Plate from \flatGNN. The Cylinder includes the transient incompressible flow field around a fixed cylinder at varying locations. The Airfoil includes the transient compressible flow field at varying Mach numbers around the airfoil with varying angles of attack (AOA). The Plate includes hyperelastic plates squeezed by moving obstacles.
+In addition to these three cases, our Font(\fonts~) case involves the quasi-static inflation of enclosed elastic surfaces (3D surface mesh) possibly with self-contact. We create the \fonts~cases using the open-source simulator \cite{fang2021guaranteed}, with the same material properties and inflation speed. The input geometries for \fonts~are $1,400$ $2 \times 2$-character matrices in Chinese.
+All the datasets are split into 1000 training, 200 validation, and 200 testing instances. In the following table, the second entries with superscript${ }^*$ in the average edge number column are for the contact edges:
+\begin{table}[h]
+    \centering
+    \label{tab:dataset:details}
+    \begin{tabular}{ccccccc}
+        \textbf{Case} & \textbf{Ave \# nodes} & \textbf{Ave \#  edges} & \textbf{Mesh type} & \textbf{Seed method} & \textbf{\# Levels} & \textbf{\# Steps} \\ \hline
+        Cylinder      & 1886                  & 5424                   & triangle, 2D       & MinAve               & 7                  & 600               \\
+        Airfoil       & 5233                  & 15449                  & triangle, 2D       & MinAve               & 9                  & 600               \\
+        Plate         & 1271                  & $4611, 94^*$           & tetrahedron, 3D    & MinAve               & 6                  & 400               \\
+        Font          & 13177                 & $39481, 6716^*$        & triangle, 3D       & CloseCenter          & 6                  & 100
+    \end{tabular}
+\end{table}
+
+Below we list the model configurations: 1) the offset inputs to prepend before the material edge processor $e^{M}_{ij}$, and $e^{W}_{ij}$, and 2) nodes $p_i$, as well as the nodal outputs $q_i$ from the decoder for each experiment cases, where $\mX$ and $\vx$ stand for the material-space and world-space positions, $\vv$ is the velocity, $\rho$ is the density, $P$ is the absolute pressure, and the dot $\dot{a} = a_{t+1} - a_t$ stands for temporal change for a variable $a$. All the variables involved are normalized to zero-mean and unit variance via pre-processing.
+\begin{table}[h]
+    \centering
+    \label{tab:model:inputs}
+    \begin{tabular}{cccccc}
+        \textbf{Case} & \textbf{Type} & \textbf{Offset inputs }$e^{M}_{ij}$       & \textbf{Offset inputs }$e^{W}_{ij}$ & \textbf{Inputs }$p_i$ & \textbf{Outputs }$q_i$         \\ \hline
+        Cylinder      & Eulerian      & $\mX_{ij},|\mX_{ij}|$                     & NA                                  & $\vv_i,n_i$           & $\dot{\vv}_i$                  \\
+        Airfoil       & Eulerian      & $\mX_{ij},|\mX_{ij}|$                     & NA                                  & $\rho_i,\vv_i,n_i$    & $\dot{\vv}_i,\dot{\rho}_i,P_i$ \\
+        Plate         & Lagrangian    & $\mX_{ij},|\mX_{ij}|,\vx_{ij},|\vx_{ij}|$ & $\vx_{ij},|\vx_{ij}|$               & $\dot{\vx}_i,n_i$     & $\dot{\vx}_i$                  \\
+        Font          & Lagrangian    & $\mX_{ij},|\mX_{ij}|,\vx_{ij},|\vx_{ij}|$ & $\vx_{ij},|\vx_{ij}|$               & $n_i$                 & $\dot{\vx}_i$
+    \end{tabular}
+\end{table}
+
+As for time integration, Cylinder, Airfoil, and Plate inherited the first-order integration from \flatGNN. For \fonts, the first-order quasi-static integration\ \cite{fang2021guaranteed} is used in the solver. Hence, we also adopt the first-order integration for \fonts.
+\subsection{Additional Model details}
+\label{sec:appdx:arch}
+\subsubsection{Basic modules and architectures}
+The MLPs for the nodal encoder, the processor, and the nodal decoder are ReLU-activated two-hidden-layer MLPs with the hidden-layer and output size at 128, except for the nodal decoder whose output size matches the prediction $\vq$. All MLPs have a residual connection. A LayerNorm normalizes all MLP outputs except for the nodal decoder.
+\subsubsection{Baseline: \flatGNN~}
+Our \flatGNN~implementation uses the same MLPs as above but with an additional module: the edge encoder. Also, the edge latent is updated and carried over throughout the end of multiple MPs. We use 15 times MP for all cases to keep it consistent with \flatGNN.
+\subsubsection{Baseline: \linoGNN~}
+Our re-implementation of \linoGNN~uses the same MLPs as above but with four additional modules: the edge encoder at the finest level, the aggregation modules for nodes and edges at every level for the transitions, and the returning modules for nodes at every level. This method also requires assigning the regular grid nodes for each level. We assign these grid nodes by defining an initial grid resolution and an inflation rate between levels. As for the MP times at each level, we follow \citet{lino2022towards} to use four at the top and bottom levels and two for the others.
+\begin{table}[h]
+    \centering
+    \label{tab:Lino:detail}
+    \begin{tabular}{ccccc}
+        \textbf{Case} & \textbf{\# Levels} & \textbf{Initial grid dx}   & \textbf{dx inflation} & \textbf{Level-wise \# MPs} \\ \hline
+        Cylinder      & 4                  & {[}5e-2, 5e-2{]}           & 2                     & {[}4, 2, 2, 4{]}           \\
+        Airfoil       & 4                  & {[}4.5, 4.5{]}             & 2                     & {[}4, 2, 2, 4{]}           \\
+        Plate         & 4                  & {[}4e-3, 4e-3, 4e-3{]}     & 2                     & {[}4, 2, 2, 4{]}           \\
+        Font          & 4                  & {[}1.5e-2, 1.5e-2, 1e-3{]} & 2                     & {[}4, 2, 2, 4{]}
+    \end{tabular}
+    % \caption{The details for reimplementing the multi-level structure in \cite{lino2022towards}.}
+\end{table}
+\subsubsection{Baseline: \GUN~}
+Our re-implementation of \GUN~~uses the same number of levels as those of \ours. Likewise, we make the following modifications to the original \GUN~: (1) We change the information passing from GCN to our message passing module for consistency and translational invariance. (2) GraphUNet was intended for tiny graphs (100 nodes) and used dense matrix multiplications. This design is not scalable as it can break the memory limit and slow down the training to take more than 30 days per epoch in our graph size (1500 to 15000 nodes). We thus optimize the operations such as matrix multiplication and aggregation with sparse implementations.
+\subsubsection{Noise and batch number}
+\revision{For each of these benchmarks, we generated Gaussian noise with a specific scale and added it to the original trajectory at the beginning of every epoch. The purpose of noise injection was to mimic the effects of noise generated by the model, thereby improving the model's ability to correct its output when fed with noisy inputs. Furthermore, we carefully tuned the batch size under smaller subset experiments for each method to achieve optimal convergence rates.}
+\begin{table}[h]
+    \centering
+    \resizebox{0.8 \textwidth}{!}{
+        \centering
+        \begin{tabular}{cccccc}
+            \textbf{Case} & \multicolumn{4}{c}{\textbf{Batch size}} & \textbf{Noise scale}                                                                      \\
+            \textbf{}     & \textbf{\ours~}                          & \textbf{\linoGNN~}    & \textbf{\flatGNN~} & \textbf{\GUN~} & \textbf{}                      \\ \hline
+            Cylinder      & 32                                      & 16                   & 16                & 2             & velocity: 2e-2                 \\
+            Airfoil       & 8                                       & 4                    & 8                 & 1             & velocity: 2e-2, density: 1e1   \\
+            Plate         & 8                                       & 2                    & 2                 & 1             & pos: 3e-3                      \\
+            Font          & 2                                       & 1                    & 1                 & 1             & pos: {[}5e-3, 5e-3, 3.33e-4{]}
+        \end{tabular}
+        \label{tab:noise:batch}
+    }
+    % \caption{Training noise parameters and batch sizes.}
+\end{table}
+
+\subsection{Detailed results}
+\label{sec:appdx:detail:res}
+We plot the detailed measurements in Table.~\ref*{tab:detail:res} and Table.~\ref*{tab:detail:res2}. All experiments are conducted using a single Nvidia RTX 3090.
+\begin{table*}[t]
+    \centering
+    \caption{
+        \textbf{Detailed measurements} of our method, \linoGNN, \flatGNN, and \GUN. \ours~consistently generates stable and competitive global rollouts with the smallest training cost. \ours~is also lightweight and has the fastest inference time. It is also free from the large RMSE due to poor pooling on unseen geometries where the learnable pooling module of \GUN~~suffers. The 2nd column of entries in Infer time is the speed up compared to the numerical solver. The 2nd column of entries in Training cost is the epoch for achieving the converged model.}\vspace{5pt}
+    \resizebox{0.8\textwidth}{!}{
+        \centering
+        \begin{tabular}{cccccc}
+            \textbf{Measurements}                                                                             & \textbf{Case} & \textbf{Our's}        & \textbf{\cite{lino2021simulating}} & \textbf{\cite{pfaff2020learning}} & \textbf{\cite{gao2019graph}} \\ \hline
+            \multirow{4}{*}{\begin{tabular}[c]{@{}c@{}}Training time/step\\ {[}ms{]}\end{tabular}}            & Cylinder      & \textbf{10.14}        & 15.36                              & 19.29                             & 16.20                        \\
+                                                                                                              & Airfoil       & \textbf{18.82}        & 25.26                              & 36.72                             & 55.08                        \\
+                                                                                                              & Plate         & \textbf{15.58}        & 49.65                              & 49.15                             & 31.88                        \\
+                                                                                                              & \fonts~       & \textbf{45.96}        & 107.16                             & 117.48                            & 1,833.37                     \\ \hline
+            \multirow{4}{*}{\begin{tabular}[c]{@{}c@{}}Infer time/step\\ {[}ms{]}\end{tabular}}               & Cylinder      & 6.75, 121x                  & \textbf{6.18, 133x}                      & 14.50, 57x                             & 24.30, 34x                        \\
+                                                                                                              & Airfoil       & \textbf{8.64, 1275x}         & 20.40, 540x                              & 24.20, 455x                             & 33.60, 328x                        \\
+                                                                                                              & Plate         & \textbf{14.01, 207x}        & 18.12, 160x                              & 15.70, 184x                             & 16.20, 179x                        \\
+                                                                                                              & \fonts~       & \textbf{33.33, 210x}        & 41.66, 168x                              & 82.35, 85x                             & 629.33, 11x                       \\ \hline
+            \multirow{4}{*}{\begin{tabular}[c]{@{}c@{}}Training cost\\ {[}hrs{]},\\ Final epoch\end{tabular}} & Cylinder      & \textbf{21.41, 19}    & 35.84, 21                          & 64.30, 30                         & 76.15, 39                    \\
+                                                                                                              & Airfoil       & \textbf{122.33, 39}   & 176.82, 42                         & 275.40, 45                        & 206.55, 37                   \\
+                                                                                                              & Plate         & \textbf{56.07, 27}    & 125.78, 19                         & 176.94, 27                        & 127.50, 30                   \\
+                                                                                                              & \fonts~       & \textbf{2.68E+01, 21} & 5.66E+01, 19                       & 6.20E+01, 19                      & NA                           \\ \hline
+            \multirow{4}{*}{\begin{tabular}[c]{@{}c@{}}RMSE-1\\ {[}1e-2{]}\end{tabular}}                      & Cylinder      & \textbf{2.04E-01}     & 2.20E-01                           & 2.26E-01                          & 8.09E-01                     \\
+                                                                                                              & Airfoil       & 2.88E+01              & \textbf{2.68E+01}                  & 4.35E+01                          & 2.93E+01                     \\
+                                                                                                              & Plate         & 2.87E-02              & 2.20E-02                           & \textbf{1.98E-02}                 & 2.03E-02                     \\
+                                                                                                              & \fonts~       & \textbf{1.77E-02}     & 1.87E-02                           & 1.95E-02                          & NA                           \\ \hline
+            \multirow{4}{*}{\begin{tabular}[c]{@{}c@{}}RMSE-50\\ {[}1e-2{]}\end{tabular}}                     & Cylinder      & \textbf{2.42}         & 2.74                               & 4.39                              & 1.87E+01                     \\
+                                                                                                              & Airfoil       & \textbf{1.10E+03}     & 1.22E+03                           & 1.66E+03                          & 1.17E+03                     \\
+                                                                                                              & Plate         & 3.18E-02              & \textbf{2.78E-02}                  & 2.88E-02                          & 5.19E-02                     \\
+                                                                                                              & \fonts~       & \textbf{1.08E-01}     & 3.24E-01                           & 1.78E-01                          & NA                           \\ \hline
+            \multirow{4}{*}{\begin{tabular}[c]{@{}c@{}}RMSE-all\\ {[}1e-2{]}\end{tabular}}                    & Cylinder      & \textbf{8.37}         & 8.49                               & 1.07E+01                          & 1.65E+02                     \\
+                                                                                                              & Airfoil       & \textbf{4.21E+03}     & 5.56E+03                           & 6.95E+03                          & 6.11E+03                     \\
+                                                                                                              & Plate         & 1.60E-01              & \textbf{1.48E-01}                  & 1.51E-01                          & 5.46E-01                     \\
+                                                                                                              & \fonts~       & \textbf{2.20E-01}     & 3.78E-01                           & 3.65E-01                          & NA
+        \end{tabular}
+    }\vspace{-7pt}
+    \label{tab:detail:res}
+\end{table*}
+
+\begin{table*}[t]
+    \centering
+    \caption{
+        \textbf{Memory footprint under multi-batches}, \ours~consistently cuts RAM consumption by approximately half in all cases in the training stage, and also has the smallest (except for \plate~) inference RAM.}\vspace{5pt}
+    \resizebox{0.8\textwidth}{!}{
+        \centering
+        \begin{tabular}{ccccccccc}
+            \textbf{Case}             & \textbf{Method}                    & \multicolumn{6}{c}{\textbf{Training RAM (GBs) with different Batch \#}} & \textbf{Infer RAM (GBs)}                                                                                   \\
+                                      & \textbf{}                          & \textbf{2}                                                 & \textbf{4}     & \textbf{8}    & \textbf{16}    & \textbf{32}   & \textbf{64}    &               \\ \hline
+            \multirow{4}{*}{\cylinder} & \textbf{Our's}                     & \textbf{2.41}                                              & \textbf{2.92}  & \textbf{4.37} & \textbf{6.06}  & \textbf{11.4} & \textbf{22.27} & \textbf{1.92} \\
+                                      & \textbf{\cite{lino2021simulating}} & 2.79                                                       & 3.60           & 5.31          & 8.56           & 15.10         & -              & 1.97          \\
+                                      & \textbf{\cite{pfaff2020learning}}  & 3.25                                                       & 4.46           & 6.91          & 11.84          & 21.60         & -              & 1.94          \\
+                                      & \textbf{\cite{gao2019graph}}       & 23.33                                                      & -              & -             & -              & -             & -              & 2.18          \\ \hline
+            \multirow{4}{*}{\airfoil}  & \textbf{Our's}                     & \textbf{3.66}                                              & \textbf{5.46}  & \textbf{8.88} & \textbf{15.70} & -             & -              & \textbf{2.02} \\
+                                      & \textbf{\cite{lino2021simulating}} & 4.18                                                       & 6.25           & 10.65         & 19.25          & -             & -              & \textbf{2.02} \\
+                                      & \textbf{\cite{pfaff2020learning}}  & 5.53                                                       & 8.90           & 16.08         & -              & -             & -              & 2.06          \\
+                                      & \textbf{\cite{gao2019graph}}       & -                                                          & -              & -             & -              & -             & -              & 2.67          \\ \hline
+            \multirow{4}{*}{\plate}    & \textbf{Our's}                     & \textbf{2.36}                                              & \textbf{2.87}  & \textbf{3.85} & \textbf{5.78}  & \textbf{9.28} & \textbf{16.85} & 1.95          \\
+                                      & \textbf{\cite{lino2021simulating}} & 3.41                                                       & 4.81           & 7.75          & 13.20          & -             & -              & 2.00          \\
+                                      & \textbf{\cite{pfaff2020learning}}  & 3.10                                                       & 4.29           & 6.59          & 11.49          & 20.80         & -              & \textbf{1.93} \\
+                                      & \textbf{\cite{gao2019graph}}       & -                                                          & -              & -             & -              & -             & -              & 2.18          \\ \hline
+            \multirow{4}{*}{\fonts}     & \textbf{Our's}                     & \textbf{6.28}                                              & \textbf{10.80} & -             & -              & -             & -              & \textbf{2.23} \\
+                                      & \textbf{\cite{lino2021simulating}} & 10.87                                                      & 19.79          & -             & -              & -             & -              & 2.45          \\
+                                      & \textbf{\cite{pfaff2020learning}}  & 12.48                                                      & 23.39          & -             & -              & -             & -              & 2.28          \\
+                                      & \textbf{\cite{gao2019graph}}       & -                                                          & -              & -             & -              & -             & -              & 4.51
+        \end{tabular}\vspace{-7pt}
+    }
+    \label{tab:detail:res2}
+\end{table*}
+\subsection{Ablation study}
+\label{sec:appdx:abaltion}
+\subsubsection{Transition method}
+\label{sec:appdx:abaltion:trans}
+\begin{figure}[t]
+    \includegraphics[width = \linewidth]{figs/ablation_trans.pdf}
+    \caption{(a) All three transition methods can reach the target training RMSE given 200 iterations. (b) However, our weighted graph aggregration+returning has the strongest resistance to the noise during the rollout. (c) The visual comparisons show that no transition produces mosaic-like patterns, while the graph convolution transition smeared out the information and ceased propagating downstream. (d) The global rollout error distribution of no transition (\textbf{Left}) shows the edge of the mosaic patterns look similar to the simulation mesh; The error of our transition (\textbf{Right}) travels with the generated vortices downstream and leaves the domain after step 200, which explains the RMSE drop in (b).}
+    \label{fig:ablation:trans}
+\end{figure}
+While exploring the non-parametric transition solutions, we started with no transition because our method is adopted directly from GUN \cite{gao2019graph}. The no-transition strategy produces low enough 1-step RMSE and visually correct rollouts for \fonts. However, in the global rollouts of \cylinder~and \airfoil~cases, we observed stripe patterns (Figure.~\ref{fig:ablation:trans} (c), column \textbf{None}) where the stripes are aligned with the edges at the coarser levels (Figure.~\ref{fig:ablation:trans} (d)). We suspect that this error results from the fact that the unpooled nodes all have zero information before MP, making them indistinguishable from the processor modules and exaggerating the difference between pooled and unpooled nodes over rollouts.
+
+The no-transition strategy resembles no interpolation during the super-resolution phase of CNN+UNet. Naturally, we then tried a single step of graph convolution (without activation) to resemble the interpolation in regular grids. However, this turns out to over-smooth the features (Figure.~\ref{fig:ablation:trans} (e), column \textbf{Graph Conv}), and the information propagation was smeared out except for the area near the generator (in this case, near the cylinder).
+
+We believe the over-smoothing issue arises from the ignorance of the irregularity of the mesh. Unlike CNN, where the fine nodes regularly lie at the center of coarser grids, irregular meshes have varying topology and element sizes. The element sizes are almost always smaller near the interface for higher precision in simulations; hence an unweighted graph convolution can smear the finer information near the cylinder and their adjacent neighbors during returning. The natural choice to account for the irregularity is to include reasonable nodal weights (such as the size). In the end, we arrive at the solution proposed in Sec.~\ref{sec:transition} by utilizing the nodal weights during aggregation and recording the shares of contribution for later returning. Our transition method works consistently for all experiment cases and produces the lowest RMSE for global rollouts (Figure.~\ref{fig:ablation:trans} (b)).
+
+\paragraph*{Comparing to alternative transition methods} Additionally, we compare our transition methods to two alternatives extracted from previous works: (1) calculating the edge weights (kernel) for the information flow using the inverse of its length (node position offset), which we refer to as \textbf{Pos-Kernel} \cite{liu2021multi}; and (2) the level-wise learnable transition modules implemented by additional MP, which we refer to as \textbf{Learnable} \cite{fortunato2022multiscale}.
+
+\begin{table}[h]
+    \centering
+    \caption{\textbf{Detailed measurements} of different transition methods. Ours and \textbf{Pos-Kernel} are the only two non-parametric transitions that are light-weighted and produce reliable rollouts compared to the expensive \textbf{Learnable} transition.}\vspace{5pt}
+    \begin{tabular}{lccccc}
+        \textbf{Measurements}       & \textbf{Ours}   & \textbf{None}     & \textbf{Graph-Conv} & \textbf{Pos-Kernel} & \textbf{Learnable} \\ \hline
+        Training time/step {[}ms{]} & 10.14           & \textbf{9.30}     & 10.07               & 10.06               & 17.75              \\
+        Infer time/step {[}ms{]}    & 6.75            & \textbf{5.70}     & 6.46                & 6.90                & 11.28              \\
+        Training RAM {[}GBs{]}      & \textbf{11.041} & \textbf{11.041}   & \textbf{11.041}     & \textbf{11.041}     & 18.033             \\
+        Infer RAM {[}GBs{]}         & \textbf{1.923}  & \textbf{1.923}    & \textbf{1.923}      & \textbf{1.923}      & 1.931              \\
+        RMSE-1 {[}1e-2{]}           & 2.85E-01        & \textbf{1.49E-01} & 3.41E-01            & 6.38E-01            & 4.70E-01           \\
+        RMSE-50 {[}1e-2{]}          & 1.43E+01        & 2.05E+02          & 2.40E+02            & 1.77E+01            & \textbf{1.35E+01}  \\
+        RMSE-all {[}1e-2{]}         & 1.68E+01        & 2.59E+02          & 5.51E+02            & 2.01E+01            & \textbf{1.57E+01}
+    \end{tabular}
+    \label{tab:detail:ram}
+\end{table}
+
+In addition to the high RMSE of \textbf{None} and \textbf{Graph-Conv} shown in Figure.~\ref{fig:ablation:trans}, we can also observe that: (1) the training/infer time and RAM consumption for all non-parametric transitions (including \textbf{None}) are similar, which supports the statement that our transition method is light-weighted. (2) \textbf{Learnable} transition can reach slightly higher accuracy but at the price of $\sim 70\%$ more training/infer time and RAM. As mentioned in Sec.~\ref{sec:experiments:results}, higher training RAM can limit the batch number and increase the frequency of data communication between CPU and GPU, slowing down the training process even further when the scale goes up. (3) \textbf{Pos-Kernel} results in a slightly higher RMSE compared to our method, making it a competitive alternative in production.
+
+\revision{\subsubsection{Sensitivity analysis on seeding heuristics}}
+\label{sec:appdx:abaltion:seeding}
+\revision{
+In this section, we investigated the impact of using different seeding heuristics during the training and testing phases on the sensitivity of a converged model. We deliberately altered the heuristics used on each benchmark and evaluated the RMSEs. The results showed that the inconsistency in seeding heuristics led to higher roll-outs compared to the results obtained when using consistent seeding, as shown in Table~\ref{tab:ablation:seeding}. Specifically, the roll-outs were 1.01x to 2.04x and 1.13x to 2.21x for random seeding and inverse seeding, respectively, with respect to consistent seeding. However, the RMSEs remained in the same magnitude, indicating that our method is not sensitive to the initial seeding.
+It should be also noted that this is not a practical issue, as the seeding can easily be kept consistent during different phases.
+}
+
+\begin{table}[h]
+    \centering
+    \centering
+    \caption{\revision{\textbf{Sensitivity analysis of seeding heuristics on model performance.} The ``Random'' heuristic refers to choosing a random seed for every cluster, while ``Inverse w.r.t. Train'' refers to choosing the inverse seeding heuristic compared to that used during the training phase. For example, if the MinAve heuristic was used during training, the CloseCenter heuristic was chosen during the testing phase.}}
+    \label{tab:ablation:seeding}
+\begin{tabular}{c|ccccc}
+\textbf{Seeding @ Test}                        & \textbf{Ratio in RMSE} & \textbf{Cylinder} & \textbf{Airfoil} & \textbf{Plate} & \textbf{Font} \\ \hline
+\multirow{3}{*}{\textbf{Random}}               & 1-step                 & 2.06              & 14.04            & 2.95           & 1.15          \\
+                                               & 50-step                & 1.06              & 2.16             & 5.21           & 1.04          \\
+                                               & Rollout                & 1.01              & 2.04             & 1.53           & 1.04          \\ \hline
+\multirow{3}{*}{\textbf{Inverse w.r.t. Train}} & 1-step                 & 1.96              & 12.77            & 3.14           & 1.15          \\
+                                               & 50-step                & 1.07              & 1.76             & 7.52           & 1.02          \\
+                                               & Rollout                & 1.13              & 2.21             & 1.46           & 1.06         
+\end{tabular}
+\end{table}
+
+\subsection{Details for scaling analysis on \fonts}
+\label{sec:appdx:scale}
+We generate the downscale and the upscale version of \fonts~with different average node numbers for the initial geometry, and then use the same settings to simulate the sequence. As reported in \citet{fortunato2022multiscale}, the low-resolution model suffers from converging to very small RMSE; hence we loosen the termination criteria by enlarging the target RMSE relative to the average edge length to prevent convergence failures. Similarly, the noise injection is also adjusted to be relative to the average edge length. Moreover, with a smaller number of nodes, the number of levels required to achieve the same bottom resolution also reduces. We make the corresponding adjustments to the levels of our model $d_1$ and that of the \linoGNN~$d_2$. The adjustments are plotted below.
+
+\begin{table}[h]
+    \centering
+    \caption{\textbf{The adjustment for multi-scale parameters, the target RMSE and noise injection for scaling analysis.}}
+    \label{tab:scale:model:detail}
+    \begin{tabular}{cccccc}
+        \textbf{\# Nodes} & $d_1$ & $d_2$ & \textbf{Initial grid dx} & \textbf{Target RMSE} & \textbf{Noise in pos}        \\ \hline
+        5k                & 4     & 2     & {[}6e-2 6e-2 4e-3{]}     & 1.73e-4              & {[}8.5e-3, 8.5e-3, 5.7e-4{]} \\
+        15k               & 6     & 4     & {[}1.5e-2 1.5e-2 1e-3{]} & 1e-4                 & {[}5e-3, 5e-3, 3.33e-4{]}    \\
+        30k               & 7     & 5     & {[}7.5e-3 7.5e-3 5e-4{]} & 1e-4                 & {[}3.5e-3, 3.5e-3, 2.4e-4{]} \\
+        45k               & 7     & 5     & {[}7.5e-3 7.5e-3 5e-4{]} & 1e-4                 & {[}2.9e-3, 2.9e-3, 1.9e-4{]}
+    \end{tabular}
+\end{table}
+
+\subsection{The Proof of conservation of contact edges}
+\label{sec:appdx:prove:contact:conserve}
+With Bi-stride pooling, our pooling conserves all the contact edges under the enhancement in Eq.~\ref{eq:adj:enhance}. We assume the graph is undirected and unweighted, such that the adjacent matrix is a boolean matrix.
+
+Formally speaking, given any contact edge $(i,j)$ at level $l$ (i.e. $\mA^C_l[i,j]=1$) and a Bi-stride pooling $P$ which pools nodes $\mathcal{I}$, there exists a contact edge $(i',j')$ that remains in the coarser level (i.e. ${\mA'}^C_{l+1}[i',j']=1, i',j' \in \mathcal{I}$) and $i/i',j/j'$ are connected (i.e. $\mA_l[i,i']=\mA_l[j,j']=1$). There are only four scenarios concerning the pooling nodes $\mathcal{I}$ and the contact edge nodes $i,j$, under which the assertion always holds:
+\begin{enumerate}
+    \item Both $i,j$ are pooled, i.e. $i,j \in \mathcal{I}$. Obviously ${\mA'}^C_{l+1}[i',j']=1$ by letting $i'=i, j'=j$.
+    \item Only $i$ is pooled, $i \in \mathcal{I}, j\notin \mathcal{I}$. Since we use Bi-stride pooling, $j$ can either be the seed at level 0 (Bi-stride can select either even or odd levels) that directly connects to all nodes at level 1, or must have at least one direct connection from the previous level. I.e, at least one neighbor of $j$ in the adjacent level is pooled, we let it be $j'$: $\mA_l[j,j']=1, j' \in \mathcal{I}$. Then $\mA^C_l \mA_l [i,j'] \geq \mA^C_l[i,j] * \mA_l[j,j'] = 1$, and $\mA_l (\mA^C_l \mA_l) [i,j'] \geq \mA_l[i,i] * (\mA^C_l \mA_l) [i,j']=1$. Let $i'=i$, then ${\mA'}^C_{l+1}[i',j']=1$.
+    \item Only $j$ is pooled, $i \notin \mathcal{I}, j \in \mathcal{I}$. Similarly we have at least one $i'$ such that: $\mA_l[i',i]=1, i' \in \mathcal{I}$. Then $\mA_l \mA^C_l [i',j] \geq \mA_l[i',i] * \mA^C_l[i,j] = 1$, and $(\mA_l \mA^C_l) \mA_l [i',j] \geq (\mA_l \mA^C_l)[i',j] * \mA_l [j,j]=1$. Let $j'=j$, then ${\mA'}^C_{l+1}[i',j']=1$.
+    \item None of $i,j$ is pooled, $i,j \notin \mathcal{I}$. We select one direct pooled neighbor for $i,j$, respectively, that $\mA_l[i',i]=\mA_l[j,j']=1, i',j' \in \mathcal{I}$. Then $\mA_l \mA^C_l [i',j] \geq \mA_l[i',i] * \mA^C_l[i,j] = 1$, and $(\mA_l \mA^C_l) \mA_l [i',j'] \geq (\mA_l \mA^C_l)[i',j] * \mA_l [j,j']=1$.
+\end{enumerate}
+
+\subsection{Algorithms for the seeding heuristics}
+\label{sec:appdx:algo}
+Here we elaborate our two seeding heuristics for the bi-stride pooling at every level: picking the seed that 1) is closest to the center of a cluster (CloseCenter), and 2) with the minimum average geodesic distance to its neighbors (MinAve). The complexity for MinAve is $\mO(N^2)$ as we need to conduct BFS for every node to find the one with the minimum average distance to neighbors. In our experiments, the quadratic cost of MinAve is tolerable for all cases but \fonts.
+
+\begin{algorithm}[h]
+    \begin{algorithmic}
+        \STATE {\bfseries Input:}Unweighted, Bi-directional graph, $\mG=(N,E)$
+        \STATE \COMMENT{List of seeds in each clusters $L_s$}
+        \STATE $L_c \leftarrow \text{DetermineCluster}(\mG) $
+        \STATE $L_s \leftarrow \emptyset $
+        \STATE \COMMENT{BFS$(s)$ returns the list of distances to all other neighbors from $s$}
+        \STATE \COMMENT{if unreachable, the distance is set to infinity}
+        \STATE $D \leftarrow \{ \text{BFS}(s) \text{ for } s \text{ in } N\} $
+        \FOR{$\text{idx in } L_c$}
+        \STATE $D_c \leftarrow D[\text{idx},\text{idx}]$
+        \STATE $\bar{D}_c \leftarrow \text{average}(D_c,\text{dim}=1)$
+        \STATE $s \leftarrow \text{idx}[\text{argmin}(\bar{D}_c)]$
+        \STATE $L_s.\text{append}(s)$
+        \ENDFOR
+        \OUTPUT{$L_s$}
+    \end{algorithmic}
+    \caption{MinAve: seeding by minimum average geodesic distance to neighbors}
+\end{algorithm}
+
+For \fonts, the largest mesh has around 47K nodes, and the time for pre-processing with MinAve becomes intolerable. We switch to CloseCenter with the linear complexity.
+
+\begin{algorithm}[h]
+    \begin{algorithmic}
+        \STATE {\bfseries Input:} Unweighted, Bi-directional graph, $\mG=(N,E)$; Positions of the nodes, $X$
+        \STATE \COMMENT{List of seeds in each clusters $L_s$}
+        \STATE $L_c \leftarrow \text{DetermineCluster}(\mG) $
+        \STATE $L_s \leftarrow \emptyset $
+        \FOR{idx {\bfseries in} $L_c$}
+        \STATE $\bar{X} \leftarrow \text{average}(X[\text{idx}],\text{dim}=0)$
+        \STATE $\Delta X \leftarrow X - \bar{X}$
+        \STATE $D \leftarrow ||\Delta X||_2$
+        \STATE $s \leftarrow \text{idx}[\text{argmin}(D)]$
+        \STATE $L_s.\text{append}(s)$
+        \ENDFOR
+        \OUTPUT{$L_s$}
+    \end{algorithmic}
+    \caption{CloseCenter: seeding by minimum distance to the center of cluster}
+\end{algorithm}
+
+For both heuristics, we search seeds in a per-cluster fashion to avoid the information from other clusters that could pollute the search result. For example, when determining the center of an isolated part of the input geometry, the positions of nodes from other clusters could pollute this process. The determination of clusters given in a graph is elaborated below.
+
+\begin{algorithm}[h]
+    \begin{algorithmic}
+        \STATE {\bfseries Input:} Unweighted, Bi-directional graph, $\mG=(N,E)$
+        \STATE \COMMENT{$R$ stands for remaining nodes that are not inside any cluster}
+        \STATE $R \leftarrow N $
+        \STATE $L_c \leftarrow \emptyset $
+        \WHILE{$R \neq \emptyset$}
+        \STATE $s \leftarrow R.\text{pop}(~)$
+        \IF{$|R| = 0$}
+        \STATE $L_C.\text{append}(\{c\})$
+        \ELSE
+        \STATE $D \leftarrow \text{BFS}(s)$
+        \STATE $C \leftarrow \emptyset $
+        \STATE $R^* \leftarrow \emptyset$
+        \FOR{$n$ in $R$}
+        \IF{$D[n] = \infty$}
+        \STATE $R^*.\text{append}(n)$
+        \ELSE
+        \STATE $C.\text{append}(n)$
+        \ENDIF
+        \ENDFOR
+        \STATE $L_C.\text{append}(C)$
+        \STATE $R \leftarrow R^*$
+        \ENDIF
+        \ENDWHILE
+        \OUTPUT $L_c$
+    \end{algorithmic}
+    \caption{DetermineCluster}
+\end{algorithm}

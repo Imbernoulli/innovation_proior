@@ -1,0 +1,94 @@
+\documentclass{article}
+
+\usepackage[preprint, nonatbib]{main}
+
+\usepackage{times}
+\usepackage{epsfig}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{amsmath}
+\usepackage{amssymb}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{hyperref} 
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{amsfonts}
+\usepackage{nicefrac}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{algorithmicx}
+\usepackage{afterpage}
+
+\input{math_commands.tex}
+
+
+\newcommand{\alicom}[1]{{\color{blue} Ali: #1}}
+\newcommand{\aaroncom}[1]{{\color{green} Aaron: #1}}
+\newcommand{\oriol}[1]{{\color{red} Oriol: #1}}
+
+\renewcommand{\figref}[1]{Fig.~\ref{#1}}
+\newcommand{\tblref}[1]{Table~\ref{#1}}
+\newcommand{\sref}[1]{Sect.~\ref{#1}}
+\newcommand{\aref}[1]{Appendix~\ref{#1}}
+
+\def\eg{\emph{e.g. }}
+\def\ie{\emph{i.e. }}
+\def\Eg{\emph{E.g.}}
+\def\etal{\emph{et al.}}
+\newcommand{\todo}[1]{\hl{TODO: #1}}
+
+
+\title{Generating Diverse High-Fidelity Images\\ with VQ-VAE-2}
+
+\author{
+  Ali Razavi\thanks{Equal contributions.} \\
+  DeepMind\\
+  \texttt{alirazavi@google.com}\\
+  \And
+  A\"aron van den Oord$^{\ast}$ \\
+  DeepMind \\
+  \texttt{avdnoord@google.com}
+  \And
+  Oriol Vinyals \\
+  DeepMind \\
+  \texttt{vinyals@google.com}
+}
+
+
+
+\begin{document}
+\maketitle
+\begin{abstract}
+We explore the use of Vector Quantized Variational AutoEncoder (VQ-VAE) models for large scale image generation.
+To this end, we scale and enhance the autoregressive priors used in VQ-VAE to generate synthetic samples of much higher coherence and fidelity than possible before. 
+We use simple feed-forward encoder and decoder networks, making our model an attractive candidate for applications where the encoding and/or decoding speed is critical. Additionally, VQ-VAE  requires sampling an autoregressive model only in the compressed latent space, which is an order of magnitude faster than sampling in the pixel space, especially for large images.
+We demonstrate that a multi-scale hierarchical organization of  VQ-VAE, augmented with powerful priors over the latent codes, is able to generate samples with quality that rivals that of state of the art Generative Adversarial Networks on multifaceted datasets such as ImageNet, while not suffering from GAN's known shortcomings such as mode collapse and lack of diversity. 
+\end{abstract}
+
+\input{01_introduction.tex}
+\input{02_background.tex}
+\input{03_method.tex}
+\input{04_related.tex}
+\input{05_experiments.tex}
+\input{06_conclusions.tex}
+
+\subsubsection*{Acknowledgments}
+We would like to thank Suman Ravuri, Jeff Donahue, Sander Dieleman, Jeffrey Defauw, Danilo J. Rezende, Karen Simonyan and Andy Brock for their help and feedback.
+
+\pagebreak
+\medskip
+{\small
+\bibliographystyle{plain}
+\bibliography{main}
+}
+
+\newpage
+%\Large{\textbf{Appendix}}\\
+\input{99_appendix.tex}
+
+
+\end{document}

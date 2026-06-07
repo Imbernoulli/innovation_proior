@@ -1,0 +1,1468 @@
+
+\section[Proof of Theorem 5.16]{Proof of Theorem~\ref{thm-ellipse}}
+\label{appendix-skew-red}
+
+This appendix contains a proof of Theorem~\ref{thm-ellipse}. We start
+by reformulating the problem in more convenient terms. Recall that the
+notion of uprightness introduced in Section~\ref{ssec-uprightness} was
+defined for an arbitrary bounded convex subset of $\R^2$. If the set
+in question is an ellipse, we can expand the definition of uprightness
+into an explicit expression. Recall from Definition~\ref{def-ellipses}
+that an ellipse centered at $p$ can be written as $E=\s{u\in\R^2\such
+  (u-p)^\dagger D(u-p)\leq 1}$, where $D$ is a positive definite matrix
+whose entries are, e.g., as follows:
+\[
+  D = 
+  \left[ 
+    \begin{array}{cc} 
+      a & b  \\
+      b & d
+    \end{array} 
+  \right].
+\]
+We can compute the area of $E$ and the area of its 
+bounding box using $D$. Indeed, we have 
+$\area(E)= \pi/\sqrt{\Det(D)}$ and 
+$\area (\BBox(E))=4\sqrt{ad} /\Det(D)$. 
+Substituting these in Definition~\ref{def-uprightness} 
+yields the desired expression for uprightness:
+\begin{equation}
+\label{eqn:upright}
+  \up(E) = \frac{\area(E)}
+                {\area(\BBox(E))}
+         = \frac{\pi}{4} 
+             \sqrt{
+               \frac{\Det(D)}{ad} 
+             }.
+    {\hspace{1.5cm}
+    \begin{tikzpicture}[baseline=0, xscale=1.6, yscale=1]
+      \draw[fill=yellow!20] (-1,-1) -- (1,-1) -- (1,1) -- (-1,1) -- cycle;
+      \draw[fill=red!50, rotate=45, yscale=0.4] (0,0) circle (1.3131);
+      \draw (0,0) node {\small $E$};
+      \draw (-1,.75) node[right] {\small $\BBox(E)$};
+    \end{tikzpicture}
+    }
+\end{equation}
+It follows that the uprightness of $E$ is invariant under 
+translation and scalar multiplication.
+
+Recall that $\lambda=\sqrt{2} +1$. The matrix $D$ corresponding to 
+an ellipse $E$ has determinant 1 if and only if it can be written 
+in the form
+\begin{equation}
+  D =
+  \left[ 
+    \begin{array} {cc} 
+      e{\lambda^{-z}} & b \\
+      b & e{\lambda^{z}}
+    \end{array} 
+  \right]
+\end{equation}
+for some $b,e,z\in\R$ with $e>0$ and $e^2=b^2+1$.  In this case, the
+definition of uprightness {\eqref{eqn:upright}} simplifies to
+\begin{equation}\label{eqn-upe}
+  \up(E) = \frac{\pi}{4e^2} = \frac{\pi}{4\sqrt{b^2+1}}.
+\end{equation}
+Equivalently, if $\up(E)=M$, then
+\begin{equation}\label{eqn-b2}
+  b^2 = \frac{\pi^2}{16M^2} - 1.
+\end{equation}
+
+Since Theorem~\ref{thm-ellipse} deals with pairs of ellipses, it is
+convenient to introduce the following terminology for discussing pairs
+of matrices.
+
+\begin{definition}
+A \emph{state} is a pair of real symmetric positive 
+definite matrices of determinant 1. Given a state 
+$\state$ with
+\begin{equation}
+\label{eqn:state}
+  D =
+  \left[ 
+    \begin{array}{cc} 
+      e{\lambda^{-z}} & b \\
+      b & e{\lambda^{z}}
+    \end{array} 
+  \right]
+  ~~~~
+  \Delta =
+  \left[ 
+    \begin{array}{cc} 
+      \varepsilon{\lambda^{-\zeta}} & \beta \\
+      \beta & \varepsilon{\lambda^{\zeta}}
+    \end{array} 
+  \right]
+\end{equation}
+we define its \emph{skew} as 
+$\sk\state=b^2+\beta^2$ and its
+\emph{bias} as $\bias \state 
+=\zeta-z$.
+\end{definition}
+
+Note that the skew of a state is small if and only if both $b^2$ and
+$\beta^2$ are small, which happens, by {\eqref{eqn-upe}}, if and only
+if the ellipses corresponding to $D$ and $\Delta$ both have large
+uprightness. So our strategy for increasing the uprightness will be to
+reduce the skew. In what follows, we use $\state$ to denote an
+arbitrary state and always assume that the entries of $D$ and $\Delta$
+are given as in \eqref{eqn:state}. For future reference, we record
+here another useful property of states.
+
+\begin{remark}\label{rem-be}
+If $\state$ is a state with $b\geq 0$,
+then $-be\leq -b^2$. Indeed:
+\[
+e^2=b^2+1 ~\imp~ e^2\geq b^2 ~\imp~ e\geq b ~\imp~ -be\leq -b^2.
+\]
+Similarly, if $b\leq 0$, then $be\leq -b^2$. Analogous 
+inequalities also hold for $\beta$ and $\varepsilon$.
+\end{remark}
+
+The action of a grid operator on an ellipse can be adapted to states
+in a natural way, provided that the operator is special.
+
+\begin{definition}
+\label{definition_action}
+The action of special grid operators on states is defined as
+follows. Here, $\G\da$ denotes the transpose of $\G$, and $\G\bul$ is
+defined by applying $(-)\bul$ separately to each matrix entry, as in
+Remark~\ref{gridoperatorcomposition}.
+\[
+\state\cdot \G = (\G^\dagger D\G,\G^{\bullet\dagger} \Delta \G^\bullet).
+\]
+\end{definition}
+
+\begin{lemma}\label{lem-ellipse-action}
+  Let $(D,\Delta)$ be a state, and let $A$ and $B$ be the ellipses
+  centered at the origin that are defined by $D$ and $\Delta$,
+  respectively.  Then the ellipses $\G(A)$ and $\G\bul(B)$ are defined
+  by the matrices $D'$ and $\Delta'$, where
+  \[ (D',\Delta') = (D,\Delta) \cdot \G\inv
+  \]
+\end{lemma}
+
+\begin{proof}
+  We have 
+  \[ \begin{array}{rcl}
+    \G(A) &=& \s{\G(u)\in\R^2 \mid u\da D u \leq 1} \\
+    &=& \s{v\in\R^2 \mid (\G\inv v)\da D(\G\inv v) \leq 1} \\
+    &=& \s{v\in\R^2 \mid v\da (\G\inv)\da D \G\inv v \leq 1},
+  \end{array}
+  \] 
+  so the ellipse $\G(A)$ is defined by the positive operator
+  $D'=(\G\inv)\da D \G\inv$. The proof for $\G\bul(B)$ is similar.
+\end{proof}
+
+The main ingredient in the proof of 
+Theorem~\ref{thm-ellipse} is the following Step Lemma.
+
+\begin{lemma}[Step Lemma]
+\label{Step}
+For any state $\state$, if $\sk\state \geq \formula{\P}$, 
+then there exists a special grid operator $\G$ such that 
+$\sk (\state \cdot \G)\leq \formula{\Qstep} ~\sk\state$. 
+Moreover, $\G$ can be computed using a constant number of arithmetic
+operations.
+\end{lemma}
+
+Before proving the Step Lemma, we show how it can be 
+used to derive Theorem~\ref{thm-ellipse}, whose 
+statement we reproduce here. 
+
+\begin{un-theorem}
+  Suppose $A,B\subseteq \R^2$ are ellipses. Then there exists a grid
+  operator $\G$ such that $\G(A)$ and $\G^\bullet (B)$ are
+  $1/\formula{\oneoverM}$-upright. Moreover, if $A$ and $B$ are
+  $M$-upright, then $\G$ can be efficiently computed in $O(\log(1/M))$
+  arithmetic operations.
+\end{un-theorem}
+
+\begin{proof}
+  Let $D$ and $\Delta$ be the matrices defining $A$ and $B$
+  respectively, in the sense of Definition~\ref{def-ellipses}. Since
+  uprightness is invariant under translations and scaling, we may
+  without loss of generality assume that both ellipses are centered at
+  the origin, and that $\det D = \det \Delta = 1$.
+
+  The pair $\state$ is a state. By applying Lemma~\ref{Step}
+  repeatedly, we get grid operators $\G_1,\ldots,\G_n$ such that:
+  \begin{equation}\label{eqn-skew-reduction}
+    \sk(\state\cdot \G_1\ldots \G_n) \leq \formula{\P}.
+  \end{equation}
+  Now let $(D',\Delta')=\state\cdot \G_1\ldots \G_n$ and set
+  $\G=(\G_1\cdots \G_n)^{-1}$. By Lemma~\ref{lem-ellipse-action}, the
+  ellipses $\G(A)$ and $\G^{\bullet}(B)$ are defined by the matrices
+  $D'$ and $\Delta'$, respectively.  Let $b$ and $\beta$ be the
+  anti-diagonal entries of the matrices $D'$ and $\Delta'$,
+  respectively.  We have:
+  \[
+  b^2+\beta^2  = \sk (D',\Delta')=
+  \sk(\state\cdot \G\inv) =
+  \sk (\state\cdot \G_1\ldots \G_n)\leq \formula{\P},
+  \]
+  hence $b^2\leq \formula{\P}$ and $\beta^2\leq\formula{\P}$.
+  Using {\eqref{eqn-upe}}, we get
+  \[
+  \up(\G(A)) 
+  = \frac{\pi}{4\sqrt{b^2+1}} 
+  \geq \frac{\pi}{4\sqrt{\formula{\P+1}}}
+  \geq 1/\formula{\oneoverM} 
+  \quad\mbox{and}\quad
+  \up(\G\bul(B)) 
+  = \frac{\pi}{4\sqrt{\beta^2+1}} 
+  \geq \frac{\pi}{4\sqrt{\formula{\P+1}}} 
+  \geq 1/\formula{\oneoverM},
+  \]
+  as desired. 
+  % Check!!!
+  \assert{\P <= (pi^2 / (16 * \M^2))-1}%
+
+  To bound the number of operations, note that each application of
+  $\G_j$ reduces the skew by at least $\formula{\roundone{100-100*\Qstep}}$ percent.
+  Therefore, the number $n$ in {\eqref{eqn-skew-reduction}} satisfies
+  $n\leq \log_{\formula{\Qstep}}({\formula{\P}}/{\sk\state}) =
+  O(\log(\sk\state))$.  Using {\eqref{eqn-b2}}, we have
+  \[ \log (\sk\state) = \log (b^2+\beta^2)
+  \leq \log ((\frac{\pi^2}{16M^2} - 1) + (\frac{\pi^2}{16M^2} - 1))
+  = O(\log(1/M)).
+  \]
+  It follows that the computation of $\G$ requires
+  $O(\log(1/M))$ applications of the Step Lemma, each of
+  which requires a constant number of arithmetic operations, proving
+  the final claim of the theorem. 
+\end{proof}
+
+The remainder of this appendix is devoted to proving the 
+Step Lemma. To each state, we associate the pair $(z, 
+\zeta)$. The proof of the Step Lemma is essentially 
+a case distinction on the location of the pair $(z, 
+\zeta)$ in the plane. We find 
+coverings of the plane with the property that if the 
+point $(z, \zeta)$ belongs to some region 
+$\mathcal{O}$ of our covering, then it is easy to compute a 
+special grid operator $\G$ such that $\sk(\state\cdot \G)\leq 
+\formula{\Qstep}~\sk\state$. The relevant grid operators are 
+given in Figure~\ref{list_operators}.
+%
+\begin{figure}
+\[
+R= \frac{1}{\sqrt{2}}\left[ \begin{array} {cc} 
+1 & -1  \\
+1 & 1
+\end{array} \right]
+~~
+A = \left[ \begin{array} {cc} 
+1 & -2  \\
+0 & 1
+\end{array} \right]
+~~ 
+B = \left[ \begin{array} {cc} 
+1 & \sqrt{2}  \\
+0 & 1
+\end{array} \right]
+\]
+\[
+K = \frac{1}{\sqrt{2}}\left[ \begin{array} {cc} 
+-\lambda^{-1} & -1  \\
+\lambda & 1
+\end{array} \right]
+~~
+X= \left[ \begin{array} {cc} 
+0 & 1  \\
+1 & 0
+\end{array} \right]
+~~ 
+Z= \left[ \begin{array} {cc} 
+1 & 0  \\
+0 & -1
+\end{array} \right]
+\]
+\caption{List of useful grid operators.}
+\label{list_operators}
+\rule{\textwidth}{0.1mm}
+\end{figure}
+%
+Each one of the next 5 subsections is dedicated to a
+particular region of the plane. We prove the Step Lemma 
+in Section~\ref{ssect-step}.
+
+\subsection{The Shift Lemma}
+\label{ssect-shift}
+
+In this section, we consider states $\state$ such that 
+$|\bias\state|>1$. Any such state can be ``shifted" to a 
+state $(D', \Delta')$ of equal skew but with 
+$|\bias(D', \Delta')|\leq 1$.
+
+\begin{definition}
+The \emph{shift operators} $\sigma$ and $\tau$ are defined by:
+\[
+\sigma =
+\sqrt{\lambda^{-1}}\left[\begin{array}{cc}
+\lambda & 0 \\
+0 & 1
+\end{array} \right],
+\tau =
+\sqrt{\lambda^{-1}}
+\left[\begin{array}{cc}
+1 & 0 \\
+0 & -\lambda
+\end{array} \right]
+\]
+\end{definition}
+
+Even though $\sigma$ and $\tau$ are not grid operators, we can use 
+them to define an operation on states called a \emph{shift by $k$}. 
+By abuse of notation, we write this operation as an action.
+
+\begin{definition}
+Given a state $\state$ and $k\in\Z$, the \emph{k-shift of $\state$} is defined as:
+\[
+\state \cdot \shift^k = (\sigma^k D \sigma^k, \tau^k \Delta \tau^k).
+\]
+\end{definition}
+
+The notation $\state \cdot \shift^k$ is justified by the following lemma.
+
+\begin{lemma}
+\label{propshift}
+The shift of a state is a state and moreover:
+\[
+\sk(\state\cdot\shift^k)= \sk\state
+~\mbox{ and }~
+\bias(\state\cdot\shift^k)=\bias\state +2k
+\]
+\end{lemma}
+
+\begin{proof}
+Compute $\state\cdot\shift^k$:
+\[
+\begin{array}{rcl}
+\state\cdot\shift^k & = & (\sigma^k D \sigma^k, \tau^k \Delta \tau^k) \\
+& = & (\sigma^k\left[ \begin{array} {cc} 
+e{\lambda^{-z}} & b \\
+b & e{\lambda^{z}}
+\end{array} \right] \sigma^k,
+\tau^k\left[ \begin{array} {cc} 
+\varepsilon{\lambda^{-\zeta}} & \beta \\
+\beta & \varepsilon{\lambda^{\zeta}}
+\end{array} \right]\tau^k) \\
+& = & (\left[ \begin{array} {cc} 
+e\lambda^{-z+k} & b \\
+b & e\lambda^{z-k}
+\end{array} \right],
+\left[ \begin{array} {cc} 
+\varepsilon\lambda^{-\zeta-k} & (-1)^k\beta \\
+(-1)^k\beta & \varepsilon\lambda^{\zeta+k}
+\end{array} \right])
+\end{array}
+\]
+The resulting matrices are clearly symmetric and positive definite. Moreover, since $\sigma^k$ and $\tau^k$ have determinant $\pm 1$, both $\sigma^k D\sigma^k$ and $\tau^k \Delta\tau^k$ have determinant 1. Finally:
+\begin{itemize}
+  \item $\sk(\state\cdot\shift^k)= b^2+((-1)^k\beta)^2=b^2+\beta^2= \sk\state$ and
+  \item $\bias(\state\cdot\shift^k)=(\zeta+k)-(z-k)=\bias\state +2k$,
+\end{itemize}
+which completes the proof.
+\end{proof}
+
+For every special grid operator $\G$, there is a special grid operator $\G'$ whose action on a state corresponds to shifting the state by $k$, applying $\G$ and then shifting the state by $-k$.
+
+\begin{lemma}
+\label{conjugationbysigma1}
+If $\G$ is a special grid operator and $k\in\Z$, then $\G'=\sigma^k \G \sigma^k$ is a special grid operator and moreover $\G'^\bullet = (-\tau)^k \G^\bullet \tau^k$.
+\end{lemma}
+
+\begin{proof}
+It suffices to show this for $k=1$. Suppose $\G=\left[ \begin{array} {cc} 
+w & x \\
+y & z
+\end{array} \right]$ is a special grid operator and note that:
+\[
+\G'=
+\sigma \G \sigma=
+\left[ \begin{array} {cc} 
+\lambda w & x \\
+y & \lambda^{-1}z
+\end{array} \right]
+=
+\left[ \begin{array} {cc} 
+\lambda^{-1} & 0 \\
+0 & \lambda^{-1}
+\end{array} \right]
+\left[ \begin{array} {cc} 
+\lambda & 0 \\
+0 & 1
+\end{array} \right]
+\G
+\left[ \begin{array} {cc} 
+\lambda  & 0 \\
+0 & 1
+\end{array} \right].
+\]
+Since all the factors in the above product are grid operators, the result is also a grid operator. Moreover $\Det(\sigma\G\sigma)=\Det(\G)=1$ so that $\sigma\G\sigma$ is special. Finally:
+\[
+\G'^\bullet=(\sigma \G \sigma)^\bullet=
+\left[ \begin{array} {cc} 
+\lambda^\bullet w^\bullet & x^\bullet \\
+y^\bullet & (\lambda^{-1})^\bullet z^\bullet
+\end{array} \right]
+=
+\left[ \begin{array} {cc} 
+-\lambda^{-1} w^\bullet & x^\bullet \\
+y^\bullet & -\lambda z^\bullet
+\end{array} \right]
+=
+-\tau \G^\bullet \tau.
+\]
+\end{proof}
+
+\begin{lemma}
+\label{conjugationbysigma2}
+If $\G$ is a grid operator, then:
+\[
+((\state\cdot \shift^k) \cdot \G )\cdot \shift^k = \state \cdot (\sigma^k \G\sigma^k).
+\]
+\end{lemma}
+
+\begin{proof} Write $\G'=\sigma^k \G\sigma^k$. Simple computation then yields the result:
+\[
+\begin{array}{rcl}
+((\state\cdot \shift^k) \cdot \G )\cdot \shift^k 
+& = & ((\sigma^k D \sigma^k,\, \tau^k \Delta \tau^k)\cdot \G )\cdot \shift^k \\
+& = & (\G^\dagger\sigma^k D \sigma^k \G,\, \G^{\bullet\dagger} \tau^k \Delta \tau^k \G^\bullet )\cdot \shift^k \\
+& = & (\sigma^k\G^\dagger\sigma^k D \sigma^k \G\sigma^k,\, \tau^k \G^{\bullet\dagger} \tau^k \Delta \tau^k \G^\bullet \tau^k ) \\
+& = & (\sigma^k\G^\dagger\sigma^k D \sigma^k \G\sigma^k,\, ((-\tau)^k\G^{\bullet\dagger} \tau^k )\Delta ((-\tau)^k \G^\bullet \tau^k) ) \\
+& = & (\G'^\dagger D \G',\, \G'^{\bullet\dagger} \Delta {\G'}^\bullet ) \\
+& = & \state \cdot \G' \\
+& = & \state \cdot (\sigma^k \G\sigma^k).
+\end{array}
+\]
+\end{proof}
+
+Shifts allow us to consider only states $\state$ with 
+$\bias\state\in[-1,1]$ in the proof of the Step Lemma.
+
+\begin{lemma}
+\label{shift_lemma}
+If the Step Lemma holds for all states $\state$ with
+$\bias\state\in [-1,1]$, then it holds for all states.
+\end{lemma}
+
+\begin{proof}
+Let $\state$ be some state with $\sk\state\geq\formula{\P}$. 
+Let $x=\bias\state$ and set $k=\floor{\frac{1-x}{2}}$. Then by 
+Lemma~\ref{propshift}, we have $\sk(\state\cdot\shift^k)= \sk\state$ and
+$\bias(\state\cdot\shift^k)\in[-1,1]$. Then by assumption, 
+there exists a special grid operator $\G$ such that 
+$\sk((\state\cdot\shift^k)\cdot \G)\leq \formula{\Qstep}~\sk(\state 
+\cdot\shift^k)$. Now by Lemma~\ref{conjugationbysigma1} 
+we know that $\G'=\sigma^k ~\G~ \sigma^k$ is a special 
+grid operator. Moreover, by 
+Lemma~\ref{conjugationbysigma2} and \ref{propshift}, 
+we have:
+\[
+\begin{array}{rcl}
+\sk(\state\cdot \G') & = & \sk(((\state\cdot\shift^k)\cdot \G)\cdot \shift^k) \\
+& = & \sk((\state \cdot\shift^k)\cdot \G) \\
+& \leq & \formula{\Qstep}~\sk(\state \cdot\shift^k) \\
+& = & \formula{\Qstep}~\sk\state ,
+\end{array}
+\]
+which completes the proof.
+\end{proof}
+
+\subsection[The R Lemma]{The $R$ Lemma}
+\label{ssect-R}
+
+\begin{definition}
+  The \emph{hyperbolic sine in base $\lambda$} is defined as:
+\[
+  \sinl(x) = \frac{\lambda^x-\lambda^{-x}}{2}.
+\]
+\end{definition}
+
+\begin{lemma}
+\label{lemmaR}
+Recall the operator $R$ from Figure~\ref{list_operators}. 
+If $\state$ is such that $\sk\state\geq\formula{\P}$, and
+such that $\formula{-\r}\leq z\leq\formula{\r}$ and $\formula{-\r}\leq
+\zeta\leq\formula{\r}$, then:
+\[
+  \sk(\state\cdot R) \leq \formula{\Qstep}~\sk\state. 
+\]
+\end{lemma}
+
+\begin{proof}
+Compute the action of $R$ on $\state$:
+\[
+  \begin{array}{lcl}
+    R^\dagger DR 
+    & = & \displaystyle\frac{1}{2}
+    \left[ \begin{array} {cc} 
+      1 & 1  \\
+      -1 & 1
+    \end{array} \right]
+    \left[ \begin{array} {cc} 
+      e{\lambda^{-z}} & b \\
+      b & e{\lambda^{z}}
+    \end{array} \right]
+    \left[ \begin{array} {cc} 
+      1 & -1  \\
+      1 & 1
+    \end{array} \right] \\\\[-1.5ex]
+    & = &
+    \left[ \begin{array} {cc} 
+      \ldots & \frac{e({\lambda^{z}}-{\lambda^{-z}})}{2}\\
+      \frac{e({\lambda^{z}}-{\lambda^{-z}})}{2} & \ldots
+    \end{array} \right] 
+    ~ = ~ 
+    \left[ \begin{array} {cc} 
+      \ldots & e\sinl(z)\\
+      e\sinl(z) & \ldots
+    \end{array} \right], 
+  \\\\[-1.5ex]
+    R^{\bullet\dagger} \Delta R^\bullet 
+    & = & \displaystyle\frac{1}{2}
+    \left[ \begin{array} {cc} 
+      -1 & -1  \\
+      1 & -1
+    \end{array} \right]
+    \left[ \begin{array} {cc} 
+      \varepsilon{\lambda^{-\zeta}} & \beta \\
+      \beta & \varepsilon{\lambda^{\zeta}}
+    \end{array} \right]
+    \left[ \begin{array} {cc} 
+      -1 & 1  \\
+      -1 & -1
+    \end{array} \right] \\\\[-1.5ex]
+    & = & \left[ \begin{array} {cc} 
+      \ldots & \frac{\varepsilon({\lambda^{\zeta}}-{\lambda^{-\zeta}})}{2}\\
+      \frac{\varepsilon({\lambda^{\zeta}}-{\lambda^{-\zeta}})}{2} & \ldots
+    \end{array} \right] 
+    ~ = ~ \left[ \begin{array} {cc} 
+      \ldots & \varepsilon\sinl(\zeta)\\
+      \varepsilon\sinl(\zeta) & \ldots
+    \end{array} \right].
+  \end{array}
+\]
+Therefore $\sk(\state\cdot R)= e^2\sinl^2(z)+ 
+\varepsilon^2\sinl^2(\zeta)$. But recall that 
+$e^2=b^2+1$ and $\varepsilon^2=\beta^2+1$, so that in 
+fact:
+\[
+  \sk(\state\cdot R) = (b^2+1)\sinl^2(z)+
+  (\beta^2+1)\sinl^2(\zeta). 
+\]
+We assumed 
+$\formula{-\r}\leq z,\zeta\leq\formula{\r}$
+and this implies that 
+$\sinl^2(\zeta), \sinl^2(z) \leq 
+\sinl^2(\formula{\r})$. Writing 
+$y=\sinl^2(\formula{\r})$ for brevity, and using 
+the assumption that $\sk\state\geq\formula{\P}$, 
+we get:
+\[
+  \begin{array}{rcl}
+  \sk(\state\cdot R) & = &
+  (b^2+1)\sinl^2(z)+
+  (\beta^2+1)\sinl^2(\zeta)\\
+  & \leq & 
+  (b^2+1)y+(\beta^2+1)y\\
+  & = & (b^2+\beta^2+2)y \\
+  & \leq & \sk\state (1+\frac{2}{\formula{\P}})y.
+  \end{array}
+\]
+This completes the proof, since $(1+\frac{2}
+{\formula{\P}})y = (1+\frac{2}
+{\formula{\P}})\sinl^2(\formula{\r}) 
+\approx \formula{(1+(2/\P))*(\sinhl \r)^2} 
+\leq \formula{\Qstep}$.
+%% Check!!!
+\assert{(1+(2/\P))*(\sinhl \r)^2 <= \Qstep}%
+%
+\end{proof}
+
+\subsection[The K Lemma]{The $K$ Lemma}
+\label{ssect-K}
+
+\begin{definition}
+The \emph{hyperbolic cosine in base $\lambda$} is 
+defined as:
+\[
+  \cosl (x) = \frac{\lambda^x+\lambda^{-x}}{2}.
+\]
+\end{definition}
+
+\begin{lemma}
+\label{lemmaK}
+Recall the operator $K$ from Figure~\ref{list_operators}. 
+If $\state$ is such that $\bias\state\in 
+[-1,1]$, $\sk\state\geq\formula{\P}$, and such that $b,\beta\geq 0$,
+$z\leq\formula{-\a}$, and $\formula{\r}\leq\zeta$, then:
+\[
+  \sk(\state\cdot K)\leq \formula{\Qstep}~\sk\state.
+\]
+\end{lemma}
+
+\begin{proof}
+Compute the action of $K$ on $\state$:
+\begin{eqnarray}
+\lefteqn{K^\dagger DK}\nonumber\\
+& = & \frac{1}{2}
+  \left[ \begin{array}{cc} 
+  -\lambda^{-1} & \lambda  \\
+  -1 & 1
+  \end{array} \right]
+  \left[ \begin{array}{cc} 
+  e{\lambda^{-z}} & b \\
+  b & e{\lambda^{z}}
+  \end{array} \right]
+  \left[ \begin{array}{cc} 
+  -\lambda^{-1} & -1  \\
+  \lambda & 1
+  \end{array} \right] \nonumber \\[9pt]
+& = & \frac{1}{2} 
+  \left[ \begin{array}{cc} 
+  \ldots & e(\lambda^{z+1}+\lambda^{-z-1})
+    -2\sqrt{2}b \\
+  e(\lambda^{z+1}+\lambda^{-z-1})-2\sqrt{2}b & \ldots
+  \end{array} \right]  \nonumber \\[9pt]
+& = & 
+  \left[ \begin{array}{cc} 
+  \ldots & e\cosl(z+1) -\sqrt{2}b \\
+  e\cosl(z+1)  -\sqrt{2}b & \ldots
+  \end{array} \right],\nonumber
+\end{eqnarray}
+\begin{eqnarray} 
+\lefteqn{K^{\bullet\dagger} \Delta K^\bullet} 
+\nonumber\\
+& = & \frac{1}{2}
+  \left[ \begin{array}{cc} 
+  \lambda & -\lambda^{-1}  \\
+  -1 & 1
+  \end{array} \right]
+  \left[ \begin{array}{cc} 
+  \varepsilon{\lambda^{-\zeta}} & \beta \\
+  \beta & \varepsilon{\lambda^{\zeta}}
+  \end{array} \right]
+  \left[ \begin{array}{cc} 
+  \lambda & -1  \\
+  -\lambda^{-1} & 1
+  \end{array} \right] \nonumber \\[9pt]
+& = & \frac{1}{2} 
+  \left[ \begin{array}{cc} 
+  \ldots & -\varepsilon(
+    \lambda^{\zeta-1}+\lambda^{-\zeta+1})+2\sqrt{2}\beta \\
+  -\varepsilon(\lambda^{\zeta-1}+\lambda^{-\zeta+1})
+    +2\sqrt{2}\beta & \ldots
+  \end{array} \right]  \nonumber \\[9pt]
+& = &
+  \left[ \begin{array}{cc} 
+  \ldots & \sqrt{2}\beta - \varepsilon \cosl(\zeta-1) \\
+  \sqrt{2}\beta - \varepsilon\cosl(\zeta-1)
+    & \ldots
+  \end{array} \right].\nonumber
+\end{eqnarray}
+
+\noindent
+Therefore:
+\begin{equation}\label{k0}
+\sk(\state \cdot K)=(\sqrt{2}b -e\cosl(z+1))^2 
++(\sqrt{2}\beta-\varepsilon\cosl(\zeta-1))^2.
+\end{equation}
+
+\noindent
+But recall that $e^2=b^2+1$, and from Remark~\ref{rem-be} that $b\geq 0$ 
+implies $-be\leq -b^2$, so:
+\begin{eqnarray}
+\lefteqn{(\sqrt{2}b -e\cosl(z+1))^2} 
+\nonumber\\
+& = & 2b^2-2\sqrt{2}\,be\cosl(z+1)+ 
+e^2\cosl^2(z+1) \nonumber\\
+& \leq & 2b^2-2\sqrt{2}\,b^2\cosl(z+1)+ 
+(b^2+1)\cosl^2(z+1) \nonumber\\
+& = & b^2(2-2\sqrt{2}\cosl(z+1)+ 
+\cosl^2(z+1))+\cosl^2(z+1) 
+\nonumber\\
+& = & b^2(\sqrt{2}-\cosl(z+1))^2+
+\cosl^2(z+1).\label{k1}
+\end{eqnarray}
+Reasoning analogously, we also have
+\begin{eqnarray}
+  (\sqrt{2}\beta-\varepsilon\cosl(\zeta-1))^2
+  & \leq &
+  \beta^2(\sqrt{2}-\cosl(\zeta-1))^2+\cosl^2(\zeta-1).
+\end{eqnarray}
+
+\noindent
+By assumption, $\bias\state\in [-1,1]$, thus 
+$\zeta\leq z+1$.
+This, together 
+with the assumptions $\formula{\r}\leq\zeta$ 
+and $z\leq\formula{-\a}$,
+implies that both $z+1$ and $\zeta-1$ are in the interval
+$[\formula{-\rr},\formula{-\aa}]$. On this interval, the function 
+$\cosl^2(x)$ assumes its maximum at $x=\pgfmathparse{
+  ifthenelse((\coshl {-\rr}) <= (\coshl {-\aa}), -\aa,
+  -\rr)}\pgfmathresult$, and the function 
+$f(x) = (\sqrt 2 - \cosl(x))^2$ assumes its maximum at 
+$x=\assert{-\rr <= 0 && 0 <= -\aa}% 
+\pgfmathparse{
+  ifthenelse((\kone{-\rr}) <= (\kone{0}) && (\kone{-\aa}) <=
+  (\kone{0}), 0,  
+  ifthenelse ((\kone {-\rr}) <= (\kone {-\aa}), -\aa, -\rr)}\pgfmathresult$.
+Therefore, 
+\begin{eqnarray}
+b^2(\sqrt{2}-\cosl(z+1))^2  + \cosl^2(z+1)
+& \leq &
+\pgfmathparse{
+  ifthenelse((\kone{-\rr}) <= (\kone{0}) && (\kone{-\aa}) <= (\kone{0}), 0,
+  ifthenelse ((\kone {-\rr}) <= (\kone {-\aa}), -\aa, -\rr)
+}
+b^2(\sqrt{2} -\cosl(\pgfmathresult))^2 
++ 
+\pgfmathparse{
+  ifthenelse((\coshl {-\rr}) <= (\coshl {-\aa}), -\aa, -\rr)
+}
+\cosl^2(\pgfmathresult).
+\end{eqnarray}
+and
+\begin{eqnarray}
+\beta^2(\sqrt{2}-\cosl(\zeta-1))^2+\cosl^2(\zeta-1)
+& \leq & 
+\beta^2\pgfmathparse{
+  ifthenelse((\kone{-\rr}) <= (\kone{0}) && (\kone{-\aa}) <= (\kone{0}), 0,
+  ifthenelse ((\kone {-\rr}) <= (\kone {-\aa}), -\aa, -\rr)
+}
+(\sqrt{2} -\cosl(\pgfmathresult))^2
++
+\pgfmathparse{
+  ifthenelse((\coshl {-\rr}) <= (\coshl {-\aa}), -\aa, -\rr)
+}
+\cosl^2(\pgfmathresult).\label{k3}
+\end{eqnarray}
+
+\noindent
+Combining (\ref{k0})--(\ref{k3}), together 
+with the assumption that $\sk\state\geq\formula{\P}$, yields:
+\begin{eqnarray}
+\sk(\state \cdot K) & = & 
+(\sqrt{2}b -e\cosl(z+1))^2 
++(\sqrt{2}\beta-\varepsilon\cosl(\zeta-1))^2 \nonumber\\
+& \leq & 
+(b^2+\beta^2)\pgfmathparse{
+  ifthenelse((\kone{-\rr}) <= (\kone{0}) && (\kone{-\aa}) <= (\kone{0}), 0,
+  ifthenelse ((\kone {-\rr}) <= (\kone {-\aa}), -\aa, -\rr)
+}
+(\sqrt{2} -\cosl(\pgfmathresult))^2
++
+2\pgfmathparse{
+  ifthenelse((\coshl {-\rr}) <= (\coshl {-\aa}), -\aa, -\rr)
+}
+\cosl^2(\pgfmathresult) \nonumber\\
+& = & 
+\sk\state\pgfmathparse{
+  ifthenelse((\kone{-\rr}) <= (\kone{0}) && (\kone{-\aa}) <= (\kone{0}), 0,
+  ifthenelse ((\kone {-\rr}) <= (\kone {-\aa}), -\aa, -\rr)
+}
+(\sqrt{2} -\cosl(\pgfmathresult))^2
++
+2\pgfmathparse{
+  ifthenelse((\coshl {-\rr}) <= (\coshl {-\aa}), -\aa, -\rr)
+}
+\cosl^2(\pgfmathresult) \nonumber\\
+& \leq & 
+\sk\state(\pgfmathparse{
+  ifthenelse((\kone{-\rr}) <= (\kone{0}) && (\kone{-\aa}) <= (\kone{0}), 0,
+  ifthenelse ((\kone {-\rr}) <= (\kone {-\aa}), -\aa, -\rr)
+}
+(\sqrt{2} -\cosl(\pgfmathresult))^2
++
+\frac{2}{\formula{\P}}\pgfmathparse{
+  ifthenelse((\coshl {-\rr}) <= (\coshl {-\aa}), -\aa, -\rr)
+}
+\cosl^2(\pgfmathresult)) \nonumber
+\end{eqnarray}
+This completes the proof since 
+$\pgfmathparse{
+  ifthenelse((\kone{-\rr}) <= (\kone{0}) && (\kone{-\aa}) <= (\kone{0}), 0,
+  ifthenelse ((\kone {-\rr}) <= (\kone {-\aa}), -\aa, -\rr)
+}
+(\sqrt{2} -\cosl(\pgfmathresult))^2
++
+\frac{2}{\formula{\P}}\pgfmathparse{
+  ifthenelse((\coshl {-\rr}) <= (\coshl {-\aa}), -\aa, -\rr)
+}
+\cosl^2(\pgfmathresult)
+\approx\formula{max((\kone {-\rr}),(\kone {-\aa}),(\kone{0})) +
+(max((\coshl {-\rr})^2, (\coshl {-\aa})^2))*(2/\P)}
+\leq \formula{\Qstep}$.
+%% Check!!!
+\assert{max((\kone {-\rr}),(\kone {-\aa}),(\kone{0})) + 
+(max((\coshl {-\rr})^2, (\coshl {-\aa})^2))*(2/\P) 
+<= \Qstep}%
+%
+\end{proof}
+
+\subsection[The A Lemma]{The $A$ Lemma}
+\label{ssect-A}
+
+\begin{definition}
+  Let $g(x) = (1-2x)^2$. 
+\end{definition}
+
+\begin{lemma}
+\label{lemmaA}
+Recall the operator $A$ from Figure~\ref{list_operators}. 
+If $\state $ is such that $\bias\state
+\in[-1,1]$, $\sk\state\geq\formula{\P}$, and such that
+$b,\beta\geq 0$ and $\formula{-\a}\leq{z},\zeta$,
+then there exists $n\in \Z$ 
+such that:
+\[
+  \sk(\state \cdot A^n) 
+  \leq \formula{\Qstep}~\sk\state . 
+\]
+\end{lemma}
+
+\begin{proof}
+Let $c=\min\s{{z},{\zeta}}$ and 
+$n=\max\s{1, \floor{\frac{\lambda^{c}}{2}}}$.
+Compute the action of $A^{n}$ on $\state$:
+\[
+  \begin{array}{lcl}
+    {A^{n}}^\dagger DA^{n} & = & 
+    \left[\begin{array} {cc} 
+      1 & 0  \\
+      -2n & 1
+    \end{array}\right]
+    \left[ \begin{array} {cc} 
+      e{\lambda^{-z}} & b \\
+      b & e{\lambda^{z}}
+    \end{array}\right]
+    \left[ \begin{array} {cc} 
+      1 & -2n  \\
+      0 & 1
+    \end{array}\right] \\[9pt]
+    & = & \left[\begin{array} {cc} 
+      \ldots & b-2ne{\lambda^{-z}}  \\
+      b-2ne{\lambda^{-z}} & \ldots
+    \end{array} \right], \\[18pt]
+    {A^{n}}^{\bullet\dagger}
+      \Delta{A^{n}}^\bullet 
+    & = & {A^{n}}^\dagger \Delta A^{n} \\
+    & = & \left[ \begin{array} {cc} 
+      \ldots & \beta-2n\varepsilon{\lambda^{-\zeta}}  \\
+      \beta-2n\varepsilon{\lambda^{-\zeta}} & \ldots
+    \end{array} \right].
+  \end{array}
+\]
+Therefore:
+\[
+\sk(\state \cdot A^{n}) = 
+(b-2ne{\lambda^{-z}})^2+(\beta-2n\varepsilon{\lambda^{-\zeta}})^2
+\]
+But recall that $e^2=b^2+1$ and
+$\varepsilon^2=\beta^2+1$, and from Remark~\ref{rem-be} that 
+$b,\beta\geq 0$ implies $-be\leq -b^2$ and 
+$-\varepsilon\beta\leq -\beta^2$. Using these 
+facts, we can expand the above formula as 
+follows:
+\begin{eqnarray}
+\lefteqn{\sk(\state\cdot A^{n})}\nonumber \\
+& = & (b-2ne{\lambda^{-z}})^2+(\beta-2n\varepsilon{\lambda^{-\zeta}})^2 
+  \nonumber\\
+& = & b^2
+-4nbe{\lambda^{-z}}
++4n^2e^2{\lambda^{-2z}}
++\beta^2
+-4n\beta\varepsilon{\lambda^{-\zeta}}
++4n^2\varepsilon^2{\lambda^{-2\zeta}}
+  \nonumber\\
+& \leq & b^2
+-4nb^2{\lambda^{-z}}
++4n^2(b^2+1){\lambda^{-2z}}
++\beta^2
+-4n\beta^2{\lambda^{-\zeta}}
++4n^2(\beta^2+1){\lambda^{-2\zeta}}
+  \nonumber\\
+& = & 
+b^2(
+1
+-4n{\lambda^{-z}}
++4n^2{\lambda^{-2z}}
+)+\beta^2(
+1
+-4n{\lambda^{-\zeta}}
++4n^2{\lambda^{-2\zeta}}
+)+4n^2({\lambda^{-2z}}+{\lambda^{-2\zeta}})
+  \nonumber \\
+& = & 
+b^2(1-2n\lambda^{-z})^2
++\beta^2(1-2n\lambda^{-\zeta})^2
++4n^2({\lambda^{-2z}}+{\lambda^{-2\zeta}})
+  \nonumber \\
+& = & b^2g(n{\lambda^{-z}})+\beta^2g(n{\lambda^{-\zeta}})+ 
+  4n^2({\lambda^{-2z}}+{\lambda^{-2\zeta}}).\nonumber
+\end{eqnarray}
+
+\noindent
+Writing $y=\max\s{g(n{\lambda^{-z}}), g(n{\lambda^{-\zeta}})}$ for 
+brevity, and using the assumption that 
+$\sk\state\geq\formula{\P}$ together with 
+the fact that $c\leq z,\zeta$, we 
+get:
+\begin{eqnarray}
+  \sk(\state \cdot A^{n}) & \leq & 
+  b^2y+\beta^2y+ 8n^2\lambda^{-2c} \nonumber\\
+  & = & \sk\state y+ 8n^2\lambda^{-2c} \nonumber\\
+  & \leq & \sk\state (y+ 
+  \frac{8}{\formula{\P}}n^2\lambda^{-2c}). \nonumber
+\end{eqnarray}
+To finish the proof, it remains to show that 
+$y+ \frac{8}{\formula{\P}}n^2\lambda^{-2c}\leq 
+\formula{\Qstep}$.  There are two cases:
+\begin{itemize}
+  \item If $\floor{\frac{\lambda^{c}}{2}}\geq 1$, 
+  then $\frac{\lambda^{c}}{4}\leq n\leq 
+  \frac{\lambda^{c}}{2}$. From $n\leq \frac{\lambda^{c}}{2}$, we have
+  $2n\lambda^{-c}\leq 1$, and so  
+  $\frac{8}{\formula{\P}}n^2\lambda^{-2c} \leq 
+  \frac{2}{\formula{\P}}$. Moreover, because 
+  $\bias\state\in[-1,1]$, we have 
+  $c \leq  z,\zeta \leq c+1$. Hence
+  $\frac{1}{4\lambda} = \frac{\lambda^{c}}{4} \lambda^{-c-1}
+  \leq n\lambda^{-c-1}
+  \leq n{\lambda^{-z}}, n{\lambda^{-\zeta}} 
+  \leq n\lambda^{-c}
+  \leq 
+  \frac{1}{2}$. On the interval $[\frac{1}{4\lambda},
+  \frac{1}{2}]$, the function $g(x)$ assumes its maximum at
+  $x=\frac{1}{4\lambda}$. This implies that $y\leq 
+  g(\frac{1}{4\lambda})$. This completes the 
+  present case since we get:
+  \[
+  y+ \frac{8}{\formula{\P}}n^2\lambda^{-2c}\leq 
+  g(\frac{1}{4\lambda})
+  +\frac{2}{\formula{\P}} 
+  \approx\formula{(1/(2*\l)-1)^2+2/\P}
+  \leq \formula{\Qstep}.
+  \]
+  \assert{(1/(2*\l)-1)^2+2/\P <= \Qstep}%
+  \item If $\floor{\frac{\lambda^{c}}{2}}< 1$, 
+  then $n=1$ and $\lambda^c< 2$. From 
+$\formula{-\a}\leq c$, we have
+  %% Check!!!
+  \assert{(ln 0.5)/(ln ((sqrt 2)+1)) <= \a}%
+  %
+  $\frac{8}{\formula{\P}}n^2\lambda^{-2c}\leq
+  \frac{8}{\formula{\P}}\lambda^{\formula{2*\a}}$.  
+  Moreover, because $\bias\state\in[-1,1]$, we have
+  ${\formula{-\a}}\leq c \leq z,\zeta\leq c+1$. With
+  $\lambda^c\leq 2$, this implies that $\frac{1}{2\lambda}\leq
+  \lambda^{-c-1}\leq \lambda^{-z},\lambda^{-\zeta}
+  \leq\lambda^{\formula{\a}}$. Therefore both $\lambda^{-z}$ and
+  $\lambda^{-\zeta}$ are in the interval $[\frac{1}{2\lambda},
+  \lambda^{\formula{\a}}]$. On this interval, the function $g(x)$
+  assumes its maximum at
+  \assert{(1-2*(\l^(\a)))^2 < (1-2*(1/(2*\l)))^2}%
+  $x=\frac{1}{2\lambda}$, and therefore $y\leq 
+  g(\frac{1}{2\lambda})$. This completes the 
+  proof since:
+  \[
+  y+\frac{8}{\formula{\P}}n^2\lambda^{-2c}\leq 
+  g(\frac{1}{2\lambda})
+  + \frac{8}{\formula{\P}}\lambda^{\formula{2*\a}}
+  \approx\formula{(max(((2*(pow(\l,\a))-1)^2),
+  (((pow(\l,(-1)))-1)^2)) + ((8*(pow (\l, 2*\a))) / \P))}
+  \leq \formula{\Qstep}.
+  \]
+  %% Check!!!
+  \assert{(max(((2*(pow(\l,\a))-1)^2),
+  (((pow(\l,(-1)))-1)^2)) + ((8*(pow (\l, 2*\a))) / \P)) 
+  <= \Qstep}%
+  %
+  \end{itemize}
+\end{proof}
+
+\subsection[The B Lemma]{The $B$ Lemma}
+\label{ssect-B}
+
+\begin{definition}
+  Let $h(x)=(1-\sqrt{2}x)^2$.
+\end{definition}
+
+\begin{lemma}
+\label{lemmaB}
+Recall the operator $B$ from Figure~\ref{list_operators}. 
+If $\state $ is such that $\bias\state\in 
+[-1,1]$, $\sk\state\geq\formula{\P}$, and such that $b\leq 0\leq\beta$ 
+and $\formula{-\b}\leq z,\zeta$, then 
+there exists $n\in\Z$ such that:
+\[
+  \sk(\state\cdot B^n) \leq \formula{\Qstep}~\sk\state.
+\]
+\end{lemma}
+
+\begin{proof}
+Let $c=\min\s{z, \zeta}$, 
+$n=\max\s{1, \floor{\frac{\lambda^{c}}{\sqrt{2}}}}$ 
+and compute the action of $B^n$ on $\state$:
+\[
+\begin{array}{lcl}
+{B^n}^\dagger DB^n & = & \left[ \begin{array} {cc} 
+1 & 0  \\
+\sqrt{2}n & 1
+\end{array} \right]
+\left[ \begin{array} {cc} 
+e{\lambda^{-z}} & b \\
+b & e{\lambda^{z}}
+\end{array} \right]
+\left[ \begin{array} {cc} 
+1 & \sqrt{2}n  \\
+0 & 1
+\end{array} \right] \\[9pt]
+& = & \left[ \begin{array} {cc} 
+\ldots & b+\sqrt{2}\,ne{\lambda^{-z}}  \\
+b+\sqrt{2}\,ne{\lambda^{-z}} & \ldots
+\end{array} \right], \\[18pt]
+{B^n}^{\bullet\dagger} D{B^n}^\bullet & = & \left[ \begin{array} {cc} 
+1 & 0  \\
+-\sqrt{2}n & 1
+\end{array} \right]
+\left[ \begin{array} {cc} 
+\varepsilon{\lambda^{-\zeta}} & \beta \\
+\beta & \varepsilon{\lambda^{\zeta}}
+\end{array} \right]
+\left[ \begin{array} {cc} 
+1 & -\sqrt{2}n  \\
+0 & 1
+\end{array} \right] \\[9pt]
+& = & \left[ \begin{array} {cc} 
+\ldots & \beta-\sqrt{2}\,n\varepsilon{\lambda^{-\zeta}}  \\
+\beta-\sqrt{2}\,n\varepsilon{\lambda^{-\zeta}} & \ldots
+\end{array} \right].
+\end{array}
+\]
+Therefore:
+\[
+\sk(\state\cdot B^n) = (b+\sqrt{2}\,ne{\lambda^{-z}})^2+
+(\beta-\sqrt{2}\,n\varepsilon{\lambda^{-\zeta}})^2.
+\]
+But recall that $e^2=b^2+1$, that 
+$\varepsilon^2=\beta^2+1$, and from Remark~\ref{rem-be} that 
+$b\leq 0\leq \beta$ implies $be\leq -b^2$ and 
+$-\beta\varepsilon\leq -\beta^2$. Using these 
+facts, we can expand the above formula as 
+follows:
+\begin{eqnarray}
+\lefteqn{\sk(\state\cdot B^n)}\nonumber \\
+& = & (b+\sqrt{2}\,ne{\lambda^{-z}})^2+
+(\beta-\sqrt{2}\,n\varepsilon{\lambda^{-\zeta}})^2\nonumber\\
+& = & 
+b^2
++2\sqrt{2}\,nbe{\lambda^{-z}}
++2n^2e^2{\lambda^{-2z}}
++\beta^2
+-2\sqrt{2}\,n\beta\varepsilon{\lambda^{-\zeta}}
++2n^2\varepsilon^2{\lambda^{-2\zeta}}
+\nonumber\\
+& \leq & 
+b^2
+-2\sqrt{2}\,nb^2{\lambda^{-z}}
++2n^2(b^2+1){\lambda^{-2z}}
++\beta^2
+-2\sqrt{2}\,n\beta^2{\lambda^{-\zeta}}
++2n^2(\beta^2+1){\lambda^{-2\zeta}}
+\nonumber\\
+& = & b^2(
+1
+-2\sqrt{2}\,n{\lambda^{-z}}
++2n^2{\lambda^{-2z}}
+)+\beta^2(
+1
+-2\sqrt{2}\,n{\lambda^{-\zeta}}
++2n^2{\lambda^{-2\zeta}}
+)+2n^2({\lambda^{-2z}}+{\lambda^{-2\zeta}})\nonumber \\
+& = & 
+b^2(1-\sqrt{2}\,n\lambda^{-z})^2
++\beta^2(1-\sqrt{2}\,n{\lambda^{-\zeta}})^2
++ 2n^2({\lambda^{-2z}}+{\lambda^{-2\zeta}}).\nonumber \\
+& = & b^2h(n{\lambda^{-z}})+\beta^2h(n{\lambda^{-\zeta}})+ 2n^2({\lambda^{-2z}}+{\lambda^{-2\zeta}}).\nonumber
+\end{eqnarray}
+
+\noindent
+Writing $y=\max\s{h(n{\lambda^{-z}}), h(n{\lambda^{-\zeta}})}$ for
+brevity, and using the assumption that $\sk\state\geq\formula{\P}$,
+together with the fact that $c\leq z,\zeta$, we get:
+\begin{eqnarray}
+\sk(\state \cdot B^n) & \leq & 
+b^2y+\beta^2y+ 4n^2\lambda^{-2c} \nonumber\\
+& = & \sk\state y +4n^2\lambda^{-2c}\nonumber\\ 
+&\leq & \sk\state (y +\frac{4}{\formula{\P}}n^2\lambda^{-2c}) 
+\nonumber.
+\end{eqnarray}
+
+\noindent
+To finish the proof, it remains to show that 
+$y+\frac{4}{\formula{\P}}n^2\lambda^{-2c}\leq \formula{\Qstep}$.  There
+are two cases:
+\begin{itemize}
+  \item If $\floor{\frac{\lambda^{c}}{\sqrt{2}}}\geq 1$, 
+  then $\frac{\lambda^{c}}{2\sqrt{2}}\leq n\leq 
+  \frac{\lambda^{c}}{\sqrt{2}}$. From $n\leq
+  \frac{\lambda^{c}}{\sqrt{2}}$, we have $2n^2\lambda^{-2c}\leq 1$, and
+  so
+  $\frac{4n^2\lambda^{-2c}}{\formula{\P}}\leq \frac{2}
+  {\formula{\P}}$. Moreover, because $\bias\state\in[-1,1]$, we have
+  $c\leq z,\zeta\leq c+1$. Hence $\frac{1}{2\sqrt{2}\,\lambda}
+  = \frac{\lambda^{c}}{2\sqrt{2}}\lambda^{-c-1}\leq n\lambda^{-c-1}\leq
+  n{\lambda^{-z}}, n{\lambda^{-\zeta}} \leq n\lambda^{-c}\leq
+  \frac{1}{\sqrt{2}}$. On the interval $[\frac{1}{2\sqrt{2}\,\lambda},
+  \frac{1}{\sqrt{2}}]$, the function $h(x)$ assumes its maximum at
+  $x=\frac{1}{2\sqrt{2}\,\lambda}$. This implies that $y\leq
+  h(\frac{1}{2\sqrt{2}\,\lambda})$. This
+  completes the present case since we get:
+  \[
+  y+ \frac{4}{\formula{\P}}n^2\lambda^{-2c}\leq 
+  h(\frac{1}{2\sqrt{2}\,\lambda}) +\frac{2}{\P} 
+  \approx \formula{(1 - sqrt(2)*(1/(2*sqrt(2)*\l)))^2 + (2/\P)}
+  \leq \formula{\Qstep}.
+  \]
+  % !!! Check
+  \assert{(1 - sqrt(2)*(1/(2*sqrt(2)*\l)))^2 + (2/\P) <= (\Qstep)}%
+  %
+  \item If $\floor{\frac{\lambda^{c}}{\sqrt{2}}}< 1$, 
+  then $n=1$ and $\lambda^c<\sqrt{2}$. 
+  From $\formula{-\b}\leq c$, we have  $\frac{4}{\formula{\P}}n^2\lambda^{-2c}
+  \leq \frac{4}{\formula{\P}}\lambda^{\formula{2*\b}}$. Moreover, because
+  %% Check!!!
+  %  \assert{((ln 1/(sqrt 2)) / (ln \l)) <= \b}%
+  %
+  $\bias\state\in[-1,1]$, we have
+  $\formula{-\b}\leq c\leq z,\zeta\leq c+1$.
+  With $\lambda^c\leq\sqrt{2}$, this implies that
+  $\frac{1}{\sqrt{2}\,\lambda} \leq \lambda^{-c-1}\leq {\lambda^{-z}}, {\lambda^{-\zeta}} \leq 
+  \lambda^{\formula{\b}}$. Therefore both $\lambda^{-z}$ and
+  $\lambda^{-\zeta}$ are in the interval
+  $[\frac{1}{\sqrt{2}\,\lambda},\lambda^{\formula{\b}}]$.
+  On this interval, the function $h(x)$ assumes its maximum at
+  \assert{(1- sqrt(2)*(1/(sqrt(2)*\l)))^2 <= (1-sqrt(2)*((\l)^(\b)))^2}%
+  $x=\lambda^{\formula{\b}}$, and therefore $y\leq
+  h(\lambda^{\formula{\b}})$. 
+  This completes the proof since:
+  \[
+  y+\frac{4}{\formula{\P}}n^2\lambda^{-2c}\leq 
+  h(\lambda^{\formula{\b}})
+  + \frac{4}{\formula{\P}}\lambda^{\formula{2*\b}}
+  \approx\formula{((max((1 - sqrt(2)*(1/(sqrt(2)*\l)))^2,
+  (1-sqrt(2)*((\l)^(\b)))^2) + (4/\P * (\l^(2*\b))))}
+  \leq \formula{\Qstep}.
+  \]
+  % Check !!!
+  \assert{((max((1 - sqrt(2)*(1/(sqrt(2)*\l)))^2,
+  (1-sqrt(2)*((\l)^(\b)))^2) + (4/\P * (\l^(2*\b)))) 
+  <= (\Qstep)}%
+  %
+\end{itemize}
+\end{proof}
+
+\subsection{Proof of the Step Lemma}
+\label{ssect-step}
+
+The proof of the Step Lemma is now basically a case distinction, using
+the cases enumerated in Sections~\ref{ssect-shift}--\ref{ssect-B}, as
+well as some additional symmetric cases. In particular, the following
+remark will allow us to use the grid operators $X$ and $Z$ to reduce
+the number of cases to consider.
+
+\begin{remark}
+\label{rem-XZ}
+The grid operator $Z$ negates the anti-diagonal entries
+of a state while the operator $X$ swaps the diagonal entries
+of a state. This follows by simple computation:
+  \[
+    \state\cdot Z = 
+    \left(
+      \left[
+        \begin{array}{cc}
+          e{\lambda^{-z}} & -b \\
+          -b & e{\lambda^{z}}
+        \end{array} 
+      \right]
+    ,
+      \left[
+        \begin{array}{cc}
+          \varepsilon{\lambda^{-\zeta}} & -\beta \\
+          -\beta & \varepsilon{\lambda^{\zeta}}
+        \end{array} 
+      \right]
+    \right),
+  ~~~~
+    \state\cdot X = 
+    \left(
+      \left[
+        \begin{array}{cc}
+          e{\lambda^{z}} & b \\
+          b & e{\lambda^{-z}}
+        \end{array} 
+      \right]
+      ,
+      \left[
+        \begin{array}{cc}
+          \varepsilon{\lambda^{\zeta}} & \beta \\
+          \beta & \varepsilon{\lambda^{-\zeta}}
+        \end{array} 
+      \right]
+    \right).
+  \]            
+  Moreover, $\bias (\state\cdot Z) = \bias \state$ and 
+  $\bias (\state\cdot X) = -\bias \state$.
+\end{remark}
+
+
+
+\begin{un-lemma}[Step Lemma]
+For any state $\state$, if $\sk\state \geq \formula{\P}$, 
+then there exists a special grid operator $\G$ such that 
+$\sk (\state\cdot \G)\leq \formula{\Qstep} ~\sk\state$.
+Moreover, $\G$ can be computed using a constant number of arithmetic
+operations.
+\end{un-lemma}
+
+\begin{proof}
+Let $\state$ be a state such that $\sk\state \geq 
+\formula{\P}$. By Lemma~\ref{shift_lemma} we can assume 
+w.l.o.g. that $\bias\state\in[-1,1]$. Moreover, by 
+Remark~\ref{rem-XZ}, we can also assume that $\beta \geq 0$ 
+and $z+\zeta\geq 0$. Note that the application of the grid operators
+$X$ and/or $Z$ in Remark~\ref{rem-XZ} preserves the fact that 
+$\bias\state\in[-1,1]$. We now treat in turn the cases 
+$b\geq 0$ and $b\leq 0$.
+\begin{description}
+  \item[Case 1] \label{b_beta_plus} $b \geq 0$. A covering of 
+  the strip defined by $z-\zeta\in[-1,1]$ and 
+  $z+\zeta\geq 0$ is depicted in Figure~\ref{fig-covers}(a). 
+  The $R$ region (in green) and the $A$ region (in red) are 
+  defined as the intersection of this space with 
+  $\s{(z,\zeta)~|~\formula{-\r}\leq z,\zeta \leq\formula{\r}}$ and 
+  $\s{(z,\zeta)~|~z\leq\formula{-\a}\mbox{ and }\formula{\r}\leq \zeta}$
+  respectively. The $K$ and $K^\bullet$ regions (both in blue) 
+  fill the remaining space.
+  % This covering requires -r <= a.
+  %% Check!!!
+  \assert{-\r <= \a}%
+  %      
+  \begin{figure}
+  \[ (a)~ \mp{0.9}{\begin{tikzpicture}[scale=1.5]
+      % Regions K: [-0.3, \infty] x [-\infty, -0.8]
+      \fill[fill=blue!25] (-0.3,-0.8) -- (-0.3,-2.4) .. controls (0.3,-2.4) and
+      (0.5,-1.5) .. (0.5,-0.8) -- cycle;
+      \draw (0.25,-1.2) node {$XK$};
+      \begin{scope}[scale=-1]
+        \fill[fill=blue!25] (-0.3,-0.8) -- (-0.3,-2.4) .. controls (0.3,-2.4) and
+        (0.5,-1.5) .. (0.5,-0.8) -- cycle;
+        \draw (0.15,-1.3) node {$K$};
+      \end{scope}
+      \begin{scope}[cm={0,1,1,0,(0,0)}]
+        \fill[fill=blue!25] (-0.3,-0.8) -- (-0.3,-2.4) .. controls (0.3,-2.4) and
+        (0.5,-1.5) .. (0.5,-0.8) -- cycle;
+        \draw (0.15,-1.3) node {$XK\bul$};
+      \end{scope}
+      \begin{scope}[cm={0,-1,-1,0,(0,0)}]
+        \fill[fill=blue!25] (-0.3,-0.8) -- (-0.3,-2.4) .. controls (0.3,-2.4) and
+        (0.5,-1.5) .. (0.5,-0.8) -- cycle;
+        \draw (0.2,-1.3) node {$K\bul$};
+      \end{scope}
+      % 
+      % Region A: [-\infty, -0.3] x [-\infty, -0.3]
+      \fill[fill=red!25] (-2.4,-0.3) -- (-0.3,-0.3) -- 
+      (-0.3,-2.4) .. controls (-2,-2.4) and (-2.4,-2) ..
+      (-2.4,-0.3) -- cycle;
+      \draw (-2.5,-0.3) -- (-0.3,-0.3) -- (-0.3,-2.5);
+      \draw (-1.2, -1.2) node {\small $XA^n$};
+      % 
+      % Region XA: [-\infty, -0.3] x [-\infty, -0.3]
+      \begin{scope}[scale=-1]
+        \fill[fill=red!25] (-2.4,-0.3) -- (-0.3,-0.3) -- 
+        (-0.3,-2.4) .. controls (-2,-2.4) and (-2.4,-2) ..
+        (-2.4,-0.3) -- cycle;
+        \draw (-2.5,-0.3) -- (-0.3,-0.3) -- (-0.3,-2.5);
+        \draw (-1.2, -1.2) node {\small $A^n$};
+      \end{scope}
+      % Region R: [-0.8, 0.8] x [-0.8, 0.8]
+      \filldraw[fill=green!25] (0.8, 0.8) -- (-0.8, 0.8) -- (-0.8, -0.8) -- (0.8, -0.8) -- cycle;
+      \draw (0.4, 0.4) node {\small $R$};
+      \begin{scope}
+        \path[clip] (-1.5,-2.5) -- (2.5,1.5) -- (1.5,2.5) -- (-2.5,-1.5) -- cycle;
+        \begin{scope}[yscale=-1]
+          \fill[fill=blue!50] (-0.3,-2.4) -- (-0.3,-0.8) -- 
+          (0.3,-0.8) -- (0.3,-2.4) -- cycle;
+          \draw ((-0.3,-2.5) -- (-0.3,-0.8) -- (0.3,-0.8) -- (0.3,-2.5);
+        \end{scope}
+        \begin{scope}[cm={0,-1,-1,0,(0,0)}]
+          \fill[fill=blue!50] (-0.3,-2.4) -- (-0.3,-0.8) -- 
+          (0.3,-0.8) -- (0.3,-2.4) -- cycle;
+          \draw ((-0.3,-2.5) -- (-0.3,-0.8) -- (0.3,-0.8) -- (0.3,-2.5);
+        \end{scope}
+        % 
+        % Region XA: [-\infty, -0.3] x [-\infty, -0.3]
+        \begin{scope}[scale=-1]
+          \fill[fill=red!50] (-2.4,-0.3) -- (-0.3,-0.3) -- 
+          (-0.3,-2.4) .. controls (-2,-2.4) and (-2.4,-2) ..
+          (-2.4,-0.3) -- cycle;
+          \draw (-2.5,-0.3) -- (-0.3,-0.3) -- (-0.3,-2.5);
+          \draw (-1.2, -1.2) node {\small $A^n$};
+        \end{scope}
+        % Region R: [-0.8, 0.8] x [-0.8, 0.8]
+%        \filldraw[fill=green!50] (0.8, 0.8) -- (-0.8, 0.8) -- (-0.8, -0.8) -- (0.8, -0.8) -- cycle;
+        \filldraw[fill=green!50] (0.8, 0.8) -- (-0.8, 0.8) -- (0.8, -0.8) -- cycle;
+        \draw (0.4, 0.4) node {\small $R$};
+      \end{scope}  
+      % 
+      % Coordinate system
+      \draw[->] (-2.5,0) -- (2.5, 0) node[right] {$z$};
+      \draw[->] (0,-2.5) -- (0, 2.5) node[above] {$\zeta$};
+      \foreach \x in {-2, -1, 1, 2} {
+        \draw (\x,0) -- (\x,-0.1);
+      }
+      \foreach \y in {-2, -1, 1, 2} {
+        \draw (0,\y) -- (-0.1,\y);
+      }
+      \draw (1,-0.1) node[below] {\small $1$};
+      \draw (-0.1,1) node[left] {\small $1$};
+      % 
+      % Lines for shift lemma
+      \draw (-1.5,-2.5) -- (2.5,1.5);
+      \draw (-2.5,-1.5) -- (1.5,2.5);
+      % Line for z+zeta >= 0
+      \draw [dashed] (-2, 2) -- (-0.5,0.5);    
+      \begin{scope}[scale=-1]
+      \draw [dashed] (-2, 2) -- (-0.5,0.5);          
+      \end{scope}
+    \end{tikzpicture}
+  }
+  \quad
+  (b)~
+   \mp{0.9}{\begin{tikzpicture}[scale=1.5]
+      % 
+      % Region XB: [-\infty, 0.2] x [-\infty, 0.2]
+      \fill[fill=red!25] (-2.4,0.2) -- (0.2,0.2) -- 
+      (0.2,-2.4) .. controls (-2,-2.4) and (-2.4,-2) ..
+      (-2.4,0.2) -- cycle;
+      \draw (-2.5,0.2) -- (0.2,0.2) -- (0.2,-2.5);
+      \draw (-1.2, -1.2) node {\small $XB^n$};
+      % 
+      % Region B: [-\infty, 0.2] x [-\infty, 0.2]
+      \begin{scope}[scale=-1]
+        \fill[fill=red!25] (-2.4,0.2) -- (0.2,0.2) -- 
+        (0.2,-2.4) .. controls (-2,-2.4) and (-2.4,-2) ..
+        (-2.4,0.2) -- cycle;
+        \draw (-2.5,0.2) -- (0.2,0.2) -- (0.2,-2.5);
+        \draw (-1.2, -1.2) node {\small $B^n$};
+      \end{scope}
+      % Region R: [-0.8, 0.8] x [-0.8, 0.8]
+      \filldraw[fill=green!25] (0.8, 0.8) -- (-0.8, 0.8) -- (-0.8, -0.8) -- (0.8, -0.8) -- cycle;
+      \draw (0.4, 0.4) node {\small $R$};
+      \begin{scope}
+        \path[clip] (-1.5,-2.5) -- (2.5,1.5) -- (1.5,2.5) -- (-2.5,-1.5) -- cycle;
+        % 
+        % Region XB: [-\infty, 0.2] x [-\infty, 0.2]
+        % 
+        % Region B: [-\infty, 0.2] x [-\infty, 0.2]
+        \begin{scope}[scale=-1]
+          \fill[fill=red!50] (-2.4,0.2) -- (-0.8,0.2) -- (0.2, -0.8) -- 
+          (0.2,-2.4) .. controls (-2,-2.4) and (-2.4,-2) ..
+          (-2.4,0.2) -- cycle;
+          \draw (-2.5,0.2) -- (-0.8,0.2) -- (0.2, -0.8) -- (0.2,-2.5);
+          \draw (-1.2, -1.2) node {\small $B^n$};          
+        \end{scope}
+        % Region R: [-0.8, 0.8] x [-0.8, 0.8]
+        \filldraw[fill=green!50] (0.8, 0.8) -- (-0.8, 0.8) -- (0.8, -0.8) -- cycle;
+        \draw (0.4, 0.4) node {\small $R$};
+      \end{scope}  
+      % 
+      % Coordinate system
+      \draw[->] (-2.5,0) -- (2.5, 0) node[right] {$z$};
+      \draw[->] (0,-2.5) -- (0, 2.5) node[above] {$\zeta$};
+      \foreach \x in {-2, -1, 1, 2} {
+        \draw (\x,0) -- (\x,-0.1);
+      }
+      \foreach \y in {-2, -1, 1, 2} {
+        \draw (0,\y) -- (-0.1,\y);
+      }
+      \draw (1,-0.1) node[below=1.2ex] {\small $1$};
+      \draw (-0.1,1) node[left=1.2ex] {\small $1$};
+      % 
+      % Lines for shift lemma
+      \draw (-1.5,-2.5) -- (2.5,1.5);
+      \draw (-2.5,-1.5) -- (1.5,2.5);
+      % Line for z+zeta >= 0
+      \draw [dashed] (-2, 2) -- (-0.5,0.5);    
+      \begin{scope}[scale=-1]
+      \draw [dashed] (-2, 2) -- (-0.5,0.5);          
+      \end{scope}
+    \end{tikzpicture}
+  }
+  \]
+  \caption{(a) A covering of the region $z-\zeta\in [-1,1]$ and 
+  $z+\zeta\geq 0$ for the case $b\geq 0$. (b) A covering of the 
+  region $z-\zeta\in [-1,1]$ and $z+\zeta\geq 0$ for the case 
+  $b\leq 0$.}
+  \label{fig-covers}
+  \rule{\textwidth}{0.1mm}
+  \end{figure}
+  We now consider in turn the possible locations of 
+  the pair $(z,\zeta)$ in this covering. 
+  \begin{enumerate}
+    \item If $\formula{-\r}\leq z,\zeta \leq\formula{\r}$, 
+    then $\sk(\state\cdot R)\leq \formula{\Qstep}~\sk\state$ by 
+    Lemma~\ref{lemmaR}.
+    \item \label{partk}If $z\leq\formula{-\a}$ and 
+    $\formula{\r}\leq \zeta$, then 
+    $\sk(\state\cdot K)\leq \formula{\Qstep}~\sk\state$ by 
+    Lemma~\ref{lemmaK}.    
+    \item If $\formula{-\a}\leq z,\zeta$, then there exists 
+    $n\in\Z$ such that $\sk(\state\cdot A^n)\leq 
+    \formula{\Qstep}~\sk\state$ by Lemma~\ref{lemmaA}.
+    \item \label{partsk} If $\formula{\r}\leq z$ and 
+    $\zeta\leq\formula{-\a}$, then note that 
+    $\state\cdot K^\bullet = (\Delta, D)\cdot K$, and 
+    therefore by Lemma~\ref{lemmaK}:
+    \[
+    \sk(\state\cdot K^\bullet) = \sk ((\Delta, D)\cdot K) 
+    \leq \formula{\Qstep}~ \sk (\Delta, D)=
+    \formula{\Qstep}~ \sk\state. 
+    \]    
+  \end{enumerate}
+  \item[Case 2] $b\leq 0$. As above, we use a covering of 
+  the strip defined by $z-\zeta\in[-1,1]$ and $z+\zeta\geq 0$ and 
+  consider the possible locations of $(z, \zeta)$ in this 
+  space. The relevant covering is depicted in 
+  Figure~\ref{fig-covers}(b), where the $R$ region (in green) 
+  is defined as above and the $B$ region (in red) is defined 
+  as the intersection of the strip with 
+  $\s{(z,\zeta)~|~z,\zeta\geq \formula{-\b}}$.
+  % This covering requires -b <= r-1.  
+  %% Check!!!
+  \assert{-\b <= \r -1}%
+  %
+  \begin{enumerate}
+    \item If $\formula{-\r}\leq z,\zeta\leq\formula{\r}$, 
+    then $\sk(\state\cdot R)\leq \formula{\Qstep}~\sk\state$ by 
+    Lemma~\ref{lemmaR}.
+    \item If $z,\zeta\geq \formula{-\b}$ then there exists 
+    $n\in\Z$ such that $\sk(\state\cdot B^n)\leq 
+    \formula{\Qstep}~\sk\state$ by Lemma~\ref{lemmaB}.
+  \end{enumerate}
+\end{description}
+Finally, note that only a constant number of calculations are required
+to decide which of the above cases applies. Moreover, each case only
+requires a constant number of operations. Specifically, the
+computation of $k$ and $\sigma^k$ in Lemma~\ref{shift_lemma}, of $n$
+and $A^n$ in Lemma~\ref{lemmaA}, and of $n$ and $B^n$ in
+Lemma~\ref{lemmaB} each require just a fixed number of operations, and
+each of the remaining cases produces a fixed grid operator.
+\end{proof}
+

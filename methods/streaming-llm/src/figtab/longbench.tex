@@ -1,0 +1,19 @@
+\begin{table}
+    \centering
+    \small
+    \setlength{\tabcolsep}{3pt}
+    \caption{\small Performance comparison of \method against the default truncation baseline in LongBench~\citep{bai2023longbench}. The baseline truncates inputs to 1750 initial and 1750 final tokens. \method 4+3496 uses 4 attention sink tokens and 3496 recent tokens, while \method 1750+1750 uses 1750 tokens for both initial and recent segments.}
+    \label{tab:longbench}
+    \begin{tabular}{lcccccc}
+        \toprule
+        \multirow{2}{*}{Llama2-7B-chat} & \multicolumn{2}{c}{Single-Document QA} & \multicolumn{2}{c}{Multi-Document QA} & \multicolumn{2}{c}{Summarization}                                    \\
+
+                                        & NarrativeQA                            & Qasper                                & HotpotQA                          & 2WikiMQA & GovReport & MultiNews \\
+        \midrule
+        Truncation 1750+1750             & 18.7                                   & 19.2                                  & 25.4                              & 32.8     & 27.3      & 25.8      \\
+        \midrule
+        \method 4+3496                  & 11.6                                   & 16.9                                  & 21.6                              & 28.2     & 23.9      & 25.5      \\
+        \method 1750+1750               & 18.2                                   & 19.7                                  & 24.9                              & 32.0     & 26.3      & 25.9      \\
+        \bottomrule
+    \end{tabular}
+\end{table}

@@ -1,0 +1,219 @@
+
+===== page 1 [pdftotext] =====
+                             CS 127/CSCI E-127: Introduction to Cryptography
+
+
+ Prof. Salil Vadhan                                                                                      Fall 2013
+
+
+                                            Lecture Notes 18:
+
+
+                                  Collision-Resistant Hash Functions
+
+
+Reading.
+    • Katz-Lindell (2nd ed) 5.0-5.3.1, 5.4.1, 5.6.1, 8.4.2.
+
+
+1 Denition
+Idea: Sign (or MAC) a long message m by rst hashing it. What properties will we want from the
+hash function h?
+
+
+    • ||h(x)||  ||x||.
+
+    • h easy to evaluate.
+
+    • Hard to nd collisions, i.e. (x, x0 ) s.t. x 6= x0 and h(x) = h(x0 ).
+
+Denition 1 (collision-resistant hash functions) H =                                 `in (n) → {0, 1}`out (n) }
+                                                                   S
+                                                                       n {hi : {0, 1}                           i∈In
+is a family of collision-resistant hash functions if
+    • (generation) There is a PPT Gen(1n ) which outputs i ∈ In .
+
+    • (hashing) `in (n) > `out (n).
+
+    • (easy to evaluate) Given x, i, can compute hi (x) in poly-time.
+
+    • (hard to form collisions) For every PPT A, there is a negligible function ε such that
+
+                   ∀n       Pr [A(1n , I) = (X, X 0 ) s.t. X 6= X 0 and hI (X) = hI (X 0 )] ≤ ε(n)
+                                                  R
+      where the probability is taken over I ← Gen(1n ) and the coin tosses of A. Equivalently, A
+      succeeds with negligible probability in the following collision-nding game:
+
+
+
+
+    Typically, we want the range to be much smaller than the domain, we can think of {0, 1} in
+                                                                                                           ` (n) =
+
+{0, 1}∗ , {0, 1}`out (n) = {0, 1}n .
+
+
+
+
+                                                       1
+
+===== page 2 [pdftotext] =====
+2 Hash-then-Sign
+We present it for signatures, but it also works for MACs.              Let   (Gen, Sign, Vrfy) be a signature
+scheme for message space {0, 1} out
+                                          `   (n) , and let H be a collection of hash functions with domain
+                                                                                   0    0     0
+{0, 1}`in (n) and range {0, 1}`out (n) .      Dene a new signature scheme (Gen , Sign , Vrfy ) for message
+              ` (n) by setting
+space {0, 1} in
+
+
+    • pk 0 = (pk , i), sk 0 = (sk , i).
+
+    • Sign0sk 0 (m) = Signsk (hi (m)).
+
+    • Vrfy0pk 0 (m, σ) = Vrfypk (hi (m), σ).
+
+Theorem 2 If (Gen, Sign, Vrfy) is a secure signature scheme for message space {0, 1}`out (n) and
+H is collision resistant, then (Gen0 , Sign0 , Vrfy0 ) is a secure one-time signature scheme for message
+space {0, 1}`in (n) .
+
+Proof:
+
+
+
+
+    Hash-then-sign also works for general (i.e. many-time) signatures and MACs.
+
+
+Q: What are potential advantages of this construction over the domain extension for MACs that we
+                       0
+saw last time (Mack (m1 km2 k · · · kmd ) = Mack (m1 k1krkd)Mack (m2 k2krkd) · · · Mack (md kdkrkd))?
+
+
+
+3 Domain Extension for CRHFs
+The denition of Collision -Resistant Hash Functions only requires shrinking by one bit. To shrink
+more may apply MerkleDamgård methodology:
+
+
+    • First design a collision-resistant compression function hi : {0, 1}`+n → {0, 1}n .
+
+    • For a message m ∈ {0, 1}∗ , break into `-bit blocks m1 m2 · · · mt , where mt contains the length
+      of m, and dene Hi (m) = h(mt ◦ h(mt−1 ◦ h(mt−2 · · · h(m1 ◦ IV)))), where IV is a xed initial
+                         n
+      vector (e.g. IV = 0 ).
+
+
+Proposition 3 If {hi } is a collision-resistant family, then so is {Hi }.
+
+    Proof:
+
+
+
+
+                                                          2
+
+===== page 3 [pdftotext] =====
+4 Attacks on CRHFs
+There are dierent attacks on collision-resistant hash functions:
+
+
+   • Random guessing: Suppose `in = 2n. pick m, m0 randomly from {0, 1}2n . The probability of
+                              1   1
+     success is greater than n − 2n .
+                             2  2
+
+   • Birthday attack: pick random messages to nd a collision. We choose t messages randomly
+     from {0, 1}
+                 2n and the expected number of collisions is:
+
+
+                               E[# collisions] =      # pairs · Pr [any one pair collide]
+                                                              
+                                                    t      1   1
+                                                 ≥      ·    −
+                                                    2     2n 22n
+                                                    t2
+                                                 ∼
+                                                   2n+1
+
+      If we pick t = Θ(2
+                             n/2 ), the expected number of collisions is large, and in fact it can be shown
+
+      that a collision will be found with high probability. Quadratic savings over exhaustive search
+      (though still exponential in n).       Q: Disadvantages over exhaustive search?
+
+5 Constructions
+5.1    Number-Theoretic Constructions
+
+Theorem 4 Collections of collision-resistant hash functions exist under either the Factoring As-
+sumption or the Discrete Log Assumption.
+
+Proof Sketch:          Construction based on Discrete Log: First construct hp,g,y : Zp−1 × {0, 1} → Zp
+                                                                                                         ∗
+
+by hp,g,y (x, b) = y
+                       b · g x mod p. A collision for h
+                                                       p,g,y yields the discrete log of y .              
+
+
+
+
+5.2    Hash Functions in Practice
+
+Typical design features:
+
+
+   • Tailor-designed functions H : {0, 1}∗ → {0, 1}n , with e.g. n = 128 or n = 160. (Note that n
+      is larger than for block ciphers to protect against birthday attacks)
+
+
+   • Very fast.
+
+   • Designed to be collision-resistant (in strong sense), have random looking output.
+
+   • Confusion & diusion
+
+   • Not related to any nice complexity assumption.
+
+   • Not a family  conjecture that collisions are hard to nd in this particular function.
+
+Some popular hashfunctions:
+
+
+
+                                                         3
+
+===== page 4 [pdftotext] =====
+• MD4  Message Digest 4
+
+     Designed by Ron Rivest (1990), n = 128, ` = 512.
+     Collisions have been found (1995). Design is basis for stronger hash functions (MD5,
+      SHA).
+
+     Follows MerkleDamgård with compression function h : {0, 1}512+128 → {0, 1}128 .
+• MD5  improvement to MD4 (Rivest, 1992). Collisions have been found (1998).
+
+• SHA-1  another improvement to MD4 (NIST w/NSA, 1994)
+
+     hash size n = 160, so compression function is h : {0, 1}512+160 → {0, 1}160 .
+     In retrospect, compression function designed from a block cipher {fk } using Davies
+      Meyer construction h(k, x) = fk (x) ⊕ x. (Collision resistance of DaviesMeyer can be
+      proved in ideal cipher model, where the fk 's are modelled as a publicly computable fam-
+      ily of random and independent permutations. This is even more idealized than random-
+      oracle model, and is denitely not an appropriate model for some block ciphers like
+      DES.)
+
+     Collisions can be found in time 260 (better than "birthday attack") (2005).
+• SHA-3
+
+     Selected by NIST in 2012 based on public competition.
+     Output lengths 256 and 512.
+     Not based on MerkleDamgård construction.
+     Still being standardized.
+
+
+
+
+                                            4

@@ -1,0 +1,41 @@
+% macros (preetum)
+\newcommand{\x}{\times}
+\newcommand{\cD}{\mathcal{D}}
+\newcommand{\cX}{\mathcal{X}}
+\newcommand{\cY}{\mathcal{Y}}
+\newcommand{\cL}{\mathcal{L}}
+\newcommand{\cA}{\mathcal{A}}
+\newcommand{\cT}{\mathcal{T}}
+\newcommand{\cH}{\mathcal{H}}
+
+
+\newtheorem{lemma}{Lemma}
+\newtheorem{remark}{Remark}
+\newtheorem{theorem}{Theorem}
+\newtheorem{claim}{Claim}
+\newtheorem{definition}{Definition}
+\newtheorem{corollary}{Corollary}
+
+%%%%%%%%%%%%% Comments
+\newif\ifnotes \notestrue   %%% Set comments to true
+%\newif\ifnotes \notesfalse  %%% Set comments to false
+
+
+\usepackage{xcolor}
+% \newcommand{\TODO}[1][TODO]{\textcolor{red}{#1}}
+% \newcommand{\todo}[1]{\textcolor{red}{#1 -- \textsc{TODO}}}
+
+\ifnotes
+\newcommand{\exptodo}[1]{\textcolor{purple}{ #1 -- \textsc{Experiment TODO.}}}
+\newcommand{\note}[1]{\textsf{\color{blue} Note: { #1}}}
+\newcommand{\pnote}[1]{{\color{blue} { #1} -- \textsc{Preetum}}}
+\newcommand{\bnote}[1]{{\color{red} { #1} -- \textsc{Boaz}}}
+\newcommand{\ynote}[1]{{\color{magenta} { #1} -- \textsc{Yamini}}}
+\newcommand{\ptodo}[1]{{\color{red} {TODO. #1} }}
+\newcommand{\ytodo}[1]{{\color{magenta} {TODO. #1} }}
+\else
+\newcommand{\note}[1]{}
+\newcommand{\exptodo}[1]{}
+\newcommand{\pnote}[1]{}
+\newcommand{\bnote}[1]{}
+\fi

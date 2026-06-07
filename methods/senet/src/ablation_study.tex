@@ -1,0 +1,37 @@
+\section{Ablation Study}\label{ablation_study}
+
+In this section we conduct ablation experiments to gain a better understanding of the effect of using different configurations on components of the SE blocks.  All ablation experiments are performed on the ImageNet dataset on a single machine (with 8 GPUs). \mbox{ResNet-50} is used as the backbone architecture. We found empirically that on ResNet architectures, removing the biases of the FC layers in the excitation operation facilitates the modelling of channel dependencies, and use this configuration in the following experiments.
+The data augmentation strategy follows the approach described in Section~\ref{subsec:imagenet}.  
+To allow us to study the upper limit of performance for each variant, the learning rate is initialised to 0.1 and training continues until the validation loss plateaus\footnote{For reference, training with a 270 epoch fixed schedule (reducing the learning rate at 125, 200 and 250 epochs) achieves \mbox{top-1} and \mbox{top-5} error rates for \mbox{ResNet-50} and \mbox{SE-ResNet-50} of ($23.21\%$, $6.53\%$) and ($22.20\%$, $6.00\%$) respectively.} (${\sim}300$ epochs in total). The learning rate is then reduced by a factor of 10 and then this process is repeated (three times in total).  Label-smoothing regularisation  \cite{szegedy_cvpr2016inceptionv3} is used during training.
+
+\input{expe/table_ratio}
+
+\subsection{Reduction ratio}\label{subsec:reduction} The reduction ratio $r$ introduced in Eqn.~\ref{model_capacity} is a hyperparameter which allows us to vary the capacity and computational cost of the SE blocks in the network. To investigate the trade-off between performance and computational cost mediated by this hyperparameter, we conduct experiments with \mbox{SE-ResNet-50} for a range of different $r$ values. The comparison in Table \ref{table_reduction_ratio} shows that performance is robust to a range of reduction ratios. Increased complexity does not improve performance monotonically while a smaller ratio dramatically increases the parameter size of the model.  
+Setting $r = 16$ achieves a good balance between accuracy and complexity. In practice, using an identical ratio throughout a network may not be optimal (due to the distinct roles performed by different layers), so further improvements may be achievable by tuning the ratios to meet the needs of a given base architecture.
+
+\subsection{Squeeze Operator} \label{subsec:ablation-squeeze}
+
+We examine the significance of using global average pooling as opposed to global max pooling as our choice of squeeze operator (since this worked well, we did not consider more sophisticated alternatives).  The results are reported in Table~\ref{tab:squeeze}.  While both max and average pooling are effective, average pooling achieves slightly better performance, justifying its selection as the basis of the squeeze operation.  However, we note that the performance of SE blocks is fairly robust to the choice of specific aggregation operator.
+
+\subsection{Excitation Operator} \label{subsec:ablation-excitation}
+
+We next assess the choice of non-linearity for the excitation mechanism.  We consider two further options: ReLU and tanh, and experiment with replacing the sigmoid with these alternative non-linearities. The results are reported in Table~\ref{tab:non-linearities}. We see that exchanging the sigmoid for tanh slightly worsens performance, while using ReLU is dramatically worse and in fact causes the performance of \mbox{SE-ResNet-50} to drop below that of the \mbox{ResNet-50} baseline.  This suggests that for the SE block to be effective, careful construction of the excitation operator is important.
+%---------------table---------------------------------------------
+\input{expe/table_squeeze}
+\input{expe/table_nonlinear}
+\input{expe/table_stage}
+%-----------------------------------------------------------------
+\subsection{Different stages} \label{subsec:ablation-stages}
+
+We explore the influence of SE blocks at different stages by integrating SE blocks into ResNet-50, one stage at a time. Specifically, we add SE blocks to the intermediate stages: stage\_2, stage\_3 and stage\_4, and report the results in Table~\ref{tab:stages}.  We observe that SE blocks bring performance benefits when introduced at each of these stages of the architecture. Moreover, the gains induced by SE blocks at different stages are complementary, in the sense that they can be combined effectively to further bolster network performance.
+
+\subsection{Integration strategy} \label{sec:integration}
+
+\input{ablation-diagrams.tex}
+
+Finally, we perform an ablation study to assess the influence of the location of the SE block when integrating it into existing architectures.  In addition to the proposed SE design, we consider three variants: (1) SE-PRE block, in which the SE block is moved before the residual unit; (2) SE-POST block, in which the SE unit is moved after the summation with the identity branch (after ReLU) and (3) SE-Identity block, in which the SE unit is placed on the identity connection in parallel to the residual unit.  These variants are illustrated in Figure~\ref{fig:ablation-designs} and the performance of each variant is reported in Table~\ref{tab:block-variants}.  We observe that the \mbox{SE-PRE}, \mbox{SE-Identity} and proposed SE block each perform similarly well, while usage of the \mbox{SE-POST} block leads to a drop in performance.  This experiment suggests that the performance improvements produced by SE units are fairly robust to their location, provided that they are applied prior to branch aggregation.
+%--------------table----------------------------------------------
+\input{expe/table_ablation}
+\input{expe/table_se3x3}
+
+In the experiments above, each SE block was placed outside the structure of a residual unit. We also construct a variant of the design which moves the SE block inside the residual unit, placing it directly after the $3\times3$ convolutional layer. Since the $3\times3$ convolutional layer possesses fewer channels, the number of parameters introduced by the corresponding SE block is also reduced. The comparison in Table~\ref{tab:effect_se3x3} shows that the SE\_3$\times$3 variant achieves comparable classification accuracy with fewer parameters than the standard SE block.  Although it is beyond the scope of this work, we anticipate that further efficiency gains will be achievable by tailoring SE block usage for specific architectures.

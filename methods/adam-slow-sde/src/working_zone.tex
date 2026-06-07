@@ -1,0 +1,168 @@
+\section{Constructing the Working Zones}\label{sec:working-zone}
+
+Note that it is generally hard to ensure some properties that are crucial to the feasibility of our analysis, such as the $\mu$-PL condition or the well-definedness of preconditioned gradient projections.
+% optimization analysis that a pre-conditioned gradient flow defined by $\frac{\dd \vtheta(t)}{\dd t} = - \mS \nabla \cL(\vtheta(t))$ will converge to some particular minimizer manifold, 
+However, this becomes possible when we constrain the discussion inside some local neighborhood of a manifold. So in this subsection, we construct  ``working zones'' around any local minimizer manifold $\Gamma$ such that iterations inside the working zones will be captured by the manifold and obtain certain properties that support the analysis of slow SDE. 
+
+
+% Next, we present a proof of convergence, which ensures that if the learning rate is sufficiently small, then the iteration will converge into and stay inside the working zones with high probability, hence the preconditioned flows and projections in our slow SDE become well-defined.
+
+For any $\Gamma \subset \mathbb{R}^n$ being a nonempty set and $\vtheta \in \mathbb{R}^n$, let $\|\cdot\|_2$ denote the Euclidean norm. We denote the distance from $\vtheta$ to $\Gamma$ as $
+  \dist(\vtheta,\Gamma) \;:=\; \inf_{\vzeta \in \Gamma} \, \|\vtheta - \vzeta\|_2$. Note that when $\Gamma$ is closed, the infimum is attained (i.e., there exists $\vzeta^\star \in \Gamma$ with $\|\vtheta-\vzeta^\star\|_2=\dist(\vtheta,\Gamma)$).
+
+\begin{definition}[Neighborhood of a Manifold]\label{def:neighborhood-of-manifold}
+    For any manifold $\Gamma$ and positive constant $\epsilon$, the $\epsilon$-neighborhood of $\Gamma$, denoted by $\Gamma^{\epsilon}$ is defined as the set of points $\vtheta$ such that
+    \begin{align*}
+        \dist(\vtheta, \Gamma) \leq \epsilon.
+    \end{align*}
+\end{definition}
+
+% \xinghan{Added def of precond grad flow}
+
+\begin{definition}[Preconditioned gradient flow, restatement of \cref{def:preconditioner-flow}]\label{def:preconditioned-gf}
+For any differentiable function \(\mathcal{L}\) and any matrix \(\mathbf{S}\in\mathbb{R}^{d\times d}\), the \emph{\(\mathbf S\)-preconditioned gradient flow} of \(\mathcal L\) is the ordinary differential equation
+\[
+\frac{\mathrm d\boldsymbol\theta(t)}{\mathrm d t}
+= -\,\mathbf S\,\nabla\mathcal L\big(\boldsymbol\theta(t)\big).
+\]
+When the objective \(\mathcal L\) (or the time dependence of \(\boldsymbol\theta\)) is clear from context, we may omit it in the notation and simply refer to the system as the \emph{$\mS$-preconditioned gradient flow} or the \emph{gradient flow preconditioned by \(\mathbf S\)}.
+\end{definition}
+
+
+\begin{lemma}\label{lem:traj-bound-by-L}
+    % Given two positive constants $C_1 < C_2$, and $\cL$ be a function that satisfies both $\rho$-smoothness and $\mu$-PL. For any matrix $\mS$ satisfying $C_1\mI \preceq \mS \preceq C_2\mI$, consider the preconditioned gradient flow $\frac{\dd \vtheta(t)}{\dd t} = - \mS \nabla \cL(\vtheta(t))$ starting at $\vtheta(0) = \vtheta_0$. For any $T > 0$, we have $\lnormtwo{\vtheta_0 - \vtheta(T)} \leq \frac{2C_2}{\sqrt{2\mu}C_1}\sqrt{\cL(\vtheta_0)-\cL^*}$. 
+    Let $C_1,C_2>0$ with $C_1\le C_2$, and let $\cL:\R^d\to\R$ be $\rho$-smooth and satisfy the $\mu$-PL condition. For any symmetric matrix $\mS$ with $C_1\mI \preceq \mS \preceq C_2\mI$, consider the $\mS$-preconditioned gradient flow of $\cL$ starting at $\vtheta(0)=\vtheta_0$.
+Then for any $T>0$,
+\[
+\|\vtheta(T)-\vtheta_0\|_2 
+\;\le\; \frac{2C_2}{C_1\sqrt{2\mu}}\,
+\sqrt{\cL(\vtheta_0)-\cL^*},
+\]
+where $\cL^*=\inf_{\vtheta}\cL(\vtheta)$.
+    % will consistently stay inside $U$ and converge to a point in $U$, and  \begin{align*}\lnormtwo{\vtheta_0 - \lim_{t \rightarrow +\infty}\vtheta(t)} \leq \sqrt{\frac{2}{\mu}}\sqrt{\cL(\vtheta_0)-\cL^*} \leq . \end{align*}
+\end{lemma}
+\begin{proof}
+    Since $C_1\mI \preceq \mS \preceq C_2\mI$, we have $\lnormtwo{\mS \nabla\cL(\vtheta)} \leq C_2 \lnormtwo{\nabla\cL(\vtheta)}$ and $
+        \left\langle \nabla \cL(\vtheta), \mS\nabla \cL(\vtheta) \right\rangle \geq C_1 \lnormtwo{\nabla\cL(\vtheta)}^2$
+    for any $\vtheta$, which implies \begin{align*}
+        \left\langle \nabla \cL(\vtheta), \mS\nabla \cL(\vtheta) \right\rangle \geq \frac{C_1}{C_2} \lnormtwo{\nabla\cL(\vtheta)}  \lnormtwo{\mS \nabla\cL(\vtheta)}.
+    \end{align*}
+    %Since $\frac{\dd \vtheta(t)}{\dd t} = - \mS \nabla \cL(\vtheta(t))$, this further implies for any $t > 0$ that \begin{align*}
+    %    \left\langle \nabla \cL(\vtheta(t)), \frac{\dd \vtheta(t)}{\dd t} \right\rangle \leq -\frac{C_1}{C_2} \lnormtwo{\nabla\cL(\vtheta(t))} \lnormtwo{\frac{\dd \vtheta(t)}{\dd t}}.
+    %\end{align*}
+    
+    % Assume for the contrary that the gradient flow $\frac{\dd \vtheta(t)}{\dd t} = - \mS \nabla \cL(\vtheta(t))$ starting at $\vtheta(0) = \vtheta_0$ will move out of $U$. Let $T = \text{inf}\left\{t:\vtheta(t) \notin U\right\} < \infty$. 
+    Then plugging in the above equation gives that, for any $t < T$
+    \begin{align*}
+        \frac{\dd }{\dd t}\sqrt{\cL(\vtheta(t)) - \cL^*} &= \frac{1}{2}\left(\cL(\vtheta(t)) - \cL^*\right)^{-\frac{1}{2}} \cdot \left\langle \nabla \cL(\vtheta(t)), \frac{\dd\vtheta(t)}{\dd t}\right\rangle \\
+        & \leq -\frac{C_1}{2C_2}\left(\cL(\vtheta(t)) - \cL^*\right)^{-\frac{1}{2}}\cdot  \lnormtwo{\nabla\cL(\vtheta(t))} \lnormtwo{\frac{\dd \vtheta(t)}{\dd t}} \\
+        & \leq -\frac{C_1}{2C_2}\left(\cL(\vtheta(t)) - \cL^*\right)^{-\frac{1}{2}}\cdot \sqrt{2\mu (\cL(\vtheta(t)) - \cL^*)} \lnormtwo{\frac{\dd \vtheta(t)}{\dd t}} \\
+        & = -\frac{\sqrt{2\mu}C_1}{2C_2} \lnormtwo{\frac{\dd \vtheta(t)}{\dd t}}.
+    \end{align*}
+    Integrating both sides gives us \begin{align*}
+        \sqrt{\cL(\vtheta_0) - \cL^*} &\geq \frac{\sqrt{2\mu}C_1}{2C_2} \int_{0}^{T}\lnormtwo{\frac{\dd \vtheta(t)}{\dd t}} \\
+        & \geq \frac{\sqrt{2\mu}C_1}{2C_2} \lnormtwo{\vtheta_0 - \vtheta(T)}.
+    \end{align*}
+    The above equations complete the proof.
+%    On the other hand, from the smoothness of $\cL$ we have $
+%        \sqrt{\cL(\vtheta_0) - \cL^*} \leq \sqrt{\frac{\rho}{2}} \lnormtwo{\vtheta_0 - \vtheta^*}
+%    $, so $\lnormtwo{\vtheta_0 - \vtheta(T)} \leq \frac{2C_2}{\sqrt{2\mu} C_1}\sqrt{\cL(\vtheta_0)-\cL^*} \leq \sqrt{\frac{\rho}{\mu}}\cdot \frac{C_2}{C_1}\lnormtwo{\vtheta_0 - \vtheta^*} \leq \epsilon'$, a contradiction.
+\end{proof}
+
+% \xinghan{how to assume that $\Gamma$ is the only manifold in these working zones?}
+
+% \xinghan{State the C5 of L, C4 of S, and compactness of $\Gamma$ and the space of $\vv$. state $\vv$ is bounded.}
+
+% \xinghan{S is C4 only if all entry of v is 0 < vi < R1}.
+
+% Let $(\vtheta_{-1}, \vv_{-1})$ be the initial state of AGMs, from where AGMs reach $(\vtheta_{0}, \vv_{0})$ as we discussed in \Cref{rmk:time-shift-theta0-phi0}, and 
+% We assume that $\vphi_{0} = \Phi_{S(\vv_{0})}(\vtheta_{0})$ exists and belongs to some manifold $\Gamma$. 
+
+% Denote the minimal distance of $\Gamma$ and any other local minimizer manifold as $\epsilon_4$, i.e. no other minimizer manifolds exist in $\Gamma^{\epsilon_4}$, the $\epsilon_4$-neighborhood of $\Gamma$.
+
+To avoid ambiguity, all comparisons between vectors and scalars are interpreted componentwise. Specifically, for $\vv\in\mathbb R^D$ and a scalar $c\in\mathbb R$ we write $\vv\le c$ (resp.\ $\vv<c$) iff $v_i\le c$ (resp.\ $v_i<c$) for every coordinate $i$. Equivalently $\vv\ge c$ (resp.\ $\vv>c$) means $v_i\ge c$ (resp.\ $v_i>c$) for all $i$. In particular the notation $0\le \vv\le c$ means $0\le v_i\le c$ for every $i$, which is the convention used in the sequel. Recall that $\Rgez^{D}$ means $\left\{\vv \mid \vv \in \R^D, \vv \geq 0\right\}$. In the sequel, we slightly abuse this notation such that for any subset $I \subseteq \R$, $\R_{I}^D$ means $\left\{\vv \mid \vv \in R^D, v_i \in I \text{ for all }i \in [D]\right\}$.
+
+
+% \xinghan{\color{orange} done define $\leq$ for vectors}
+
+% \xinghan{\color{orange} done the existence of $R_1$ should become a lemma}
+
+\begin{lemma}\label{lem:boundedness}
+    There exist constants $R_1, R_2 > 0$ such that for all $k \geq 0$, $0 \leq \vv_k \leq R_1$ and $S(\vv) \preceq R_2 \mI$ almost surely.  Moreover, $S$ is Lipschitz on $\R_{[0,R_1]}^{D}$.
+\end{lemma}
+\begin{proof}
+    From \cref{amp:gradient-bound}, all noisy gradients $\nabla \ell_k(\vtheta_k)$ are uniformly bounded by a constant $R$. Hence $V\!\left(\nabla\ell_{k}(\vtheta_{k}) \nabla\ell_{k}(\vtheta_{k})^\top\right)$ is also bounded. Combining with the condition that $V(\vg\vg^\top) \geq 0$ for all $\vg$, we have $V\!\left(\nabla\ell_{k}(\vtheta_{k}) \nabla\ell_{k}(\vtheta_{k})^\top\right) \in \R_{[0,R_1]}^{D}$ for some constant $R_1$. Since $\vv_k$ is an exponential moving average of previous $V\!\left(\nabla\ell_{t}(\vtheta_{t}) \nabla\ell_{t}(\vtheta_{t})^\top\right)$ terms and $\R_{[0,R_1]}^{D}$ is convex, we have $\vv_k \in \R_{[0,R_1]}^{D}$ for all $k \geq 0$. 
+    
+    From \cref{amp:S-smooth}, $S$ is $\rho_s$-smooth, hence both $S$ and $\nabla S$ are continuous, thus are bounded on the compact set $\R_{[0,R_1]}^{D}$. The boundedness of $S$ gives the existence of $R_2$, while the boundedness of $\nabla S$ gives the Lipschitzness of $S$.
+\end{proof}
+
+We continue to use the notations $R_1$ and $R_2$ throughout the following part of the paper. Note that for all optimizers listed in \cref{tab:agms}, setting $R_1 = R^2$ is sufficient. Another thing to clarify is the relationship between the $R_2$ here and the stabilizing constant $\epsilon$ used by optimizers in \cref{tab:agms}. We will call it $\epsilon_{\mathrm{optim}}$ here, so as to distinguish from the $\epsilon$ notations that represent a distance (for instance, the $\epsilon$ in \cref{def:neighborhood-of-manifold} or \cref{lem:working-zone}).
+
+\begin{remark}[Relationship between $R_2$ and $\epsilon_{\mathrm{optim}}$]
+Setting $R_2 := 1/\epsilon_{\mathrm{optim}}$ here is theoretically enough for the requirement in \cref{lem:boundedness} to hold, but will introduce a large constant to the proof since $\epsilon_{\mathrm{optim}}$ is very small in practice; However, in practice the gradient noise is also very likely to keep $\vv$ away from zero, thus the operational $R_0$ that governs empirical convergence is usually much smaller than the worst-case $1/\epsilon_{\mathrm{optim}}$.    
+\end{remark}
+
+% \xinghan{\color{orange}done put theta ahead of v in this part.}
+
+% \xinghan{\color{orange}done tbd define $\cX$ outside of the lemma.}
+
+Now we are ready to construct working zones in which nice properties are ensured to benefit our analysis. For all $\epsilon > 0$, define $\cX^{\epsilon} := \Gamma^{\epsilon} \times \R_{[0,R_1]}^{D}$ as the set of AGM states $(\vtheta, \vv)$ where $\vtheta$ lies in $\Gamma^{\epsilon}$ and $0 \leq \vv \leq R_1$.
+
+
+We construct nested working zones $(\Gamma^{\epsilon_1}, \Gamma^{\epsilon_2},\Gamma^{\epsilon_3})$ in the following way:
+
+
+%\left\{(\vv, \vtheta) : 0 \leq \vv \leq R_1, \vtheta \in \Gamma^{\epsilon} \right\}.$$
+
+% We construct nested working zones $(\Gamma^{\epsilon_1}, \Gamma^{\epsilon_2},\Gamma^{\epsilon_3},\Gamma^{\epsilon_4})$, where we denote the minimal distance of the minimizaer manifold $\Gamma$ and any other local minimizer manifold as $\epsilon_4$, i.e. no other minimizer manifolds exist in $\Gamma^{\epsilon_4}$, the $\epsilon_4$-neighborhood of $\Gamma$. Then we give the following lemma with respect to $\Gamma^{\epsilon_1}, \Gamma^{\epsilon_2}$ and $\Gamma^{\epsilon_3}$.
+\begin{lemma}[Working Zone Lemma]\label{lem:working-zone}
+We denote the minimal distance of $\Gamma$ and any other local minimizer manifold as $\epsilon_4$. There exist positive constants $\epsilon_1, \epsilon_2, \epsilon_3$ such that $\epsilon_1 < \epsilon_2 < \epsilon_3 < \epsilon_4$ and $\Gamma^{\epsilon_1}, \Gamma^{\epsilon_2},\Gamma^{\epsilon_3}$ satisfy the following properties: 
+\begin{enumerate}
+        \item $\cL$ is $\mu$-PL in $\Gamma^{\epsilon_3}$ for some constant $\mu > 0$.
+        \item For all matrices $\mS \in \R^{d \times d}$ with $\frac{1}{R_0}\mI \preceq \mS \preceq \frac{1}{\epsilon}\mI$, 
+        starting from any initial point $\vtheta_0 \in \Gamma^{\epsilon_2}$, 
+        the gradient flow preconditioned by $\mS$ converges to a point in $\Gamma$. 
+        \item %For any $\epsilon > 0
+        %$, define $\cX^{\epsilon}$ as the subset $$\cX^{\epsilon} := \left\{(\vv, \vtheta) : 0 \leq \vv \leq R_1, \vtheta \in \Gamma^{\epsilon} \right\}.$$
+        Under Assumption~\ref{amp:basic} and Assumption~\ref{amp:S-smooth}
+        the function $F: \cX^{\epsilon_2} \to \R^d, (\vtheta, \vv) \mapsto \Phi_{S(\vv)}(\vtheta)$ is $\cC^4$ on $\cX^{\epsilon_1}$.
+        
+        % \item For any $\vtheta \in \Gamma^{\epsilon_1}$, the $\epsilon_1$-neighborhood of $\vtheta$ belongs to $\Gamma^{\epsilon_2}$.
+        % \item Any $\vtheta \in \Gamma^{\epsilon_1}$ has an $\epsilon_1$-neighborhood $B^{\epsilon_1}(\vtheta)$ such that $B^{\epsilon_1}(\vtheta) \subseteq \Gamma^{\epsilon_2}$. 
+    \end{enumerate}
+\end{lemma}
+% \xinghan{\color{orange} done defined a new function for Phi.}
+
+
+
+\begin{proof}
+    By Lemma H.3 in \citet{lyu2022understanding}, there exists an $\epsilon_3$-neighborhood of $\Gamma$ where $\cL$ is $\mu$-PL for some $\mu > 0$. WLOG let $\epsilon_3 < \epsilon_4$.
+    
+    % The existence of $\epsilon_1$ is trivial once $\epsilon_2$ is determined: Simply set $\epsilon_1 = \epsilon_2 / 2$. So we focus on the construction of $\Gamma^{\epsilon_2}$ below.
+
+    We prove the second property by contradiction. Let $C_1 = 1/R_0$ and $C_2 = 1/\epsilon$. Let $\epsilon_2$ be some constant such that $\epsilon_2 + \sqrt{\frac{\rho}{\mu}}\cdot \frac{C_2}{C_1}\epsilon_2 < \epsilon_3$. For any starting point $\vtheta_0 \in \Gamma^{\epsilon_2}$, and any preconditioning matrix $\mS$ satisfying $C_1\mI \preceq \mS \preceq C_2\mI$, assume on the contrary that the preconditioned gradient flow starting from $\vtheta(0) = \vtheta_0$ will leave $\Gamma^{\epsilon_3}$ at some finite time. Then let $T = \inf \left\{t: \vtheta(t) \notin \Gamma^{\epsilon_3}\right\} < \infty$. 
+    
+    Using \cref{lem:traj-bound-by-L} and combining the $\mu$-PL condition, we conclude that $$\lnormtwo{\vtheta_0 - \vtheta(T)} \leq \frac{2C_2}{\sqrt{2\mu}C_1} \sqrt{\cL(\vtheta_0)-\cL^*} \leq \frac{2C_2}{\sqrt{2\mu}C_1}\cdot \sqrt{\frac{\mu}{2}} \lnormtwo{\vtheta_0 - \vtheta^*} = \sqrt{\frac{\rho}{\mu}}\cdot \frac{C_2}{C_1}\lnormtwo{\vtheta_0 - \vtheta^*}$$
+    for any $\vtheta^* \in \Gamma$. Hence $\vtheta(T) \in \Gamma^{\epsilon_3}$, which is a contradition.
+    
+    
+    
+    % and $\delta>0$ be a constant such that $\delta \cdot \sup\left\{\lnormtwo{\nabla\cL(\vtheta)} \mid \vtheta \in \Gamma^{\tilde{r}}\right\} < \tilde{r} - \epsilon_2$ and $\delta \cdot \sup\left\{\lnormtwo{\nabla^2\cL(\vtheta)} \mid \vtheta \in \Gamma^{\tilde{r}}\right\} < 1$. 
+    % Since $\cL$ is smooth, both $\lnormtwo{\nabla\cL(\vtheta)}$ and $\lnormtwo{\nabla^2 \cL(\vtheta)}$ are bounded in any bounded neighborhood of $\Gamma$.
+
+    
+    
+    Next we begin the construction of $\Gamma^{\epsilon_1}$ with Assumptions \ref{amp:basic} and \ref{amp:S-smooth}. Define a function $f(\vtheta, \vv): \R^{d+D} \to \R^{d+D}$ as 
+    $$f(\vtheta, \vv) := (-S(\vv)\nabla\cL(\vtheta), \vv),$$
+    then $f$ is $\cC^4$ on $\R^d \times \R_{[0,R_1]}^D$. Let $\tilde{r}$ be a constant such that $\tilde{r} > \epsilon_2$.
+    Substituting $f_0 = f$, $r = \sqrt{\tilde{r}^2+d \cdot R_1^2}, x_0 = (\vtheta_0, \vv_0)$ such that each entry of $\vv_0$ is $R_1/2$ and $\vtheta_0$ be arbitrary point in $\Gamma$, and $B = \cX^{\tilde{r}}$ into Lemma B.4 in \citet{duistermaat2012lie}, we conclude that there exists some constant $\delta$ such that the mapping $\gamma_{\delta}(\vtheta, \vv)$ defined by:
+    \begin{align*}
+        \vtheta(0) = \vtheta, \quad 
+        \frac{\dd \vtheta(t)}{\dd t} = -S(\vv)\nabla \cL(\vtheta(t)), \quad
+        \gamma_{\delta}(\vtheta,\vv) = \vtheta(\delta)
+    \end{align*}
+    is well-defined and $\cC^4$ on $\cX^{\tilde{r}}$. Note that we require a slight modification of the original proof since $B$ is now a factorization of a ball and a hypercube instead of a ball, but the convexity of $B$ is preserved, hence the modification is trivial.
+
+    Note that the constant $\delta$ can be independent with $\vtheta_0$ to fulfill the requirements of Lemma B.4 in \citet{duistermaat2012lie} since $\lnormtwo{\nabla \cL}$ and $\lnormtwo{\nabla^2 \cL}$ can be uniformly bounded. 
+    Take $\epsilon_1 = 0.9\epsilon_2$, then for any $\vtheta \in \Gamma^{\epsilon_1}$, a small open neighborbood of $\vtheta$ stays in the $\epsilon_2$-neighborhoods of two different points on $\Gamma$. Taking union of all $\vtheta_0 \in \Gamma$, we conclude that $\gamma_{\delta}$ is $\cC^4$ on $\cX^{\epsilon_1}$. Finally, we use Theorem 6.4 in \citet{falconer1983differentiation} to conclude that $F\!\left(\vtheta,\vv\right) := \Phi_{S(\vv)}(\vtheta)$ is $\cC^4$ on $\cX^{\epsilon_1}$. 
+\end{proof}

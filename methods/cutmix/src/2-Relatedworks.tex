@@ -1,0 +1,32 @@
+
+
+\section{Related Works}
+
+\noindent\textbf{Regional dropout: }
+Methods~\cite{devries2017cutout,zhong2017randomerase} removing random regions in images have been proposed to enhance the generalization performance of CNNs. 
+Object localization methods~\cite{singh2017hide,choe2019attention} also utilize the regional dropout techniques for improving the localization ability of CNNs.
+CutMix is similar to those methods, while the critical difference is that the removed regions are filled with patches from another training images.
+DropBlock~\cite{ghiasi2018dropblock} has generalized the regional dropout to the feature space and have shown enhanced generalizability as well. 
+CutMix can also be performed on the feature space, as we will see in the experiments.
+
+
+\noindent\textbf{Synthesizing training data: }
+Some works have explored synthesizing training data for further generalizability.
+Generating new training samples by Stylizing ImageNet~\cite{ImageNet,geirhos2018imagenet_stylize} has guided the model to focus more on shape than texture, leading to better classification and object detection performances. 
+CutMix also generates new samples by cutting and pasting patches within mini-batches, leading to performance boosts in many computer vision tasks; unlike stylization as in~\cite{geirhos2018imagenet_stylize}, CutMix incurs only negligible additional cost for training.
+For object detection, object insertion methods~\cite{dwibedi2017cut_paste_learn, dvornik2018modeling} have been proposed as a way to synthesize objects in the background.
+These methods aim to train a good represent of a single object samples, while CutMix generates combined samples which may contain multiple objects.
+
+\noindent\textbf{Mixup: }
+CutMix shares similarity with Mixup~\cite{zhang2017mixup, tokozume2018betweenclass} in that both combines two samples, where the ground truth label of the new sample is given by the linear interpolation of one-hot labels. 
+As we will see in the experiments, Mixup samples suffer from the fact that they are locally ambiguous and {unnatural}, and therefore confuses the model, especially for localization.
+Recently, Mixup variants~\cite{verma2018manifoldmixup, summers2019improvedm, guo2018adamix, takahashi2018ricap} have been proposed; they perform feature-level interpolation and other types of transformations.
+Above works, however, generally lack a deep analysis in particular on the localization ability and transfer-learning performances.
+We have verified the benefits of CutMix not only for an image classification task, but over a wide set of localization tasks and transfer learning experiments. 
+
+\noindent\textbf{Tricks for training deep networks: }
+Efficient training of deep networks is one of the most important problems in computer vision community, as they require great amount of compute and data.
+Methods such as weight decay, dropout~\cite{Dropout}, and Batch Normalization~\cite{BN} are widely used to efficiently train deep networks. 
+Recently, methods adding noises to the internal features of CNNs ~\cite{stochasticdepth,ghiasi2018dropblock,yamada2018shakedrop} or adding extra path to the architecture~\cite{SENet,GENet} have been proposed to enhance image classification performance. 
+CutMix is complementary to the above methods because it operates on the data level, without changing internal representations or architecture.
+

@@ -1,0 +1,53 @@
+The advent of GPT series~\cite{gpt1,gpt2,gpt3,gpt3.5,gpt4} and more autoregressive (AR) large language models (LLMs)~\cite{palm,palm2,chinchilla,llama1,llama2,bloom,ernie3,qwen,team2023gemini} has heralded a new epoch in the field of artificial intelligence.
+These models exhibit promising intelligence in generality and versatility that, despite issues like hallucinations~\cite{hallucination}, are still considered to take a solid step toward the general artificial intelligence (AGI).
+% At the core of these models is a self-supervised learning strategy -- \textit{predicting the next token} in a sequence, a simple yet profound approach.
+At the core of these models is a self-supervised learning strategy -- \textit{predicting the next token} in a sequence, a simple yet profound approach.
+Studies into \textbf{the success of these large AR models} have highlighted their \textbf{scalability and generalizabilty}:
+the former, as exemplified by \textit{scaling laws}~\cite{scalinglaw,scalingar}, allows us to predict large model's performance from smaller ones and thus guides better resource allocation, while the latter, as evidenced by \textit{zero-shot and few-shot} learning~\cite{gpt2,gpt3}, underscores the unsupervised-trained models' adaptability to diverse, unseen tasks. These properties reveal AR models' potential in learning from vast unlabeled data, encapsulating the  essence of ``AGI''.
+
+In parallel, the field of computer vision has been striving to develop large autoregressive or world models~\cite{unified-io,lu2023unifiedio2,lvm}, aiming to emulate their impressive scalability and generalizability.
+Trailblazing efforts like VQGAN and DALL-E~\cite{vqgan,dalle1} along with their successors~\cite{vqvae2,vit-vqgan,rq,movq} have showcased the potential of AR models in image generation. These models utilize a visual tokenizer to discretize continuous images into grids of 2D tokens, which are then flattened to a 1D sequence for AR learning (\figref{fig:intro}\,b), mirroring the process of sequential language modeling (\figref{fig:intro}\,a).
+However, the scaling laws of these models remain underexplored, and more frustratingly, their performance \textbf{significantly lags} behind diffusion models \cite{dit,dit-github,rcg}, as shown in \figref{fig:cmp}.
+In contrast to the remarkable achievements of LLMs, the power of autoregressive models in computer vision appears to be somewhat \textbf{locked}.
+
+% single-side figure through wrapfigure
+\begin{wrapfigure}[18]{r}{0.49\textwidth}
+\centering
+\vspace{-8pt}
+\includegraphics[width=0.49\textwidth]{fig/cmp.pdf}
+\vspace{-12pt}
+\caption{\small
+\textbf{Scaling behavior} of different model families on ImageNet 256$\times$256 generation benchmark.
+% Radius denotes model size.
+The FID of the validation set serves as a reference lower bound (1.78).
+VAR with 2B parameters reaches an FID of 1.73, surpassing L-DiT with 3B or 7B parameters.
+}
+\label{fig:cmp}
+\end{wrapfigure}
+
+Autoregressive modeling requires defining the order of data.
+Our work reconsiders how to ``order'' an image:
+% In this work, we rethink how to ``order'' an image.
+Humans typically perceive or create images in a hierachical manner, first capturing the global structure and then local details.
+This \textbf{multi-scale, coarse-to-fine} nature suggests an ``order'' for images.
+Also inspired by the widespread multi-scale designs~\cite{sift,fpn,spark,pggan}, we define autoregressive learning for images as ``next-scale prediction'' in \figref{fig:intro} (c), diverging from the conventional ``next-token prediction'' in \figref{fig:intro} (b).
+Our approach begins by encoding an image into multi-scale token maps. The autoregressive process is then started from the 1$\times$1 token map, and progressively expands in resolution: at each step, the transformer predicts the next higher-resolution token map conditioned on all previous ones.
+We refer to this methodology as Visual AutoRegressive (VAR) modeling.
+% Specifically, we first encode an image into a pyramid of token maps at multiple scales, then make the autoregressive generation process start from the smallest 1$\times$1 token map and progressively scale up.
+% The transformer, conditional on all previous scales, predicts the next token map with increased resolution.
+% We term this as Visual AutoRegressive (VAR) modeling.
+
+% VAR enables efficient autoregressive learning of visual distributions.
+VAR directly leverages GPT-2-like transformer architecture~\cite{gpt2} for visual autoregressive learning.
+On the ImageNet 256$\times$256 benchmark, VAR significantly improves its AR baseline, achieving a Fréchet inception distance (FID) of 1.73 and an inception score (IS) of 350.2, with inference speed 20$\times$ faster (see \secref{sec:abla} for details).
+Notably, VAR surpasses the Diffusion Transformer (DiT) -- the foundation of leading diffusion systems like Stable Diffusion 3.0 and SORA~\cite{stable-diffusion3,sora} -- in FID/IS, data efficiency, inference speed, and scalability.
+VAR models also exhibit scaling laws akin to those witnessed in LLMs.
+Lastly, we showcase VAR's zero-shot generalization capabilities in tasks like image in-painting, out-painting, and editing.
+In summary, our contributions to the community include:
+
+\begin{enumerate}[topsep=3.5pt,itemsep=3pt,leftmargin=20pt]
+\item A new visual generative framework using a multi-scale autoregressive paradigm with next-scale prediction, offering new insights in autoregressive algorithm design for computer vision.
+\item An empirical validation of VAR models' Scaling Laws and zero-shot generalization potential, which initially emulates the appealing properties of large language models (LLMs).
+\item A breakthrough in visual autoregressive model performance, making GPT-style autoregressive methods surpass strong diffusion models in image synthesis \textit{for the first time}\footnote{\scalebox{0.95}{A related work \cite{magvit2} named ``language model beats diffusion'' belongs to BERT-style masked-prediction model.}}.
+\item A comprehensive open-source code suite, including both VQ tokenizer and autoregressive model training pipelines, to help propel the advancement of visual autoregressive learning.
+\end{enumerate}

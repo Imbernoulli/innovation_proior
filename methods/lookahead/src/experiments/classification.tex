@@ -1,0 +1,75 @@
+% \subsection{Image Classification with CNNs}
+% \label{sec:classification}
+
+% We trained deep neural networks to perform classification on the CIFAR-10, CIFAR-100, and ImageNet datasets. We trained the networks with several optimization algorithms and their Lookahead counterparts.
+% higher learning rates mean faster convergence but not necessarily better generalization
+\subsection{CIFAR-10 and CIFAR-100} 
+\label{sec:cifar}
+
+The CIFAR-10 and CIFAR-100 datasets for classification consist of $32 \times 32$ color images, with 10 and 100 different classes, split into a training set with 50,000 images and a test set with 10,000 images. We ran all our CIFAR experiments with 3 seeds and trained for 200 epochs on a ResNet-18 \citep{he2016deep} with batches of 128 images and decay the learning rate by a factor of $5$ at the 60th, 120th, and 160th epochs.  Additional details are given in appendix \ref{app:experiments}.
+
+We summarize our results in Figure \ref{tabel:cifar-optimizer-compare}.\footnote{We refer to SGD with heavy ball momentum \citep{polyak1964some} as SGD.} We also elaborate on how Lookahead contrasts with SWA and present results demonstrating lower validation error with Pre-ResNet-110 and Wide-ResNet-28-10 \cite{Zagoruyko2016WRN} on CIFAR-100 in appendix \ref{app:swa-comparison}.  Note that Lookahead achieves significantly faster convergence throughout training even though the learning rate schedule is optimized for the inner optimizer---future work can involve building a learning rate schedule for Lookahead. This improved convergence is important for better anytime performance in new datasets where hyperparameters and learning rate schedules are not well-calibrated.
+
+
+\begin{figure}[t]
+\centering
+\begin{minipage}[t]{0.48 \linewidth}
+    \centering
+    \includegraphics[width=1. \textwidth]{images/CIFARTrainLoss.pdf}
+\end{minipage}
+\hfill
+\begin{minipage}[t]{0.48 \linewidth}
+\begin{table}[H]
+\begin{center}
+%\begin{small}
+\vspace{-1.4in}
+\begin{sc}
+\begin{tabular}{l c c c c }
+\toprule
+Optimizer & CIFAR-10 & CIFAR-100  \\
+\midrule
+SGD & $95.23 \pm .19$ & $78.24 \pm .18$ \\ 
+Polyak & $95.26 \pm .04$ & $77.99 \pm .42$ \\
+Adam & $94.84 \pm .16$ & $76.88 \pm .39$ \\ 
+Lookahead & $95.27 \pm .06$ & $78.34 \pm .05$ \\
+\bottomrule
+\end{tabular}
+\end{sc}
+%\end{small}
+\end{center}
+\caption{CIFAR Final Validation Accuracy.}
+\end{table}
+\end{minipage}
+\caption{Performance comparison of the different optimization algorithms. ({\bf{Left}}) Train Loss on CIFAR-100. ({\bf{Right}}) CIFAR ResNet-18 validation accuracies with various optimizers. We do a grid search over learning rate and weight decay on the other optimizers (details in appendix \ref{app:experiments}). Lookahead and Polyak are wrapped around SGD.}
+\label{tabel:cifar-optimizer-compare}
+\end{figure}
+
+
+
+% \begin{table}[t]
+% \caption{CIFAR Test Accuracy for various $k$}
+% \label{tabel:steps}
+% \vskip 0.1in
+% \begin{center}
+% \begin{small}
+% \begin{sc}
+% \begin{tabular}{l c c}
+% \toprule
+% $k$ & CIFAR-10 & CIFAR-100 \\
+% \midrule
+% 2 & 95.14 & 76.99\\
+% 3 & 95.20 & 76.47 \\ 
+% 5 & 94.97 & 76.60\\ 
+% 10 & 95.01 & 76.73 \\
+% 20 &  95.21 &  77.57 \\
+% \bottomrule
+% \end{tabular}
+% \end{sc}
+% \end{small}
+% \end{center}
+% \vskip -0.1in
+% \end{table}
+
+
+
+

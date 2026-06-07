@@ -1,0 +1,123 @@
+\section{DrQ-v2: Improved Data-Augmented Reinforcement Learning}
+\label{section:method}
+
+
+\begin{algorithm*}[t!]
+
+\caption{
+\drqs: Improved data-augmented RL.
+}
+
+\input{algo}
+
+\label{alg:drqv2}
+\end{algorithm*}
+
+
+In this section, we describe~\drq, a simple model-free actor-critic RL algorithm for image-based continuous control, that builds upon DrQ. 
+
+\subsection{Algorithmic Details}
+\label{section:algo_details}
+\paragraph{Image Augmentation} As in DrQ we apply random shifts image augmentation to pixel observations of the environment. In the settings of visual continuous control by DMC, this augmentation can be instantiated by first padding each side of $84 \times 84$ observation rendering by $4$ pixels (by repeating boundary pixels), and then selecting a random $84 \times 84$ crop, yielding the original image shifted by $\pm 4$ pixels. We also find it useful to apply bilinear interpolation on top of the shifted image (i.e, we replace each pixel value with the average of the four nearest pixel values). In our experience, this modification provides an additional performance boost across the board.
+\paragraph{Image Encoder}
+The augmented image observation is then embedded into a low-dimensional latent vector by applying a convolutional encoder. We use the same encoder architecture as in DrQ, which first was introduced introduced in SAC-AE~\citep{yarats2019improving}. This process can be succinctly summarized as $\vh = f_\xi(\mathrm{aug}(\vx))$,
+where $f_\xi$ is the encoder, $\mathrm{aug}$ is the random shifts augmentation, and $\vx$ is the original image observation.
+
+\paragraph{Actor-Critic Algorithm}
+% TODO: explain actor acritic and talk about nxtep return
+We use DDPG~\citep{lillicrap2015ddpg} as a backbone actor-critic RL algorithm and, similarly to~\cite{barth-maron2018d4pg}, augment it with $n$-step returns to estimate TD error. This results into faster reward propagation and overall learning progress~\citep{mnih2016a3c}. While some methods~\citep{hafner2020dreamerv2} employ more sophisticated techniques such as TD($\lambda$) or Retrace($\lambda$)~\citep{munos2016retrace}, they are often computationally demanding when $n$ is large. We find that using simple $n$-step returns, without an importance sampling correction, strikes a good balance between performance and efficiency. We also employ clipped double Q-learning~\citep{fujimoto2018td3} to reduce overestimation bias in the target value. Practically, this requires training two Q-functions $Q_{\theta_1}$ and $Q_{\theta_2}$. For this, we sample a mini-batch of transitions $\tau =( \vx_t,\va_t, r_{t:t+n-1}, \vx_{t+n})$ from the replay buffer $\gD$ and compute the following two losses:
+\begin{align}
+    \gL_{\theta_k, \xi}(\gD) &= \E_{\tau \sim \gD }\big[(Q_{\theta_k}(\vh_t, \va_t) - y) ^2 \big] \quad  \forall k \in \{1,2\},
+\label{eq:critic}
+\end{align}
+with the TD target $y$ defined as:
+\begin{align*}
+    y &= \sum_{i=0}^{n-1} \gamma^i r_{t+i} + \gamma^n \min_{k=1,2} Q_{\bar{\theta}_k}(\vh_{t+n}, \va_{t+n}),
+\end{align*}
+where  $\vh_t = f_\xi(\mathrm{aug}(\vx_t))$, $\vh_{t+n}=f_\xi(\mathrm{aug}(\vx_{t+n}))$, $\va_{t+n} = \pi_{\phi}(\vh_{t+n}) + \epsilon$, and $\bar{\theta}_1$,$\bar{\theta}_2$ are the slow-moving weights for the Q target networks. We note, that in contrast to DrQ, we do not employ a target network for the encoder $f_\xi$ and always use the most recent weights $\xi$ to embed $\vx_t$ and $\vx_{t+n}$. The exploration noise $\epsilon$ is sampled from $\mathrm{clip}(\gN(0, \sigma^2), -c, c)$ similar to TD3~\citep{fujimoto2018td3}, with the exception of decaying $\sigma$, which we describe below. Finally, we train the deterministic actor $\pi_\phi$ using DPG with the following loss:
+\begin{align}
+    \gL_{\phi}(\gD) &= -\E_{\vx_t \sim \gD} \big[\min_{k=1,2} Q_{\theta_k} (\vh_t, \va_t) \big], 
+\label{eq:actor}
+\end{align}
+where  $\vh_{t}=f_\xi(\mathrm{aug}(\vx_{t}))$, $\va_{t} = \pi_{\phi}(\vh_{t}) + \epsilon$, and $\epsilon \sim \mathrm{clip}(\gN(0, \sigma^2), -c, c)$. Similar to DrQ, we do not use actor's gradients to update the encoder's parameters $\xi$.
+
+\paragraph{Scheduled Exploration Noise}
+Empirically, we observe that it is helpful to have different levels of exploration at different stages of learning. At the beginning of training we want the agent to be more stochastic and explore the environment more effectively, while at the later stages of training, when the agent has already identified promising behaviors, it is better to be more deterministic and master those behaviors. Similar to~\cite{amos2020modelbased}, we instantiate this idea by using linear decay $\sigma(t)$ for the variance $\sigma^2$ of the exploration noise defined as:
+\begin{align}
+    \sigma(t) &= \sigma_{\mathrm{init}} + (1 - \min (\frac{t}{T}, 1)) (\sigma_{\mathrm{final}} - \sigma_{\mathrm{init}}),
+    \label{eq:decay}
+\end{align}
+where $\sigma_{\mathrm{init}}$ and  $\sigma_{\mathrm{final}}$ are the initial and final values for standard deviation, and $T$ is the decay horizon.
+\paragraph{Key Hyper-Parameter Changes}
+We also conduct an extensive hyper-parameter search and identify several useful hyper-parameter modifications compared to DrQ. The three most important hyper-parameters are: (i) the size of the replay buffer, (ii) mini-batch size, and (iii) learning rate. Specifically, we use a $10$ times larger replay buffer than DrQ. We also use a smaller mini-batch size of $256$ without any noticeable performance degradation. This is in contrast to CURL~\citep{srinivas2020curl} and DrQ~\citep{yarats2021image} that both use a larger batch size of $512$ to attain more stable training in the expense of computational efficiency. Finally, we find that using smaller learning rate of $1\times 10^{-4}$, rather than DrQ's learning rate of $1\times 10^{-3}$, results into more stable training without any loss in learning speed.
+
+
+
+\subsection{Implementation Details}
+\label{section:code_details}
+
+\paragraph{Faster Image Augmentation}
+
+We replace DrQ's random shifts augmentation (i.e., \texttt{kornia.augmentation.RandomCrop}) by a custom implementation that uses flow-field image sampling provided in PyTorch (i.e., \texttt{grid\_sample}). This is done for two reasons. First, we noticed that Kornia's implementation does not fully utilize GPU pipelining since it has some intermediate CPU to GPU data transferring which breaks the computational flow. Second, using \texttt{grid\_sample} allows straightforward addition of bilinear interpolation. Our custom random shifts augmentation improves training throughput by a factor of $2$. 
+\paragraph{Faster Replay Buffer}
+Another computational bottleneck of DrQ was the replay buffer. The specific implementation had poor memory management which resulted in slow CPU to GPU data transfer, which also restricted the number of image-based transitions that could be stored. We reimplemented the replay buffer to address these issues which led to a ten-fold increase in storage capacity and faster data transfer. More details are available in our open-source release. We note that the improved training speed of~\drqs{} was key to solving humanoid tasks as it enabled much faster experimentation. 
+
+
+
+
+
+%\paragraph{Switching from SAC to DDPG learner}  We observe that DrQ, which uses the SAC learner~\citep{haarnoja2018sac}, is unable to solve some of the harder tasks in DMC~\citep{tassa2018dmcontrol} such as Quadruped and Humanoid. We hypothesize two reasons for this. First, large action spaces require effective exploration strategies. We empirically observe that SAC's automatic entropy adjustment~\citep{haarnoja2018sacapplication} can cause the entropy of the exploration policy to collapse prematurely, resulting in sub-optimal solutions. %Automatic entropy adjustment is a crucial component for SAC's performance~\cite{}, and turning it off yields poorer results. 
+%Instead, we switch to a simple and more intuitive schedule on exploration noise (detailed below), which proves to be more effective in the large action space environments considered. 
+%Second, the complexity of the desired behaviors demands a  multistep planning horizon to enable faster propagation~\cite{} of reward. It is however non-trivial to extend SAC to perform n-step TD learning (see Appendix XXX), a common technique to mitigate this. 
+%To address both these challenges, we switch the base learner to DDPG~\citep{lillicrap2015ddpg}, since it provides the necessary versatility to incorporate a schedule-based exploration strategy as well as the use of n-step TD learning.\todo{Is it standard to update the encoder only through the critic loss? If not, maybe it's worth mentioning.}
+
+% These tasks pose a significantly harder exploration challenge than SAC~\citep{haarnoja2018sac} is designed to address. Specifically, there are two components of SAC that fail to   for larger the much larger dimensionality of the action space requires more stable and robust exploration properties
+
+%\paragraph{Scheduled Exploration}
+%As DDPG~\cite{lillicrap2015ddpg} trains a deterministic policy, a common strategy to tackle exploration is to add noise to the action produced by the policy. The original implementation uses time-correlated Ornstein–Uhlenbeck noise~\citep{}, but we find that time-uncorrelated, isotropic zero-mean Gaussian noise is both simpler and a more stable approach. Furthermore, we find that decaying the magnitude of the noise over the course of training allows convergence to better solutions. In \drqs{} we use a simple linear decaying schedule \todo{define function for exploration.}.
+
+
+%\paragraph{Multistep Returns}
+
+
+%\todo{Why cant SAC do this?}
+
+
+%\paragraph{Hyper-parameter Changes}
+%We also conduct an extensive hyper-parameter search and identify several key hyper-parameter modifications compared to DrQ. The three most important hyper-parameters are: (i) the size of the replay buffer, (ii) mini-batch size, and (iii) learning rate. First, we hypothesize that a larger replay buffer plays an important role in circumventing the catastrophic forgetting problem~\citep{fedus2020replay}. This issue is especially prominent in the Humanoid tasks, where the large variety of possible behaviors requires significantly larger memory. Second, prior methods such as CURL~\citep{srinivas2020curl}, DrQ~\citep{yarats2021image}, and RAD~\citep{laskin2020reinforcement} use a large batch size of $512$ to attain more stable training, which incurs additional computation cost. \drqs{}, on the other hand, is able to use smaller batch size of $256$ without any noticeable performance degradation by employing a smaller learning rate of $1\times 10^{-4}$ instead of $1\times 10^{-3}$.
+
+
+
+
+%\paragraph{Implementation Enhancements}
+
+
+
+% \begin{itemize}
+%     \item \textbf{Using DDPG as the base optimizer:} The hardest tasks from DMC require more robust exploration techniques and faster reward propogation... \todo{}
+%     \item \textbf{Incorporating $n-\text{step}$ return:} \todo{}
+%     \item \textbf{Scheduling exploration noise:} \todo{}
+%     \item \textbf{Increased replay buffer size:} small replay buffer -- catastrophic forgetting.
+%     \item \textbf{Better hyperparameters:} Mention the main other hyperparameters.
+% \end{itemize}
+
+% \paragraph{Key implementation considerations}
+% Besides the aforementioned algorithm changes, we developed several major code improvements that include ... . For more details, please refer to our open-source implementation at...
+
+% that tries to answer a question if we have necessary tools to solve complex humanoid tasks from visual inputs only? We approach this question by carefully revisiting key components of DrQ. Through an extensive ablation study we arrive at~\drqs~that significantly improves upon DrQ in sample complexity that we validate on a wide range of tasks from DMC~\citep{tassa2018dmcontrol}. Furthermore, we examine the original implementation of DrQ and identify several computation bottlenecks. After resolving these bottlenecks we achieve a $10\times$ wall-clock training time speed up. Put it simply, this allows to solve most of the visual tasks from DMC in a matter of hours, rather than days. Finally, we showcase that~\drqs~is capable of solving complex humanoid walk and stand-up tasks from pixels input only, which, to the best of our knowledge, is the first successful demonstration of such a feat by a model-free RL algorithm.
+
+
+
+
+% We want to use nstep return and it is hard to do it with SAC, so we experiment with DDPG.
+
+% TODO:
+% \beg
+
+
+
+% \begin{itemize}
+%     \item Create a figure
+%     \item Show pseudocode
+%     \item 
+% \end{itemize}

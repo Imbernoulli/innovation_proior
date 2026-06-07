@@ -1,0 +1,10 @@
+\begin{figure*}[h]
+    \centering
+    \includegraphics[width=0.95\textwidth]{figures/aw-dist-long.pdf}
+    \caption{
+        Magnitude of the input activations and weights of a linear layer in OPT-13B before and after \method.
+        Observations: (1) there are a few channels in the original activation map whose magnitudes are very large (greater than 70); (2) the variance in one activation channel is small; (3) the original weight distribution is flat and uniform. \method migrates the outlier channels from activation to weight. In the end, the outliers in the activation are greatly smoothed while the weight is still pretty smooth and flat.
+    }
+    \label{fig:aw-dist}
+    \vspace{-10pt}
+\end{figure*}

@@ -1,0 +1,27 @@
+%---------------------------------- table -------------------------------
+\begin{table*}[t]
+\renewcommand\arraystretch{1.1}
+\caption{\label{tab:imagenet-results}Single-crop error rates (\%) on the ImageNet validation set and complexity comparisons. The \textit{original} column refers to the results reported in the original papers (the results of ResNets are obtained from the website: https://github.com/Kaiminghe/deep-residual-networks). To enable a fair comparison, we re-train the baseline models and report the scores in the \textit{re-implementation} column. The \textit{SENet} column refers to the corresponding architectures in which SE blocks have been added. The numbers in brackets denote the performance improvement over the re-implemented baselines. $\dagger$ indicates that the model has been evaluated on the non-blacklisted subset of the validation set (this is discussed in more detail in \cite{szegedy_iclrw2016inceptionv4}), which may slightly improve results. VGG-16 and SE-VGG-16 are trained with batch normalization.}
+\vspace{-1.8em}
+\newcommand{\tabincell}[2]{\begin{tabular}{@{}#1@{}}#2\end{tabular}}
+\begin{center} {\scalebox{0.97}{
+\begin{tabular}{l|p{1.2cm}<{\centering}|p{1.2cm}<{\centering}|p{1.2cm}<{\centering}|p{1.2cm}<{\centering}|p{1.2cm}<{\centering}|p{1.6cm}<{\centering}|p{1.6cm}<{\centering}|p{1.2cm}<{\centering}}
+\hline
+\multirow{2}{*}{} & \multicolumn{2}{c|}{original} & \multicolumn{3}{c|}{re-implementation} & \multicolumn{3}{c}{SENet} \\
+\cline{2-9}
+& \tabincell{c}{top-1 err.} & \tabincell{c}{top-5 err.} & \tabincell{c}{top-1 err.} & \tabincell{c}{top-5 err.} & \tabincell{c}{GFLOPs} & \tabincell{c}{top-1 err.} & \tabincell{c}{top-5 err.} & \tabincell{c}{GFLOPs}\\
+\hline
+ResNet-50 \cite{he_cvpr2016resnet} & $24.7$ & $7.8$ & $24.80$ & $7.48$ & $3.86$ & $23.29_{(1.51)}$ & $6.62_{(0.86)}$  & $3.87$ \\
+ResNet-101 \cite{he_cvpr2016resnet} & $23.6$ & $7.1$ & $23.17$ & $6.52$ & $7.58$ & $22.38_{(0.79)}$ & $6.07_{(0.45)}$ & $7.60$\\
+ResNet-152 \cite{he_cvpr2016resnet} & $23.0$ & $6.7$ & $22.42$ & $6.34$ & $11.30$ & $21.57_{(0.85)}$ & $5.73_{(0.61)}$ & $11.32$\\
+\hline
+ResNeXt-50 \cite{xie_cvpr2017resnext} & $22.2$ & - & $22.11$ & $5.90$ & $4.24$ & $21.10_{(1.01)}$ & $5.49_{(0.41)}$ & $4.25$\\
+ResNeXt-101 \cite{xie_cvpr2017resnext} & $21.2$ & $5.6$ & $21.18$ & $5.57$ & $7.99$ & $20.70_{(0.48)}$ & $5.01_{(0.56)}$ & $8.00$\\
+\hline
+VGG-16 \cite{simonyan_iclr2015vgg} & - & -  & $27.02$ & $8.81$ & $15.47$ & $25.22_{(1.80)}$  & $7.70_{(1.11)}$ & $15.48$ \\
+BN-Inception \cite{ioffe_icml2015bn} & $25.2$ & $7.82$ & $25.38$ & $7.89$ & $2.03$ & $24.23_{(1.15)}$ & $7.14_{(0.75)}$ & $2.04$\\
+Inception-ResNet-v2 \cite{szegedy_iclrw2016inceptionv4} & $19.9^\dagger$ & $4.9^\dagger$ & $20.37$ & $5.21$ & $11.75$ & $19.80_{(0.57)}$ & $4.79_{(0.42)}$  & $11.76$\\
+\hline
+\end{tabular}}}
+\end{center}
+\end{table*}

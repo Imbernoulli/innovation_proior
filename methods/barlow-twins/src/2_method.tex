@@ -1,0 +1,181 @@
+\section{Method}
+
+
+\subsection{Description of \AlgoName{}}
+
+
+
+
+%Let $\bm{\Sigma}$ be the cross-correlation matrix of $Z_{\theta 1}$ and $Z_{\theta 2}$ along the batch dimension. This matrix has size $N*N$, where $N$ is the number of output units of the network. Since $Z_{\theta 1}$ and $Z_{\theta 2}$ are already mean-subtracted and normalized, the cross-correlation matrix is simply given by $\bm{\Sigma} = Z_{\theta 1}^T Z_{\theta 2}$.
+
+%We introduce \AlgoName{}, a new algorithm for self-supervised learning (SSL). 
+
+Like other methods for SSL \cite{caron2020swav,grill2020bootstrap,chen2020simple,he2019momentum,misra2019self}, \AlgoName{} operates on a joint embedding of distorted images (Fig. \ref{fig:fig_method}). More specifically, it produces two distorted views for all images of a batch $X$ sampled from a dataset. The distorted views are obtained via a distribution of data augmentations $\mathcal{T}$. The two batches of distorted views $Y^A$ and $Y^B$ are then fed to a function $f_{\theta}$, typically a deep network with trainable parameters $\theta$, producing batches of embeddings $Z^{A}$ and $Z^{B}$ respectively. To simplify notations, $Z^{A}$ and $Z^{B}$ are assumed to be mean-centered along the batch dimension, such that each unit has mean output 0 over the batch. 
+
+\AlgoName{} distinguishes itself from other methods by its innovative loss function $\mathcal{L_{BT}}$:
+
+\begin{equation}
+\mathcal{L_{BT}} \triangleq  \underbrace{\sum_i  (1-\mathcal{C}_{ii})^2}_\text{invariance term}  + ~~\lambda \underbrace{\sum_{i}\sum_{j \neq i} {\mathcal{C}_{ij}}^2}_\text{redundancy reduction term}
+\label{eq:lossBarlow}
+\end{equation}
+
+where $\lambda$ is a positive constant trading off the importance of the first and second terms of the loss, and where $\mathcal{C}$ is the cross-correlation matrix computed between the outputs of the two identical networks along the batch dimension:
+
+\begin{equation}
+\mathcal{C}_{ij} \triangleq \frac{
+\sum_b z^A_{b,i} z^B_{b,j}}
+{\sqrt{\sum_b {(z^A_{b,i})}^2} \sqrt{\sum_b {(z^B_{b,j})}^2}}
+\label{eq:crosscorr}
+\end{equation}
+
+where $b$ indexes batch samples and $i,j$ index the vector dimension of the networks' outputs. $\mathcal{C}$ is a square matrix with size the dimensionality of the network's output, and with values comprised between -1 (i.e. perfect anti-correlation) and 1 (i.e. perfect correlation). 
+
+%In this last equation, $i,j$ are vector component indices and $b$ batch index.
+
+Intuitively, the \emph{invariance term} of the objective, by trying to equate the diagonal elements of the cross-correlation matrix to 1, makes the embedding invariant to the distortions applied.  The \emph{redundancy reduction term}, by trying to equate the off-diagonal elements of the cross-correlation matrix to 0, decorrelates the different vector components of the embedding. This decorrelation reduces the redundancy between output units, so that the output units contain non-redundant information about the sample. 
+
+More formally, \AlgoName{}'s objective function can be understood through the lens of information theory, and specifically as an instanciation of the \emph{Information Bottleneck (IB)} objective \cite{tishby_deep_2015,tishby_information_2000}. Applied to self-supervised learning, the IB objective consists in finding a representation that conserves as much information about the sample as possible while being the \emph{least} possible informative about the specific distortions applied to that sample. The mathematical connection between \AlgoName{}'s objective function and the IB principle is explored in Appendix A.
+
+\AlgoName{}' objective function has similarities with existing objective functions for SSL. For example, the redundancy reduction term plays a role similar to the \emph{contrastive term} in the \textsc{infoNCE} objective \cite{oord2018representation}, as discussed in detail in Section 5. However, important conceptual differences in these objective functions result in practical advantages of our method compared to \textsc{infoNCE}-based methods, namely that (1) our method does not require a large number of negative samples and can thus operate on small batches (2) our method benefits from very high-dimensional embeddings. Alternatively, the redundancy reduction term can be viewed as a \emph{soft-whitening} constraint on the embeddings, connecting our method to a recently proposed method performing a \emph{hard-whitening} operation on the embeddings \cite{ermolov_whitening_2020}, as discussed in Section 5. However, our method performs better than current hard-whitening methods.
+%, our method is shown to scale to large computer vision benchmarks such as ImageNet.
+
+The pseudocode for \AlgoName{} is shown as Algorithm~\ref{alg:barlow_twins}.
+
+%We discuss in more detail the conceptual and practical similarities and differences between \AlgoName{} and the closest competing methods for self-supervised learning in Section 5. 
+
+% , and with the \emph{uniformity term} of the loss in a recent proposed algorithm for SSL \cite{wang_understanding_2020},
+
+%Although our method is not explicitly contrastive, we note that it does require a batch and interaction between samples of this batch to compute the redundancy reduction term. We show empirically that, unlike vanilla contrastive methods such as SimCLR, our method works with batches as small as 128 (see Ablations), and we hypothesize in the Discussion why our method require fewer negative samples than constrastive methods.
+
+%Alternatively, this second term can be computed from the auto-correlation matrix of one of the twin networks, instead of the cross-correlation matrix between twin networks. In practice, we do not see strong difference in performance between this alternative and the proposed loss function, and only report results for the objective function presented above.
+
+
+
+
+
+%\mathcal{L_\theta} = \lambda  \sum_i^N \left(1-\frac{\langle z^A_{\boldsymbol{\cdot},i} - \overline{z^A_{\boldsymbol{\cdot},i}}, 
+%z^B_{\boldsymbol{\cdot},i} - \overline{z^B_{\boldsymbol{\cdot},i}} \rangle}{\|z^A_{\boldsymbol{\cdot},i} - \overline{z^A_{\boldsymbol{\cdot},i}} \|\|z^B_{\boldsymbol{\cdot},i} - \overline{z^B_{\boldsymbol{\cdot},i}}\|}\right) ^2
+%+ \sum_i^N \sum_{j \neq i}^N \left(\frac{\langle z^A_{\boldsymbol{\cdot},i} - \overline{z^A_{\boldsymbol{\cdot},i}}, 
+%z^B_{\boldsymbol{\cdot},j} - \overline{z^B_{\boldsymbol{\cdot},j}} \rangle}{\|z^A_{\boldsymbol{\cdot},i} - \overline{z^A_{\boldsymbol{\cdot},i}} \|\|z^B_{\boldsymbol{\cdot},j} - \overline{z^B_{\boldsymbol{\cdot},j}}\|}\right)^2
+%    \label{eq:lossBarlow}
+    
+%\begin{align*}
+%\mathcal{L_\theta} = \lambda  \sum_i^C 
+%\left(1-
+%\frac{
+%\sum_b^N z^A_{b,i} z^B_{b,i}}
+%{\sqrt{\sum_b^N {z^A_{b,i}}^2} \sqrt{\sum_b^N {z^B_{b,i}}^2}}
+%\right) ^2 \\
+%+ \sum_i^C \sum_{j \neq i}^C 
+%\left(
+%\right)^2
+%\end{align*}
+
+
+%\begin{align*}
+%\mathcal{L_\theta} = \lambda  \sum_i^C 
+%\left(1-
+%\frac{
+%\sum_b^N z^A_{b,i} z^B_{b,i}}
+%{\|z^A_{\boldsymbol{\cdot},i} \|\|z^B_{\boldsymbol{\cdot},i} %\|}\right) ^2
+%+ \sum_i^C \sum_{j \neq i}^C 
+%\left(
+%\frac{
+%\sum_b^N z^A_{b,i} z^B_{b,j}}
+%{\|z^A_{\boldsymbol{\cdot},i} %\|\|z^B_{\boldsymbol{\cdot},j}\|}\right)^2
+%\label{eq:lossBarlow}
+%\end{align*}
+
+%\begin{align*}
+%C \triangleq \frac{Cov(Z^A,Z^B)}{Var(Z^A)Var(Z^B)}
+%\end{align*}
+
+%\begin{align*}
+%\mathcal{L_\theta} = \lambda  \sum_i^N \left(1-\frac{\langle z^A_{\boldsymbol{\cdot},i} - \overline{z^A_{\boldsymbol{\cdot},i}}, 
+%z^B_{\boldsymbol{\cdot},i} - \overline{z^B_{\boldsymbol{\cdot},i}} \rangle}{\|z^A_{\boldsymbol{\cdot},i} - \overline{z^A_{\boldsymbol{\cdot},i}} \|\|z^B_{\boldsymbol{\cdot},i} - \overline{z^B_{\boldsymbol{\cdot},i}}\|}\right) ^2 \\
+%+ \sum_i^N \sum_{j \neq i}^N \left(\frac{\langle %z^A_{\boldsymbol{\cdot},i} - \overline{z^A_{\boldsymbol{\cdot},i}}, 
+%z^B_{\boldsymbol{\cdot},j} - \overline{z^B_{\boldsymbol{\cdot},j}} \rangle}{\|z^A_{\boldsymbol{\cdot},i} - \overline{z^A_{\boldsymbol{\cdot},i}} \|\|z^B_{\boldsymbol{\cdot},j} - \overline{z^B_{\boldsymbol{\cdot},j}}\|}\right)^2
+%    \label{eq:lossBarlow}
+%\end{align*}
+%- \sum_{i=1..N}{\bm{\Sigma}_{ii}^2}
+
+%In the next section we will see how this loss function can be derived in a principled way from  an information bottleneck perspective.
+
+%In the section after this, we will compare this loss function to competing loss functions, such as whitening, infoNCE, and \textsc{BYOL}.
+
+%Finally we will see the implementation details.
+%To maximize info of the rep, since there is no noise, it is equivalent to maximize the entropy of the distribution. Under assumptions of Gauusian representations, the entropy is maximized when all neurons are decorrelated (see schematic).
+
+%So this motivate the loss:
+
+%The methods consist of having twin networks which are fed two different augmentations of a same image. The two networks have identical parameters and are jointly trained. The representations are then compared with the following loss - called the redundancy reduction loss:
+
+%This loss encourages two things simultaneously: (1) that the representation is invariant to the augmentation; (2) that pairs of neurons with different indices neurons are as independent as possible, as measured by their covariance. This part of the loss ensure that neurons are not encoding redundant information, and thus that the representation is maximally informative about the stimulus. 
+
+%We note that this loss makes two type of collapse impossible. First, batchnorm enforces that each neuron responds in a variable way to the input. Second, the cross-correlation loss encourages all neurons to encode different type of info.
+
+
+
+
+
+
+
+\subsection{Implementation Details}
+\label{sec:implementation_details}
+
+\begin{algorithm}[tb]
+   \caption{PyTorch-style pseudocode for Barlow Twins.}
+   \label{alg:barlow_twins}
+   
+    \definecolor{codeblue}{rgb}{0.25,0.5,0.5}
+    \lstset{
+      basicstyle=\fontsize{7.2pt}{7.2pt}\ttfamily\bfseries,
+      commentstyle=\fontsize{7.2pt}{7.2pt}\color{codeblue},
+      keywordstyle=\fontsize{7.2pt}{7.2pt},
+    }
+\begin{lstlisting}[language=python]
+# f: encoder network
+# lambda: weight on the off-diagonal terms
+# N: batch size
+# D: dimensionality of the embeddings
+#
+# mm: matrix-matrix multiplication
+# off_diagonal: off-diagonal elements of a matrix
+# eye: identity matrix
+
+for x in loader: # load a batch with N samples
+    # two randomly augmented versions of x
+    y_a, y_b = augment(x)
+    
+    # compute embeddings
+    z_a = f(y_a) # NxD
+    z_b = f(y_b) # NxD
+    
+    # normalize repr. along the batch dimension
+    z_a_norm = (z_a - z_a.mean(0)) / z_a.std(0) # NxD
+    z_b_norm = (z_b - z_b.mean(0)) / z_b.std(0) # NxD
+    
+    # cross-correlation matrix
+    c = mm(z_a_norm.T, z_b_norm) / N # DxD
+    
+    # loss
+    c_diff = (c - eye(D)).pow(2) # DxD
+    # multiply off-diagonal elems of c_diff by lambda
+    off_diagonal(c_diff).mul_(lambda)
+    loss = c_diff.sum()
+
+    # optimization step
+    loss.backward()
+    optimizer.step()
+\end{lstlisting}
+\end{algorithm}
+
+
+
+\paragraph{Image augmentations} Each input image is transformed twice to produce the two distorted views shown in Figure~\ref{fig:fig_method}. The image augmentation pipeline consists of the following transformations: random cropping, resizing to $224 \times 224$, horizontal flipping, color jittering, converting to grayscale, Gaussian blurring, and solarization. The first two transformations (cropping and resizing) are always applied, while the last five are applied randomly, with some probability. This probability is different for the two distorted views in the last two transformations (blurring and solarization). We use the same augmentation parameters as \textsc{BYOL}~\cite{grill2020bootstrap}.
+
+\paragraph{Architecture} 
+The encoder consists of a ResNet-50 network~\cite{he2016deep} (without the final classification layer, 2048 output units) followed by a projector network. The projector network has three linear layers, each with 8192 output units. The first two layers of the projector are followed by a batch normalization layer and rectified linear units. We call the output of the encoder the 'representations' and the output of the projector the 'embeddings'. The representations are used for downstream tasks and the embeddings are fed to the loss function of \AlgoName{}.
+
+\paragraph{Optimization} 
+We follow the optimization protocol described in \textsc{BYOL}~\cite{grill2020bootstrap}. We use the LARS optimizer~\cite{you2017large} and train for 1000 epochs with a batch size of 2048. We however emphasize that our model works well with batches as small as 256 (see Ablations). We use a learning rate of 0.2 for the weights and 0.0048 for the biases and batch normalization parameters. We multiply the learning rate by the batch size and divide it by 256. We use a learning rate warm-up period of 10 epochs, after which we reduce the learning rate by a factor of 1000 using a cosine decay schedule~\cite{loshchilov2016sgdr}. We ran a search for the trade-off parameter $\lambda$ of the loss function and found the best results for $\lambda = 5\cdot10^{-3}$. We use a weight decay parameter of $1.5 \cdot 10^{-6}$. The biases and batch normalization parameters are excluded from LARS adaptation and weight decay. Training is distributed across 32 V100 GPUs and takes approximately 124 hours. For comparison, our reimplementation of \textsc{BYOL} trained with a batch size of 4096 takes 113 hours on the same hardware.

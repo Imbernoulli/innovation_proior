@@ -1,0 +1,259 @@
+\section{Experiments}
+
+
+\paragraph{Setup} 
+Experiments are under the inductive, supervised learning setting. 
+We evaluate {\graphsaint} on the following tasks:
+\begin{enumerate*}
+    \item classifying protein functions based on the interactions of human tissue proteins (PPI),
+    \item categorizing types of images based on the descriptions and common properties of online images (Flickr),
+    \item predicting communities of online posts based on user comments (Reddit),
+    \item categorizing types of businesses based on customer reviewers and friendship (Yelp), and 
+    \item classifying product categories based on buyer reviewers and interactions (Amazon).
+\end{enumerate*}
+For PPI, we use the small version for the two layer convergence comparison (Table \ref{tab: exp-sota} and Figure \ref{fig: 2 layer convergence}), since \cite{graphsage} and \cite{s-gcn} report accuracy for this version in their original papers. 
+We use the large version for additional comparison with \cite{cluster-gcn} to be consistent with its reported accuracy. 
+All datasets follow ``fixed-partition'' splits. Appendix \ref{appendix: data} includes further details.
+
+\begin{table}[!ht]
+\caption{Dataset statistics (``m'' stands for \textbf{m}ulti-class classification, and ``s'' for \textbf{s}ingle-class.)}
+    \centering
+    \resizebox{\textwidth}{!}{
+    \begin{tabular}{rcccccc}
+        \toprule
+        Dataset & Nodes & Edges & Degree & Feature & Classes & Train / Val / Test\\
+        \midrule
+        \midrule
+        PPI & 14,755 & 225,270 & 15 & 50 & 121 (m) & 0.66 / 0.12 / 0.22\\
+        Flickr & 89,250 & 899,756 & 10 & 500 & 7 (s) & 0.50 / 0.25 / 0.25\\
+        Reddit & 232,965 & 11,606,919 & 50 & 602 & 41 (s) & 0.66 / 0.10 / 0.24\\
+        Yelp & 716,847 & 6,977,410 & 10 & 300 & 100 (m) & 0.75 / 0.10 / 0.15 \\
+        Amazon & 1,598,960 & 132,169,734 & 83 & 200 & 107 (m) & 0.85 / 0.05 / 0.10 \\
+        \midrule
+        PPI (large version) & 56,944 & 818,716 & 14 & 50 & 121 (m) & 0.79 / 0.11 / 0.10 \\
+        \bottomrule
+    \end{tabular}}
+    \\
+    %\vspace{.2cm}
+    %{\tnote[1]{``m" stands for \textbf{m}ulti-class classification, and ``s" stands for \textbf{s}ingle-class.}}
+    %{\footnotesize{}``m" stands for \textbf{m}ulti-class classification, and ``s" stands for \textbf{s}ingle-class.}%{\scriptsize \par}
+    \label{tab: exp-dataset}
+\end{table}
+
+We open source {\graphsaint}\footnote{Open sourced code: \url{https://github.com/GraphSAINT/GraphSAINT}}.
+We compare with six baselines: 
+\begin{enumerate*}
+\item vanilla GCN \citep{gcn},
+\item GraphSAGE \citep{graphsage},
+\item FastGCN \citep{fastgcn},
+\item S-GCN \citep{s-gcn},
+\item AS-GCN \citep{as-gcn}, and
+\item ClusterGCN \citep{cluster-gcn}.
+\end{enumerate*}
+All baselines are executed with their officially released code (see Appendix \ref{appendix: config} for downloadable URLs and commit numbers).
+Baselines and {\graphsaint} are all implemented in Tensorflow with Python3. 
+We run experiments on a NVIDIA Tesla P100 GPU (see Appendix \ref{appendix: hw} for hardware specification). 
+
+
+
+\subsection{Comparison with State-of-the-Art}
+\label{sec: sota}
+
+Table \ref{tab: exp-sota} and Figure \ref{fig: 2 layer convergence} show the accuracy and convergence comparison of various methods. 
+All results correspond to two-layer GCN models (for GraphSAGE, we use its mean aggregator). For a given dataset, we keep hidden dimension the same across all methods. We describe the detailed architecture and hyperparameter search procedure in Appendix \ref{appendix: config}. The mean and confidence interval of the accuracy values in Table \ref{tab: exp-sota} are measured by three runs under the same hyperparameters. 
+The training time of Figure \ref{fig: 2 layer convergence} excludes the time for data loading, pre-processing, validation set evaluation and model saving. 
+Our pre-processing incurs little overhead in training time. See Appendix \ref{appendix: sampler cost} for cost of graph sampling. 
+% We compare {\graphsaint} with four baselines using layer sampling and one baseline using graph clustering: 
+% \begin{enumerate*}
+% \item The vanilla GCN \cite{gcn} (with its batched implementation at \cite{github_graphsage});
+% \item GraphSAGE \cite{graphsage} with uniform neighbor sampling (released code: \cite{github_graphsage});
+% \item FastGCN \cite{fastgcn} with importance sampling (released code: \cite{github_fastgcn});
+% \item S-GCN \cite{s-gcn} with control variate based variance reduction (released code: \cite{github_sgcn});
+% \item AS-GCN \cite{as-gcn} with auxiliary neural network based sampler (released code: \cite{github_asgcn}).
+% \end{enumerate*}
+For {\graphsaint}, we implement the graph samplers described in Section \ref{sec: sampler}. In Table \ref{tab: exp-sota}, ``Node'' stands for random node sampler; ``Edge'' stands for random edge sampler; ``RW'' stands for random walk sampler; ``MRW'' stands for multi-dimensional random walk sampler. %The corresponding edge or node probability is specified in Section \ref{sec: sampler}. %For random edge and random walk samplers, we have also implemented two versions. The suffix ``i'' means we return the subgraph induced by the nodes touched by the sampler. 
+
+%The ``Time'' in Table \ref{tab: exp-sota} measures training time until termination (specifically, GPU execution time for \cite{gcn,graphsage,s-gcn,as-gcn} and {\graphsaint}; CPU execution time for \cite{fastgcn}).
+%We exclude the time for data loading, pre-processing and Tensorflow model saving. See Section \ref{sec: sampler} for discussion on pre-processing cost. 
+
+% Appendix: give the value of hidden dimension. 
+% termination criteria. 
+
+\begin{table*}[!ht]
+\caption{Comparison of test set F1-micro score with state-of-the-art methods}
+    \centering
+    \resizebox{1.0\textwidth}{!}{
+    \begin{tabular}{rccccc}
+        \toprule
+        % \multirow{2}{*}{Method} & \multicolumn{2}{c}{PPI} & \multicolumn{2}{c}{Flickr} & \multicolumn{2}{c}{Reddit} & \multicolumn{2}{c}{Yelp} & \multicolumn{2}{c}{Amazon} \\
+        Method & PPI & Flickr & Reddit & Yelp & Amazon\\
+        % \cmidrule(lr){2-3} \cmidrule(lr){4-5} \cmidrule(lr){6-7} \cmidrule(lr){8-9} \cmidrule (lr){10-11} &  $\text{F1}_\text{mic}$ & Time (s) &
+        % $\text{F1}_\text{mic}$ & Time (s) &
+        % $\text{F1}_\text{mic}$ & Time (s) &
+        % $\text{F1}_\text{mic}$ & Time (s) & 
+        % $\text{F1}_\text{mic}$ & Time (s) \\
+        \midrule
+        \midrule
+        % GCN and GSAGE from KDD result
+        GCN & 0.515$\pm$0.006 & 0.492$\pm$0.003 & 0.933$\pm$0.000 & 0.378$\pm$0.001 & 0.281$\pm$0.005\\
+        GraphSAGE & 0.637$\pm$0.006 & 0.501$\pm$0.013 & 0.953$\pm$0.001 & 0.634$\pm$0.006 & 0.758$\pm$0.002\\
+        % FastGCN-def is FastGCN with 400 batch size
+        FastGCN
+        & 0.513$\pm$0.032 & 0.504$\pm$0.001 & 0.924$\pm$0.001 & 0.265$\pm$0.053 & 0.174$\pm$0.021\\
+        %FastGCN-{\small{2000}} \cite{fastgcn} & 0.561 & 12 & 0.506 & 142 & 0.934 & 477 & 0.255 & 1053\\
+        %FastGCN-{\small{4000}} \cite{fastgcn} & 0.564 & 17 & 0.507 & 138 & 0.934 & 574 & 0.260 & 1464\\
+        S-GCN & 0.963$\pm$0.010 & 0.482$\pm$0.003 & 0.964$\pm$0.001 & 0.640$\pm$0.002 & ---\footnotemark[3]\\
+        AS-GCN & 0.687$\pm$0.012 & 0.504$\pm$0.002 & 0.958$\pm$0.001 & ---\footnotemark[3] & ---\footnotemark[3] \\
+        ClusterGCN & 0.875$\pm$0.004 & 0.481$\pm$0.005 & 0.954$\pm$0.001 & 0.609$\pm$0.005 & 0.759$\pm$0.008 \\
+         \midrule
+         {\graphsaint}-{\small{Node}} & 0.960$\pm$0.001 & 0.507$\pm$0.001 & 0.962$\pm$0.001 & 0.641$\pm$0.000 & 0.782$\pm$0.004 \\
+        %{\graphsaint}-{\small{Edge.ni}} & {\color{gray}0.602} & & 0.471 & 8 & 0.931 & 14 & 0.630 & 106\\
+        {\graphsaint}-{\small{Edge}} & \textbf{0.981}$\pm$0.007 & 0.510$\pm$0.002 & \textbf{0.966}$\pm$0.001 & \textbf{0.653}$\pm$0.003 & 0.807$\pm$0.001 \\
+        %{\graphsaint}-{\small{RW}} & {\color{gray}0.648} &  & {\color{gray}0.500} & {\color{gray}4} & {\color{gray}0.952} & & {\color{gray}0.633} & \\
+        {\graphsaint}-{\small{RW}} & \textbf{0.981}$\pm$0.004 & \textbf{0.511}$\pm$0.001 & \textbf{0.966}$\pm$0.001 & \textbf{0.653}$\pm$0.003 & \textbf{0.815}$\pm$0.001\\%0.627 & 76 %% 640 114 \\
+        %% 0.9655 19ep  0.9640 23ep 0.9633
+        {\graphsaint}-{\small{MRW}} & 0.980$\pm$0.006 & 0.510$\pm$0.001 &  0.964$\pm$0.000 & 0.652$\pm$0.001 & 0.809$\pm$0.001 \\
+        %dim & 512 & & 256 & & 128 & & 512 & \\
+        \bottomrule
+    \end{tabular}}
+    \label{tab: exp-sota}
+\end{table*}
+%\footnotetext[2]{The released code of FastGCN runs on CPU only, and does not support GPU execution.}
+\footnotetext[3]{The codes throw runtime error on the large datasets (Yelp or Amazon).}
+
+\begin{figure}[h]
+\centering
+%\resizebox{1.0\linewidth}{!}
+{
+    \input{plots/convergence_2layer.tex}
+}
+\vspace{-.3cm}
+\caption{Convergence curves of 2-layer models on {\graphsaint} and baselines}
+\label{fig: 2 layer convergence}
+\end{figure}
+
+\begin{table*}[!ht]
+\caption{Additional comparison with ClusterGCN (test set F1-micro score)}
+    \centering
+\begin{tabular}{rcccc}
+    \toprule
+     & \multicolumn{2}{c}{PPI (large version)} & \multicolumn{2}{c}{Reddit} \\
+     \cmidrule(lr){2-3}\cmidrule(lr){4-5} & $2\times 512$ & $5\times 2048$ & $2\times 128$ & $4\times 128$\\
+    \midrule
+    ClusterGCN& 0.903$\pm$0.002 & 0.994$\pm$0.000 & 0.954$\pm$0.001 & 0.966$\pm$0.001\\
+     {\graphsaint}& \textbf{0.941}$\pm$0.003 & \textbf{0.995}$\pm$0.000 & \textbf{0.966}$\pm$0.001 & \textbf{0.970}$\pm$0.001\\
+     \bottomrule
+\end{tabular}
+\label{tab: compare clustergcn}
+\end{table*}
+
+
+Clearly, with appropriate graph samplers, {\graphsaint} achieves significantly higher accuracy on all datasets. 
+For {\graphsaint}-Node, we use the same node probability as FastGCN. Thus, the accuracy improvement is mainly due to the switching from layer sampling to graph sampling (see ``Remark'' in Section \ref{sec: var}). 
+Compared with AS-GCN, {\graphsaint} is significantly faster. The sampler of AS-GCN is expensive to execute, making its overall training time even longer than vanilla GCN. We provide detailed computation complexity analysis on the sampler in Appendix \ref{appendix: sampler cost}. 
+For S-GCN on Reddit, it achieves similar accuracy as {\graphsaint}, at the cost of over $9\times$ longer training time. 
+The released code of FastGCN only supports CPU execution, so its convergence curve is dashed. 
+% {\graphsaint} achieves significantly better accuracy than FastGCN \cite{fastgcn} due to better inter-layer connectivity among minibatch nodes. {\graphsaint} achieves orders of magnitude reduction in training time than AS-GCN \cite{as-gcn} due to the extremely light-weight sampling process.  
+% Note that for ``\graphsaint-Node'', we use the same node probability as FastGCN.  Thus, the accuracy improvement is mainly due to the switching from \emph{layer sampling} to \emph{graph sampling}. 
+% For the other two baselines \cite{graphsage,s-gcn}, their sampled neighborhood sizes potentially grow exponentially with the GCN depth. Compared with GraphSAGE \cite{graphsage}, {\graphsaint} using any of the four samplers achieves significantly higher accuracy. 
+% Compared with S-GCN \cite{s-gcn}, {\graphsaint} using edge or random walk sampler achieves significantly higher accuracy on PPI, Flicker and Yelp, and slightly better accuracy on Reddit. Note that {\graphsaint} reduces training time of Reddit by more than $9\times$. 
+% Figure \ref{fig: 2 layer convergence} shows the convergence curves of all methods. The $x$-axis is training time, and the $y$-axis is validation set F1-micro score. The {\graphsaint} curves of PPI, Flickr and Reddit correspond to the RW sampler, and the {\graphsaint} curve of Yelp corresponds to the edge sampler.
+% Again, we observe {\graphsaint} achieves the best training quality. 
+
+
+Table \ref{tab: compare clustergcn} presents additional comparison with ClusterGCN. We use $L\times f$ to specify the architecture, where $L$ and $f$ denote GCN depth and hidden dimension, respectively. 
+The four architectures are the ones used in the original paper \citep{cluster-gcn}. Again, {\graphsaint} achieves significant accuracy improvement. 
+To train models with $L>2$ often requires additional architectural tweaks. ClusterGCN uses its diagonal enhancement technique for the 5-layer PPI and 4-layer Reddit models. {\graphsaint} uses jumping knowledge connection \citep{jk-net} for 4-layer Reddit. 
+
+
+% \begin{figure}[!h]
+% \centering
+% \subcaptionbox{Comparison of accuracy and training time\label{fig: exp sota acc time}. Each marker corresponds to a F1\textsubscript{mic}-time pair in Table \ref{tab: exp-sota}, where marker color encodes method and marker shape encodes dataset. We shade the polygon defined by the points of the same method for better visualization. Points of {\graphsaint} corresponds to MRW sampler.}[0.48\linewidth]{\input{./plots/sota.tex}}
+% \hfill
+% \subcaptionbox{Effect of sampling methods on training efficiency. 
+% $y$-axis is normalized as follows: given a dataset, its $\ell$-layer per batch time is divided by its $2$-layer per batch time. Such normalization accounts for differences in datasets and batch sizes, and better reflects scalability. {\graphsaint} curves correspond to MRW sampler. \label{fig: exp sota depth}}[0.48\linewidth]{\input{./plots/sota_depth.tex}}
+% \caption{Comparison with state-of-the-art}
+% \label{fig: exp sota}
+% \end{figure}
+
+
+
+
+
+% \begin{figure}[h]
+% \centering
+% \subcaptionbox{Sensitivity analysis on RW sampler\label{fig: sampler param}}[0.48\linewidth]{\input{./plots/sampler_param.tex}}
+% \hfill
+% \subcaptionbox{Fraction of training time on sampling\label{fig: preproc cost}}[0.48\linewidth]{\input{./plots/preproc.tex}}
+% \end{figure}
+
+
+
+\paragraph{Evaluation on graph samplers} From Table \ref{tab: exp-sota}, random edge and random walk based samplers achieve higher accuracy than the random node sampler. Figure \ref{fig: sensitivity} presents sensitivity analysis on parameters of ``RW''. We use the same hyperparameters (except the sampling parameters) and network architecture as those of the ``RW'' entries in  Table \ref{tab: exp-sota}. We fix the length of each walker to $2$ (i.e., GCN depth), and vary the number of roots $r$ from $250$ to $2250$. For PPI, increasing $r$ from $250$ to $750$ significantly improves accuracy. Overall, for all datasets, accuracy stabilizes beyond $r=750$. 
+
+% \subsection{Evaluation on Pre-Processing and Sampling Cost}
+% \label{sec: exp-preproc}
+
+
+%Note that the baselines also require pre-processing. 
+%For the case of S-GCN, the time to pre-compute the first layer aggregation and setup data structures is equivalent to a\% to b\% of its training time. 
+
+
+%\paragraph{Pre-processing cost} 
+% describe how many samplers needed for estimating probability. Point out that for PPI and Yelp, pre-processing cost is 0. For Flickr and Reddit, pre-processing is another 10\% of training time. Pre-processing cost of other methods is significant. 
+
+
+\subsection{{\graphsaint} on Architecture Variants and Deep Models\label{sec: exp extension}}
+
+
+
+% \begin{figure}
+% 	\begin{subfigure}[b]{0.66\textwidth}		
+%     \input{plots/jk_gat.tex}
+% 	\caption{Expressed as Hadamard}
+% 	\label{fig: tilingA}
+% 	\end{subfigure}
+% 	\begin{subfigure}[b]{0.33\textwidth}
+% 	\input{plots/jk_gat.tex}
+% 	\caption{Expressed as dot product}
+% 	\label{fig: tilingB}
+% 	\end{subfigure}
+% \vspace{-.4cm}
+% \caption{Two views of spectral convolution of a layer}
+% \label{fig: tiling}
+% \vspace{-0.7cm}
+% \end{figure}
+
+
+\begin{figure}
+    \centering
+    \begin{minipage}{0.33\textwidth}
+        \centering
+        \input{plots/sampler_param.tex}
+        \vspace{-.5cm}
+        \captionof{figure}{Sensitivity analysis}
+        \label{fig: sensitivity}
+    \end{minipage}
+    \begin{minipage}{0.66\textwidth}
+        \centering
+        \input{plots/jk_gat.tex}
+        \vspace{-.13cm}
+        \captionof{figure}{{\graphsaint} with JK-net and GAT (Reddit)}
+        \label{fig: jk-gat-saint}
+    \end{minipage}
+\end{figure}
+
+
+
+%As discussed in Section \ref{sec: discussion}, {\graphsaint} can be integrated into other GCN architecture variants. 
+In Figure \ref{fig: jk-gat-saint}, we train a 2-layer and a 4-layer model of GAT \citep{gat} and JK-net \citep{jk-net}, by using minibatches of GraphSAGE and {\graphsaint} respectively. 
+On the two 4-layer architectures, {\graphsaint} achieves two orders of magnitude speedup than GraphSAGE, indicating much better scalability on deep models. 
+From accuracy perspective, 4-layer GAT-SAGE and JK-SAGE do not outperform the corresponding 2-layer versions, potentially due to the smoothening effect caused by the massive neighborhood size. On the other hand, with minibatches returned by our edge sampler, increasing model depth of JK-{\saint} leads to noticeable accuracy improvement (from 0.966 of 2-layer to 0.970 of 4-layer). 
+Appendix \ref{appendix: depth} contains additional scalability results. 
+
+% We integrate the jumping knowledge network (JK-Net) \cite{jk-net} into the {\graphsaint} framework, and evaluate the performance of a deep JK-Net trained by minibatches of subgraphs. 
+% Figure \ref{fig: exp jk} shows the convergence curves of a 2-layer GCN (defined by Equation \ref{eq: vanilla gcn}; hidden dimension $128$) and a 4-layer JK-Net (defined in Appendix \ref{appendix: config}; hidden dimension $128$), both trained under the edge sampler. 
+% The 2-layer GCN achieves $0.966$ F1-micro score, while the 4-layer JK-Net achieves over $0.970$ F1-micro score.
+% Notably, the training time of the 4-layer model is only around twice that of the 2-layer model. 
+% Under the setting of the original JK-Net paper \cite{jk-net}, the minibatch training uses the neighbor sampling of GraphSAGE \cite{graphsage}, and achieves $0.965$ F1-micro for a 2-layer model (hidden dimension $128$). However, such training of \cite{jk-net} can not scale to deeper networks. 
+% The above results demonstrate that training based on the sampling of {\graphsaint} can be applied to other GCN architecture variants, to greatly improve their training efficiency without compromising accuracy.  

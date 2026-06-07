@@ -1,0 +1,153 @@
+% \begin{minipage}{0.53\textwidth}
+% \vspace{-1.5em}
+% \begin{algorithm}[H]
+% \caption{Naive MoE forward pass \citep{fedus2022switchtransformersscalingtrillion}}
+% \label{alg:moe-swiglu}
+% \DontPrintSemicolon
+%  \fontsize{8pt}{10pt}\selectfont
+
+% \SetKwInOut{Input}{Input}\SetKwInOut{Output}{Output}
+% \Input{$X \in \mathbb{R}^{T \times d}$, $\W{1} = \{\W{1,e}\}_{e\in[E]} \subset \mathbb{R}^{d\times 2n} ,\ \W{2} = \{\W{2,e}\}_{e\in[E]} \subset \mathbb{R}^{n\times d}$, routing scores $S \in \mathbb{R}^{T \times E}$, $\pi^{-1}(t)$ as the routed experts for token $t$,
+% }
+
+% % $\pi^{-1}(t) = \mathrm{top\_k}(S_t, K) \in \{1,\dots,E\}^{T \times K}$}
+% \Output{output activation $O \in \mathbb{R}^{T \times d}$}
+
+% \For{$t \in [T]$}{
+%     $O_t \gets \mathbf{0} \in \mathbb{R}^{d}$ \;
+    
+%     \For{$e \in \pi^{-1}(t)$}{
+    
+%         $\vz_{t,e} \gets \W{1, e} X_t$ \;  \tcp*[f]{GEMV, up-proj}
+        
+%         $\vy_{1,t,e} \gets \mathrm{SwiGLU}(\vz_{t,e})$ \;
+        
+%         $\vy_{2,t,e} \gets \W{2, e} \vy_{1,t,e}$ \; \tcp*[f]{GEMV, down-proj}
+         
+%         $O_t \gets S_{t, e} \vy_2  + O_t$ \tcp*[f]{sum over expert results}
+%     }
+% }
+
+% \end{algorithm}
+% \end{minipage}
+% \vspace{-1em} % Adjust spacing below the figure if needed
+% ~~~
+% \begin{wrapfigure}{r}{0.4\textwidth}
+% \begin{minipage}{0.4\textwidth}
+\vspace{-1em}
+
+
+\begin{algorithm}[H]
+
+    \caption{MoE forward with Grouped GEMM}% \citep{tan2024scattered,gale2023megablocks}}
+    \label{alg:moe-swiglu-grouped-gemm}
+    \DontPrintSemicolon
+     \fontsize{8pt}{10pt}\selectfont
+    
+    \SetKwInOut{Input}{Input}\SetKwInOut{Output}{Output}
+    \Input{$X \in \mathbb{R}^{T \times d}$, $W_1 = \{W_{1,e}\}_{e\in[E]} \in \mathbb{R}^{d\times 2n} ,\ W_2 = \{W_{2,e}\}_{e\in[E]} \in \mathbb{R}^{n\times d}$, routing scores $S \in \mathbb{R}^{T \times E}$, $\pi \in \{0, 1\}^{T \times E}$ as a binary-valued mask matrix where $\pi_{t, e}$ represents whether token $t$ is routed to expert $e$.
+    }
+
+    \Output{output activation $O \in \mathbb{R}^{T \times d}$}
+    
+    \textbf{Parallel} \For{\moe{$e \in [E]$}}{
+    
+    \note{// up-proj }
+    
+    $X_e \gets \mathrm{Gather}(X, \, \pi_{:, e})$
+    
+    \note{// varlen-$\mathbf{M}$ Grouped GEMM}
+    
+    $H_{\moe{e}} \gets X_e W_{1,e}$
+
+    \note{// apply activation function, e.g. $\mathrm{SwiGLU}$ }
+
+    $A_{\moe{e}} \gets \mathrm{act\_func}(H_{\moe{e}})$  
+
+    \note{// down-proj, varlen-$\mathbf{M}$ Grouped GEMM}
+
+    $Y_{\moe{e}} \gets A_{e} W_{2, e}$  
+    }
+    
+    
+    \textbf{Parallel} \For{\moe{$t \in [T]$}}{
+
+    \note{// expert aggregation}
+
+    \moe{$O_t = \sum_{e \in [E]} \pi_{t, e} S_{t, e} \, Y_{e,t}$\;}
+    }
+
+    % \Return{O}
+
+\end{algorithm}
+% \end{minipage}
+% \end{wrapfigure}
+
+
+% \begin{wrapfigure}{r}{0.42\textwidth}
+% \begin{minipage}{0.42\textwidth}
+% % \vspace{-2.5em}
+% \begin{algorithm}[H]
+
+%     \caption{MoE forward with grouped GEMM \citep{tan2024scattered,gale2023megablocks}}
+%     \label{alg:moe-swiglu-grouped-gemm}
+%     \DontPrintSemicolon
+%      \fontsize{8pt}{10pt}\selectfont
+    
+%     \SetKwInOut{Input}{Input}\SetKwInOut{Output}{Output}
+%     \Input{$X \in \mathbb{R}^{T \times d}$, $\W{1} = \{\W{1,e}\}_{e\in[E]} \in \mathbb{R}^{d\times 2n} ,\ \W{2} = \{\W{2,e}\}_{e\in[E]} \in \mathbb{R}^{n\times d}$, routing scores $S \in \mathbb{R}^{T \times E}$, $\pi^{-1}(t)$ as the routed experts for token $t$.
+%     }
+    
+%     \Output{output activation $O \in \mathbb{R}^{T \times d}$}
+                
+    
+%     \For{\moe{$e \in [E]$ in parallel}}{
+%     $X_{\pi(e)} \gets \mathrm{Gather}(X, \, \pi(e))$; 
+    
+%     $Z_{\moe{e}} \gets X \, \W{1,\moe{e}}$; \tcp*[f]{grouped GEMM}
+    
+%     $Y_{1,\moe{e}} \gets \mathrm{SwiGLU}(Z_{\moe{e}})$  \;
+    
+%     $Y_{2,\moe{e}} \gets Y_{1,\moe{e}}\, \W{2,\moe{e}}$  \;  \tcp*[f]{grouped GEMM}
+%     }
+    
+    
+%     \For{\moe{$t \in [T]$ in parallel}}{
+    
+%     \moe{$\vs_t = \mathrm{Gather}(S, \, \pi^{-1}(t))$\;} 
+    
+%     \moe{$O_t = \sum_{e \in \pi^{-1}(t)} \mathrm{Broadcast}(\vs_t) \, Y_{2,e,t}$\;}
+%     }
+    
+% \end{algorithm}
+% \end{minipage}
+% \end{wrapfigure}
+
+
+
+% \begin{algorithm}[H]
+% \caption{MoE forward computation \citep{fedus2022switchtransformersscalingtrillion}}
+% \label{alg:moe-swiglu}
+% \DontPrintSemicolon
+%  \fontsize{8pt}{10pt}\selectfont
+
+% \SetKwInOut{Input}{Input}\SetKwInOut{Output}{Output}
+% \Input{$X$, \moe{routing weights $S$}, \moe{$\pi(e)$ as input permutation for expert $e$}, \moe{$\pi^{-1}(t)$ as the routed experts for token $t$}. $\W{1} = \{\W{1,\moe{e}}\}_{e\in[E]} ,\ \W{2} = \{\W{2,\moe{e}}\}_{e\in[E]}$. 
+% }
+
+% \Output{FWD: $O \in\mathbb{R}^{T\times d}$}
+
+% \Indp
+% \For{\moe{$e \in [E]$ in parallel}}{
+% $X_{\pi(e)} \gets \mathrm{Gather}(X, \, \pi(e))$; \quad $Z_{\moe{e}} \gets X \, \W{1,\moe{e}}$; \quad $Y_{1,\moe{e}} \gets \mathrm{SwiGLU}(Z_{\moe{e}})$ \tcp*[f]{up-proj fwd} \;
+% $Y_{2,\moe{e}} \gets Y_{1,\moe{e}}\, \W{2,\moe{e}}$ \tcp*[f]{down-proj fwd} \;
+% }
+
+
+% \For{\moe{$t \in [T]$ in parallel}}{
+
+% \moe{$\vs_t = \mathrm{Gather}(S, \, \pi^{-1}(t))$\;} 
+
+% \moe{$O_t = \sum_{e \in \pi^{-1}(t)} \mathrm{Broadcast}(\vs_t) \, Y_{2,e,t}$\;}
+
+% }

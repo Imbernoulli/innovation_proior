@@ -1,0 +1,22 @@
+
+\section{Theoretical convergence analysis}
+\label{sec:theory}
+In contrast to other methods approximating the attention matrix $\mathbf{A}$, our algorithm provides provable strong uniform convergence theoretical guarantees for compact domains. We show that $M_{\mathrm{opt}}$, the optimal number of random features, does not depend on $L$ but only on $d$. In fact, we prove that if we take $M_{\mathrm{opt}} = \Theta(d\log(d))$, then with $O(L d^2\log(d))$-time, we can approximate $\mathbf{A}$ up to any precision, regardless of the number of tokens $L$. In order to provide those guarantees for FAVOR, we leverage recent research on the theory of negative dependence for ORFs \citep{Lin2020DemystifyingOM}.
+The following is true:
+
+\begin{theorem}[Uniform convergence of FAVOR]
+\label{uniform_convergence}
+Take the generalized attention mechanism defined by $g,h:\mathbb{R}^{d} \rightarrow \mathbb{R}$ (see: Sec. \ref{sec:generalized}) and a radial basis function (RBF) kernel \citep{geom} $K$ with corresponding spectral distribution $\Omega$ (e.g. Gaussian kernel for which $\Omega=\mathcal{N}(0,\mathbf{I}_{d})$). Assume that the rows of matrices $\mathbf{Q}$ and $\mathbf{K}$ are taken from a ball $B(R)$ of radius $R$, centered at $0$ (i.e. norms of queries and keys are upper-bounded by $R$). 
+Define $l=Rd^{-\frac{1}{4}}$ and take $g^{*} = \max_{\mathbf{x} \in B(l)}|g(\mathbf{x})|$, $h^{*} = \max_{\mathbf{x} \in B(l)}|h(\mathbf{x})|$.
+Then for any $\epsilon>0$, $\delta=\frac{\epsilon}{g^{*}h^{*}}$
+and the number of random features $M = \Omega(\frac{d}{\delta^{2}}\log(\frac{4\sigma R}{\delta d^{\frac{1}{4}}}))$ for $\sigma=\mathbb{E}_{\omega \sim \Omega}[\omega^{\top}\omega]$ the following holds:
+$
+\|\widehat{\mathbf{A}}-\mathbf{A}\|_{1} \leq \epsilon     
+$
+with any constant probability,
+where $\widehat{\mathbf{A}}$ approximates generalized attention matrix via FAVOR with R-ORFs. 
+\end{theorem}
+
+The result holds in particular for regular attention using Gaussian kernels (see: Sec. \ref{sec:generalized}) for which $M_{\mathrm{opt}}=\Omega(\frac{d}{\delta^{2}}\log(\frac{4d^{\frac{3}{4}} R}{\delta}))$ since $\sigma = d$.
+
+

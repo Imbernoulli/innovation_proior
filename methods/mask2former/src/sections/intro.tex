@@ -1,0 +1,70 @@
+\vspace{-2mm}
+\section{Introduction}
+
+Image segmentation studies the problem of grouping  pixels.
+Different semantics for grouping pixels, \eg, category or instance membership, have led to different types of segmentation tasks, such as panoptic, instance or semantic segmentation.
+While these tasks differ only in semantics, current methods develop specialized architectures for each task.
+Per-pixel classification architectures
+based on Fully Convolutional Networks (FCNs)~\cite{long2015fully} are used for semantic segmentation, while mask classification architectures~\cite{he2017mask,detr} that predict a set of binary masks each associated with a single category,  dominate instance-level segmentation.
+Although such \emph{specialized} architectures~\cite{long2015fully,deeplabV3plus,he2017mask,chen2019hybrid} have advanced each individual task, they lack the flexibility to generalize to the other tasks. For example, FCN-based architectures struggle at instance segmentation, leading to the evolution of different architectures for instance segmentation compared to semantic segmentation.
+Thus, duplicate research and (hardware) optimization effort is spent on each specialized architecture for every task.
+
+\begin{figure}[t!]
+    \centering
+    \includegraphics[width=\linewidth]{figures/maskformerv2_teaser.pdf}
+    \caption{
+        State-of-the-art segmentation architectures are typically specialized for each image segmentation task.
+        Although recent work %
+        has proposed universal architectures that attempt all tasks and are competitive on semantic and panoptic segmentation, they struggle with segmenting instances. We propose \textbf{\modelname}, which, for the first time, outperforms the best specialized architectures on three studied segmentation tasks on multiple datasets.
+        }
+    \label{fig:teaser}
+    \vspace{-1mm}
+\end{figure}
+
+To address this fragmentation, %
+recent work~\cite{cheng2021maskformer,zhang2021knet} has attempted to design \emph{universal architectures}, that are capable of addressing all segmentation tasks with the same architecture (\ie, universal image segmentation).
+These architectures are typically based on an end-to-end set prediction objective (\eg, DETR~\cite{detr}), and successfully tackle multiple tasks without modifying the architecture, loss, or the training procedure. 
+Note, universal architectures are still trained separately for different tasks and datasets, albeit having the same architecture. %
+In addition to being flexible, universal architectures have recently shown \sota
+results on semantic and panoptic segmentation~\cite{cheng2021maskformer}.
+However, recent work  still focuses on advancing specialized architectures~\cite{fapn,strudel2021segmenter,QueryInst}, which raises the question: why haven't universal architectures replaced specialized ones?
+
+Although existing universal architectures are flexible enough to tackle any segmentation task, %
+as shown in \figref{fig:teaser}, in practice their performance %
+lags behind the best specialized architectures.
+For instance, the best reported performance of universal architectures~\cite{cheng2021maskformer,zhang2021knet}, is currently lower ($>9$ AP) than the SOTA specialized architecture for instance segmentation~\cite{chen2019hybrid}.
+Beyond the inferior performance, universal architectures are also harder to train. They typically require more advanced hardware and a much longer training schedule. For example, training MaskFormer~\cite{cheng2021maskformer} takes 300 epochs to reach 40.1 AP and it can only fit a single image in a GPU with 32G memory. In contrast, the specialized Swin-HTC++~\cite{chen2019hybrid} obtains better performance in only 72 epochs. Both the performance and training efficiency issues hamper the deployment of universal architectures.
+
+
+In this work, we propose a universal image segmentation architecture named \modelnamelong (\textbf{\modelname}) that outperforms specialized architectures across different segmentation tasks, while still being easy to train on every task.
+We build upon a simple meta architecture~\cite{cheng2021maskformer} consisting of a
+backbone feature extractor~\cite{he2016deep,liu2021swin}, a pixel decoder~\cite{lin2016feature} and a Transformer decoder~\cite{vaswani2017attention}.
+We propose key improvements that enable better results and efficient training.
+First, we use \emph{masked attention} in the Transformer decoder which restricts the attention to localized features centered around predicted segments, which can be either objects or regions depending on the specific semantic for grouping.
+Compared to the  cross-attention used in a standard Transformer decoder which attends to all locations in an image, our masked attention leads to faster convergence and improved performance.
+Second, we use \emph{multi-scale high-resolution features} which help the model to segment small objects/regions.
+Third, we propose \emph{optimization improvements} such as switching the order of self and cross-attention, making query features learnable, and removing dropout; all of which improve performance without additional compute.
+Finally, we save $3\x$ training memory without affecting the performance by \emph{calculating mask loss on few randomly sampled points}.
+These improvements not only boost the model performance, but also make training significantly easier, making universal architectures more accessible to users with limited compute.
+
+We evaluate \modelname on three image segmentation tasks (panoptic, instance and semantic segmentation) using four popular datasets (COCO~\cite{lin2014coco}, Cityscapes~\cite{Cordts2016Cityscapes}, ADE20K~\cite{zhou2017ade20k} and Mapillary Vistas~\cite{neuhold2017mapillary}).
+For the first time, on all these benchmarks, our single architecture performs on par or better than specialized architectures.
+\modelname sets the new state-of-the-art of \textbf{57.8 PQ} on COCO panoptic segmentation~\cite{kirillov2017panoptic}, \textbf{50.1 AP} on COCO instance segmentation~\cite{lin2014coco} and \textbf{57.7 mIoU} on ADE20K semantic segmentation~\cite{zhou2017ade20k} using the exact same architecture.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

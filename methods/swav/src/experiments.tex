@@ -1,0 +1,292 @@
+\section{Main Results}\label{sec:exp}
+We analyze the features learned by \OURS by transfer learning on multiple datasets. 
+%In~\cref{sec:eval_on_imagenet} and~\cref{sec:downstream} we pretrain our model on ImageNet (without labels) and in~\cref{sec:uncurated} we test the generalization of our method on uncurated data. 
+We implement in \OURS the improvements used in SimCLR, \ie, LARS~\cite{you2017large}, cosine learning rate~\cite{loshchilov2016sgdr,misra2019self} and the MLP projection head~\cite{chen2020simple}. 
+We provide the full details and hyperparameters for pretraining and transfer learning in the \appendixName.
+
+\subsection{Evaluating the unsupervised features on ImageNet}
+\label{sec:eval_on_imagenet}
+We evaluate the features of a ResNet-50~\cite{he2016deep} trained with \OURS on ImageNet by two experiments: linear classification on frozen features and semi-supervised learning by finetuning with few labels.
+When using frozen features (\cref{fig:linear_inet} left), \OURS outperforms the state of the art by $+4.2\%$ top-1 accuracy and is only $1.2\%$ below the performance of a fully supervised model.
+Note that we train \OURS during $800$ epochs with large batches ($4096$).
+We refer to~\cref{fig:multicrop-exp} for results with shorter trainings and to~\cref{fig:small_batches} for experiments with small batches.
+On semi-supervised learning (\cref{tab:semi_sup}), \OURS outperforms other self-supervised methods and is on par with state-of-the-art semi-supervised models~\cite{sohn2020fixmatch}, despite the fact that \OURS is not specifically designed for semi-supervised learning.
+%Please note that as SimCLR and MoCov2~\cite{chen2020improved}, we use the training improvements introduced by SimCLR~\cite{chen2020simple} (see \appendixName~\ref{ap:implementation} for details).
+%These technical improvements explain part of the performance gap with other previous works.
+%Another important factor of variation between methods is the size of the training batches.
+%Indeed, in this experiment, both \OURS and SimCLR are trained with large batches ($4096$ samples) while MoCov2 uses smaller batches.
+
+\begin{table}[t]
+  \centering
+  \caption{
+     \textbf{Semi-supervised learning on \ImNet with a ResNet-50.} 
+We finetune the model with $1\%$ and $10\%$ labels and report top-1 and top-5 accuracies.
+% We use the same splits as in Chen \etal~\cite{chen2020simple}.
+*:\footnotesize{\emph{ uses RandAugment~\cite{cubuk2019randaugment}.}}
+    }
+    \label{tab:semi_sup}
+    \vspace{0.4em}
+  \begin{tabular}{@{}ll@{}ll c c c c c @{}}
+    \toprule
+	  %& \multicolumn{5}{c}{Label fraction} \\
+	  &&&& \multicolumn{2}{c}{1\% labels} && \multicolumn{2}{c}{10\% labels} \\
+	  &&Method && Top-1 & Top-5 && Top-1 & Top-5 \\
+    \midrule
+	&&Supervised && 25.4 & 48.4 && 56.4 & 80.4 \\
+    \midrule
+	  % \multicolumn{5}{l}{\textit{Methods using label-propagation}} \\
+	  \multirow{2}{*}{\shortstack[l]{\textit{Methods using} \\ \textit{label-propagation}}}
+	   &&UDA~\cite{xie2020unsupervised} && - & - && \phantom{*}68.8* & \phantom{*}88.5* \\
+	  &&FixMatch~\cite{sohn2020fixmatch} && - & - &&  \phantom{*}\textbf{71.5}* & \phantom{*}89.1* \\
+    \midrule
+	  % \multicolumn{5}{l}{\textit{Methods using self-supervision only}} \\
+	  \multirow{4}{*}{\shortstack[l]{\textit{Methods using} \\ \textit{self-supervision only}}}&&PIRL~\cite{misra2019self} && 30.7 & 57.2 && 60.4 & 83.8 \\
+	  &&PCL~\cite{li2020prototypical} && - & 75.6 && - & 86.2 \\
+	  &&SimCLR~\cite{chen2020simple} && 48.3 & 75.5 && 65.6 & 87.8 \\
+\cmidrule{3-9}
+	&&\OURS && \bf 53.9 & \bf 78.5 && 70.2 & \bf 89.9 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\par \noindent \textbf{Variants of ResNet-50.} Figure~\ref{fig:linear_inet}~(right) shows the performance of multiple variants of ResNet-50 with different widths~\cite{kolesnikov2019revisiting}.
+The performance of our model increases with the width of the model, and follows a similar trend to the one obtained with supervised learning.
+When compared with concurrent work like SimCLR, we see that \OURS reduces the difference with supervised models even further.
+%We report the best performance obtained for more prior works in the \appendixName.
+Indeed, for large architectures, our method shrinks the gap with supervised training to $0.6\%$.
+
+\begin{table}[h]
+\centering
+    \caption{
+\textbf{Transfer learning on downstream tasks.}
+Comparison between features from ResNet-50 trained on ImageNet with \OURS or supervised learning.
+We consider two settings.
+(1) Linear classification on top of frozen features. We report top-1 accuracy on all datasets except \VOCseven where we report mAP.
+	(2) Object detection with finetuned features on \VOCseventwelve \texttt{trainval} using Faster R-CNN~\cite{ren2015faster} and on COCO~\cite{lin2014microsoft} using Mask R-CNN~\cite{he2017mask} or DETR~\cite{carion2020end}.
+We report the most standard detection metrics for these datasets: $\text{AP}_{50}$ on \VOCseventwelve and $\text{AP}$ on COCO.
+    }
+    \label{fig:frozen_and_detect}
+    \vspace{.4em}
+  \setlength{\tabcolsep}{3.7pt}
+    \begin{tabular}{ @{} l ccc c ccc @{} }
+      \toprule
+       & \multicolumn{3}{c}{Linear Classification} &~~~~& \multicolumn{3}{c}{Object Detection}\\
+\cmidrule{2-4}\cmidrule{6-8}
+	    &\Places & \VOCseven & \iNat && \VOCseventwelve & COCO & COCO \\
+	    & &  &  && \scriptsize(Faster R-CNN R50-C4) & \scriptsize(Mask R-CNN R50-FPN) & \scriptsize(DETR) \\
+      \midrule
+	    Supervised & 53.2  & 87.5 & 46.7 && 81.3 & 39.7 & 40.8 \\
+      %Best self-supervised~~~ & 51.1~\cite{gidaris2020learning} & 84.0~\cite{li2020prototypical} & 34.1~\cite{misra2019self} && \textbf{57.4}~\cite{chen2020improved} & 82.5~\cite{chen2020improved} & \textbf{64.0}~\cite{chen2020improved} \\
+      \midrule
+	    \OURS  & \bf 56.7 & \bf 88.9 & \bf 48.6 && \bf 82.6 & \bf 41.6 & \bf 42.1 \\
+      \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{Transferring unsupervised features to downstream tasks}
+\label{sec:downstream}
+%\vspace{-0.08in}
+We test the generalization of ResNet-50 features trained with \OURS on \ImNet (without labels) by transferring to several downstream vision tasks.
+In~\cref{fig:frozen_and_detect}, we compare the performance of~\OURS features with ImageNet supervised pretraining.
+First, we report the linear classification performance on the \Places~\cite{zhou2014learning}, \VOCseven~\cite{everingham2010pascal}, and iNaturalist2018~\cite{van2018inaturalist} datasets.
+Our method outperforms supervised features on all three datasets.
+Note that \OURS is the first self-supervised method to surpass ImageNet supervised features on these datasets.
+%In particular on \Places, \OURS features surpass supervised features by a large margin of $3.5\%$.
+Second, we report network finetuning on object detection on \VOCseventwelve using Faster R-CNN~\cite{ren2015faster} with a R50-C4 backbone and on COCO~\cite{lin2014microsoft} using Mask R-CNN~\cite{he2017mask} with a R50-FPN backbone and finally using DETR detector~\cite{carion2020end}.
+%DETR is a recent object detection framework that relies on a transformer encoder-decoder architecture.
+DETR is a recent object detection framework that reaches competitive performance with Faster R-CNN while being conceptually simpler and trainable end-to-end.
+Interestingly, unlike Faster R-CNN~\cite{ren2015faster}, using a pretrained backbone for DETR is crucial to obtain good results compared to training from scratch~\cite{carion2020end}.
+In~\cref{fig:frozen_and_detect}, we show that \OURS outperforms the supervised pretrained model on both \VOCseventwelve and COCO datasets.
+Note that this is line with previous works that also show that self-supervision can outperform supervised pretraining on object detection~\cite{misra2019self,he2019momentum,gidaris2020learning}.
+We report more detection evaluation metrics and results from other self-supervised methods in the \appendixName.
+Overall, our \OURS ResNet-50 model surpasses supervised ImageNet pretraining on all the considered transfer tasks and datasets.
+We have released this model so other researchers might also benefit by replacing the ImageNet supervised network with our model.
+
+\subsection{Training with small batches}
+We train \OURS with small batches of $256$ images on $4$ GPUs and compare with MoCov2 and SimCLR trained in the same setup.
+In \cref{fig:small_batches}, we see that \OURS maintains state-of-the-art performance even when trained in the small batch setting.
+Note that \OURS only stores a queue of $3,840$ features.
+In comparison, to obtain good performance, MoCov2 needs to store $65,536$ features while keeping an additional momentum encoder network.
+When \OURS is trained using $2\!\times\!160+4\!\times\!96$ crops, \OURS has a running time $1.2\times$ higher than SimCLR with $2\!\times\!224$ crops and is around $1.4\times$ slower than MoCov2 due to the additional back-propagation~\cite{chen2020improved}.
+Hence, one epoch of MoCov2 or SimCLR is faster in wall clock time than one of \OURS, but these methods need more epochs for good downstream performance.
+Indeed, as shown in~\cref{fig:small_batches}, \OURS learns much faster and reaches higher performance in $4\times$ fewer epochs: $72\%$ after $200$ epochs ($102$ hours) while MoCov2 needs $800$ epochs to achieve $71.1\%$.
+Increasing the resolution and the number of epochs, \OURS reaches $74.3\%$ with a small batch size, a small number of stored features and no momentum encoder.
+Finally, note that \OURS could be combined with a momentum mechanism and a large queue~\cite{he2019momentum}; we leave these explorations to future work.\\
+
+\begin{table}[t]
+\centering
+\caption{
+\textbf{Training in small batch setting.} 
+Top-1 accuracy on ImageNet with a linear classifier trained on top of frozen features from a ResNet-50.
+All methods are trained with a batch size of $256$.
+We also report the number of stored features, the type of cropping used and the number of epochs.
+%\OURS is robust to training with small batches by using a small memory bank and does not require momentum encoder~\cite{he2019momentum}.
+}\label{fig:small_batches} 
+\vspace{.3em}
+    \begin{tabular}{@{} l  c c c c c  c @{}}
+      \toprule
+    Method      & Mom. Encoder & Stored Features & \texttt{multi-crop} & epoch & batch  &  Top-1  \\
+      \midrule
+	    SimCLR 	  &   & $0$ & $2\!\times\!224$ & $200$ & $256$   & $61.9$ \\
+	    MoCov2      & \checkmark & $65,536$ & $2\!\times\!224$ & $200$ & $256$   & $67.5$  \\
+      MoCov2      & \checkmark & $65,536$  & $2\!\times\!224$ & $800$ & $256$   & $71.1$  \\
+      \midrule
+      \OURS 	  &  &  $3,840$  & $2\!\times\!160$ + $4\!\times\!96$ & $200$ & $256$ & $72.0$ \\
+      \OURS 	  &  &  $3,840$  & $2\!\times\!224$ + $6\!\times\!96$ & $200$ & $256$ & $72.7$ \\
+      \OURS 	  &  &  $3,840$  & $2\!\times\!224$ + $6\!\times\!96$ & $400$ & $256$ & $\mathbf{74.3}$ \\
+      \bottomrule
+    \end{tabular}
+\end{table}
+
+
+\section{Ablation Study}
+\label{sec:ablation}
+
+\subsection{Clustering-based self-supervised learning}
+
+\paragraph{Improving prior clustering-based approaches.}
+In this section, we re-implement and improve previously published clustering-based models in order to assess if they can compete with recent contrastive methods such as SimCLR.
+In particular, we consider two clustering-based models: DeepCluster-v2 and SeLa-v2, which are obtained by applying various training improvements introduced in other self-supervised learning papers to DeepCluster~\cite{caron2018deep} and SeLa~\cite{asano2019self}.
+Among these improvements are the use of stronger data augmentation~\cite{chen2020simple}, MLP projection head~\cite{chen2020simple}, cosine learning rate schedule~\cite{misra2019self}, temperature parameter~\cite{wu2018unsupervised}, memory bank~\cite{wu2018unsupervised}, multi-clustering~\cite{asano2019self}, etc.
+Full implementation details can be found in the \appendixName.
+Besides, we also improve DeepCluster model by introducing explicit comparisons to k-means centroids, which increase stability and performance.
+Indeed, a main issue in DeepCluster is that there is no correspondance between two consecutive cluster assignments.
+Hence, the final classification layer learned for an assignment becomes irrelevant for the following one and thus needs to be re-initialized from scratch at each epoch.
+This considerably disrupts the convnet training.
+In DeepCluster-v2, instead of learning a classification layer predicting the cluster assignments, we perform explicit comparison between features and centroids.
+
+\begin{figure}[t]
+  \begin{minipage}{0.5\linewidth}
+    \begin{tabular}{ @{} l c c c  @{}}
+      \toprule
+                    & \multicolumn{2}{c}{Top-1} & $\Delta$ \\
+                    \cmidrule{2-3}
+      Method        & 2x224 & 2x160+4x96 &  \\
+      \midrule
+      Supervised    & $76.5$ & $76.0$ & $-0.5$\\
+      \midrule
+  \multicolumn{4}{l}{\textit{Contrastive-instance approaches}}\\
+      SimCLR        & $68.2$ & $70.6$ & $+2.4$\\
+      \midrule
+  \multicolumn{4}{l}{\textit{Clustering-based approaches}}\\
+      SeLa-v2        & $67.2$ & $71.8$ & $+4.6$\\
+      DeepCluster-v2 & $70.2$ & $74.3$ & $+4.1$\\
+      \OURS         & $70.1$ & $74.1$ & $+4.0$\\
+      \bottomrule
+    \end{tabular}
+  \end{minipage}
+  \begin{minipage}{0.5\linewidth}
+    \centering
+    \includegraphics{figure_epoch2.pdf}
+  \end{minipage}
+  \vspace{-0.3em}
+  \caption{
+    Top-1 accuracy on ImageNet with a linear classifier trained on top of frozen features from a ResNet-50.
+    \textbf{(left) Comparison between clustering-based and contrastive instance methods and impact of multi-crop.} 
+    %Performance of several self-supervised methods improves as we add our \texttt{multi-crop} scheme.
+    Self-supervised methods are trained for $400$ epochs and supervised models for $200$ epochs.
+%We use our implementation of SimCLR, SeLa-v2 and DeepCluster-v2.
+    \textbf{(right) Performance as a function of epochs.}
+    We compare \OURS models trained with different number of epochs and report their running time based on our implementation.
+  }
+  \label{fig:multicrop-exp}
+\end{figure}
+
+\paragraph{Comparing clustering with contrastive instance learning.}
+In~\cref{fig:multicrop-exp}~(left), we make a best effort fair comparison between clustering-based and contrastive instance (SimCLR) methods by implementating these methods with the same data augmentation, number of epochs, batch-sizes, etc.
+In this setting, we observe that \OURS and DeepCluster-v2 outperform SimCLR by $2\%$ without \texttt{multi-crop} and by $3.5\%$ with \texttt{multi-crop}.
+This suggests the learning potential of clustering-based methods over instance classification.
+
+\paragraph{Advantage of \OURS compared to DeepCluster-v2.}
+In~\cref{fig:multicrop-exp}~(left), we observe that \OURS performs on par with DeepCluster-v2.
+In addition, we train DeepCluster-v2 in SwAV best setting (800 epochs - 8 crops) and obtain $75.2\%$ top-1 accuracy on ImageNet (versus $75.3\%$ for \OURS).
+However, unlike \OURS, DeepCluster-v2 is not online which makes it impractical for extremely large datasets (\cref{sec:uncurated}).
+For billion scale trainings for example, a single pass on the dataset is usually performed~\cite{he2019momentum}.
+DeepCluster-v2 cannot be trained for only one epoch since it works by performing several passes on the dataset to regularly update centroids and cluster assignments for each image.
+
+As a matter of fact, DeepCluster-v2 can be interpreted as a special case of our proposed swapping mechanism: swapping is done across epochs rather than within a batch.
+Given a crop of an image DeepCluster-v2 predicts the assignment of another crop, which was obtained at the previous epoch.
+\OURS swaps assignments directly at the batch level and can thus work online.
+
+\subsection{Applying the multi-crop strategy to different methods}
+In~\cref{fig:multicrop-exp}~(left), we report the impact of applying our \texttt{multi-crop} strategy on the performance of a selection of other methods.
+Details of how we apply \texttt{multi-crop} to SimCLR loss can be found in the \appendixName.
+We see that the \texttt{multi-crop} strategy consistently improves the performance for all the considered methods by a significant margin of $2\!-\!4\%$ top-1 accuracy.
+Interestingly, \texttt{multi-crop} seems to benefit more clustering-based methods than contrastive methods.
+We note that \texttt{multi-crop} does not improve the supervised model.
+
+
+\subsection{Impact of longer training}
+In~\cref{fig:multicrop-exp} (right), we show the impact of the number of training epochs on performance for \OURS with \texttt{multi-crop}.
+We train separate models for $100$, $200$, $400$ and $800$ epochs and report the top-1 accuracy on ImageNet using the linear classification evaluation.
+We train each ResNet-50 on $64$ V100 16GB GPUs and a batch size of $4096$.
+While \OURS benefits from longer training, it already achieves strong performance after $100$ epochs, \ie, $72.1\%$ in 6h15.
+
+
+\subsection{Unsupervised pretraining on a large uncurated dataset}
+\label{sec:uncurated}
+We evaluate SwAV on random, uncurated images that have different properties from ImageNet which allows us to test if our online clustering scheme and multi-crop augmentation work out of the box.
+In particular, we pretrain \OURS on an uncurated dataset of 1 billion random public non-EU images from Instagram.
+We test if \OURS can serve as a pretraining method for supervised learning.
+In~\cref{fig:insta}~(left), we measure the performance of ResNet-50 models when transferring to ImageNet with frozen or finetuned features.
+We report the results from He~\etal~\cite{he2019momentum} but note that their setting is different.
+They use a curated set of Instagram images, filtered by hashtags similar to ImageNet labels~\cite{mahajan2018exploring}.
+We compare \OURS with a randomly initialized network and with a network pretrained on the same data using SimCLR.
+We observe that \OURS maintains a similar gain of $6\%$ over SimCLR as when pretrained on ImageNet (\cref{fig:linear_inet}), showing that our improvements do not depend on the data distribution.
+% We also observe that pretraining using \OURS on random images and finetuning on ImageNet significantly improves the performance over training from scratch ($+1.2\%$).
+We also see that pretraining with \OURS on random images significantly improves over training from scratch on ImageNet ($+1.3\%$)~\cite{caron2019unsupervised,he2019momentum}.
+This result is in line with Caron~\etal~\cite{caron2019unsupervised} and He~\etal~\cite{he2019momentum}.
+In~\cref{fig:insta}~(right), we explore the limits of pretraining as we increase the model capacity.
+We consider the variants of the ResNeXt architecture~\cite{xie2017aggregated} as in Mahajan \etal~\cite{mahajan2018exploring}.
+We compare \OURS with supervised models trained from scratch on ImageNet.
+For all models, \OURS outperforms training from scratch by a significant margin showing that it can take advantage of the increased model capacity.
+For reference, we also include the results from Mahajan \etal~\cite{mahajan2018exploring} obtained with a weakly-supervised model pretrained by predicting hashtags filtered to be similar to ImageNet classes.
+Interestingly, \OURS performance is strong when compared to this topline despite not using any form of supervision or filtering of the data. 
+%The performance of \OURS is strong when compared to the weakly supervised work of Mahajan \etal~\cite{mahajan2018exploring}, especially given that our method does not use any form of supervision, nor filtering.
+%Moreover, while~\cite{mahajan2018exploring} filters the pretraining images to match ImageNet distribution, our method is trained on uncurated random images.
+
+\begin{figure}[t]
+\begin{minipage}{0.5\linewidth}
+\centering
+  %\setlength{\tabcolsep}{3.5pt}
+
+    \begin{tabular}{@{} l  c c @{}}
+\toprule
+Method  & Frozen & Finetuned \\
+\midrule
+Random  & 15.0 & 76.5\\
+\midrule
+MoCo  & - & \phantom{*}77.3*\\
+SimCLR  & 60.4 & 77.2 \\
+\OURS  & \bf 66.5 & \bf 77.8 \\
+      \bottomrule
+    \end{tabular}
+%    \begin{tabular}{l   c c c}
+%      \toprule
+%       & Rand & SimCLR & \OURS \\
+%      \midrule
+%Pretraining & - & IG-1B & IG-1B\\
+%      \midrule
+%      Frozen       & 15.0 & 60.4  & \bf 64.7  \\
+%      Finetuned    & 76.5 & XX  & \bf 77.4  \\
+%      \bottomrule
+%    \end{tabular}
+\end{minipage}
+\begin{minipage}{0.5\linewidth}
+\centering
+\includegraphics{figure_uru.pdf} 
+\end{minipage}
+\vspace{-0.08in}
+\caption{\textbf{Pretraining on uncurated data.}
+Top-1 accuracy on ImageNet for pretrained models on an uncurated set of 1B random Instagram images.
+\textbf{(left)} We compare ResNet-50 pretrained with either SimCLR or \OURS on two downstream tasks:
+linear classification on frozen features or finetuned features.
+\textbf{(right)}
+Performance of finetuned models as we increase the capacity of a ResNext following~\cite{mahajan2018exploring}. 
+The capacity is provided in billions of Mult-Add operations.\\
+*: \footnotesize{\emph{pretrained on a curated set of $1$B Instagram images filtered with $1.5$k hashtags similar to ImageNet classes.}}
+}
+    \label{fig:insta}
+\end{figure}
+
+

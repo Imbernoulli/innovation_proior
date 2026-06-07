@@ -1,0 +1,104 @@
+% !TEX root = main.tex
+
+Pre-trained convolutional neural networks, or convnets, have become the
+building blocks in most computer vision
+applications~\cite{ren2015faster,chen2016deeplab,weinzaepfel2013deepflow,carreira2016human}.
+They produce excellent general-purpose features that can be used to improve the
+generalization of models learned on a limited amount of
+data~\cite{sharif2014cnn}.  The existence of ImageNet~\cite{deng2009imagenet},
+a large fully-supervised dataset, has been fueling advances in pre-training of
+convnets.  However, Stock and Cisse~\cite{stock2017convnets} have recently
+presented empirical evidence that the performance of state-of-the-art classifiers on
+ImageNet is largely underestimated, and little error is left unresolved.  This
+explains in part why the performance has been saturating despite the numerous novel
+architectures proposed in recent
+years~\cite{chen2016deeplab,he2015delving,huang2016densely}.  As a matter of
+fact, ImageNet is relatively small by today's standards; it ``only'' contains a
+million images that cover the specific domain of object classification.  A
+natural way to move forward is to build a bigger and more diverse dataset,
+potentially consisting of billions of images.  This, in turn, would require a
+tremendous amount of manual annotations, despite the expert knowledge in
+crowdsourcing accumulated  by the community over the
+years~\cite{kovashka2016crowdsourcing}.  Replacing labels by raw metadata
+leads to biases in the visual representations with unpredictable
+consequences~\cite{misra2016seeing}.  This calls for methods that can be
+trained on internet-scale datasets with no supervision.
+
+Unsupervised learning has been widely studied in the Machine Learning
+community~\cite{friedman2001elements}, and algorithms for clustering,
+dimensionality reduction or density estimation are regularly used in computer
+vision
+applications~\cite{turk1991face,shi2000normalized,joulin2010discriminative}.
+For example, the ``bag of features'' model uses clustering on handcrafted local
+descriptors to produce good image-level features~\cite{csurka2004visual}.  A
+key reason for their success is that they can be applied on any specific domain
+or dataset, like satellite or medical images, or on images captured with a new
+modality, like depth, where annotations are not always available in quantity.
+Several works have shown that it was possible to adapt unsupervised methods
+based on density estimation or dimensionality reduction to deep
+models~\cite{goodfellow2014generative,kingma2013auto}, leading to promising
+all-purpose visual
+features~\cite{bojanowski2017unsupervised,donahue2016adversarial}.  Despite the
+primeval success of clustering approaches in image classification, very few
+works~\cite{yang2016joint,xie2016unsupervised} have been proposed to adapt them
+to the end-to-end training of convnets, and never at scale.  An issue is that
+clustering methods have been primarily designed for linear models on top of
+fixed features, and they scarcely work if the features have to be learned
+simultaneously.  For example, learning a convnet with $k$-means would lead to a
+trivial solution where the features are zeroed, and the clusters are collapsed
+into a single entity.
+
+\begin{figure}[!t]
+  \centering
+  \includegraphics[width=.9\linewidth]{images-pullfig4bis_clean.jpg}
+  \caption{
+    Illustration of the proposed method: we iteratively cluster deep features and use the cluster assignments as pseudo-labels to learn the parameters of the convnet.
+  }
+  \label{fig:pullfig}
+\end{figure}
+
+In this work, we propose a novel clustering approach for the large scale
+end-to-end training of convnets.  We show that it is possible to obtain useful
+general-purpose visual features with a clustering framework.  Our approach,
+summarized in Figure~\ref{fig:pullfig}, consists in alternating between
+clustering of the image descriptors and updating the weights of the convnet by
+predicting the cluster assignments.  For simplicity, we focus our study on
+$k$-means, but other clustering approaches can be used, like Power Iteration
+Clustering~(PIC)~\cite{lin2010power}.  The overall pipeline is sufficiently
+close to the standard supervised training of a convnet to reuse many common
+tricks~\cite{ioffe2015batch}.  Unlike self-supervised
+methods~\cite{doersch2015unsupervised,noroozi2016unsupervised,pathak2016learning},
+clustering has the advantage of requiring little domain knowledge and no specific
+signal from the
+inputs~\cite{zhang2016colorful,wang2015unsupervised}.  Despite its simplicity,
+our approach achieves significantly higher performance than previously
+published unsupervised methods on both ImageNet classification and transfer tasks.
+
+Finally, we probe the robustness of our framework by modifying the experimental protocol,
+in particular the training set and the convnet architecture. The resulting set of experiments extends the
+discussion initiated by Doersch~\etal~\cite{doersch2015unsupervised} on the impact of these choices on
+the performance of unsupervised methods.
+We demonstrate that our
+approach is robust to a change of architecture.
+Replacing an AlexNet by a
+VGG~\cite{simonyan2014very} significantly improves the quality of the features
+and their subsequent transfer performance.  More importantly, we discuss
+the use of ImageNet as a training set for unsupervised models.  While it helps
+understanding the impact of the labels on the performance of a network,
+ImageNet has a particular image distribution inherited from its use for a
+fine-grained image classification challenge: it is composed of well-balanced classes and contains
+a wide variety of dog breeds for example.  We consider, as an alternative, random Flickr
+images from the YFCC100M dataset of Thomee~\etal~\cite{thomee2015new}.  We show
+that our approach maintains state-of-the-art performance when trained on this
+uncured data distribution.  Finally,  current benchmarks focus on
+the capability of unsupervised convnets to capture class-level
+information.  We propose to also evaluate them on image retrieval
+benchmarks to measure their capability to capture instance-level
+information.
+
+In this paper, we make the following contributions:
+\textbf{(i)} a novel unsupervised method for the end-to-end learning of convnets that works with any standard clustering algorithm, like $k$-means, and requires minimal additional steps;
+\textbf{(ii)} state-of-the-art performance on many standard transfer tasks used in unsupervised learning;
+\textbf{(iii)} performance above the previous state of the art when trained on an uncured image distribution;
+\textbf{(iv)} a discussion about the current evaluation protocol in unsupervised feature learning.
+

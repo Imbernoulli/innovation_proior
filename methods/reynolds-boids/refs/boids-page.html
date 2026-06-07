@@ -1,0 +1,1552 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN" "http://www.w3.org/TR/REC-html40/loose.dtd">
+<html>
+<head>
+  <title>Boids (Flocks, Herds, and Schools: a Distributed Behavioral
+Model)</title>
+  <meta name="description"
+ content="Background and update on BOIDS, the 1987 model of group motion in
+           flocks, herds, schools and related phenomena. Includes a Java-based
+           demonstration and many links to related research and
+           applications.">
+  <meta name="keywords"
+ content="boid, boids, bird, flock, flocking, fish, fishes, school,
+           schooling, herd, herding, swarm, swarming, self-organization,
+           artificial life, alife, computer simulation, artificial, Behavioral
+           Animation, behavior-based animation">
+<!--
+  grumble, grumble, "font-size: smaller" does not seem to work in CSS on
+  Netscape, so I took it out and used a <small></small> entity instead
+  .new { font-size: smaller; font-weight: bold; color: red }
+-->
+  <style type="text/css">
+  .new {                     font-weight: bold; color: red }
+  </style>
+</head>
+<body bgcolor="#c0c0c0">
+<div align="center">
+<big><big><big><big><b>Boids</b>
+</big></big></big></big><br>
+<b>Background and Update</b>
+<br>
+by <a href="../index.html">Craig Reynolds</a>
+<p><applet codebase="applet" code="Flock.class" height="400" width="500">[You
+need to be using an Java-enabled browser to see this demo.]
+</applet><small><small><br>
+<a href="applet/">
+(more information about this applet (and others) is available)
+</a></small></small></p>
+</div>
+<p>
+In 1986 I made a computer model of coordinated animal motion such as
+bird
+flocks and fish schools. It was based on three dimensional
+computational
+geometry of the sort normally used in computer animation or computer
+aided
+design. I called the generic simulated flocking creatures
+<a href="http://www.brunel.ac.uk/research/AI/alife/al-boid2.htm">boids</a>.
+The basic flocking model consists of three simple
+<a href="../steer/">steering behaviors</a> which describe how an
+individual
+boid maneuvers based on the positions and velocities its nearby
+flockmates:
+</p>
+<table align="center" border="0" cellpadding="0" cellspacing="0">
+  <tbody>
+    <tr>
+      <td> <img src="images/separation.gif" alt="separation diagram"
+ height="145" width="217"> </td>
+      <td width="10"> <br>
+      </td>
+      <td width="150"> <b>Separation</b>: steer to avoid crowding
+local flockmates </td>
+    </tr>
+    <tr>
+      <td> <img src="images/alignment.gif" alt="alignment diagram"
+ height="145" width="217"> </td>
+      <td width="10"> <br>
+      </td>
+      <td width="150"> <b>Alignment</b>: steer towards the average
+heading of local flockmates </td>
+    </tr>
+    <tr>
+      <td> <img src="images/cohesion.gif" alt="cohesion diagram"
+ height="145" width="217"> </td>
+      <td width="10"> <br>
+      </td>
+      <td width="150"> <b>Cohesion</b>: steer to move toward the
+average position of local flockmates </td>
+    </tr>
+  </tbody>
+</table>
+<p>
+Each boid has direct access to the whole scene's geometric description,
+but
+flocking requires that it reacts only to flockmates within a certain
+small
+neighborhood around itself. The neighborhood is characterized by a
+<i>distance</i> (measured from the center of the boid) and an <i>angle,</i>
+measured from the boid's direction of flight. Flockmates outside this
+local
+neighborhood are ignored. The neighborhood could be considered a model
+of
+limited perception (as by fish in murky water) but it is probably more
+correct
+to think of it as defining the region in which flockmates influence a
+boids
+steering.
+</p>
+<div align="center">
+<img src="images/neighborhood.gif" alt="neighborhood diagram"
+ height="158" width="183"><br>
+a boid's neighborhood
+</div>
+<p>
+A slightly more elaborate behavioral model was used in the early
+experiments.
+It included predictive obstacle avoidance and goal seeking. Obstacle
+avoidance allowed the boids to fly through simulated environments while
+dodging static objects. For applications in computer animation, a low
+priority goal seeking behavior caused the flock to follow a scripted
+path.
+</p>
+<div align="center">
+<img src="images/flocking_around_19.gif"
+ alt="simulated boid flock avoiding obstacles (1986)" height="199"
+ width="279"><small><br>
+simulated boid flock avoiding cylindrical obstacles (1986)
+<br>
+<a
+ href="http://www.siggraph.org/education/materials/HyperGraph/animation/art_life/video/3cr.mov">(early
+motion tests, 20 second clip, QuickTime, 10 MB)</a>
+</small></div>
+<p>
+In cooperation with many coworkers at the Symbolics Graphics Division
+and
+Whitney / Demos Productions, we made an animated short featuring the
+boids
+model called <b>Stanley and Stella in: Breaking the Ice</b>. This film
+was first shown at the Electronic Theater at SIGGRAPH '87. There was a
+<a href="../papers/1987/boids.html">technical paper on boids</a>
+published at
+the same conference. In the course notes for SIGGRAPH '88 there was an
+<a href="../nobump/nobump.html">informal paper about obstacle avoidance.</a>
+</p>
+<p>
+Since 1987 there have been many other applications of the boids model
+in the
+realm of <a href="../behave.html">behavioral animation</a>. The 1992
+Tim
+Burton film <a
+ href="http://us.imdb.com/M/title-exact?+Batman+Returns+%281992%29">
+Batman Returns</a> was the first. It contained computer simulated bat
+swarms
+and penguin flocks which were created with modified versions of the
+original
+boids software developed at Symbolics.
+<a href="http://www.aec.at/prix/kunstler/Eakopra.html">Andy Kopra</a>
+(then at VIFX<small>, which later merged with
+<a href="http://www.rhythm.com/">Rhythm &amp; Hues</a></small>)
+produced realistic
+imagery of bat swarms. Andrea Losch (then at Boss Films) and Paul
+Ashdown
+created animation of an "army" of penguins marching through the streets
+of
+Gotham City.
+</p>
+<div align="center">
+<img src="images/downflockquad.gif"
+ alt="scene from Breaking the Ice (1987): flock of boids" height="120"
+ width="160"><small><br>
+from <i>&nbsp;Stanley and Stella in: Breaking the Ice&nbsp;</i> (1987)
+<br>
+<a href="http://store.yahoo.com/odyssey3d/comanclascli2.html">
+(40 second clip, QuickTime, 2.8 MB)</a>
+</small></div>
+<p>
+As luck would have it, <a href="mailto:cgl@swarm.org">Chris Langton</a>
+organized the original ground-breaking <a href="http://www.alife.org/">
+Artificial Life</a> Workshop a few months after the boids paper was
+published
+in 1987. A helpful go-between got word to Chris and he let me give an
+informal presentation on boids at the
+<a href="http://tomasnygren.fsn.net/riddle.html">Workshop</a>. The
+boids
+model has become an oft-cited example of principles of Artificial
+Life. Flocking is a particularly evocative example of <i>emergence:</i>
+where
+complex global behavior can arise from the interaction of simple local
+rules.
+</p>
+<p>
+In the boids model <small>(and related systems like the multi-agent
+<a href="../steer/">steering behavior demos</a>)</small> interaction
+between
+simple behaviors of individuals produce complex yet organized group
+behavior.
+The component behaviors are inherently nonlinear, so mixing them gives
+the
+emergent group dynamics a chaotic aspect. At the same time, the
+negative
+feedback provided by the behavioral controllers tends to keep the group
+dynamics ordered. The result is <i>life-like</i> group behavior.
+</p>
+<!-- the paragraphs above and below are a bit repetitious,
+     it might be good to combine them. -->
+<p>A significant property of life-like behavior is <i>unpredictability</i>
+over
+moderate time scales. For example at one moment, the boids in the
+applet
+above might be flying primarily from left to right. It would be all but
+impossible to predict which direction they will be moving (say) five
+minutes
+later. At very short time scales the motion is quite predictable: one
+second
+from now a boid will be traveling in approximately the same direction.
+This
+property is unique to complex systems and contrasts with both <i>chaotic</i>
+behavior (which has neither short nor long term predictability) and
+ordered
+(<i>static</i> or <i>periodic</i>) behavior. This fits with Langton's
+1990
+observation that life-like phenomena exist poised at the <i>edge of
+chaos.</i>
+</p>
+<p>
+The boids model is an example of an <a href="../ibm.html">individual-based
+model</a>, a class of simulation used to capture the global behavior of
+a
+large number of interacting autonomous agents. Individual-based models
+are
+being used in biology, ecology, economics and other fields of study.
+</p>
+<p>
+Note that the straightforward implementation of the boids algorithm has
+an
+asymptotic complexity of O(n<small><sup>2</sup></small>). Each boid
+needs to
+consider each other boid, if only to determine if it is not a <i>nearby
+flockmate.</i> However it is possible to reduce this cost down to
+nearly O(n)
+by the use of a suitable <i>spatial data structure</i> which allows
+the boids
+to be kept sorted by their location. Finding the nearby flockmates of a
+given
+boid then requires examining only the portion of the flock which is
+within the
+general vicinity. Using such algorithmic speed-ups and modern fast
+hardware,
+large flocks can be simulated in real time, allowing for <a
+ href="../papers/2000/pip.html">interactive applications</a>.
+<span class="new"><small>[new]</small></span><!-- 09-29-00 -->
+</p>
+<p>
+</p>
+<hr>
+<h3>Online resources related to boids</h3>
+<ul>
+  <li><a href="../papers/1987/boids.html">Flocks, Herds, and Schools: A
+Distributed Behavioral Model</a> the SIGGRAPH '87 boids paper. </li>
+  <li>An <a href="http://www.generation5.org/reynolds.shtml">email
+interview</a> where I describe a little about how the boid model came
+about. <span class="new"><small>[new]</small></span><!-- 11-10-00 --> </li>
+  <li>Another page about <a
+ href="http://http1.brunel.ac.uk:8080/research/AI/alife/al-boids.htm">
+boids</a> in a report about <a
+ href="http://http1.brunel.ac.uk:8080/research/AI/alife/home.htm">
+ALife and GAs</a> by <a
+ href="http://http1.brunel.ac.uk:8080/research/AI/alife/about.htm">
+Sophia Smith</a>. </li>
+  <li><a
+ href="http://www.cs.rmit.edu.au/%7Egildfind/project/literature-review/review-document-018.html">Notes</a>
+on the 1987 boids paper in a literature review by <a
+ href="http://goanna.cs.rmit.edu.au/%7Egildfind/">Andrew Gildfind</a>. </li>
+  <li>A summary of <a
+ href="http://www.education.siggraph.org/materials/HyperGraph/animation/art_life/flocks.htm">Flocks,
+Herds, and Schools</a> in the report on <a
+ href="http://www.education.siggraph.org/materials/HyperGraph/animation/art_life/art_life0.htm">Artificial
+Life</a> in <a
+ href="%20%20%20%20http://www.education.siggraph.org/materials/HyperGraph/animation/anim0.htm%0D%0A%20%20%20%20">Computer
+Animation</a> in the <a
+ href="%20%20%20%20http://www.education.siggraph.org/materials/HyperGraph/hypergraph.htm">
+HyperGraph</a> project of the ACM SIGGRAPH Education Committee. </li>
+  <li>Books and articles that describe boids
+    <ul>
+      <li><a href="http://www.echonyc.com/%7Esteven/alife.html">Artificial
+Life</a> (1993) the book by <a href="http://www.stevenlevy.com/">Steven
+Levy</a> </li>
+      <li><a href="epistemological.html">An Epistemological Flock</a>
+(1995) in Zmagazine by <a href="http://www.vuiksvertier.nl/">Kees Vuik</a>.
+      </li>
+      <li><a href="http://www.englib.cornell.edu/SciTech/f94/alife.html">Artificial
+Life</a> (1994) in Cornell's SciTech Magazine by <a
+ href="http://upalumni.org/shared/community-member.tcl?user_id=3"> Kai
+Wu</a> </li>
+      <li><a href="http://lslwww.epfl.ch/%7Emoshes/introal/introal.html">An
+Introduction To Artificial Life</a> by <a
+ href="http://lslwww.epfl.ch/%7Emoshes/">Moshe Sipper</a>. </li>
+      <li><a
+ href="http://www.webslave.dircon.co.uk/alife/lifeforms.html">Life Forms</a>
+part of an "interactive essay on <a
+ href="http://www.webslave.dircon.co.uk/alife/">aLife</a>" by <a
+ href="http://www.webslave.dircon.co.uk/">Stewart Dean</a>. </li>
+      <li><a
+ href="http://cs.wpi.edu/%7Ematt/courses/cs563/talks/psys.html">Particle
+Systems</a> (in computer graphics) by <a
+ href="Mailto:amartin@cs.wpi.edu">Allen Martin</a>. </li>
+      <li><a
+ href="http://www.uiah.fi/bookshop/isea_proc/nextgen/penny.html">The
+Darwin Machine: Artificial Life and Art</a> by <a
+ href="http://www-art.cfa.cmu.edu/Penny">Simon Penny</a> </li>
+      <li><a href="http://panushka.absolutvodka.com/kelly/5-0.html">Out
+of Control<small><small>: The New Biology of Machines, Social Systems
+and the Economic World</small></small></a> (specifically, chapter <a
+ href="http://panushka.absolutvodka.com/kelly/ch2-b.html">2B</a>) by <a
+ href="http://www.well.com/user/kk/">Kevin Kelly</a> </li>
+      <li><a
+ href="http://www.math.tau.ac.il/%7Eguyhoff/complexity/sterling.html">Artificial
+Life</a> (1992) by <a
+ href="http://www.lonestar.texas.net/%7Edub/newfront.html"> Bruce
+Sterling</a>from F&amp;SF. </li>
+      <li><a
+ href="%20%20%20%20http://pattie.www.media.mit.edu/people/pattie/CACM-95/alife-cacm95.html">Artificial
+Life meets Entertainment: Lifelike Autonomous Agents</a>
+(1995) by <a href="http://pattie.www.media.mit.edu/people/pattie/">Pattie
+Maes</a> </li>
+      <li><a href="http://www.tnellen.com/ted/tc/complexity.html">Complexity:
+        <small><small>The Emerging Science at the Edge of Order and
+Chaos </small></small></a> (1992) by <a
+ href="mailto:MMWaldrop@msn.com">M. Mitchell Waldrop</a> </li>
+      <li><a
+ href="http://www.transhuman.com/bookstore/bookinfo/0201567512.html">Great
+Mambo Chicken and the Transhuman Condition</a> (1991) by <a
+ href="mailto:edregis@aol.com">Ed Regis</a> </li>
+      <li><a
+ href="http://www.discovery.com/area/science/life/life1.html">Its Alive</a>
+"Scientists play god in a binary universe of their own making" (1998)
+by Curt Suplee <span class="new"><small>[new]</small></span><!-- 12-06-00 -->
+<!--
+<li><a href="http://comp.uark.edu/~tlsmith/research/alife/genesis.html">
+    Genesis of Artificial Life</a> by
+    <a href="http://comp.uark.edu/~tlsmith/index.html">Terry Smith</a>
+--></li>
+      <li><a
+ href="%20%20%20%20http://www.susqu.edu/facstaff/b/brakke/complexity/hagey/flock.htm">Flocking
+Birds and Schooling Fish</a> by <a
+ href="%20%20%20%20http://www.susqu.edu/facstaff/b/brakke/complexity/hagey/default.htm">
+Jason Hagey</a> </li>
+      <li><a
+ href="http://www.nbi.dk/%7Eemmeche/cePubl/92a.lifabsphe.html"> Life as
+an Abstract Phenomenon: Is Artificial Life Possible?</a> by <a
+ href="http://www.nbi.dk/%7Eemmeche/Welcome.html">Claus Emmeche</a> </li>
+      <li><a
+ href="http://www.cis.ohio-state.edu/%7Eparent/book/Modl.html#Emergent">Emergent
+Behavior: Particles and Flocks</a> by <a
+ href="http://www.cis.ohio-state.edu/%7Eparent/">Rick Parent</a> </li>
+      <li><a
+ href="%20%20%20%20http://www.fsw.leidenuniv.nl/www/w3_func/bbakker/abstracts.htm#Adaptive">The
+Adaptive Behavior Approach to Psychology</a> (2000) by <a
+ href="http://www.fsw.leidenuniv.nl/www/w3_func/bbakker/">Bram Bakker</a>
+describes adaptive behavior, including boids, for a cognitive
+psychology audience. (<a
+ href="%20%20%20%20http://www.fsw.leidenuniv.nl/www/w3_func/bbakker/ABApproach.pdf">PDF</a>)
+        <span class="new"><small>[new]</small></span><!-- 11-15-00 --> </li>
+      <li><a href="http://www.sciam.com/2000/1100issue/1100amsci.html">Artificial
+Life: Boids of a Feather Flock Together</a> (2000) by <a
+ href="%20%20%20%20http://www-rohan.sdsu.edu/dept/physics/fac_staff/adjunct/carlson.html">
+Shawn Carlson</a>. This <a href="http://www.sciam.com/">Scientific
+American</a> <em>Amateur Scientist</em> column discusses the role of
+software experiments as a tool in understanding biological phenomena. <span
+ class="new"><small>[new]</small></span><!-- 10-28-00 --> </li>
+      <li>Articles on other topics that mention boids as example or
+metaphor:
+        <ul>
+          <li><a href="http://www.uia.org/uiadocs/values93.htm#self">Self-organization
+and its catalysts</a> in <a href="">Human Values as Strange Attractors</a>:
+Coevolution of classes of governance principles (1993) by <a
+ href="http://www.ceptualinstitute.com/genre/judge/homepageAJ.htm">
+Anthony Judge</a> <span class="new"><small>[new]</small></span><!-- 11-14-00 -->
+          </li>
+          <li><a href="http://www.ghbooks.com/TEACHER/29647.htm">Empowering
+the Child</a>: <small>Nurturing the Hungry Mind</small>
+(1995) by <a href="http://www.fairhavenschool.com/whoswho.htm#RAY">
+Raymond H. Hartjen</a>. </li>
+          <li><a href="http://www.barn.org/FILES/computerworld.htm">Chaos
+and the IS Executive</a> (1996) by <a href="mailto:chris.meyer@ey.com">Christopher
+Meyer</a> </li>
+          <li><a
+ href="http://www.johnsonfdn.org/library/journal/v18n3/chaos.html">Chaos,
+Complexity, and Flocking Behavior: Metaphors for Learning</a>
+(1996) by <a
+ href="http://www.newhorizons.org/restr_marshall.htm#author"> Stephanie
+Pace Marshall</a>. <span class="new"><small>[new]</small></span><!-- 09-27-00 -->
+          </li>
+          <li><a
+ href="http://www.mgtaylor.com/mgtaylor/jotm/spring97/flock.htm">Rules
+for "Flocking Behavior" in the Web</a> (1997) is an attempt to apply
+concepts of emergent behavior to problems of business management. </li>
+          <li><a href="http://www.ksinc.com/articles/CAS.html">Messy,
+Exciting and Anxiety-Ridden: Adaptive Software Development</a> (1997)
+by <a href="http://cutter.com/consortium/consultants/jhbio.html">Jim
+Highsmith</a> draws a parallel between <em>complex adaptive systems</em>
+and flexible software development practices. <span class="new"><small>[new]</small></span><!-- 10-27-00 -->
+          </li>
+          <li><a
+ href="http://www.vha.com/edgeplace/think/main_filing1.html"> Some
+Emerging Principles for Managing in Complex Adaptive Systems</a> (1997)
+by Paul Plsek, Curt Lindberg, and Brenda Zimmerman. <span class="new"><small>[new]</small></span><!-- 09-25-00 -->
+          </li>
+          <li><a
+ href="http://www.strategy-business.com/strategy/98104/page1.html">Complexity
+Theory: Fact-Free Science Or Business Tool?</a> (1998) by <a
+ href="http://www.strategy-business.com/strategy/98104/authors.html">
+David Berreby</a> reports on the fifth <i>Chaos in Manufacturing</i>
+conference. The boids model is described (albeit incorrectly) on <a
+ href="http://www.strategy-business.com/strategy/98104/page2.html">
+page 2</a>. <span class="new"><small>[new]</small></span><!-- 11-01-00 -->
+          </li>
+          <li><a href="http://hoolokahi.kela.net/chaos.htm">Thriving at
+the Edge of Chaos</a>: What HealthCare Organizations Can Learn from
+Complexity Science (2000) by <a href="mailto:smgon@aloha.net">Sheri M.
+Gon</a>. <span class="new"><small>[new]</small></span><!-- 10-28-00 -->
+          </li>
+        </ul>
+      </li>
+    </ul>
+  </li>
+</ul>
+<h3>Other computational models of group motion</h3>
+<ul>
+  <li><b>Computer animation</b>
+    <ul>
+      <li><b>Eurythmy</b> by Susan Amkraut and Michael Girard contained
+the first procedural animation of flocks when it was shown at the Film
+&amp; Video Show of SIGGRAPH '85. It is available on SIGGRAPH Video
+review <a
+ href="%20%20%20%20http://www.siggraph.org/publications/video-review/1_36.html#Issue%2021">
+(SVR Issue 21, Entry 2)</a>. Some imagery from the <a
+ href="http://www.aec.at/prix/1989/89auszA-eurhythmy.html">final version</a>
+appear on this page from <em>Ars Electronica 89</em>. Amkraut and
+Girard also created flocking and herding in the 1993 VR production <a
+ href="http://www.telepresence.com/telepresence-research/MENAGERIE/">
+Menagerie</a>. </li>
+      <li><a href="http://www.gvu.gatech.edu/%7Ejessica.hodgins/">Jessica
+Hodgins</a> and colleagues at Georgia Tech's GVU have created several
+physically-based models of <a
+ href="http://www.cc.gatech.edu/gvu/animation/Areas/group_behavior/group.html">
+group behaviors</a> such as herding one-legged hoppers and a pack of
+bicyclists. </li>
+      <li>Disney's <a
+ href="http://us.imdb.com/M/title-exact?+Lion+King,+The+%281994%29"> <b>The
+Lion King</b></a> (1994) included a wildebeest stampede by Kiran Joshi,
+MJ Turner, <em>et al.</em>. Here are two stampede-related items from <a
+ href="http://www.arclight.net/%7Ebtman/">Brian Tiemann's</a> excellent
+        <a href="http://www.lionking.org/">The Lion King WWW Archive</a>:
+        <ul>
+          <li><a href="http://www.lionking.org/text/FilmNotes.html">Lion
+King production notes</a> (search for second occurrence of <em>stampede</em>)
+          </li>
+          <li><a href="http://www.lionking.org/movies/Stampede.mov">Stampede</a>
+sequence (QuickTime Movie, 21.9 MB. Also available as <a
+ href="http://www.lionking.org/movies/Stampede-stream.mov"> low res QT</a>
+(1.2 MB) and <a href="http://www.lionking.org/movies/Stampede.mpg">MPEG1</a>
+(28.7 MB)) </li>
+        </ul>
+      </li>
+      <li><a href="http://www.dgp.toronto.edu/people/tu/tu.html">Xiaoyuan
+Tu</a> implemented a realistic, physically-based model of fish
+schooling as part of her dissertation research on artificial animals.
+See also:
+        <ul>
+          <li><a href="http://www.dgp.toronto.edu/people/tu/tu.html">Tu</a>
+and <a href="http://www.cs.toronto.edu/%7Edt/">Terzopoulos</a>. "<a
+ href="http://www.dgp.toronto.edu/people/tu/papers/sig94.ps">Artificial
+Fishes: Physics, Locomotion, Perception, Behavior</a>", <em>ACM
+Computer Graphics,</em> Proceedings of <em>SIGGRAPH'94,</em> July
+1994. </li>
+          <li>A non-technical article called <a href="siliconSea.html">
+Fishes of the Silicon Sea</a>, by Gene Levinson which appeared in <em>The
+World &amp; I</em> Magazine. </li>
+        </ul>
+<!--
+<li>A page about animation of
+    <a href="http://reality.sgi.com/shafer_mfg/Graphics/flocking.html">
+    swarms and flocks</a> by 
+    <a href="http://reality.sgi.com/shafer_mfg/">Todd Shafer</a>
+    including this
+    <a href="http://reality.sgi.com/shafer_mfg/Artwork/Flocking/birds.mov">
+    bird flock animation</a> (Quicktime, 320x240, 144 frames, 4.6 Mb).  
+-->
+      </li>
+      <li>While at Santa Barbara Studios, <a
+ href="mailto:markw@pdi.com">Mark Wendell</a> used the Dynamation
+particle system software to create animation of flocking space
+creatures for <a href="http://www.treknews.com/deltablues/elogium.html">Elogium</a>
+an episode of <a href="http://www.stvsd.com/">Star Trek: Voyager</a>. </li>
+      <li>Course <a href="http://www.seas.gwu.edu/%7Egraphics/cs206/">CS206</a>
+at George Washington University includes an assignment to implement a <em>Behavioral
+Motion Control System</em> like boids. You can see some of the
+student's animations from: <a
+ href="http://cglab.snu.ac.kr/%7Eyjlee/animation/assignment/ass4.html">
+1997</a>, <a
+ href="http://www.seas.gwu.edu/%7Egraphics/cs206/assign_98/assign4.html">
+1998</a> and <a
+ href="http://tangle.seas.gwu.edu/%7Egraphics/cs206/assign_99/assign4.html%0D%0A%20%20%20%20">1999</a>.
+        <span class="new"><small>[new]</small></span><!-- 11-14-00 --> </li>
+    </ul>
+  </li>
+  <li><b>Games, Interactive graphics and virtual reality</b>
+    <ul>
+<!-- ---------------------------------------------------------------------- -->
+      <li><a href="http://www.klov.com/R/Rip_Off.html">Rip-Off</a>
+(1980) a video
+arcade game designed by <a href="http://www.designhappy.com/">Tim
+Skelly</a> featured a group of three autonomous "enemy tanks" which
+exhibited coordinated
+group motion. They avoided collisions with each other and would seek
+the goal
+objects ("canisters"), or if they got too close, the player controlled
+vehicles. The combination of goal seeking and collision avoidance
+produced a
+motion like flocking. For more details, read Tim Skelly's own <a
+ href="RipOff_Flocking.html">description of the behavior</a>.
+See also this
+Rip-Off <a href="http://www.netaxs.com/%7Evsp/cinema/ripoff.html">screenshot</a>
+and this page about an <a
+ href="http://emustatus.rainemu.com/games/ripoff.htm">
+emulator</a>. <font color="#ff0000" size="-1"><b>[new]</b></font><!-- 8-27-01 -->
+<!-- ---------------------------------------------------------------------- --></li>
+      <li><a href="http://www.plasm.com/%7Epeter/cyber24/cyber24.html">Plasm:
+A Fish
+Sample</a> (1985) by <a href="http://www.plasm.com/%7Epeter/">PeterBroadwell
+        </a>, <a href="http://www.plasm.com/rob/">Rob Myers</a>, Robin
+Schaufler, <a href="mailto:eva@manolis.com">Eva Manolis</a>, <em>et
+al.,</em> premiered
+at the SIGGRAPH 85 art show. On at least one occasion, a school
+accidentally
+arose in this "virtual fish tank". </li>
+      <li><a href="http://citeseer.nj.nec.com/lorek93parallel.html">Parallel
+Bird Flocking Simulation</a> (1993) by <a
+ href="http://www-is.informatik.uni-oldenburg.de/personal/hl.html">
+Helmut Lorek</a> and Matthew White. Describes an implementation of
+boids using up to 50 parallel Transputer processors to simulate flocks
+of up to 100 boids at interactive rates (6 frames per second or
+better). The simulation included obstacle avoidance. The full article
+is available in <a
+ href="http://citeseer.nj.nec.com/cs?profile=1072012%2C53206%2C1%2C0.25%2CDownload&amp;rd=http%3A//citeseer.nj.nec.com/papers/cs/793/http%253A%2523@S@%2523%2523@S@%2523chaplin.informatik.uni-oldenburg.de%2523@S@%2523abteilungsinfo%2523@S@%2523projekte%2523@S@%2523EcoTools%2523@S@%2523berichte%2523@S@%2523edinburgh93%2523@S@%2523paper.pdf">PDF</a>.
+        <span class="new"><small>[new]</small></span><!-- 12-01-00 --> </li>
+      <li><a href="http://www.virtualfishtank.com/">The Virtual Fishtank</a>
+introduces visitors to the sciences of complexity, artificial life and
+related fields. It is an online version of a project that started as an
+        <a href="http://www.tcm.org/html/fishtank/index.html">installation</a>
+at <a href="http://www.mos.org/tcm/tcm.html">The Computer Museum</a>
+in Boston. Its goal is to introduce visitors to the sciences of
+complexity and artificial life. The original project was jointly
+developed by the <a href="http://www.media.mit.edu/">MIT Media Lab</a>
+(see their <a
+ href="http://el.www.media.mit.edu/groups/el/projects/fishtank/">
+project</a> page) and <a href="http://www.nearlife.com/">NearLife Inc.</a>
+(see their <a href="http://www.nearlife.com/project/recent.html">recent
+projects</a> page). </li>
+      <li><a href="http://www.evl.uic.edu/aej/reef/reefpaper.html">Virtual
+Great Barrier Reef</a>: A theoretical approach towards an evolving,
+interactive VR environment using a distributed DOME and CAVE System
+(1998) by <a href="mailto:Thrane@vsl.gifu-u.ac.jp">Scot Thrane Refsland</a>,
+        <a href="mailto:ojika@ojk.info.gifu-u.ac.jp">Takeo Ojika</a>, <a
+ href="http://www.eecs.uic.edu/%7Etom/">Tom Defanti</a>, <a
+ href="http://www.evl.uic.edu/aej/">Andy Johnson</a>, <a
+ href="http://www.evl.uic.edu/spiff/">Jason Leigh</a>, <a
+ href="mailto:cel@well.com">Carl Loeffler</a>, and <a
+ href="http://www.dgp.toronto.edu/people/tu/tu.html">Xiaoyuan Tu</a> in
+Proceedings of Virtual Worlds '98. Paris, France, July 1-3, 1998. Also
+available in <a
+ href="%20%20%20%20http://link.springer.de/link/service/series/0558/bibs/1434/14340323.htm">
+PDF</a>. </li>
+    </ul>
+  </li>
+  <li><b>Robotics</b>
+    <ul>
+      <li><a href="http://www-robotics.usc.edu/%7Emaja">Maja Mataric</a>
+heads <a href="http://www-robotics.usc.edu/%7Eagents/">The Interaction
+Lab</a> at the University of Southern California which studies robotic <a
+ href="http://www-robotics.usc.edu/%7Emaja/group.html"> group behaviors</a>.
+See also Maja's <a
+ href="ftp://publications.ai.mit.edu/ai-publications/1000-1499/AITR-1495.ps.Z">
+dissertation</a> and these <a
+ href="http://www-robotics.usc.edu/movies.html">videos</a> of robots
+performing various group behaviors, including flocking. <small>(Some
+press clippings from <a
+ href="%20%20%20%20http://hotwired.lycos.com/collections/robots_ai/4.06_maja_mataric1.html">
+WIRED</a> and <a href="http://www3.cnn.com/TECH/9509/robot_society/">CNN</a>.
+And see this delightful <a
+ href="http://www.ai.mit.edu/people/cgdemarc/gsb-archive/gsb94-05may06">
+story about Maja</a> (the second paragraph)) </small><!--
+<li><a href="http://moux.www.media.mit.edu/people/moux/thesis/thesis.html">
+    Learning and Group Behaviour in Interacting Agents</a> by 
+    <a href="http://moux.www.media.mit.edu/people/moux/">Alexandros Moukas</a>
+    contains a section on
+    <a href="http://moux.www.media.mit.edu/people/moux/thesis/node39.html">
+    Group Behaviour</a> including
+    <a href="http://moux.www.media.mit.edu/people/moux/thesis/node111.html">
+    LEGO C Source Code for Group Behaviour</a>
+-->
+      </li>
+      <li><a href="http://vlsicad.cs.ucla.edu/papers/journal/j27.pdf">Cooperative
+Mobile Robotics: Antecedents and Directions</a> by Y. Uny
+Cao, Alex S. Fukunaga, and Andrew B. Kahng (UCLA 1996) surveys research
+in robot groups. </li>
+      <li><a href="http://www-robotics.usc.edu/%7Evaughan/RSP.html">The
+Robot Sheepdog Project</a> by <a
+ href="http://www-robotics.usc.edu/%7Evaughan/">Richard Vaughan</a> <i>et
+al.</i> provides an interesting contrast to much of the work cited on
+this page: the flocking/herding involved is of natural animals while a
+robot plays a role similar to a sheepdog. As is done when training real
+sheepdogs, ducks are used here as a less challenging stand-in for
+sheep. Read the delightful <a
+ href="http://www-robotics.usc.edu/%7Evaughan/papers/vaughan_ras00.ps.gz">
+paper</a> for more detail. See also <a
+ href="http://www.scs.leeds.ac.uk/neils/">Neil Sumpter</a>'s pages
+about the <a href="http://www.scs.leeds.ac.uk/neils/robproj/">vision</a>
+research related to robo-sheepdog. </li>
+      <li><a href="http://www.ozemail.com.au/%7Edcrombie/project/">The
+Examination and Exploration of Algorithms and Complex Behaviour to
+Realistically Control Multiple Mobile Robots</a> (1997) by <a
+ href="http://www.ozemail.com.au/%7Edcrombie/">Duncan Crombie</a>,
+examines algorithms to control multiple mobile robots, focuses on
+behaviors that can be obtained through local control, and demonstrates
+createing complex behaviours with simple algorithms. <span class="new"><small>[new]</small></span><!-- 10-09-00 -->
+      </li>
+      <li><a
+ href="http://www.cs.cmu.edu/%7Eunsal/thesis/cemsthesis.html">Self-Organization
+in Large Populations of Mobile Robots</a> (1993) by <a
+ href="http://www.cs.cmu.edu/%7Eunsal/">Cem &Uuml;nsal</a> Describes
+the use of a homogeneous population of robots, an <em>Army-ant swarm,</em>
+for transportation of material. Investigates both spatial and
+behaviroal self-organization. <span class="new"><small>[new]</small></span><!-- 10-13-00 -->
+      </li>
+      <li><a
+ href="http://www.ai.mit.edu/projects/ants/social-behavior.html">Social
+Behavior</a> in <a href="http://www.ai.mit.edu/projects/ants/">The Ants</a>
+a community of cubic-inch microrobots which form a <a
+ href="%20%20%20%20http://www.ai.mit.edu/projects/ants/the-evolution-of-antware.html">
+structured robotic community</a> capable of task such as clustering,
+following the leader, and playing tag. <span class="new"><small>[new]</small></span><!-- 11-02-00 -->
+      </li>
+      <li><a href="http://www.cs.technion.ac.il/%7Ewagner/index.html">Distributed
+Ant Robotics</a> a collection of publication and resources
+by <a href="http://www.cs.technion.ac.il/%7Ewagner/iaw.html"> Israel
+Wagner</a> <span class="new"><small>[new]</small></span><!-- 11-02-00 -->
+      </li>
+      <li><a href="http://lamicounter.epfl.ch/arnaud/collective.html">Collective
+Locomotion</a> (1998) by <a href="http://lamicounter.epfl.ch/arnaud/">Pierre
+Arnaud</a> of the <a href="http://diwww.epfl.ch/lami/collective/">LAMI
+Collective Robotics Group</a>. Includes papers and <a
+ href="http://lamicounter.epfl.ch/arnaud/JavaBot/labot.html">Labot</a>,
+a Java demonstation applet. <span class="new"><small>[new]</small></span><!-- 11-14-00 -->
+      </li>
+      <li><a href="http://www.sciencenews.org/20001111/bob1.asp">Calculating
+Swarms</a> (2000) by <a href="mailto:ip@sciserv.org">Ivars Peterson</a>
+        <small>(in <a href="http://www.sciencenews.org/">Science News</a>)</small>
+discusses swarm intelligence, emergent computation and collective
+robotics. <span class="new"><small>[new]</small></span><!-- 11-24-00 -->
+      </li>
+    </ul>
+  </li>
+  <li><b>Aerospace</b> (coordinated groups of aircraft or spacecraft)
+    <ul>
+      <li><a href="http://www.increa.com/space/micro-satellites.htm">Subsumptive
+Architecture of Populous Satellite Constellations</a> (1995) by <a
+ href="http://www.increa.com/">Brian J. Mork</a> discusses
+potential applications and designs for groups of reactive communicating
+satellites: "design goals are embedded in the constellation rather than
+individual satellites, and the constellation exhibits emergent
+behavior." <span class="new"><small>[new]</small></span><!-- 10-09-00 -->
+      </li>
+      <li><a
+ href="http://www.engineer.ucla.edu/press/1996/uavproto.html">Solar-Powered
+Ultralight Aircraft Designed To Fly in Formation</a>
+(1996) describes early test of a potential fleet of solar-powered
+autonomous aircraft that fly at high altitude in "V" formations like
+geese, and this <a
+ href="http://www.ea.ucla.edu/%7Epubinfo/press/1996/uavflight.html">
+press release</a> of the test flight of a prototype. </li>
+      <li><a href="http://www.vs.afrl.af.mil/News/99-23.html">Birds
+Inspire Formation-Flying Satellites</a> (1999), US Air Force press
+release describing the US AFRL's "Technology Satellite of the 21st
+Century" (<a href="http://www.vs.afrl.af.mil/VSD/TechSat21/">TechSat 21</a>)
+program, including plans for a system of "formation-flying" satellites
+that can quickly adapt to rapidly changing mission requirements. See
+also <a href="http://www.vs.afrl.af.mil/factsheets/techsat21.html">
+Space Missions Using Satellite Clusters</a>. <span class="new"><small>[new]</small></span><!-- 10-09-00 -->
+      </li>
+    </ul>
+  </li>
+  <li><b>Education</b> (about distributed and complex systems)
+    <ul>
+      <li><a href="http://lcs.www.media.mit.edu/people/mres/">Mitchel
+Resnick</a> developed <a
+ href="http://lcs.www.media.mit.edu/groups/el/Projects/starlogo/">
+StarLogo</a> a programmable modeling environment for exploring the
+behaviors of <a
+ href="http://el.www.media.mit.edu/groups/el/Papers/mres/JLS/JLS-1.0.html">
+decentralized systems</a> such as bird flocks, traffic jams, and ant
+colonies. For more information see Mitchel's book <a
+ href="http://www-mitpress.mit.edu/book-home.tcl?isbn=0262680939">
+Turtles, Termites, and Traffic Jams</a> </li>
+      <li>OK, while not strictly a "<em>computational</em> model of
+group motion," <a
+ href="http://www2.ncsu.edu/ncsu/pams/meas/outreach/fish_school.html">
+Schools are for Fish</a> is a collection of participatory activities
+for young students to help them learn about group motion and complex
+systems. </li>
+    </ul>
+  </li>
+  <li><b>Artificial life</b> and <b>Evolutionary computation</b>
+    <ul>
+      <li><a href="http://www.hpl.hp.com/techreports/96/HPL-96-04.html">(Not)
+Evolving Collective Behaviours in Synthetic Fish</a> by Nahum Zaera, <a
+ href="http://www.ai.mit.edu/people/davec/davec.html">Dave Cliff</a>,
+and <a href="http://agents.hpl.hp.com/people/janet_bruten.htm">Janet
+Bruten</a>. Published in <a
+ href="http://www.adaptive-behavior.org/conf/sab96.html">From Animals
+to Animats 4 (SAB96)</a>. </li>
+      <li><a href="http://www.uroborus-software.co.uk/dissertation.html">An
+Investigation Into Computational Flocking Techniques</a> (1999) by <a
+ href="http://www.uroborus-software.co.uk/cv.html">Phil Pocknell</a>
+investigates flocking (herding) under the influence of a predator.
+Specifically, it models a situation very much like the interaction
+between a sheep-dog and a flock of sheep, such as in a sheep-dog trial.
+See the <a href="http://www.uroborus-software.co.uk/tadpoids.html">Tadpoids</a>
+applet, and the related <a
+ href="http://www.uroborus-software.co.uk/pestcontrol.html"> Pest
+Control</a> applet. <span class="new"><small>[new]</small></span><!-- 09-25-00 -->
+      </li>
+      <li><a
+ href="http://www.computer.org/proceedings/ca/7984/79840119abs.htm">Behavioural
+Simulation in Voxel Space</a> (1997) by <a
+ href="http://www.24c.com/corporate_profile/people.html#h20"> Hongwen
+Zhang</a> and <a href="http://www.cpsc.ucalgary.ca/%7Eblob/">Brian
+Wyvill</a> uses as its example a group of butterflies navigating by
+olfactory sensors. Based on Zhang's 1996 Ph.D. thesis. See the full
+paper in <a href="http://www.cpsc.ucalgary.ca/%7Eblob/ps/Zhang.pdf">PDF</a>.
+<!-- I can't decide which section this belongs in,
+         its really a behavioral animation/simulation paper -->
+        <span class="new"><small>[new]</small></span><!-- 11-21-00 --> </li>
+    </ul>
+  </li>
+  <li><b>Art</b>
+    <ul>
+      <li>As part of this MFA work, <a
+ href="http://www.evl.uic.edu/terry/"> Terry Franguiadakis</a> created
+a virtual reality art piece called <a
+ href="http://www.evl.uic.edu/terry/LATEST/swallows.html">Swallows of
+Capistrano</a> which included a flock of swallows that would fly over
+to eat food dispensed from the user's 3d wand. </li>
+      <li>At SIGGRAPH 93 <a
+ href="http://www.ylem.org/artists/krinaldo/info/">Ken Rinaldo</a>'s <a
+ href="http://www.ylem.org/artists/krinaldo/">Emergent Systems</a>
+presented <a href="http://www.ylem.org/artists/krinaldo/works/flock/">The
+Flock</a>, a robotic art installation composed of reactive sculptural
+and musical elements. </li>
+      <li><a href="http://mythos.fa.asu.edu/eidea/eidea.html">EIDEA</a>
+(<em>Environment for the Interactive Design of Emergent Art</em>, by <a
+ href="http://mythos.fa.asu.edu/john.html">John Mitchell</a> and <a
+ href="http://mythos.fa.asu.edu/robb.html">Robb Lovell</a>) is an art
+piece based on artificial life which includes a flock of birds. </li>
+      <li>An art piece called <a
+ href="http://nttad.com/asci/archive/arttech/dvwork.html#1"> A Flock of
+Words</a> by <a
+ href="http://www.gex.gmd.de/BEC/Projekte/OperaClones/dvila.htm"> Doris
+Vila</a>, Robert Rowe and <a href="http://www.cat.nyu.edu/esinger/">Eric
+L. Singer</a>, performed at NYU in 1995, and another version installed
+that same year in Bonn under the title <a
+ href="http://www.gex.gmd.de/BEC/Projekte/OperaClones/Start.html">
+Opera Clones</a>. It was also presented at the <a
+ href="http://www.siggraph.org/conferences/siggraph96/core/conference/applications/appstue.html#1040a">
+SIGGRAPH 96 Applications</a> venue. </li>
+      <li><a href="http://emergence.design.ucla.edu/">Emergence</a> is
+the system underlying the 1997 and 1998 installations known as <a
+ href="http://emergence.design.ucla.edu/papers/installation.htm"> The
+Bush Soul</a> by <a
+ href="http://emergence.design.ucla.edu/people/biorebal.htm">Rebecca
+Allen</a> <i>et al.</i> This interactive 3D world is full of
+autonomous objects and characters, including flock-like groups. </li>
+    </ul>
+  </li>
+  <li><b>Biology</b>
+    <ul>
+      <li>Ornithologist <a
+ href="http://www.uri.edu/artsci/bio/heppner.htm">Frank Heppner</a> and
+mathematician <a href="http://www.dam.brown.edu/pattern/ug.html">Ulf
+Grenander</a> describe a model of flocking and roosting in <i>A
+Stochastic Nonlinear Model for Coordinated Bird Flocks</i> (1990)
+appearing in <a
+ href="%20%20%20%20http://media13.dealtime.com/evenbetterbin/nph-det8.cgi?isbn=0871683504">
+The Ubiquity of Chaos</a> edited by Saul Krasner. </li>
+      <li>The <a
+ href="http://offis.OFFIS.Uni-Oldenburg.DE/projekte/ecotools/"> EcoTools</a>
+project uses individual-based models to study animal behavior and
+ecological issues. Models of <a
+ href="%20%20%20%20http://offis.OFFIS.Uni-Oldenburg.DE/projekte/ecotools/impmodels.htm#fishs">
+schooling fish</a> and <a
+ href="%20http://offis.OFFIS.Uni-Oldenburg.DE/projekte/ecotools/impmodels.htm#flocking">
+flocking birds</a> have been created in EcoTools. There is also a <a
+ href="%20%20%20%20http://offis.OFFIS.Uni-Oldenburg.DE/projekte/ecotools/fishsim.htm">
+Java-based fish school</a> simulation at this site. </li>
+    </ul>
+  </li>
+  <li><b>Physics</b>
+    <ul>
+      <li><a href="http://angel.elte.hu/%7Evicsek/">Tam&aacute;s Vicsek</a>
+published an analysis of flocking particles in Physical Review Letters
+on August 7, 1995, which focused on transitions in collective behavior.
+(I will provide a more complete description here when I better
+understand Prof. Vicsek's work.) </li>
+      <li><a href="http://www.cs.runet.edu/%7Edana/index.html">J Dana
+Eckart</a> implemented a cellular automata model of <a
+ href="http://www.cs.runet.edu/%7Edana/ca/examples/flock/flock.html">
+flocking</a> using his <a
+ href="http://www.cs.runet.edu/%7Edana/ca/cellular.html"> <em>Cellular</em></a>
+system based on <a href="http://angel.elte.hu/%7Evicsek/">Vicsek's</a>
+work. </li>
+      <li><a href="http://www.aps.org/BAPSMAR96/abs/S3190002.html">Work</a>
+by <a href="mailto:yuhai@watson.ibm.com">Yu-hai Tu</a> and <a
+ href="http://oregon.uoregon.edu/%7Elbiggs/toner.html">John Toner</a>
+published in Physical Review Letters (Volume 75, page 4326, December 4,
+1995) includes a proof that motion of a flock or herd is essential to
+its collective ability to align. That is, group alignment is not
+possible with local perception in the absence of motion. </li>
+      <li><a href="http://gita.lanl.gov/people/salman/sfnoneq/Tu.ps.gz">Surprises
+in Nonequilibrium Critical Phenomena: From Flocking Dynamics to
+Chemical Reactions</a> <small>(0.7 MB gzipped Postscript)</small> by <a
+ href="mailto:yuhai@watson.ibm.com">Yu-hai Tu</a> presented at the 1996
+        <a href="http://gita.lanl.gov/people/salman/sfnoneq/.index.html">Santa
+Fe Workshop on Nonequilibrium Phase Transitions</a>. </li>
+      <li><a
+ href="http://ojps.aip.org/journal_cgi/getabs?KEY=PLEEE8&amp;cvips=PLEEE8000058000004004828000001&amp;gifs=No">Flocks,
+Herds, and Schools: A quantitative theory of flocking</a> by <a
+ href="http://oregon.uoregon.edu/%7Elbiggs/toner.html">Toner</a> and <a
+ href="mailto:yuhai@watson.ibm.com">Tu</a> in Physical Review E,
+October 1998, Volume 58, Issue 4, pp. 4828-4858. See the AIP summary: <a
+ href="http://www.aip.org/physnews/preview/1998/flocks/text.htm"> Birds
+of a Feather: The Physics of Flocks</a>, this summary from <a
+ href="http://www.academicpress.com/inscight/09301998/grapha.htm">
+Academic Press</a>, and this article from <a
+ href="http://www.newsweek.com/nw-srv/printed/us/so/sc0116_1.htm">
+Newsweek</a>. </li>
+      <li><i>Physics of Flocks</i> (<a
+ href="http://www.abc.com.au/science/k2/moments/gmis9845.htm">Part 1</a>
+and <a href="http://www.abc.com.au/science/k2/moments/gmis9846.htm">Part
+2</a>) by <a href="http://www.abc.com.au/science/k2/">Karl Kruszelnicki</a>,
+transcripts and audio recordings from <a
+ href="http://www.abc.com.au/science/k2/moments/default.htm">Great
+Moments in Science</a> on the Australian Broadcasting Corporation. </li>
+    </ul>
+  </li>
+  <li><b>Search, optimization and visualization techniques inspired by
+flocks and swarms</b>
+    <ul>
+      <li><a href="http://www.engr.iupui.edu/%7Eshi/pso.html">Particle
+Swarm Optimization</a> (and see the original <a
+ href="http://www.engr.iupui.edu/%7Eshi/Coference/psopap4.html"> 1995
+PSO paper</a> by <a href="http://www.erols.com/cathyk/vita.html">James
+Kennedy</a> and <a href="http://www.engr.iupui.edu/%7Eeberhart">Russ
+Eberhart</a>) searchs a multidimensional solution space. Somewhat like
+a genetic algorithm, but the PSO's search points move as a swarm
+through the space with a velocity, altered by steering accelerations.
+See also this <a href="http://www.cis.syr.edu/%7Eeozcan/pso/">PSO demo
+applet</a>. </li>
+      <li><a href="http://www.ccg.leeds.ac.uk/james/geocomp/gc24_01.htm">The
+use of Flocks to drive a Geographic Analysis Machine</a> (1998) by <a
+ href="http://www.geog.leeds.ac.uk/pgrads/j.macgill/home.html"> James
+Macgill</a> and <a
+ href="http://www.geog.leeds.ac.uk/staff/s.openshaw/s.openshaw.html">
+Stan Openshaw</a>, uses a flock model, with communication between
+boids, to better search for clusters in spacial datasets, just as a
+natural flock provides better foraging than individual birds could
+manage. See this demo <a
+ href="http://www.ccg.leeds.ac.uk/james/geocomp/gc24_02.htm"> applet</a>.
+      </li>
+      <li><a href="http://iridia.ulb.ac.be/dorigo/ACO/ACO.html">Ant
+Colony Optimization</a> introduced in 1992 by <a
+ href="http://iridia.ulb.ac.be/dorigo/dorigo.html">Marco Dorigo</a>
+"...studies artificial systems that take inspiration from the behavior
+of <a href="http://iridia.ulb.ac.be/dorigo/ACO/RealAnts.html">real ant
+colonies</a> and which are used to solve function or combinatorial
+optimization problems..." </li>
+      <li><a href="http://wwwis.win.tue.nl/%7Erp/www94/www94.html">Information
+Retrieval in the World-Wide Web: Making Client-based searching feasible
+        </a> (1994) by <a href="http://wwwis.win.tue.nl/%7Edebra/">Paul
+De Bra</a> and <a href="http://wwwis.win.tue.nl/%7Erp/">Reinier Post</a>,
+uses a school of fish metaphor to search the web. </li>
+      <li><a
+ href="http://www.bt.com/innovation/exhibition/info_flocking/">Information
+Flocking</a> by Glenn Proctor is a data visualization
+technique that portrays datapoints as <i>fish</i> that <i>school</i>
+through a 3d space, revealing correlations in the data by their motion
+and clustering. See the paper <a
+ href="%20%20%20%20http://www.bt.com/innovation/exhibition/info_flocking/papers/infoflock.pdf%0D%0A%20%20%20%20">Information
+Flocking: Data Visualisation in Shared Worlds Using Emergent Behaviours</a>
+(1998, PDF 91KB) by Glenn Proctor and Chris Winter. <span class="new"><small>[new]</small></span><!-- 10-27-00 -->
+      </li>
+      <li><a href="http://www.hpl.hp.com/techreports/96/HPL-96-76.html">Ant-based
+Load Balancing in Telecommunications Networks</a> (1996) by <a
+ href="http://www-uk.hpl.hp.com/people/ruud/ruud.html"> Ruud
+Schoonderwoerd</a>, <a
+ href="http://agents.hpl.hp.com/people/owen_holland.htm"> Owen Holland</a>.
+        <a href="http://agents.hpl.hp.com/people/janet_bruten.htm">Janet
+Bruten</a> and <a
+ href="http://www.kbs.twi.tudelft.nl/People/Staff/L.J.M.Rothkrantz/">
+Leon Rothkrantz</a>. See also these related links: <a
+ href="http://www.newscientist.com/ns/980124/features2.html"> There's
+an ant in my phone</a> (1998) by Mark Ward in <i>New Scientist,</i> <a
+ href="http://www.businessweek.com/@@92ZFhYcAmp7ZQwAA/1997/25/b353218.htm">
+British Telecom: Notes from the Ant Colony</a> (1997) by Julia Flynn in
+BusinessWeek, and <a
+ href="http://www-uk.hpl.hp.com/people/ruud/abc.html"> Collective
+Intelligence for Network Control</a>. <span class="new"><small>[new]</small></span><!-- 10-08-00 -->
+      </li>
+    </ul>
+  </li>
+  <li><b>Other emergent, collective behavior</b>
+    <ul>
+      <li><a href="http://www.swiss.ai.mit.edu/projects/amorphous/">Amorphous
+Computing HomePage</a> a research group exploring the question: "How do
+we obtain coherent behavior from the cooperation of large numbers of
+unreliable parts that are interconnected in unknown, irregular, and
+time-varying ways?" <span class="new"><small>[new]</small></span><!-- 11-05-00 -->
+      </li>
+      <li><a href="http://dsp.jpl.nasa.gov/members/payman/swarm/">Swarm
+Intelligence</a>: <a href="http://dsp.jpl.nasa.gov/members/payman/">
+Payman Arabshahi</a>'s
+page of links on emergent computation by swarms of simple agents. <span
+ class="new"><small>[new]</small></span><!-- 11-24-00 --> </li>
+    </ul>
+  </li>
+  <li><b>Other topics...</b>
+    <ul>
+      <li><a href="http://www.cs.curtin.edu.au/%7Emee/mee.shtml">John
+Mee</a>'s term report on software to <a
+ href="http://www.cs.curtin.edu.au/%7Emee/boids.html"> simulate the
+movement of a flock of birds</a>. </li>
+      <li><a
+ href="http://ourworld.compuserve.com/homepages/G_KEITH_STILL/"> G.
+Keith Still</a> has developed a system called <a
+ href="%20%20%20%20http://ourworld.compuserve.com/homepages/G_KEITH_STILL/legion.htm">
+Legion</a> to simulate the motion of large crowds of people. It can
+handle crowds of more than 100,000 people. See also these <a
+ href="%20%20%20%20http://ourworld.compuserve.com/homepages/G_KEITH_STILL/sitenavi.htm">
+related pages</a>, and these articles by <a
+ href="mailto:scanter@sover.net">Sheryl Canter</a> in <a
+ href="http://www.zdnet.com/pcmag/">PC Magazine</a> from <a
+ href="http://www.zdnet.com/pcmag/news/trends/t960401a.htm"> April 1996</a>
+and <a href="http://www.zdnet.com/pcmag/issues/1510/pcmg0019.htm">May
+1996</a>. </li>
+      <li>A page of <a
+ href="http://www.sfc.keio.ac.jp/%7Et94809ms/project.html"> Java-based
+demos</a> by the Biological Model Simulation group at Keio University.
+The demos are in 2d and include basic schooling, predation, interactive
+feeding, and schooling with two species. </li>
+      <li><a href="http://www.anisci.com/">Animation Science Corporation</a>
+sells tools to model the motion of large crowds with their <a
+ href="http://www.anisci.com/RAMPAGE/rampage1.htm">Rampage</a>
+software, based on an efficient engine for <a
+ href="http://www.anisci.com/outburst1.htm"> interacting particle
+systems</a>. </li>
+      <li>Daniel Bullok wrote a <a
+ href="http://phoenix.cs.uiuc.edu/fish.html">fishtank simulation</a> as
+a class project. </li>
+      <li>An introduction called <a
+ href="http://miro.ifisicacu.unam.mx/biol/comp_soc.htm"> Complexity and
+Social Behaviour</a> and a computational model of resource-deprived <a
+ href="http://miro.ifisicacu.unam.mx/biol/termite.htm">termites</a> by <a
+ href="http://www.red-mat.unam.mx/%7Ebiomat/directorio/MIRAMONTES2.html">
+Octavio Miramontes</a> </li>
+      <li>A <a href="http://intell-lab.engi.cf.ac.uk/jan/flock.htm">
+Flocking-Strategy</a> for a programmable multi-agent shell <a
+ href="http://intell-lab.engi.cf.ac.uk/jan/vehicle.htm">VehicleGuide</a>
+by <a href="http://intell-lab.engi.cf.ac.uk/jan/">Jan Beutler</a> </li>
+      <li><a href="http://www.geocities.com/SiliconValley/Vista/1069/">Jonathan
+Robbins'</a> page <a
+ href="http://www.geocities.com/SiliconValley/Vista/1069/Boid.html">
+The Boids</a> is the report from his Science Project -- his <b>8th
+grade</b> Science Project, mind you. (Yikes! Kids these days!) </li>
+      <li><a href="http://www.cs.toronto.edu/%7Ehz/herding/report.html">Simulation
+of Herding with Dynamics</a> by <a href="mailto:hz@vis.toronto.edu">Howard
+Zhang</a> uses a simple spring-mass model of animal bodies and
+simulates herding on the plane. This report contains good diagrams and
+descriptions of the implementation of component steering behaviors. </li>
+      <li><a href="http://mitpress.mit.edu/books/FLAOH/cbnhtml/">The
+Computational Beauty of Nature</a> is the web site for a book of the
+same name by <a href="mailto:gary.flake@usa.net">Gary W. Flake</a>
+(shop for the book <a
+ href="http://acses6.acses.com/acsesbin/nph-det5.cgi?isbn=0262062003">
+here</a>). He implemented boids and added another rule which cause the
+boids to attempt to maintain a clear view ahead of them. This resulted
+in flocks which form the classic "V" formations of migrating geese. See
+the <a href="http://mitpress.mit.edu/books/FLAOH/cbnhtml/java.html">Java
+demonstration</a>. </li>
+      <li>In a class project called <a
+ href="http://www.cs.curtin.edu.au/units/cs455/goo/1996/blackwel/paper.shtml">
+A-Life Foodchain Simulation</a> Leon Blackwell extends a boid-like
+model to include predator-prey interactions. </li>
+      <li><a href="http://www.stanford.edu/class/cs326b/PROJECTS/bgoc/">The
+Duck Pond: Following, Flocking and Herding</a> a 1977 class project by
+Brian O'Connor. Includes source code and animations. <small>(Although
+there seem to be access problems for some of the files.)</small> </li>
+      <li><a
+ href="http://www.amsci.org/amsci/issues/comsci99/compsci1999-01.html">
+        <i>E Pluribus Unum</i></a> (the January 1999 installment of <a
+ href="http://www.amsci.org/amsci/other/BPH.html">Brian Hayes</a>'
+column on Computing Science in <a
+ href="http://www.amsci.org/amsci/amsci.html">American Scientist</a>)
+talks about <i>emergence</i> using examples such as flocks, schools,
+herds, traffic jams, ant colonies, and forest fires. </li>
+      <li><a
+ href="http://www.harry-space.ndirect.co.uk/boids_pro/boidsproj.htm">An
+attempt to replicate the main findings of Craig Reynolds's (1987)
+'Boids'</a> by Harry Brignull, reports on a project to implement boids
+using the <a href="http://www.cogs.susx.ac.uk/users/christ/popbugs/">
+POPBUGS</a> package by <a
+ href="http://www.cogs.susx.ac.uk/users/christ/"> Chris Thornton</a>.
+Includes diagrams of the resulting group motion and source code. </li>
+      <li><a
+ href="http://www.cs.unc.edu/%7Ehelser/239/finalproj/239_final_paper.htm">Flocking,
+Boids and Tag</a> (1998) by <a href="http://www.cs.unc.edu/%7Ehelser/">Aron
+Helser</a>. This class
+project involved an interactive flock which plays the game of tag and
+allows the use to either ride along passively with a member of the
+flock, or take control and pilot the boid. <span class="new"><small>[new]</small></span><!-- 09-12-00 -->
+      </li>
+      <li><a href="http://www.cs.swarthmore.edu/%7Epolinsky/cs97/">GOIDS
+Project</a> a study of flocking geese objects (1999) by Cathryn J
+Polinsky. Presentation slides for a Senior Project called "Flight
+Simulation of Flocking Geese Using Particle Set Animation" <span
+ class="new"><small>[new]</small></span><!-- 09-12-00 --> </li>
+    </ul>
+  </li>
+</ul>
+<h3>Natural flocks, herds, and schools</h3>
+<ul>
+  <li>Some seminal papers from the (hardcopy) literature:
+    <ul>
+      <li><i>The Structure and Function of Fish Schools</i> (1982) by
+Brian Partridge in <a href="http://www.sciam.com/">Scientific American</a>,
+June 1982, pages 114-123. </li>
+      <li><i>The Chorus Line Hypothesis of Manoeuvre Coordination in
+Avian Flocks</i> (1984) by <a
+ href="http://www.biology.utah.edu/people/regfaculty/%7EPotts/Potts.html">
+Wayne Potts</a>, in <a href="http://www.nature.com/">Nature</a>,
+Volume 309, May 24, 1984, pages 344-345. </li>
+      <li><i>Animal Groups in Three Dimensions: How Species Aggregate</i>
+(1997) edited by <a
+ href="http://www.zoology.washington.edu/people/faculty/JKParrish.html">
+Julia K. Parrish</a> and William M. Hamner. A collection of papers
+related to a 1991 workshop on measuring and modeling animal
+aggregations. Use this link to <a
+ href="http://acses6.acses.com/acsesbin/nph-det5.cgi?isbn=0521460247">
+shop</a> for the book. </li>
+    </ul>
+  </li>
+  <li>A 22 second <a
+ href="http://www.actwin.com/fish/marine-pics/anchovie.MPG"> movie of a
+school of anchovies</a> (160x120 pixels, in <a
+ href="http://www.actwin.com/fish/marine-pics/anchovie.MPG">JPEG</a>
+(1.1 Mb) and <a
+ href="http://www.actwin.com/fish/marine-pics/anchovie.MOV">Quicktime</a>
+(1.8 Mb) formats) swimming in the Kelp Forest tank at the <a
+ href="http://www.mbayaq.org/">Monterey Bay Aquarium</a> from a page of
+    <a href="http://www.actwin.com/fish/movies.html">fish videos</a> at
+    <a href="http://www.actwin.com/fish/">FINS</a>. See also the live <a
+ href="http://www.mbayaq.org/hp/hp_kelpcam.htm">Kelp Cam</a> view of
+this tank. </li>
+  <li>Here are some other flock/herd/school pictures on the web: <a
+ href="http://www.wieckphoto.com/Travel/Domestic_Destinations/California/Monterey_Bay_Aquarium/Fish_School/index.cgi?preview">schooling
+anchovies</a>, <a href="http://www.coral.org/Text/School.html">school
+from below</a>, <a href="http://www.coral.org/Text/SchlYeBlFish.html">crowded
+fish</a>, <a href="http://www.divetravel.com/Gallery/Amos5.html">orca
+and herring</a>, <a
+ href="http://www.smn.co.jp/PICS/features/silkroad/herd.jpg"> herd of
+running Akhalteke</a>, <a href="http://www.his.com/%7Etom/SWARM.jpg">school
+of spadefish</a>, <a
+ href="http://www.acm.uiuc.edu/rml/Gifs/JurassicPark/jurassic-park-flock.gif">
+Gallimimuses flock (Jurassic Park)</a>, <a
+ href="http://www.museum.state.il.us/exhibits/larson/images/geese.gif">
+V formation of geese</a>, <a
+ href="http://comptons2.aol.com/plweb-cgi/fastweb?getdoc+view1+media003+8435+5+wAAA+herding">herd
+of wild asses</a>, <a
+ href="http://comptons2.aol.com/plweb-cgi/fastweb?getdoc+view1+media003+8179+6+wAAA+herding">wildebeest
+herd</a>, <a
+ href="http://www.capemaytech.com/fishschool/mpeg/spawn.mpg"> herring
+schooling</a> <small>(MPEG, 0.5 Mb)</small>, <a
+ href="http://www.capemaytech.com/fishschool/mpeg/turn.mpg"> herring
+school turning</a> <small>(MPEG, 1.0 Mb)</small> ... </li>
+  <li><a href="http://grandin.com/">Temple Grandin's</a> interesting
+site on behavior of livestock and other subjects, contains a section on
+    <a href="http://grandin.com/behaviour/principles/principles.html">
+Recommended Basic Livestock Handling</a> which covers topics such as:
+    <ul>
+      <li><a
+ href="http://grandin.com/behaviour/principles/flight.zone.html">Understanding
+Flight Zone and Point of Balance</a> </li>
+      <li><a
+ href="http://grandin.com/behaviour/principles/moving.sorting.html">Moving
+Cattle out of Pens and Sorting</a> <span class="new"><small>[new]</small></span><!-- 10-24-00 -->
+      </li>
+      <li><a href="http://grandin.com/B.Williams.html"> Low Stress
+Methods for Moving Cattle on Pastures...</a> <span class="new"><small>[new]</small></span><!-- 10-24-00 -->
+      </li>
+    </ul>
+each of which contain pictures and diagrams on geometrical
+relationships between herds of livestock, the shapes of their
+enclosures, and the positions of human handlers. </li>
+  <li>William H. Calvin's book <a
+ href="http://williamcalvin.com/bk5/bk5.htm">The Ascent of Mind</a>
+discusses the predation on herds of early humans in Chapter 8: <a
+ href="http://williamcalvin.com/bk5/bk5ch8.htm">Hand-Ax Heaven</a> (you
+may wish to search for the first occurance of <em>herd</em>). </li>
+  <li><a href="http://www.canadagoose.com/lessons.html">Lessons from
+Geese</a>: on the structure of migratory goose flocks, and folksy
+thoughts on applying these ideas to groups of humans. </li>
+  <li><b>V formations</b>: at the bottom of <a
+ href="http://www.sou.edu/library/jim/">Jim Rible</a>'s page about the <a
+ href="http://www.sou.edu/library/jim/wildlife/cangoose.htm"> Canada
+Goose</a> there is a discussion about the mixed evidence for an
+aerodynamic explanation of the "V" formations often seen in migrating
+ducks and geese. See also the cited <a
+ href="http://www.sou.edu/library/jim/wildlife/citeref.htm"> references</a>.
+  </li>
+  <li>A page by <a href="http://www.marine.rutgers.edu/oo/uwe.htm">Uwe
+Kils</a> illustrating how individual fish in a school benefit from
+reduced predation due to <a
+ href="http://www.fishschool.com/fishcol2.htm">optical confusion</a>. </li>
+  <li>An essay called <a href="http://www.ecoscope.com/pitcher.htm">Migration
+Advantages of Shoaling</a> by Tony J. Pritcher in his book <a
+ href="http://acses6.acses.com/acsesbin/nph-det5.cgi?isbn=0412429306">
+Behaviour of Teleost Fishes</a> describes research by <a
+ href="http://www.marine.rutgers.edu/oo/uwe.htm">Uwe Kils</a> into the
+effect he calls <i>synchrokinesis</i> whereby small movements of
+individuals copied through the shoal provide an accurate movement
+towards better conditions. (Contrast this with the work of <a
+ href="http://www.aip.org/physnews/preview/1998/flocks/text.htm">Toner
+and Tu</a> (above) which suggests that individual errors are damped out
+by interaction with the rest of the group.) </li>
+  <li><a
+ href="http://cogprints.soton.ac.uk/documents/disk0/00/00/01/55/">Vigilance,
+Flock Size, and Flock Geometry: Information Gathering by
+Western Evening Grosbeaks</a> (1995) by <a
+ href="http://www.colorado.edu/epob/research/fac_mbekoff.html"> Marc
+Bekoff</a> a field ethology study of how the size and relative
+positioning of this bird affect the vigilance (scanning) behavior of
+individuals in the group. <span class="new"><small>[new]</small></span><!-- 10-27-00 -->
+  </li>
+  <li><b>Cutting horses</b> and <b>herding dogs</b>: these two types
+of trained animal behaviors have evolved into modern sport
+competitions. Their origin was to assist humans raising stock animals,
+and they can still be found in this role today. Both are related to
+herding behavior in special ways.
+    <ul>
+      <li>The job of a herding dog (stockdog, sheepdog) is to help a
+shepherd contain and control a herd of stock animals (especially sheep,
+goats or cattle). A herding dog uses its understanding of the stock
+animal's herding behavior to be able to move the whole group as a unit.
+For more information see: <a href="http://www.stockdog.com/">The
+Stockdog Server</a>, <a href="http://www.dog-play.com/herding.html">Dog-Play:
+Herding</a> and <a href="http://www.dogpatch.org/dogs/herding.cfm">The
+Herding Page</a> <span class="new"><small>[new]</small></span><!-- 10-23-00 -->
+      </li>
+      <li>The cutting horse derived from the American cowboy culture
+and is specifically trained to handle cattle. A cutting horse's skill
+is in being able to <i>defeat</i> the cattle's herding instinct,
+allowing it to separate off (cut) one individual at a time. The site of
+the <a href="http://www.nchacutting.com/">National Cutting Horse
+Association</a> includes <a href="http://www.nchacutting.com/about.htm">history</a>
+and <a href="http://www.nchacutting.com/videos.shtml">videos</a> of
+the sport. <span class="new"><small>[new]</small></span><!-- 10-23-00 -->
+      </li>
+    </ul>
+    <br>
+    <br>
+  </li>
+  <li>Some general information about these animals:
+    <ul>
+      <li><a href="http://www.actwin.com/WWWVL-Fish.html">Fish</a> from
+the WWW Virtual Library. </li>
+      <li> <a
+ href="http://wwwis.cs.utwente.nl:8080/deby/Birds/birdlink.html">Birdlinks</a>
+by <a href="http://wwwis.cs.utwente.nl:8080/deby/">Rolf
+Anthony de By</a> </li>
+      <li>From Cornell's <a href="http://muse.bio.cornell.edu/">
+Biodiversity and Biological Collections</a>:
+        <ul>
+          <li><a href="http://muse.bio.cornell.edu/cgi-bin/hl?fish">Ichthyology</a>
+          </li>
+          <li><a href="http://muse.bio.cornell.edu/cgi-bin/hl?bird">Ornithology</a>
+          </li>
+        </ul>
+      </li>
+      <li>From the <a
+ href="http://nmnhwww.si.edu/departments/vert.html"> Department of
+Vertebrate Zoology</a> in the <a
+ href="http://nmnhwww.si.edu/nmnhweb.html"> National Museum of Natural
+History</a> at the <a href="http://www.si.edu/">Smithsonian Institution</a>:
+        <ul>
+          <li><a href="http://nmnhwww.si.edu/vert/birds/birds.html">Division
+of Birds</a> </li>
+          <li><a href="http://nmnhwww.si.edu/vert/fish.html"> Division
+of Fishes</a> </li>
+        </ul>
+      </li>
+      <li>From the <a href="http://netvet.wustl.edu/e-zoo.htm">
+Electronic Zoo</a>: collections on <a
+ href="http://netvet.wustl.edu/birds.htm">birds</a> and <a
+ href="http://netvet.wustl.edu/fish.htm">fish</a> </li>
+      <li>From <a href="http://AnimalPicturesArchive.com/"> Animal
+Pictures Archive</a> pictures of: <a
+ href="http://AnimalPicturesArchive.com/animal/APAsrch3.cgi?dspNum=20&amp;qt=flock&amp;type=image">flocks</a>,
+        <a
+ href="http://AnimalPicturesArchive.com/animal/APAsrch3.cgi?dspNum=20&amp;qt=herd&amp;type=image">herds</a>
+and <a
+ href="http://AnimalPicturesArchive.com/animal/APAsrch3.cgi?dspNum=20&amp;qt=school&amp;type=image">schools</a>.
+        <span class="new"><small>[new]</small></span><!-- 11-29-00 --> </li>
+      <li>Biomechanics:
+        <ul>
+          <li><a href="http://www.us.net/birds/welcome.html">How Birds
+Fly</a> by <a href="http://www.us.net/birds/goodnow.html">David Goodnow</a>
+          </li>
+          <li><a href="http://www2.southwind.net/%7Eroyb/flight.html">Natural
+Flight: Biology &amp; Physics</a> by <a
+ href="http://www2.southwind.net/%7Eroyb/">Roy Beckemeyer</a> </li>
+          <li>From the <a href="http://www.about.com/">about.com</a>
+site on <a href="http://birding.about.com/hobbies/birding/">Birding</a>:
+            <ul>
+              <li><a
+ href="http://birding.about.com/hobbies/birding/library/weekly/aa041997.htm">The
+Ability to Fly</a> </li>
+              <li><a
+ href="http://birding.about.com/hobbies/birding/msub16-flight.htm">Flight
+of Birds</a> </li>
+            </ul>
+          </li>
+          <li><a
+ href="%20%20%20%20http://www.biol.rug.nl/marbio/staff/members/videlerj/fishswim.htm">Fish
+Swimming</a> (1993) by <a
+ href="http://www.biol.rug.nl/marbio/staff/members/videlerj.htm"> J.J.
+Videler</a> <span class="new"><small>[new]</small></span><!-- 10-30-00 -->
+          </li>
+        </ul>
+      </li>
+      <li><a href="http://fas.sfu.ca/cs/research/projects/Whales/"> The
+Virtual Whale Project</a> includes simulated swarms of prey, see <a
+ href="http://www.kewlschool.com/">Cool School</a> below. </li>
+      <li><a href="http://sdcd.gsfc.nasa.gov/ISTO/satellite_tracking/">Satellite
+Tracking of Threatened Species</a> from NASA (see also <a
+ href="http://www.argosinc.com/docs/biouser.htm">Argos</a>). </li>
+      <li>An exhibit on <a
+ href="http://www.ucmp.berkeley.edu/vertebrates/flight/enter.html">
+Vertebrate Flight</a> in the online <a
+ href="http://www.ucmp.berkeley.edu/">Museum of Paleontology</a> of <a
+ href="http://www.berkeley.edu/">The University of California at
+Berkeley</a>. </li>
+      <li><a href="http://www.gregscott.com/rwscott/rwscott.htm">Birds
+in Flight</a> very high speed photography by Ralph W. Scott </li>
+      <li>A large collection of <a
+ href="http://users.erols.com/mandtj/behavior/behavior.html"> Animal
+Behavior Sites</a> <span class="new"><small>[new]</small></span><!-- 10-24-00 -->
+      </li>
+    </ul>
+  </li>
+</ul>
+<p>
+</p>
+<hr>
+<h3>Software</h3>
+<blockquote>
+(There is additional source code for Java implementations listed on the
+  <a href="applet/">boids applet page</a>.)
+</blockquote>
+<dl>
+  <dt><a href="../code/boids.lisp">Boids</a> </dt>
+  <dd>This is the original 1986-1988 implementation, written in
+Symbolics Common Lisp, and based on Symbolics' S-Geometry 3d modeling
+system and S-Dynamics animation system. <small>(Modern versions of
+those applications are available from <a
+ href="http://www.wingededge.com/">Winged Edge Technologies</a>, see: <a
+ href="http://www.wingededge.com/mirai/product/modeling.shtml?page=/mirai/product/modeling_info">
+Mirai Modeling</a> and <a
+ href="http://www.wingededge.com/mirai/product/animation.shtml?page=/mirai/product/animation_info">
+Mirai Animation</a>. Your browser may not recognize this file as Lisp
+source code and try to reformat it as filled text. If so use [View /
+Page Source] or equivalent, or download the file.)</small> </dd>
+  <dt><a
+ href="http://www.media.mit.edu/%7Eckline/cornellwww/boid/boids.html">C++
+Boids</a> </dt>
+  <dd>This platform-independent boids implementation by <a
+ href="http://www.media.mit.edu/%7Eckline">Christopher Kline</a>
+includes C++ source code and an Inventor-based binary executable demo
+for SGI machines. These boids support both flocking and obstacle
+avoidance. </dd>
+  <dt><a
+ href="ftp://ftp.santafe.edu/pub/smfr/afterdark/buzzz_16b1PPC.hqx">Buzzz!</a>
+  </dt>
+  <dd>An <i>After Dark</i> screen saver module for Macintosh computers
+by <a href="http://www.santafe.edu/%7Esmfr/">Simon Fraser</a>. This
+very nice package implements a parameterized version of boids including
+several species of creatures (wasps, birds, fish, sheep...) based on
+altering the parameters. There are control panels that allow you to
+experiment with the parameters. For other sources of this software see
+Simon's <a href="http://www.santafe.edu/%7Esmfr/ad.html#buzzz">AD page</a>.
+  </dd>
+  <dt><a
+ href="ftp://ftp.Germany.EU.net/pub/research/softcomp/Alife/packages/boids/boids10.zip">boids.exe</a>
+  </dt>
+  <dd>by <a
+ href="http://www.fastnet.it/servizi/utenti/schmitz/sysdes.htm">
+J&uuml;rgen Schmitz</a>. Version 1.0 of a Windows application featuring
+three distinct species of flocking birds and nice control panels for
+adjusting their parameters. See the <a
+ href="ftp://ftp.Germany.EU.net/pub/research/softcomp/Alife/packages/boids/README">
+readme</a> file for more information. </dd>
+  <dt><a
+ href="ftp://ftp.informatik.tu-muenchen.de/pub/comp/platforms/next/Tools/screen/backspace/SchoolView.1.0.s.tar.gz">SchoolView</a>
+  </dt>
+  <dd>This is a screen saver for NeXT computers by <a
+ href="mailto:dcl@homer.uu.panix.com">David Lambert</a> based on the
+boids model. C code and related files are available for FTP. See the <a
+ href="ftp://ftp.informatik.tu-muenchen.de/pub/comp/platforms/next/Tools/screen/backspace/SchoolView.1.0.README">
+readme</a> file for details. </dd>
+  <dt><a
+ href="http://www.shef.ac.uk/uni/academic/N-Q/nuocpe/aquarium.html">A-Quarium</a>
+  </dt>
+  <dd>A screen saver for Windows by <a
+ href="mailto:R.Colasanti@Sheffield.ac.uk">Ric Colasanti</a>. A-Quarium
+is a fish tank simulator somewhat related to boids. "...a fish will try
+to swim with a close neighbour if it is of the same species, and will
+try to swim away if it is of a different species. The behaviour of the
+fish tank is an emergent property of all the individual fish
+actions..." </dd>
+  <dt><a
+ href="ftp://ftp.ircam.fr/pub/forumnet/max/68K/chance/Boids.sea.bin">Max
+Boids</a> </dt>
+  <dd>There is an implementation of boids for <a
+ href="http://www.ircam.fr/produits-real/logiciels/max-e.html">MAX</a>,
+an interactive real-time graphic programming environment, from <a
+ href="http://www.ircam.fr/index-e.html">IRCAM</a> and <a
+ href="http://www.opcode.com/products/max/">Opcode</a>. </dd>
+  <dt><a href="http://www.mathcs.sjsu.edu/faculty/rucker/boppers.htm">Boppers</a>
+  </dt>
+  <dd>This Windows 3.1 software originally accompanied the book <em>Artificial
+Life Lab</em> by <a href="http://www.mathcs.sjsu.edu/faculty/rucker/">Rudy
+Rucker</a>, Waite Group Press, 1993, now out of print. It includes an
+implementation of boids and related ALife models. </dd>
+  <dt><a
+ href="http://www.cbl.co.uk/products/otheripas.html#Imagine%20Flock%203D">Imagine
+Flock 3D</a> </dt>
+  <dd>A commercial "<a href="http://www.cbl.co.uk/products/ipas.html">IPAS
+plug-in</a>" for 3D Studio from <a href="http://www.cbl.co.uk/">CBL
+Technology</a>. </dd>
+  <dt><a href="http://www.asahi-net.or.jp/%7Ehq8y-ishm/boidq3.sit.hqx">Stone's
+Mac Boids</a> </dt>
+  <dd>This is an application for a PowerPC Macintosh using QD3D. Other
+versions exist for 68000 Macs with FPU, and as After Dark modules. See
+the main page by <a href="http://www.asahi-net.or.jp/%7Ehq8y-ishm/">Stone</a>
+(Ishihama Yoshiaki) for other alife-related Mac and Java software. </dd>
+  <dt><a href="http://www.geocities.com/SiliconValley/Bay/5922/">MatFa's
+Boids 0.1</a> </dt>
+  <dd><a href="mailto:matfa@acacia.se">Mattias Fagerlund</a> wrote this
+very nice 2D implementation of boids for Windows 95 or WindowsNT and
+provides both executable and source code. A screen shot on the web page
+shows the interactive slider controls and a large flock flying around
+several obstacles. </dd>
+  <dt><a
+ href="http://msdn.microsoft.com/library/devprods/vs6/visualc/vcsample/vcsmpboids.htm">Boids:
+DirectX Flocking Sample</a> </dt>
+  <dd>A boids implementation by Stephen Coy has been included in the <a
+ href="http://www.microsoft.com/directx/">DirectX</a> sample code since
+version 5. Stephen suggests that better source code is included with <a
+ href="http://msdn.microsoft.com/library/psdk/directx/dmsamp_1elf.htm">
+DMBoids</a> the DirectMusic demo based on boids. </dd>
+  <dt><a href="http://users.deltanet.com/%7Epowerg/Apprentice/">Boids
+for <i>Apprentice</i></a> </dt>
+  <dd>A boids demo based on Christopher Kline's implementation (see
+above) is included in <a
+ href="http://users.deltanet.com/%7Epowerg/Bio.html">Eric Powers</a>'s
+OpenGL/OpenInventor tool called <i>Apprentice</i> which is free for
+non-commercial, educational use. </dd>
+  <dt><a href="http://www.kewlschool.com/">Cool School</a> </dt>
+  <dd>By <a
+ href="http://fas.sfu.ca/cs/people/GradStudents/dhooper/personal/">
+David S. Hooper</a>, Cool School simulates a school of fish and
+predators using behavioral modeling. The O(n<small><sup>2</sup></small>)
+cost of the naive boids algorithm is reduced by by subdividing the
+population into a hierarchy of "subschools". He reports running at
+interactive rates with 32 subschools each containing 33 fish on a
+200MHz Pentium-class machine. Cool School was developed as part of the <a
+ href="http://fas.sfu.ca/cs/research/Whales/">Virtual Whale</a> project
+mentioned above. </dd>
+  <dt><a href="http://www.stanford.edu/class/cs326b/PROJECTS/cdq/">Simulation
+of a Flock of Birds</a> </dt>
+  <dd>A 1997 class project at Stanford by Chris Quartetti and Eng-Shien
+Wu, includes a movie file showing flocking and collision avoidance, and
+C++ source code. </dd>
+  <dt><a href="http://www.cs.ucl.ac.uk/staff/A.Steed/boids.html"> Boids
+Demos in VRML, Java3D, and C</a> </dt>
+  <dd><a href="http://www.cs.ucl.ac.uk/staff/A.Steed/">Anthony Steed</a>
+(of University College London) developed the first two implementations
+to compare VRML and Java3D, and the third to test the DIVE multi-user
+VR system. Source is includes for all three. </dd>
+  <dt><a
+ href="http://www.northernlightsprod.com/products/flockthis.html">Flock
+This!</a> </dt>
+  <dd>A commercial plug-in from <a
+ href="http://www.northernlightsprod.com/"> Northern Lights Productions</a>
+for the <a href="http://www.electricimage.com/">Electric Image</a>
+animation system, creates herds and flocks of animated characters. <span
+ class="new"><small>[new]</small></span><!-- 10-30-00 --> </dd>
+  <dt><a href="http://www.unm.edu/%7Ekeithw/gnatCloud.html">Gnat Cloud</a>
+and <a href="http://www.unm.edu/%7Ekeithw/megaFlies.html">Mega Flies</a>
+  </dt>
+  <dd><a href="http://www.unm.edu/%7Ekeithw/">Keith Wiley</a> created
+these Mac applications to simulate extremely large swarm-like
+populations, using modifications of the basic boid algorithms. See also
+his <a href="http://www.unm.edu/%7Ekeithw/flockWithObstacles.html">Flock
+With Obstacles</a> applet. <span class="new"><small>[new]</small></span><!-- 10-08-00 -->
+  </dd>
+  <dt><a
+ href="http://www.planetsourcecode.com/xq/ASP/txtCodeId.3724/lngWId.1/qx/vb/scripts/ShowCode.htm">vbBoid</a>
+  </dt>
+  <dd>Richard Lowe wrote this boids implementation in Visual Basic and
+provided the source code at <a
+ href="http://www.planetsourcecode.com/vb/"> PlanetSourceCode's VB
+repository</a>. (I have not seen it run but:) It apparently provides
+for interactive specification of obstacles. <span class="new"><small>[new]</small></span><!-- 09-25-00 -->
+  </dd>
+  <dt><a href="http://www.abs2net.com/robert/3d_boids/">3D Boids</a> </dt>
+  <dd><a href="http://www.abs2net.com/robert/">Robert Platt</a> wrote a
+boids implementation as a Windows application for a Final Year Project
+in college. The original version used Direct3D and he later rewrote it
+to use <a href="http://www.opengl.org">OpenGL</a>. Binaries and source
+are available for download from his page. <span class="new"><small>[new]</small></span><!-- 09-30-00 -->
+  </dd>
+  <dt><a href="http://www.riversmag.com/articles/birds/index.html">The
+Birds</a> </dt>
+  <dd><a href="mailto:olcay@libtech.com">Olcay Cirit</a> wrote this 2d
+shooter game based on boids. It runs under Windows 95, 98, and NT and
+is available for free download. You can shot at the flocking birds, but
+watch out, because they can shoot back! And since they are a flock,
+they can make coordinated group attacks. <span class="new"><small>[new]</small></span><!-- 10-14-00 -->
+  </dd>
+  <dt><a href="FTP://ftp.frontier.net/users/powers_w/crowdv2.exe">Crowd
+simulation</a> </dt>
+  <dd><a href="http://www.frontier.net/%7Epowers_w/">Bill Powers</a>
+developed these models of "people moving in relation to other people
+and things" as part of a suite of (Windows PC based) demonstrations of
+his <a href="http://www.frontier.net/%7Epowers_w/whatpct.html">Perceptual
+Control Theory</a>. Powers and his colleagues in the <a
+ href="http://www.ed.uiuc.edu/csg/">Control Systems Group</a> seek to
+model and understanding the purposeful behavior of living organisms. <span
+ class="new"><small>[new]</small></span><!-- 10-16-00 --> </dd>
+  <dt><a href="http://members.fortunecity.com/jngreenb/sim.html">Creature
+Behaviour Simulator</a> </dt>
+  <dd><a href="http://members.fortunecity.com/jngreenb/">James Greenbank</a>
+wrote this ecological simulation of a three species system using
+individual-based local rules. It is written as a Java application. This
+page contains links to a paper, the source code and both
+platform-independent and Windows-specific executables. <span
+ class="new"><small>[new]</small></span><!-- 11-04-00 --> </dd>
+  <dt><a href="http://ccl.sesp.northwestern.edu/cm/models/flocking/">CM:
+Flocking Model</a> </dt>
+  <dd>a StarLogoT implementation of flocking from <a
+ href="http://ccl.sesp.northwestern.edu/cm/">Connected Mathematics</a> <small>("Making
+Sense of Complex Phenomena Through Building Object-Based Parallel
+Models.")</small> Includes links to a movie of the simulation and a
+page of <a
+ href="http://ccl.sesp.northwestern.edu/cm/models/flocking/info.html">
+background</a>. <span class="new"><small>[new]</small></span><!-- 11-22-00 -->
+  </dd>
+  <dt><a
+ href="http://www.highend3d.com/files/dl.3d?group=melscripts&amp;file_loc=flock-v1.0-.mel&amp;file_id=328">flock
+v1.0</a> </dt>
+  <dd><a href="mailto:jkundert@unca.edu">John Kundert-Gibbs</a> wrote
+this flocking plug-in for <a
+ href="http://www.aliaswavefront.com/en/WhatWeDo/maya/index.shtml"> Maya</a>
+in its scripting language <small>MEL</small>. It is available at the <small>
+    <a
+ href="http://www.highend3d.com/maya/mel/melscript_display.3d?melscript_group=dynamics">HIGHEND3D</a></small>
+repository. <span class="new"><small>[new]</small></span><!-- 11-15-00 -->
+  </dd>
+  <dt><a href="http://www.geocities.com/pterandon/boids.html">Greg's
+boids</a> </dt>
+  <dd><a href="http://homestead.deja.com/user.gregjohn/aboutme.html">Greg
+Johnson</a> wrote this boids code to use with the <a
+ href="http://www.povray.org/">Persistence of Vision Raytracer</a>, the
+page contains links to the code, a movie, and some diagrams of the
+steering force vectors used in the boids model. <span class="new"><small>[new]</small></span><!-- 12-06-00 -->
+  </dd>
+</dl>
+<hr>
+<p><b>Lexicological note:</b> in addition to common terms like <em>flock</em>,
+<em>herd</em>, and <em>school</em>, English has a rich history of
+specific
+words to describe groups of various animals, sometimes known as <em>collective
+nouns</em> or <em>venereal terms</em>. These words were used more
+frequently
+when hunting wild animals was a major source of food. For an amusing
+discussion of these words see the book <a
+ href="http://media13.dealtime.com/evenbetterbin/nph-det8.cgi?isbn=0140170960">An
+Exaltation of Larks</a> by James Lipton (Viking Penguin, 1993, ISBN
+0140170960). Here are some web pages that provide similar information:
+</p>
+<ul>
+  <li><a href="http://www.kreme.com/writing/w1.html">Venereal Terms</a>
+by <a href="http://www.kreme.com/writing/">Kreme</a> </li>
+  <li><a href="http://www.sonic.net/%7Emelissk/beastly.html#Nouns">Collective
+Nouns</a> in <em>A Beastly Garden Of Wordy Delights</em> by <a
+ href="http://www.sonic.net/%7Emelissk/">Melissa Kaplan</a> </li>
+  <li><a href="http://biobase.dk/Embnetut/Personal/venereal.html">Collective
+Nouns: A (re-)collection.</a> by <a
+ href="http://biobase.dk/Embnetut/Personal/">David Featherston</a> </li>
+  <li><a href="http://www.bcpl.lib.md.us/%7Etross/gnlist.html">Group
+Names</a> and <a href="http://www.bcpl.lib.md.us/%7Etross/gnchat.html">bird
+groups</a> by <a href="http://www.bcpl.lib.md.us/%7Etross/terry.html">Terry
+Ross</a> </li>
+  <li><a href="http://www.users.dircon.co.uk/%7Elizzie/html/collect.htm">Fave
+collective nouns</a> by <a
+ href="http://www.users.dircon.co.uk/%7Elizzie/">Lizzie Bailey</a> </li>
+  <li>See also <a href="http://www.ojohaven.com/collectives/"> The
+Collective Noun Page</a> by <a href="http://www.ojohaven.com/">Ojophoyimbo</a>
+  </li>
+  <li><a href="http://www.rzu2u.com/terms.htm"> Animal Terms For: Baby,
+Male, Female and Group</a> by <a href="http://www.rzu2u.com/">R-Zu-2-U</a>
+    <span class="new"><small>[new]</small></span><!-- 10-27-00 --> </li>
+  <li><a href="http://www.sentex.net/%7Etntcomm/kwfn/numbers.htm">Birds
+in Numbers</a> by <a href="http://www.sentex.net/%7Etntcomm/">Neil
+E. Taylor</a> <span class="new"><small>[new]</small></span><!-- 10-27-00 -->
+  </li>
+  <li><a href="http://www.npwrc.usgs.gov/help/faq/names/names.htm">Animal
+Congregations</a> from the <a href="http://www.npwrc.usgs.gov/">USGS
+NPWRC</a> <span class="new"><small>[new]</small></span><!-- 10-27-00 -->
+  </li>
+  <li><a href="http://www.iland.net/beer/Pages/what.htm"> What do you
+call a.....</a> by <a href="http://www.iland.net/beer/">Kimberly Beer</a>
+    <span class="new"><small>[new]</small></span><!-- 10-27-00 --> </li>
+  <li><a
+ href="http://www.dnr.state.mn.us/young_nat/namegame/namegame.html">The
+Name Game</a> by Janice Welsh <span class="new"><small>[new]</small></span><!-- 10-27-00 -->
+  </li>
+</ul>
+<p>
+</p>
+<hr>
+<p>Send comments to <a href="../index.html">Craig Reynolds</a>
+&lt;<a href="mailto:cwr@red3d.com">cwr@red3d.com</a>&gt;
+<br>
+<!--#exec cgi="/cgi-bin/counter"--> visitors since June 29, 1995
+<br>
+Last update: September 6, 2001 <small><br>
+(fixed the "early motion tests"
+link December 6, 2006)<br>
+(fixed links to Brian J. Mork's work July 30, 2007)</small> <br>
+</p>
+</body>
+</html>

@@ -1,0 +1,14 @@
+% \begin{figure}[t]
+%     \centering
+%     \includegraphics[width=\textwidth]{assets/spacy_model.pdf}
+%     \caption{Overview of the ELBO calculation for SPACY. The model processes spatiotemporal data $\left\{\mathbf{X}_{1:L}^{(1:T), n}\right\}_{n=1}^N$ to infer latent time series $\left\{\mathbf{Z}_{1:D}^{(1:T), n}\right\}_{n=1}^N$, where $D \ll L$. Causal relationships are modeled using a DAG $\mathbf{G}$ sampled from $q_\phi(\mathbf{G})$. Latent time-series are mapped to grid locations via spatial factors $\mathbf{F}$ sampled from $q_\phi(\mathbf{F})$. Arrows in $\mathbf{G}$ are labeled with edge time-lags.}
+%     \label{fig:spacy_model}
+% \end{figure}
+
+\begin{figure*}
+    \centering
+    \includegraphics[width=0.85 \textwidth]{assets/spacy_model.pdf}
+    
+    \caption{Overview of the ELBO calculation for SPACY. The model processes spatiotemporal data $\left\{\mathbf{X}_{1:L}^{(1:T), n}\right\}_{n=1}^N$ to infer latent time series $\left\{\mathbf{Z}_{1:D}^{(1:T), n}\right\}_{n=1}^N$, where $D \ll L$. Causal relationships are modeled using a DAG $\mathbf{G}$ sampled from $q_\phi(\mathbf{G})$. Latent time-series are mapped to grid locations via spatial factors $\mathbf{F}$ sampled from $q_\phi(\mathbf{F})$. Arrows in $\mathbf{G}$ are labeled with edge time-lags.}
+    \label{fig:spacy_model}
+\end{figure*}

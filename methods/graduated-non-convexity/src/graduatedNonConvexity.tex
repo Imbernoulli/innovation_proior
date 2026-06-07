@@ -1,0 +1,87 @@
+%!TEX root = main.tex
+
+
+\subsection{Graduated Non-Convexity (\GNC)}
+% \subsection{Graduated Non-Convexity (GNC)}
+\label{sec:graduatedNonConvexity}
+% Recently developed global solvers based on SDP and SOS relaxations are able to handle the non-convexity arising from the constraint $\vxx \in \calX$. However, they rely on least squares formulations ($w_i=1$ for all measurements) and assume convexity in the objective function. 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% \subsection{The General Graduated Non-Convexity Algorithm}
+Graduated non-convexity (\GNC) is a popular approach for the optimization of a generic non-convex cost function $\rho(\cdot)$ and has been used in several endeavors, including vision~\cite{Blake1987book-visualReconstruction} and machine learning~\cite{Rose1998IEEE-deterministicAnnealing} (see~\cite{Mobahi2015WCVPR-continuationConvexEnvelope} for more applications).
+% \LC{cite other applications}. 
+ The basic idea of \GNC is to introduce 
+ % a control parameter $\mu$ to govern the non-convexity (shape) of a cost function $\rho(\cdot)$. 
+ % In particular, \GNC introduces 
+ a surrogate cost $\rho_{\mu}(\cdot)$, governed by a control parameter $\mu$, such that (i) for a certain value of $\mu$, the function $\rho_{\mu}(\cdot)$ is convex, 
+ %and can be solved globally, 
+ and (ii) in the limit (typically for $\mu$ going to 1 or infinity) one recovers the original (non-convex) $\rho(\cdot)$. 
+ Then \GNC computes a solution to the non-convex problem by starting from its convex surrogate and gradually changing $\mu$ (\ie gradually increasing the amount of non-convexity) till the original non-convex function is recovered. The solution obtained at each iteration is used as the initial guess for the subsequent iteration. 
+ % \HY{Is this true? while no initial guess is needed in the first iteration since \GNC starts with a convex cost which can be optimized globally from any initial guess}.
+%  and by using the solution at the current iteration as initial guess for the following iteration. 
+
+% \marginpar{figure out how to put barcsq in this or why it should not be there}
+ Let us shed some light on \GNC with two examples.
+ \setcounter{theorem}{0}
+  \begin{example}[Geman McClure (GM) and \GNC] 
+  \label{example:GM}
+  The Geman-McClure function is a popular (non-convex) robust cost. 
+  The following equation shows the GM function (left) and the surrogate function  including 
+  a control parameter $\mu$ (right):
+  \bea \label{eq:formulationGNCGM}
+\rho(r) \doteq \frac{\barcsq r^2}{ \barcsq +r^2}
+  \;\; \Longrightarrow \;\;
+ \rho_{\mu}(r) = \frac{\mu \barcsq r^2}{ \mu \barcsq + r^2},
+\eea
+where $\barc$ is a given parameter that 
+% where the parameter $\barc$
+ determines the shape of the Geman McClure function $\rho(r)$. % and is assumed fixed.
+% where on the right-hand-side we introduced a control parameter $\mu$ such that
+% \bea \label{eq:formulationGNCGM}
+% \rho_{\mu}(r) = \frac{\mu r^2}{ \mu + r^2}.
+% \eea
+
+The surrogate function $\rho_{\mu}(r)$ (shown in Fig.~\ref{fig:GNCplots}(a)) is such that: (i)  $\rho_{\mu}(r)$ becomes convex for large $\mu$ (in the limit of $\mu \rightarrow \infty$, $\rho_{\mu}(r)$ becomes quadratic), and (ii) $\rho_{\mu}(r)$ recovers $\rho(r)$  when $\mu = 1$. 
+ % how fast the GM function transitions from quadratic to sub-quadratic.
+\GNC minimizes the function $\rho(r)$ by repeatedly minimizing the function $\rho_{\mu}(r)$ for decreasing values of $\mu$. %An illustration of $\rho_{\mu}(r)$ for different $\mu$ is given in Fig.~\ref{fig:GNCplots}.
+\end{example}
+
+
+% \marginpar{unclear why convex for $\mu=0$}
+\begin{example}[Truncated Least Squares (TLS) and \GNC] 
+\label{example:TLS}
+The truncated least squares function is defined as:
+\bea
+\label{eq:formulationTLS}
+\hspace{-2mm} \rho(r) = 
+\begin{cases}
+\scriptstyle{ r^2 } & {\footnotesize\text{ if }}  \scriptstyle{ r^2 \in \left[0, \barcsq \right] } \\
+ \scriptstyle{ \barcsq } & {\footnotesize\text{ if }}  \scriptstyle{ r^2 \in \left[\barcsq, +\infty \right) }
+\end{cases},
+\eea
+where $\barc$ is a given truncation threshold. 
+The \GNC surrogate function with control parameter $\mu$ is:
+\bea
+\hspace{-0mm} \rho_\mu(r) = \begin{cases}
+\scriptstyle{ r^2 } & {\footnotesize\text{ if }} \scriptstyle{ r^2 \in \left[0, \frac{\mu }{\mu + 1}\barcsq \right] } \\
+  \scriptstyle{ 2\barc | r | \sqrt{\mu(\mu+1)} - \mu (\barcsq + r^2)  } & {\footnotesize\text{ if }} \scriptstyle{ r^2 \in \left[\frac{\mu }{\mu + 1} \barcsq, \frac{\mu+1}{\mu}\barcsq \right] }\\
+ \scriptstyle{ \barcsq } & {\footnotesize\text{ if }} \scriptstyle{ r^2 \in \left[\frac{\mu+1}{\mu}\barcsq, +\infty \right) }
+\end{cases}.
+\eea
+By inspection, one can verify $\rho_\mu(r)$ is convex for $\mu$ approaching zero ($\rho''_{\mu}(r) = - 2\mu \rightarrow 0$) and retrieves $\rho(r)$  in~\eqref{eq:formulationTLS} for $\mu\rightarrow+\infty$.
+%$\mu$ going to infinity. 
+An illustration of $\rho_\mu(r)$ %(for different $\mu$) 
+is given in Fig.~\ref{fig:GNCplots}(b).
+\end{example}
+  % Therefore \GNC starts by solving a convex problem
+%  we can repeat the primal-dual approach in Proposition~\ref{prop:primalDualOutlierProcess} to sequentially solve a series of $\rho_{\mu}(\cdot)$, starting from a convex one and gradually changing the control parameter $\mu$ to increase non-convexity and gain robustness against outliers. 
+%  Since the first step involves global optimization of a convex cost function, we can obtain the global minimum without a good initialization. At each of the following iterations, we gradually increase the control parameter and use the updated weights from the last iteration as an initial guess for the current iteration, such that we can gradually trace the global minimum of each cost function $\rho_{\mu}(\cdot)$. \red{The pseudo-code is shown in...}
+%  In the next section, we show how graduated non-convexity allows circumventing the non-convexity of Problem~\eqref{eq:optiOutlierProcess} and computing robust solutions without relying on an initial guess.
+% The idea 
+
+
+%%%%%%%%%%%%%%%%%%%%%%%
+\input{fig-GNCplots}
+%%%%%%%%%%%%%%%%%%%%%%%
+
+

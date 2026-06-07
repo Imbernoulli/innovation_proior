@@ -1,0 +1,64 @@
+\tikzset{mark size=4}
+
+\pgfplotsset{
+compat=1.11,
+legend image code/.code={
+\draw[mark repeat=2,mark phase=2]
+plot coordinates {
+(0cm,0cm)
+(0.15cm,0cm)        %% default is (0.3cm,0cm)
+(0.3cm,0cm)         %% default is (0.6cm,0cm)
+};%
+}
+}
+
+\definecolor{c1}{RGB}{213,0,0}
+\definecolor{c2}{RGB}{255,23,68}
+\definecolor{c3}{RGB}{255,82,82}
+\definecolor{c4}{RGB}{255,138,128}
+\definecolor{c5}{RGB}{255,200,190}
+
+\def\plotwidth{1.1\textwidth}
+\def\plotheight{0.85\textwidth}%.75
+
+\begin{tikzpicture}
+\def \ppi{asterisk}
+\def \flickr{x}
+\def \reddit{+}
+\def \yelp{Mercedes star}
+\def \amazon{o}
+\begin{axis}[grid,xmin=0,xmax=2500,ymin=0.4,ymax=1,
+    ylabel={Test F1-micro},
+    xlabel={Number of walkers},
+ %   xlabel shift=-15 pt,
+    width=\plotwidth,
+    height=\plotheight,
+    tick label style={font=\footnotesize},
+    y label style={at={(axis description cs:-0.17,.5)},anchor=south},
+    scatter/classes={%
+    ppi={mark=\ppi,red},
+    flickr={mark=\flickr,black!70,thick},
+    reddit={mark=\reddit,black!70,thick},
+    yelp={mark=\yelp,black!70,thick}},
+    legend style={font=\small},
+    legend cell align=left,
+    legend columns=3,
+    legend style={at={(0.45,1.5)},anchor=north,/tikz/column 4/.style={column sep=5pt},draw=none,fill=none,/tikz/every even column/.append style={column sep=0.07cm}}
+]
+
+\addplot[thick,color=c1,mark=\ppi] 
+    coordinates{(250,0.734)(750,0.957)(1250,0.972)(1750,0.973)(2250,0.975)};
+\addplot[thick,color=c2,mark=\flickr]
+    coordinates{(250,0.492)(750,0.504)(1250,0.502)(1750,0.500)(2250,0.505)};
+\addplot[thick,color=c3,mark=\reddit]
+    coordinates{(250,0.952)(750,0.958)(1250,0.960)(1750,0.960)(2250,0.962)};
+\addplot[thick,color=c4,mark=\yelp]
+    coordinates{(250,0.641)(750,0.638)(1250,0.641)(1750,0.641)(2250,0.640)};
+\addplot[thick,color=c5,mark=\amazon,mark size=3pt]
+    coordinates{(250,0.803)(750,0.800)(1250,0.812)(1750,0.814)(2250,0.814)};
+    
+\legend{PPI,Flickr,Reddit,Yelp,Amazon}
+\end{axis}
+
+
+\end{tikzpicture}

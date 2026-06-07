@@ -1,0 +1,110 @@
+\section{Introduction}
+% \vspace{-1pt}
+
+Due to the non-convexity of the loss landscape, neural networks trained in different ways can perform very differently on the test set, even if they achieve the same training loss or accuracy~\citep{zhang2017understanding,keskar2017on,liu2022pretraininglossbetterdownstream,saunshi2024inductive}.
+To mathematically understand the generalization of neural networks, especially for over-parameterized models that admit many global minimizers, a key step is to understand the {\it implicit bias} of optimization methods~\citep{neyshabur2014search, soudry2018implicit}.
+That is, beyond just minimizing the training loss, {\it what kinds of solutions are different optimizers implicitly biased towards?}
+
+Many theoretical works on implicit bias focus on (full-batch) gradient descent or its continuous variant, gradient flow. This includes the works on the implicit bias towards max-margin classifiers~\citep{soudry2018implicit,nacson2019lexicographic,lyu2020gradient,ji2020directional}, implicit bias towards min-norm solutions~\citep{lyu2024dichotomy}, and equivalence to kernel methods~\citep{jacot2018neural,chizat2019lazy}.
+%\kaifeng{add more reference from \url{https://arxiv.org/pdf/2311.18817}}.
+However, these characterizations do not highlight the specific role of stochasticity in SGD, although it is more widely used in practice than gradient flow or full-batch gradient descent. 
+
+
+Another line of works~\citep{blanc2020implicit,damian2021label,li2021happens} demonstrate that the gradient noise in SGD induces an additional form of implicit bias that reduces the {\it sharpness} of the solutions, a generalization measure that has been long observed to correlate with generalization~\citep{hochreiter1997flat,keskar2017on,jiang2020fantastic,foret2021sharpnessaware}.
+More specifically, these works focus on the dynamics of SGD when the training loss is already small and the iterates are close to a manifold of minimizers. \citet{li2021happens} introduced a general framework to analyze the dynamics of SGD near the minimizer manifold, showing that SGD will not stop at arbitrary global minimizers, but drift and diffuse around the manifold, driving the iterates towards flatter regions of the loss landscape.
+
+
+
+
+
+
+This behavior is mathematically characterized by a Stochastic Differential Equation (SDE), termed as {\it slow SDE}~\citep{gu2023and}. This SDE accurately captures the projected dynamics of SGD near the minimizer manifold over a timescale of $\mathcal{O}(\eta^{-2})$, and reveals that SGD behaves like a (semi-)gradient method on the manifold, taking semi-gradients to minimize a specific sharpness measure determined by the Hessian and gradient noise. See \Cref{sec:prelim} for more details.
+
+
+%, which precisely tracks the dynamics of SGD near the minimizer manifold for $\O(\eta^{-2})$ time and reveals that SGD behaves like a gradient flow that takes semi-gradients on a specific form of sharpness.
+
+
+%semi-gradient descent method for minimizing a specific form of sharpness.
+%\kaifeng{need to mention the semi-gradient descent interpretation a little bit}
+
+However, SGD is rarely used directly in modern deep learning.
+Instead, Adaptive Gradient Methods (AGMs) have become the de facto standard for training neural networks. Among them, Adam~\citep{kingma2014adam} innovatively combines the moving average of the first and second moments of gradients to determine an adaptive learning rate for each parameter. Across a wide range of domains, Adam provides faster convergence and better stability than SGD~\citep{ashish2017attention,dosovitskiy2020image,schulman2017proximal,zhang2024transformersneedadamhessian}.
+
+Despite the popularity of Adam, little is known about its implicit bias, especially how it is different from SGD in terms of reducing sharpness.
+In the literature, \citet{ma2023a} made attempts to generalize the slow SDE framework from SGD to Adam, but their analysis is specific to a two-dimensional loss function and 
+involves a quasistatic approximation that lacks full mathematical rigor.
+Other works, such as~\citet{liu2022pretraininglossbetterdownstream} and \citet{gu2024a}, leverage insights from the slow SDE developed for SGD to interpret empirical observations with Adam, but do not provide a theoretical analysis of Adam's own dynamics. A rigorous analysis of Adam's implicit bias in terms of sharpness remains an open problem.
+
+%This implicit bias of SGD towards flatter minimizers is crucial in understanding the generalization behavior of SGD, as the notion of {\it sharpness} has been long observed to be a key generalization measure~\citep{hochreiter1997flat,keskar2017on,jiang2020fantastic}. 
+%Designing optimization methods that 
+%Counterfactually minimizing certain sharpness objectives has been shown to improve test performance~\citep{foret2021sharpnessaware}.
+\paragraph{Our Contributions.} In this paper, we show that Adam biases the iteration towards flatter regions in a way that differs from SGD and implicitly reduces a unique form of sharpness. We formally prove separations between SGD and Adam under concrete theoretical settings:
+% \kaifeng{under construction}
+\begin{enumerate}
+    \item In~\Cref{sec:theory}, we generalize the slow SDE for SGD to Adam. Our slow SDE approximates the dynamics of Adam near the minimizer manifold, and reveals that Adam behaves like an adaptive gradient method that minimizes a unique form of sharpness by taking semi-gradients on the manifold.
+    %a novel manifold projection, differing gradient flow, which adaptively changes over time. And this projection captures the difference in Adam's trajectory from SGD. Also, as a by-product, we provide a proof of high probability convergence for the whole AGM framework in section \ref{subsec:difficulty}, which directly bounds the convergence speed of $\cL(\vtheta_k)-\cL^*$ (instead of $\frac{1}{k}\sum_{i=1}^{k}\cL(\vtheta_i)-\cL^*$ or $\E\left[\cL(\vtheta_k)-\cL^*\right]$).
+    \item In \Cref{sec:diag}, we formally prove the generalization benefit of Adam when training overparameterized models with label noise. In this setting, we show that the implicit regularizer of Adam becomes $\tr(\Diag(\mH)^{1/2})$, where $\mH$ denotes the Hessian matrix. Compared to the implicit regularizer $\tr(\mH)$ of SGD in the same setting, this unique form of sharpness reduction can yield sparser solutions when the model parameterization aligns with the underlying problem structure. 
+    We empirically verify this theoretical prediction in the setting of solving sparse linear regression with diagonal linear networks~\citep{woodworth2020kernel}, 
+    where Adam recovers the sparse ground truth with less data. 
+    In \Cref{sec:matrix}, we further present a failure case of Adam's generalization: Adam does not outperform SGD in deep matrix factorization, likely because minimizing $\tr(\Diag(\mH)^{1/2})$ does not favor low-rank solutions.
+    \item On the technical side, our analysis framework extends beyond Adam to a broad class of adaptive gradient methods (AGMs), including Adam, RMSProp, Adam-mini, Adalayer, and Shampoo.
+    %~\citep{gupta2018shampoo,morwani2024new}
+    We develop several techniques that may be of independent interest, including a manifold projection operator tailored for AGMs, and a high-probability convergence analysis of AGMs under Polyak-Łojasiewicz conditions that directly bounds $\cL(\vtheta_k)-\cL^*$.
+    %\item 
+    %a general classs of \textit{adaptive gradient methods} (AGMs) that integrates heavy ball momentum and second order moment using functions that have specific properties. This framework includes Adam together with other common methods such as RMSProp, Adam-mini and Adalayer. The slow SDE indicates that the optimizers under the AGM framework will implicitly minimize some distinct form of sharpness.
+    %\item In section \ref{sec:real}, we conduct experiments on a variety of real-world settings such as CIFAR-\{10, 100\}, ImageNet, and a variant of the Dyck language \citep{liu2022pretraininglossbetterdownstream}. We argue empirically that Adam implicitly leads to sharpness reduction but towards a different target than SGD.
+\end{enumerate}
+
+
+
+%\kaifeng{moved much of the old intro to the related works}
+
+%besides that the training loss is small, {\it what mathematical properties characterize the solutions found by a given optimization method?}
+
+%This phenomenon has been long observed for over-parameterized models~\citep{zhang2017understanding,keskar2017on} and has also more recently been observed for large language models~\citep{liu2022pretraininglossbetterdownstream,saunshi2024inductive}. A large body of work investigated 
+%focused on the {\it implicit bias} of optimization methods~\citep{neyshabur2014search, soudry2018implicit}, that is, what mathematical properties a specific optimization method will lead to, beside just making the training loss small.
+%with different optimization methods, or same optimization method with different hyperparameters,
+
+%The \textit{implicit bias} \citep{neyshabur2014search, soudry2018implicit} of an optimization algorithm is crucial in understanding the behaviour and robustness of that algorithm. Specifically, under over-parameterized settings where there exist infinitely many minimizers to a loss function, the implicit bias of an optimizer will head towards a specific optimum with certain structures, which in turn shapes the generalizability and robustness of the trained model. 
+%is able to track the dynamics of SGD near the minimizer manifold for $\O(\eta^{-2})$ time.
+%peels off the convergence dynamics of SGD and tracks the dynamics during the whole manifold phase for $\O(\eta^{-2})$ time.
+%based on Stochastic Differential Equations (SDEs) 
+%while minimizing a specific form of sharpness determined by Hessian and gradient covariance matrices.
+%of SGD in the lens of {\it sharpness} and demonstrated a unique form of implicit bias induced by the gradient noise in SGD. 
+%Here, the {\it sharpness} of a solution is a key generalization measure that has been long observed to correlate with generalization~\citep{hochreiter1997flat,keskar2017on,jiang2020fantastic}, and counterfactually minimizing some form of sharpness can improve test performance~\citep{foret2021sharpnessaware}.
+%Initiated by~\citet{blanc2020implicit}, 
+%, and showed how the gradient noise in SGD induces an additional form of implicit bias, which drives the iterates towards flatter regions of the loss landscape.
+%For SGD, a line of theoretical works~\citep{blanc2020implicit,damian2021label,li2021happens} characterize how gradient noise in SGD leads to a reduction in sharpness. More specifically, these works focus on the behavior of SGD when the training loss is already small and the iterates are close to a manifold of minimizers. Notably, \citet{li2021happens} provided a general framework to analyze the dynamics of SGD near the minimizer manifold, showing that SGD will not stop at arbitrary global minimizers, but drift and diffuse around the manifold while minimizing a specific form of sharpness determined by Hessian and gradient covariance matrices.
+
+
+
+
+
+
+
+\begin{comment}
+When SGD converges to the minimizer manifold, \citet{blanc2020implicit} has theoretically shown that SGD with label noise decreases the trace of Hessian $\tr\left[\nabla^2 \cL\right]$ locally within $\O(\eta^{-1.6})$ steps and \citet{li2021happens} later generalized the analysis to show that this minimization of $\tr\left[\nabla^2 \cL\right]$ lasts up to $\O(\eta^{-2})$ time.
+
+
+
+usually serves as a conceptual basis for reasoning about the training dynamics of real-world optimizers.
+
+%In contrast, the implicit bias of \textit{Adam} \citep{kingma2014adam}— an optimizer that has been applied more widely - is left relatively unexplored.
+
+
+But on the theoretical side, the current literature lacks a rigorous understanding of the implicit bias of Adam, albeit it's more widely used than SGD in practice. \citet{qian2019implicit} and \citet{xie2024implicit} characterized the implicit biases of AdaGrad and AdamW, respectively, but their methods cannot be generalized to Adam. \citet{wang2021implicit} proved the implicit regularizer of Adam as identical to that of SGD, but their result requires that the gradient entries be lower than $\epsilon$, which is typically not feasible in practice. \citet{zhang2024implicitbiasadamseparable}'s analysis is also limited in its use, since it studies Adam's implicit bias on linear separable data, a condition generally not met by real-world applications.
+
+Another line of work that also has limitations is \textit{implicit gradient regularization (IGR)}. For full-batch GD, this method tries to find higher-order terms that can be added to the gradient flow ODE to approximate discrete GD iterations more accurately \citep{barrett2020implicit}; This idea was later generalized to Adam's analysis by \citet{cattaneo2024implicitbiasadam} and further to AdamW by \citet{cattaneo2025memoryoptimizationalgorithmsimplicitly}. \citet{cattaneo2024implicitbiasadam} claimed that Adam exhibits an anti-regularization of sharpness when $\beta_1 < \beta_2$; however, this method can only be leveraged for an $\tilde{\O}(\eta^{-1})$-time approximation of Adam iteration, and in fact, our $\O(\eta^{-2})$-time application shows instead that Adam does regularize some form of sharpness even if $\beta_1 < \beta_2$, contradicting \citet{cattaneo2024implicitbiasadam}'s conclusion.  
+
+To fill in the gaps and provide a theoretical analysis that tracks iterations of Adam for a sufficiently long time, we use the same approximation tool as in the aforementioned \citet{li2021happens} and \citet{gu2023and}, namely \textit{slow SDE} (termed by \citet{gu2023and}). Specifically, optimizers such as SGD and Adam takes $\tilde{\O}(\eta^{-1})$ steps to converge onto the manifold, and then moves along the manifold for $\O(\eta^{-2})$ steps, during which the optimizer will be dominated by a slower implicit regularization dynamics, different from the mixing dynamics during the convergence phase. Conventional SDE papers such as \citet{li2018stochasticmodifiedequationsdynamics}, \citet{li2021validitymodelingsgdstochastic},
+\citet{cattaneo2024implicitbiasadam} and \citet{malladi2024sdesscalingrulesadaptive} approximate the iteration itself during the convergence phase, however they struggle to bound the approximation error if extended to the manifold phase. Instead, a slow SDE peels the convergence dynamics off by only approximating the iteration's projection on manifold. In this way, a slow SDE can track the optimizer's iteration during the whole manifold phase for $\O(\eta^{-2})$ time. This idea will be made explicit in section \ref{sec:prelim}.
+
+\subsection{Our Contributions}
+In this paper, we provide the first theoretical understanding of the implicit regularization effect of Adam on a time scale up to $\O(\eta^{-2})$. 
+\begin{enumerate}
+    \item In section \ref{sec:theory}, we present the slow SDE for a whole framework of \textit{adaptive gradient methods} (AGMs) that integrates heavy ball momentum and second order moment using functions that have specific properties. This framework includes Adam together with other common methods such as RMSProp, Adam-mini and Adalayer. The slow SDE indicates that the optimizers under the AGM framework will implicitly minimize some distinct form of sharpness.
+    \item As a by-product, we provide a proof of high probability convergence for the whole AGM framework in section \ref{subsec:difficulty}. To the best of our knowledge, this is the first proof that directly bounds the convergence speed of $\cL(\vtheta_k)-\cL^*$ (instead of $\frac{1}{k}\sum_{i=1}^{k}\cL(\vtheta_i)-\cL^*$ or $\E\left[\cL(\vtheta_k)-\cL^*\right]$) of Adam with high probability.
+    \item In section \ref{sec:diag}, we prove theoretically the generalization benefit of Adam under label noise settings. We show that under label noise setting, the implicit regularizer of Adam will reduce to $\tr(\Diag(\mH)^{\frac{1}{2}})$ where $\mH$ is the Hessian matrix. Compared to the $\tr(\mH)$ of SGD, this new kind of sharpness reduction usually aligns better with sparsity regularization, thus utilizing data more efficiently when the model is required to fit a sparse ground truth. We verify this anticipation experimentally through the diagonal net setting \citep{woodworth2020kernel}.
+    \item In section \ref{sec:real}, we conduct experiments on a variety of real-world settings such as CIFAR-\{10, 100\}, ImageNet, and a variant of the Dyck language \citep{liu2022pretraininglossbetterdownstream}. We argue empirically that Adam implicitly leads to sharpness reduction but towards a different target than SGD.
+\end{enumerate}
+\end{comment}

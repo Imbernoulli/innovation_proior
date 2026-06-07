@@ -1,0 +1,15 @@
+\begin{table}
+    \setlength{\tabcolsep}{5pt}
+    \small
+    \centering
+    \begin{tabular}{lcccccccc}
+      \toprule
+        \textbf{Wikitext2 PPL}$\downarrow$ & Mixtral-8x7B  & Mistral-7B \\  \midrule
+      FP16 & 5.94 & 4.14 \\ \midrule
+      INT4-g128 & 6.05 & 4.30	 \\
+       INT3-g128 & 6.52 & 4.83  \\
+      \bottomrule
+    \end{tabular}
+    \caption{\methodshort quantization results on Mistral-7B-Instruct-v0.2\cite{jiang2023mistral} and Mixtral-8x7B-Instruct-v0.1 model ~\cite{jiang2024mixtral}. The PPL result on wikitext shows that \methodshort can achieve superior quantization performance on different model architectures including LLMs with GQA and Mixture-of-Experts (MoE) models.}
+    \label{tab:opt_ppl}
+\end{table}

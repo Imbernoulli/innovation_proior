@@ -1,0 +1,18 @@
+\begin{table*}[!ht]
+\centering
+\small
+\begin{tabular}{l|cccc}
+   & baseline        & Fast AA &   AA    &  RA \\
+%  Model & Baseline        & Fast &   AutoAugment    &  RandAugment \\
+%        &                & AutoAugment & & \\
+  \hline 
+  ResNet-50 & 76.3 / 93.1 & \textbf{77.6} / 93.7 & \textbf{77.6} / \textbf{93.8} & \textbf{77.6} / \textbf{93.8}  \\ 
+  EfficientNet-B5 & 83.2 / 96.7 & - & 83.3 / 96.7& \textbf{83.9 / 96.8}\\ 
+  EfficientNet-B7 & 84.0 / 96.9 & - & 84.4 / 97.1 & \textbf{85.0 / 97.2}\\ 
+  \hline
+\end{tabular}
+\vspace{0.2cm}
+\caption{\textbf{ImageNet results.} Top-1 and Top-5 accuracies (\%) on ImageNet. Baseline and AutoAugment (AA) results on ResNet-50 are from ~\cite{cubuk2018autoaugment}.
+Fast AutoAugment (Fast AA) results are from ~\cite{lim2019fast}. EfficientNet results with and without AutoAugment are from \cite{tan2019efficientnet}. Highest accuracy for each model is presented in bold. Note that Population Based Augmentation (PBA)~\cite{ho2019population} has not been implemented on ImageNet.}
+\label{tab:imagenet_results}  
+\end{table*}

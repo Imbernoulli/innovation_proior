@@ -1,0 +1,58 @@
+%!TEX root = main.tex
+
+% \renewcommand{\mpwthree}{6cm}
+% \renewcommand{\myhspace}{\hspace{-3mm}}
+\begin{figure*}[h]
+	\begin{center}
+	\vspace{-3mm}
+	\begin{minipage}{\textwidth}
+	\begin{tabular}{ccc}%
+		%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		\hspace{-5mm}
+			\begin{minipage}{\mpwthree}%
+			\centering%
+			\includegraphics[width=\columnwidth]{Shape_R_err_FG3DCar.pdf} \\
+			\end{minipage}
+		& \myhspace
+			\begin{minipage}{\mpwthree}%
+			\centering%
+			\includegraphics[width=\columnwidth]{Shape_t_err_FG3DCar.pdf} \\
+			\end{minipage}
+		& \hspace{-5mm}
+			\begin{minipage}{\mpwthree}%
+			\centering%
+			\includegraphics[width=\columnwidth]{Shape_n_iter_FG3DCar.pdf} \\
+			\end{minipage} \\ 
+
+		%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		\hspace{-4mm}
+			\begin{minipage}{\mpwthree}%
+			\centering%
+			\includegraphics[width=\columnwidth]{105_70_GNC-GM_Honda_Odyssey_2008_05.pdf} \\
+			\end{minipage}
+		& \myhspace
+			\begin{minipage}{\mpwthree}%
+			\centering%
+			\includegraphics[width=\columnwidth]{105_70_RANSAC_Honda_Odyssey_2008_05.pdf} \\
+			\end{minipage}
+		& \hspace{-4.5mm}
+			\begin{minipage}{\mpwthree}%
+			\centering%
+			\includegraphics[width=\columnwidth]{105_70_Zhou_Honda_Odyssey_2008_05.pdf} \\
+			\end{minipage} \\ 
+
+		\end{tabular}
+	\end{minipage}
+	\vspace{-3mm} 
+	\caption{
+{\bf Shape Alignment.} Performance of \GNCGM and \GNCTLS compared with state-of-the-art techniques on the \FGCar dataset~\cite{Lin14eccv-modelFitting} for increasing outliers.  
+Quantitative results: (a) rotation error; (b) translation error; (c) number of iterations. 
+Qualitative results with 70\% outliers: (d) successful pose estimation by \GNCGM; 
+(e) failed pose estimation by \ransac; (f) failed pose estimation by Zhou's method~\cite{Zhou17pami-shapeEstimationConvex}. 
+Yellow thick line: 3D skeleton of the car model; circle: 3D points on the car model; square: detected 2D features on the image; green: inlier correspondences; red: outlier correspondences. %(Best viewed digitally.) 
+	% Performance of \GNCGM and \GNCTLS compared with state-of-the-art techniques on image-based object pose estimation with the  under increasing outlier rates. 
+	% (a) Quantitative results. Left: rotation estimation error; Middle: translation estimation error; Right: number of iterations until convergence. (b) Qualitative results with 70\% outlier ratio. Left: 
+	\label{fig:shapeAlignment}}
+	\vspace{-9mm} 
+	\end{center}
+\end{figure*}

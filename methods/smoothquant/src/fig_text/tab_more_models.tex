@@ -1,0 +1,34 @@
+\begin{table}
+\setlength{\tabcolsep}{8pt}
+\small
+\centering
+\caption{SmoothQuant can enable lossless W8A8 quantization for Llama-2~\cite{touvron2023llama2}, Falcon~\cite{almazrouei2023falcon}, Mistral~\cite{jiang2023mistral}, and Mixtral~\cite{jiang2024mixtral} models. Results are perplexities on the WikiText-2 dataset with a sequence length of 2048. We used per-token activation quantization and per-channel weight quantization for SmoothQuant. 
+}
+\label{tab:more_models}
+    \begin{tabular}{llcc}
+        \toprule
+        Model        & Method    & PPL   & $\alpha$ \\
+        \midrule
+        \multirow{2}{*}{Llama-2-7B}   & FP16      & 5.474 &       \\
+                                       & W8A8 SQ   & 5.515 & 0.85  \\
+        \midrule
+        \multirow{2}{*}{Llama-2-13B}  & FP16      & 4.950 &       \\
+                                       & W8A8 SQ   & 4.929 & 0.85  \\
+        \midrule
+        \multirow{2}{*}{Llama-2-70B}  & FP16      & 3.320 &       \\
+                                       & W8A8 SQ   & 3.359 & 0.9   \\
+        \midrule
+        \multirow{2}{*}{Falcon-7B}    & FP16      & 6.590 &       \\
+                                       & W8A8 SQ   & 6.629 & 0.6   \\
+        \midrule
+        \multirow{2}{*}{Falcon-40B}   & FP16      & 5.228 &       \\
+                                       & W8A8 SQ   & 5.255 & 0.7   \\
+        \midrule
+        \multirow{2}{*}{Mistral-7B}   & FP16      & 5.253 &       \\
+                                       & W8A8 SQ   & 5.277 & 0.8   \\
+        \midrule
+        \multirow{2}{*}{Mixtral-8x7B} & FP16      & 3.842 &       \\
+                                       & W8A8 SQ   & 3.893 & 0.8   \\
+        \bottomrule
+    \end{tabular}
+\end{table}

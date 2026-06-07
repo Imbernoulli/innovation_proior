@@ -1,0 +1,112 @@
+\section{Notations}\label{sec:appendix:notations}
+In Table~\ref{tab:notations}, we describe the notations used in this paper.
+
+
+\begin{table*}[!ht]
+    \setlength{\tabcolsep}{2pt} % Default value: 6pt
+    \renewcommand{\arraystretch}{0} % Default value: 1
+    \fontsize{8pt}{8pt}\selectfont
+    \caption{\small Notations and their explanations}\label{tab:notations}
+    \begin{center}
+    \centering
+    \begin{tabular}{p{0.15\linewidth}p{0.0\linewidth}p{0.80\linewidth}}
+    \toprule
+    \textbf{Notations} && \textbf{Explanation} \\
+    \midrule
+     $T$ & & number of tokens in a microbatch \\\midrule
+     
+     $d$ & & model embedding dimension (hidden size)  \\\midrule
+
+     $n$ & & each expert's intermediate dimension \\\midrule
+
+     $E$ &&  total number of experts 
+     \\ \midrule
+  
+    $K$ && number of activated experts \\ \midrule
+
+    $\rho$ && $\rho = K/E$ represents MoE activation ratio \\ \midrule
+
+     $\bar{T}_e$ & & $\bar{T}_e = \mathbb{E}_{e\in[E]} [T_e] =  T \rho$ represents the expected number of received tokens in each microbatch by expert $e$ \\\midrule
+
+    $G$ && $G = d/n$ represents the MoE expert granularity. Greater $G$ means a MoE is more fine-grained \\ \midrule
+
+    $\mathbf{M}, \mathbf{N}, \mathbf{K}$ && Dimensions for GEMM in CUTLASS. We define $A \in \mathbb{R}^{\mathbf{M} \times \mathbf{K}}$, $B \in \mathbb{R}^{\mathbf{K} \times \mathbf{N}}$, and $C \in \mathbb{R}^{\mathbf{M} \times \mathbf{N}}$ for $A B = C$  \\ \midrule
+
+    $\tileM$, $\tileN$, $\tileK$ && tile size of $\mathbf{M}$, $\mathbf{N}$, $\mathbf{K}$ dimension for a single GEMM tile \\ \midrule
+
+    $R_e$  &&  tile quantization residue $R_e := T_e \bmod \tileM$ \\ \midrule
+
+    % $c_e$  && $c_e = \alpha \left(\lceil T_e/\tileM\rceil \tileM - T_e\right) / T_e$. The fraction of wasted FLOPs due to tile quantization for expert $e$ where $\alpha$ is a constant. \\ \midrule
+
+    % $\mathbb{J}_g(\mathbf{v})$ && Jacobian of $g$ evaluated at point $\mathbf{v}$  \\ \midrule
+
+    $X$ &&  $X \in \mathbb{R}^{T \times d}$, input token embeddings for an MoE layer \\ \midrule
+
+  $\W{1}$ &&  $\W{1} \in \mathbb{R}^{E \times d\times 2n}$,  weight of up projection \\ \midrule
+  
+  $\W{2}$ &&  $\W{2} \in \mathbb{R}^{E \times n\times d}$,   weight of down projection \\ \midrule
+  
+  $\pi$ &&  $\pi \in \{0, 1\}^{T \times E}$, a binary-valued matrix where $\pi_{t, e}$ represents if token $t$ is routed to expert $e$   \\ \midrule
+  
+  $S$ &&  $S \in \mathbb{R}^{T \times E}$,  router scores. In practice, we only materialize the sparsified $S$ instead of the full $S$  \\ \midrule
+  
+  $H$ &&   $H \in \mathbb{R}^{TK\times 2n}$, output of up projection\\ \midrule
+  
+  $A$ &&   $A \in \mathbb{R}^{TK\times n}$,  output of SwiGLU\\ \midrule
+  
+  $Y$ &&   $Y \in \mathbb{R}^{TK\times d}$,  output of down projection\\ \midrule
+
+  $O$ &&   $O\in \mathbb{R}^{T\times d}$,  output of expert aggregation, also output of the entire MoE layer\\ \midrule
+
+  $dO$ &&   $dO \in \mathbb{R}^{T\times d}$, activation gradient for $O$ \\ \midrule
+
+  $dA'$ &&   $dA' = dO \ \W{2}^\top \in \mathbb{R}^{T\times n}$,  GEMM output of $dO$ and $\W{2}$. Intermediate result for computing $dA$ and $dS$\\ \midrule
+
+  $dA$ &&   $dA = \mathrm{Broadcast}(\vs) \ dA' \in \mathbb{R}^{T\times n}$,  activation gradient for $A$\\ \midrule
+
+  $dY$ &&   $dY = \mathrm{Broadcast}(\vs) \ dO \in \mathbb{R}^{TK\times d}$,  activation gradient for $Y$. $dY$ is not used in \Algname. \\ \midrule
+
+  $dS$ &&   $dS \in \mathbb{R}^{T\times E}$,  activation gradient for $S$\\ \midrule
+
+  $A'$ &&   $A' = \mathrm{Broadcast}(\vs) \ A \in \mathbb{R}^{T\times n}$,  intermediate result and input for computing $d\W{2}$\\ \midrule
+
+  $dH$ &&   $dH \in \mathbb{R}^{T\times 2n}$,  activation gradient for $H$\\ \midrule
+
+  $d\tilde{X}$ &&   $d\tilde{X} \in \mathbb{R}^{TK\times d}$,  activation gradient for $X$ before aggregation \\ \midrule
+
+  $dX$ &&   $dX \in \mathbb{R}^{T\times d}$,  activation gradient for $X$ after aggregation \\ \midrule
+
+  $d\W{1}$ &&   $d\W{1} \in \mathbb{R}^{E \times d\times 2n}$,  weight gradient for $\W{1}$ \\ \midrule
+
+  $d\W{2}$ &&   $d\W{2} \in \mathbb{R}^{E \times n\times d}$,  weight gradient for $\W{2}$ \\ \midrule
+
+
+  $A$ kernel &&  forward up-proj kernel \\ \midrule
+
+  $Y$ kernel &&  forward down-proj kernel \\ \midrule
+
+  $O$ kernel &&  forward expert aggregation kernel where each token aggregates all routed expert's result as the final forward output \\ \midrule
+
+
+  $dH$ kernel &&  backward down-proj activation gradient kernel \\ \midrule
+
+  $d\W{2}$ kernel &&  backward down-proj weight gradient kernel \\ \midrule
+
+  $d\tilde{X}$ kernel &&  backward up-proj activation gradient kernel \\ \midrule
+
+  $d\W{1}$ kernel &&  backward up-proj weight gradient kernel \\ \midrule
+  
+  $dX$ kernel &&  backward expert aggregation kernel where each token aggregates the routed expert's $d\tilde{X}$ \\ \midrule
+
+ $\roundup{f_e}, \rounddown{f_e}$ && $\tileM$-rounded multiples of expert frequency $f_e$.  $\roundup{f_e} = \lceil f_e / \tileM \rceil \cdot \tileM \quad \rounddown{f_e} = \lfloor f_e/\tileM \rfloor \cdot \tileM$ \\ \midrule
+
+ $\round{S}, \round{f_e}$ && $\round{f_e}$ is $\tileM$-rounded multiples of expert frequency $f_e$.  $\round{f_e} \in \{ \roundup{f_e}, \rounddown{f_e} \}$, and $\round{S}$ is the score after rounding in Algorithm~\ref{alg:token_rounding}.
+  \\
+
+    \bottomrule
+    \end{tabular}
+    \end{center}
+\end{table*}
+
+
+\clearpage

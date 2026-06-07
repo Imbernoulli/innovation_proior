@@ -1,0 +1,751 @@
+\documentclass{article}
+
+%\PassOptionsToPackage{numbers}{natbib}
+\usepackage[preprint]{preprint}
+%\usepackage[nonatbib,preprint]{neurips_2020}
+\pdfoutput=1
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{hyperref}       % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+%\usepackage{natbib}  
+
+
+\usepackage[ruled,vlined,linesnumbered]{algorithm2e}
+\usepackage{xspace}
+\usepackage{booktabs}
+\usepackage{colortbl}
+\usepackage{mathtools}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{amsfonts}
+\usepackage{cleveref}
+\Crefformat{section}{Section~#2#1#3}
+\Crefformat{proposition}{Proposition~#2#1#3}
+\Crefformat{equation}{Eq.\,#2#1#3} 
+
+\usepackage{bm}
+\usepackage{xspace}
+\usepackage{enumitem}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{subcaption}
+\usepackage{caption}
+\usepackage[subpreambles=true]{standalone}
+\usepackage{wrapfig}
+%\usepackage{listings}[python]
+%\usepackage{minted}
+%\usemintedstyle{friendly}
+\usepackage{stackengine}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{wrapfig}
+\usepackage[final]{pdfpages}
+
+\addtolength{\oddsidemargin}{-.875in}
+\addtolength{\evensidemargin}{-.875in}
+\addtolength{\textwidth}{1.75in}
+\addtolength{\topmargin}{-.875in}
+\addtolength{\textheight}{1.75in}
+
+\newcolumntype{P}[1]{>{\centering\arraybackslash}p{#1}}
+
+%\usepackage{natbib}
+\input{misosymbols}
+
+%paper specific
+\newcommand{\algo}{\texttt{BYOL}\xspace}
+\newcommand{\augview}{augmented view}
+\newcommand{\aaugview}{an augmented view}
+\newcommand{\imageaugmentation}{image augmentation}
+\newcommand{\Imageaugmentation}{Image augmentation}
+\newcommand{\augmentation}{augmentation}
+\newcommand{\todomga}[2][]{\todo[size=\scriptsize,color=red!20!white,#1]{MGA: #2}}
+\newcommand{\dtheta}{{\delta\hspace{-.1em}\theta}}
+\newcommand{\supervisedbaseline}{Supervised-IN}
+\newcommand{\longalgo}{\textbf{B}ootstrap \textbf{Y}our \textbf{O}wn \textbf{L}atent}
+\newcommand{\netparams}{{\theta}}
+\newcommand{\targetparams}{\xi}
+\renewcommand{\eqdef}{\mathrel{\ensurestackMath{\stackon[1pt]{=}{\scriptscriptstyle\Delta}}}}
+
+% \makeatletter
+% \renewcommand{\paragraph}{%
+%   \@startsection{paragraph}{4}%
+%   {\z@}{0.5ex \@plus 0.5ex \@minus .2ex}{-0.5em}%
+%   {\normalfont\normalsize\bfseries}%
+% }
+% \makeatother
+
+\title{Bootstrap Your Own Latent\\A New Approach to Self-Supervised Learning}
+
+\author{%
+Jean-Bastien Grill\thanks{Equal contribution; the order of first authors was randomly selected.} $^{ , 1}$ \; 
+Florian Strub\footnotemark[1] $^{ , 1}$ \;
+Florent Altché\footnotemark[1] $^{ , 1}$ \;
+Corentin Tallec\footnotemark[1] $^{ , 1}$ \;
+Pierre H.\,Richemond\footnotemark[1] $^{ ,1, 2}$ \AND
+Elena Buchatskaya$^{1}$  \;
+Carl Doersch$^{1}$  \;
+Bernardo Avila Pires$^{1}$  \;
+Zhaohan Daniel Guo$^{1}$ \AND
+Mohammad Gheshlaghi Azar$^{1}$ \;
+Bilal Piot$^{1}$ \;
+Koray Kavukcuoglu$^{1}$ \;
+Rémi Munos$^{1}$ \;
+Michal Valko$^{1}$ \vspace{0.7em}\\
+$^{1}$DeepMind \hspace{1cm} $^{2}$Imperial College\vspace{.7em}\\
+\texttt{[jbgrill,fstrub,altche,corentint,richemond]@google.com}
+}
+
+\begin{document}
+
+\maketitle
+%\vspace{-1.5em}
+
+\begin{abstract}
+We introduce \longalgo~(\algo), a new approach to self-supervised image representation learning. \algo relies on two neural networks, referred to as \textit{online} and \textit{target} networks, that interact and learn from each other. 
+From an \augview~of an image, we train the online network to predict the target network representation of the same image under a different \augview. 
+At the same time, we update the target network with a slow-moving average of the online network. 
+    While state-of-the art methods rely on negative pairs, \algo achieves a new state of the art \textit{without them}. \algo reaches $74.3\%$ top-1 classification accuracy on ImageNet using a linear evaluation with a ResNet-50 architecture and $79.6\%$ with a larger ResNet. 
+We show that \algo performs on par or better than the current state of the art on both transfer and semi-supervised benchmarks. Our implementation and pretrained models are given on GitHub.\setcounter{footnote}{2}\footnote{\url{https://github.com/deepmind/deepmind-research/tree/master/byol}}
+\end{abstract}
+%\vspace{-0.9em}
+
+\section{Introduction}
+\label{sec:introduction}
+\vspace{-1.3em}
+\input{introduction.tex}
+
+%\vspace{-1em}
+\section{Related work}
+\label{sec:related_work}
+%\vspace{-1em}
+\input{related.tex}
+
+\section{Method}
+%\vspace{-0.25em}
+\label{sec:method}
+\input{method.tex}
+
+\section{Experimental evaluation}
+\label{sec:experiments}
+%\vspace{-0.25em}
+\input{experiments.tex}
+
+\section{Building intuitions with ablations}
+\label{sec:ablation}
+\input{ablation.tex}
+
+\section{Conclusion}
+\label{sec:conclusion}
+We introduced \algo, a new algorithm for self-supervised learning of image representations.
+\algo learns its representation by predicting previous versions of its outputs, without using negative pairs. We show that \algo achieves state-of-the-art results on various benchmarks. In particular, under the linear evaluation protocol on ImageNet with a ResNet-$50$ ($1 \times$), \algo achieves a new state of the art and bridges most of the remaining gap between self-supervised methods and the supervised learning baseline of~\cite{SimCLR}. Using a ResNet-$200$~$(2\times)$, \algo reaches a top-$1$ accuracy of $79.6\%$  which improves over the previous state of the art ($76.8\%$) while using $30\%$ fewer parameters. 
+
+Nevertheless, \algo remains dependent on existing sets of augmentations that are specific to vision applications. 
+To generalize \algo to other modalities (e.g., audio, video, text, \dots) it is necessary to obtain similarly suitable augmentations for each of them. 
+Designing such augmentations may require significant effort and expertise. 
+Therefore, automating the search for these augmentations would be an important next step to generalize \algo to other modalities.
+
+\clearpage
+
+\section*{Broader impact}
+The presented research should be categorized as research in the field of unsupervised learning. This work may inspire new algorithms, theoretical, and experimental investigation. The algorithm presented here can be used for many different vision applications and a particular use may have both positive or negative impacts, which is known as the dual use problem. Besides, as vision datasets could be biased, the representation learned by \algo could be susceptible to replicate these biases.
+
+
+\section*{Acknowledgements}
+The authors would like to thank the following people for their help throughout the process of writing this paper, in alphabetical order: Aaron van den Oord, Andrew Brock, Jason Ramapuram, Jeffrey De Fauw, Karen Simonyan, Katrina McKinney, Nathalie Beauguerlange, Olivier Henaff, Oriol Vinyals, Pauline Luc, Razvan Pascanu, Sander Dieleman, and the DeepMind team. We especially thank Jason Ramapuram and Jeffrey De Fauw, who provided the JAX SimCLR reproduction used throughout the paper.
+
+{
+    \small
+   \begin{thebibliography}{100}
+\bibitem{fukushima1980neocognitron}
+Kunihiko Fukushima.
+\newblock Neocognitron: A self-organizing neural network model for a mechanism
+  of pattern recognition unaffected by shift in position.
+\newblock {\em Biological Cybernetics}, 36(4):193--202, 1980.
+
+\bibitem{wiskott2002slow}
+Laurenz Wiskott and Terrence~J Sejnowski.
+\newblock Slow feature analysis: Unsupervised learning of invariances.
+\newblock {\em Neural Computation}, 14(4), 2002.
+
+\bibitem{hinton2006fast}
+Geoffrey~E Hinton, Simon Osindero, and Yee-Whye Teh.
+\newblock A fast learning algorithm for deep belief nets.
+\newblock {\em Neural Computation}, 18(7):1527--1554, 2006.
+
+\bibitem{oquab2014learning}
+Maxime Oquab, Leon Bottou, Ivan Laptev, and Josef Sivic.
+\newblock Learning and transferring mid-level image representations using
+  convolutional neural networks.
+\newblock In {\em Computer Vision and Pattern Recognition}, 2014.
+
+\bibitem{simonyan2014very}
+Karen Simonyan and Andrew Zisserman.
+\newblock Very deep convolutional networks for large-scale image recognition.
+\newblock {\em arXiv preprint arXiv:1409.1556}, 2014.
+
+\bibitem{girshick2014rich}
+Ross Girshick, Jeff Donahue, Trevor Darrell, and Jitendra Malik.
+\newblock Rich feature hierarchies for accurate object detection and semantic
+  segmentation.
+\newblock In {\em Computer Vision and Pattern Recognition}, 2014.
+
+\bibitem{long2015fully}
+Jonathan Long, Evan Shelhamer, and Trevor Darrell.
+\newblock Fully convolutional networks for semantic segmentation.
+\newblock In {\em Computer Vision and Pattern Recognition}, 2015.
+
+\bibitem{SimCLR}
+Ting Chen, Simon Kornblith, Mohammad Norouzi, and Geoffrey~E. Hinton.
+\newblock A simple framework for contrastive learning of visual
+  representations.
+\newblock {\em arXiv preprint arXiv:2002.05709}, 2020.
+
+\bibitem{MOCO}
+Kaiming He, Haoqi Fan, Yuxin Wu, Saining Xie, and Ross~B. Girshick.
+\newblock Momentum contrast for unsupervised visual representation learning.
+\newblock {\em arXiv preprint arXiv:1911.05722}, 2019.
+
+\bibitem{CPC}
+A{\"a}ron van~den Oord, Yazhe Li, and Oriol Vinyals.
+\newblock Representation learning with contrastive predictive coding.
+\newblock {\em arXiv preprint arXiv:1807.03748}, 2018.
+
+\bibitem{CMC}
+Yonglong Tian, Dilip Krishnan, and Phillip Isola.
+\newblock Contrastive multiview coding.
+\newblock {\em arXiv preprint arXiv:1906.05849v4}, 2019.
+
+\bibitem{Tian2020WhatMF}
+Yonglong Tian, Chen Sun, Ben Poole, Dilip Krishnan, Cordelia Schmid, and
+  Phillip Isola.
+\newblock What makes for good views for contrastive learning.
+\newblock {\em arXiv preprint arXiv:2005.10243}, 2020.
+
+\bibitem{pmlr-v97-saunshi19a}
+Nikunj Saunshi, Orestis Plevrakis, Sanjeev Arora, Mikhail Khodak, and
+  Hrishikesh Khandeparkar.
+\newblock A theoretical analysis of contrastive unsupervised representation
+  learning.
+\newblock In {\em International Conference on Machine Learning}, 2019.
+
+\bibitem{Manmatha2017SamplingMI}
+R.~Manmatha, Chao-Yuan Wu, Alexander~J. Smola, and Philipp Kr{\"a}henb{\"u}hl.
+\newblock Sampling matters in deep embedding learning.
+\newblock In {\em International Conference on Computer Vision}, 2017.
+
+\bibitem{Harwood2017SmartMF}
+Ben Harwood, Vijay B.~G. Kumar, Gustavo Carneiro, Ian Reid, and Tom Drummond.
+\newblock Smart mining for deep metric learning.
+\newblock In {\em International Conference on Computer Vision}, 2017.
+
+\bibitem{lee2013PseudoLabelT}
+Dong-Hyun Lee.
+\newblock Pseudo-label: The simple and efficient semi-supervised learning
+  method for deep neural networks.
+\newblock In {\em International Conference on Machine Learning}, 2013.
+
+\bibitem{caron2018DeepCF}
+Mathilde Caron, Piotr Bojanowski, Armand Joulin, and Matthijs Douze.
+\newblock Deep clustering for unsupervised learning of visual features.
+\newblock In {\em European Conference on Computer Vision}, 2018.
+
+\bibitem{bachman2014learning}
+Philip Bachman, Ouais Alsharif, and Doina Precup.
+\newblock Learning with pseudo-ensembles.
+\newblock In {\em Advances in neural information processing systems}, pages
+  3365--3373, 2014.
+
+\bibitem{laine2016temporal}
+Samuli Laine and Timo Aila.
+\newblock Temporal ensembling for semi-supervised learning.
+\newblock {\em arXiv preprint arXiv:1610.02242}, 2016.
+
+\bibitem{tarvainen2017mean}
+Antti Tarvainen and Harri Valpola.
+\newblock Mean teachers are better role models: Weight-averaged consistency
+  targets improve semi-supervised deep learning results.
+\newblock In {\em Advances in neural information processing systems}, pages
+  1195--1204, 2017.
+
+\bibitem{ILSVRC15}
+Olga Russakovsky, Jia Deng, Hao Su, Jonathan Krause, Sanjeev Satheesh, Sean Ma,
+  Zhiheng Huang, Andrej Karpathy, Aditya Khosla, Michael Bernstein,
+  Alexander~C. Berg, and Li~Fei-Fei.
+\newblock {ImageNet Large Scale Visual Recognition Challenge}.
+\newblock {\em International Journal of Computer Vision}, 115(3):211--252,
+  2015.
+
+\bibitem{ResNet}
+Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun.
+\newblock Deep residual learning for image recognition.
+\newblock In {\em Computer Vision and Pattern Recognition}, 2016.
+
+\bibitem{doersch2015unsupervised}
+Carl Doersch, Abhinav Gupta, and Alexei~A Efros.
+\newblock Unsupervised visual representation learning by context prediction.
+\newblock In {\em Computer Vision and Pattern Recognition}, 2015.
+
+\bibitem{vincent2008extracting}
+Pascal Vincent, Hugo Larochelle, Yoshua Bengio, and Pierre-Antoine Manzagol.
+\newblock Extracting and composing robust features with denoising autoencoders.
+\newblock In {\em International Conference on Machine Learning}, 2008.
+
+\bibitem{KingmaVAE}
+Diederik~P Kingma and Max Welling.
+\newblock Auto-encoding variational bayes.
+\newblock {\em arXiv preprint arXiv:1312.6114}, 2013.
+
+\bibitem{RezendeVAE}
+Danilo~Jimenez Rezende, Shakir Mohamed, and Daan Wierstra.
+\newblock Stochastic back-propagation and variational inference in deep latent
+  gaussian models.
+\newblock {\em arXiv preprint arXiv:1401.4082}, 2014.
+
+\bibitem{GAN}
+Ian Goodfellow, Jean Pouget-Abadie, Mehdi Mirza, Bing Xu, David Warde-Farley,
+  Sherjil Ozair, Aaron Courville, and Yoshua Bengio.
+\newblock Generative adversarial nets.
+\newblock In {\em Neural Information Processing Systems}, 2014.
+
+\bibitem{donahue2016adversarial}
+Jeff Donahue, Philipp Kr{\"a}henb{\"u}hl, and Trevor Darrell.
+\newblock Adversarial feature learning.
+\newblock {\em arXiv preprint arXiv:1605.09782}, 2016.
+
+\bibitem{DumoulinALI}
+Vincent Dumoulin, Ishmael Belghazi, Ben Poole, Alex Lamb, Mart{\'i}n Arjovsky,
+  Olivier Mastropietro, and Aaron~C. Courville.
+\newblock Adversarially learned inference.
+\newblock {\em arXiv preprint arXiv:1606.00704}, 2017.
+
+\bibitem{BigBiGAN}
+Jeff Donahue and Karen Simonyan.
+\newblock Large scale adversarial representation learning.
+\newblock In {\em Neural Information Processing Systems}, 2019.
+
+\bibitem{BrockBigGAN}
+Andrew Brock, Jeff Donahue, and Karen Simonyan.
+\newblock Large scale {GAN} training for high fidelity natural image synthesis.
+\newblock {\em arXiv preprint arXiv:1809.11096}, 2018.
+
+\bibitem{CPCv2}
+Olivier~J. H{\'e}naff, Aravind Srinivas, Jeffrey~De Fauw, Ali Razavi, Carl
+  Doersch, S.~M.~Ali Eslami, and A{\"a}ron van~den Oord.
+\newblock Data-efficient image recognition with contrastive predictive coding.
+\newblock In {\em International Conference on Machine Learning}, 2019.
+
+\bibitem{DIM}
+R~Devon Hjelm, Alex Fedorov, Samuel Lavoie-Marchildon, Karan Grewal, Adam
+  Trischler, and Yoshua Bengio.
+\newblock Learning deep representations by mutual information estimation and
+  maximization.
+\newblock {\em arXiv preprint arXiv:1808.06670}, 2019.
+
+\bibitem{AMDIM}
+Philip Bachman, R~Devon Hjelm, and William Buchwalter.
+\newblock Learning representations by maximizing mutual information across
+  views.
+\newblock In {\em Neural Information Processing Systems}, 2019.
+
+\bibitem{PIRL}
+Ishan Misra and Laurens van~der Maaten.
+\newblock Self-supervised learning of pretext-invariant representations.
+\newblock {\em arXiv preprint arXiv:1912.01991}, 2019.
+
+\bibitem{li2020prototypical}
+Junnan Li, Pan Zhou, Caiming Xiong, Richard Socher, and Steven~CH Hoi.
+\newblock Prototypical contrastive learning of unsupervised representations.
+\newblock {\em arXiv preprint arXiv:2005.04966}, 2020.
+
+\bibitem{MOCOv2}
+Rishabh Jain, Haoqi Fan, Ross~B. Girshick, and Kaiming He.
+\newblock Improved baselines with momentum contrastive learning.
+\newblock {\em arXiv preprint arXiv:2003.04297}, 2020.
+
+\bibitem{chen2020big}
+Ting Chen, Simon Kornblith, Kevin Swersky, Mohammad Norouzi, and Geoffrey
+  Hinton.
+\newblock Big self-supervised models are strong semi-supervised learners.
+\newblock {\em arXiv preprint arXiv:2006.10029}, 2020.
+
+\bibitem{wu2018unsupervised}
+Zhirong Wu, Yuanjun Xiong, Stella~X Yu, and Dahua Lin.
+\newblock Unsupervised feature learning via non-parametric instance
+  discrimination.
+\newblock In {\em Computer Vision and Pattern Recognition}, 2018.
+
+\bibitem{doersch2017multi}
+Carl Doersch and Andrew Zisserman.
+\newblock Multi-task self-supervised visual learning.
+\newblock In {\em International Conference on Computer Vision}, 2017.
+
+\bibitem{Zhang2016ColorfulIC}
+Richard Zhang, Phillip Isola, and Alexei~A. Efros.
+\newblock Colorful image colorization.
+\newblock In {\em European Conference on Computer Vision}, 2016.
+
+\bibitem{larsson2016learning}
+Gustav Larsson, Michael Maire, and Gregory Shakhnarovich.
+\newblock Learning representations for automatic colorization.
+\newblock In {\em European Conference on Computer Vision}, 2016.
+
+\bibitem{pathak2016context}
+Deepak Pathak, Philipp Krahenbuhl, Jeff Donahue, Trevor Darrell, and Alexei~A.
+  Efros.
+\newblock Context encoders: Feature learning by inpainting.
+\newblock In {\em Computer Vision and Pattern Recognition}, 2016.
+
+\bibitem{noroozi2016unsupervised}
+Mehdi Noroozi and Paolo Favaro.
+\newblock Unsupervised learning of visual representations by solving jigsaw
+  puzzles.
+\newblock In {\em European Conference on Computer Vision}, 2016.
+
+\bibitem{ledig2017photo}
+Christian Ledig, Lucas Theis, Ferenc Husz{\'a}r, Jose Caballero, Andrew
+  Cunningham, Alejandro Acosta, Andrew Aitken, Alykhan Tejani, Johannes Totz,
+  Zehan Wang, et~al.
+\newblock Photo-realistic single image super-resolution using a generative
+  adversarial network.
+\newblock In {\em Computer Vision and Pattern Recognition}, 2017.
+
+\bibitem{dosovitskiy2014discriminative}
+Alexey Dosovitskiy, Jost~Tobias Springenberg, Martin Riedmiller, and Thomas
+  Brox.
+\newblock Discriminative unsupervised feature learning with convolutional
+  neural networks.
+\newblock In {\em Neural Information Processing Systems}, 2014.
+
+\bibitem{gidaris2018unsupervised}
+Spyros Gidaris, Praveer Singh, and Nikos Komodakis.
+\newblock Unsupervised representation learning by predicting image rotations.
+\newblock {\em arXiv preprint arXiv:1803.07728}, 2018.
+
+\bibitem{kolesnikov2019revisiting}
+Alexander Kolesnikov, Xiaohua Zhai, and Lucas Beyer.
+\newblock Revisiting self-supervised visual representation learning.
+\newblock In {\em Computer Vision and Pattern Recognition}, 2019.
+
+\bibitem{guo2020bootstrap}
+Daniel Guo, Bernardo~Avila Pires, Bilal Piot, Jean-Bastien Grill, Florent
+  Altch{\'e}, R{\'e}mi Munos, and Mohammad~Gheshlaghi Azar.
+\newblock Bootstrap latent-predictive representations for multitask
+  reinforcement learning.
+\newblock In {\em International Conference on Machine Learning}, 2020.
+
+\bibitem{DQNNature}
+Volodymyr Mnih, Koray Kavukcuoglu, David Silver, Andrei~A. Rusu, Joel Veness,
+  Marc~G. Bellemare, Alex Graves, Martin~A. Riedmiller, Andreas~K. Fidjeland,
+  Georg Ostrovski, Stig Petersen, Charles Beattie, Amir Sadik, Ioannis
+  Antonoglou, Helen. King, Dharshan Kumaran, Daan Wierstra, Shane Legg, and
+  Demis Hassabis.
+\newblock Human-level control through deep reinforcement learning.
+\newblock {\em Nature}, 518:529--533, 2015.
+
+\bibitem{mnih2016asynchronous}
+Volodymyr Mnih, Adria~Puigdomenech Badia, Mehdi Mirza, Alex Graves, Timothy
+  Lillicrap, Tim Harley, David Silver, and Koray Kavukcuoglu.
+\newblock Asynchronous methods for deep reinforcement learning.
+\newblock In {\em International Conference on Machine Learning}, 2016.
+
+\bibitem{hessel2018rainbow}
+Matteo Hessel, Joseph Modayil, Hado Van~Hasselt, Tom Schaul, Georg Ostrovski,
+  Will Dabney, Dan Horgan, Bilal Piot, Mohammad~Gheshlaghi Azar, and David
+  Silver.
+\newblock Rainbow: Combining improvements in deep reinforcement learning.
+\newblock In {\em AAAI Conference on Artificial Intelligence}, 2018.
+
+\bibitem{van2018deep}
+Hado Van~Hasselt, Yotam Doron, Florian Strub, Matteo Hessel, Nicolas Sonnerat,
+  and Joseph Modayil.
+\newblock Deep reinforcement learning and the deadly triad.
+\newblock {\em Deep Reinforcement Learning Workshop NeurIPS}, 2018.
+
+\bibitem{DDPG}
+Timothy~P Lillicrap, Jonathan~J Hunt, Alexander Pritzel, Nicolas Heess, Tom
+  Erez, Yuval Tassa, David Silver, and Daan Wierstra.
+\newblock Continuous control with deep reinforcement learning.
+\newblock {\em arXiv preprint arXiv:1509.02971}, 2015.
+
+\bibitem{chapelle2009semi}
+Olivier Chapelle, Bernhard Scholkopf, and Alexander Zien.
+\newblock Semi-supervised learning.
+\newblock {\em IEEE Transactions on Neural Networks}, 20(3):542--542, 2009.
+
+\bibitem{zhu2009introduction}
+Xiaojin Zhu and Andrew~B Goldberg.
+\newblock Introduction to semi-supervised learning.
+\newblock {\em Synthesis lectures on artificial intelligence and machine
+  learning}, 3(1):1--130, 2009.
+
+\bibitem{kingma2014semi}
+Durk~P Kingma, Shakir Mohamed, Danilo~Jimenez Rezende, and Max Welling.
+\newblock Semi-supervised learning with deep generative models.
+\newblock In {\em Advances in neural information processing systems}, 2014.
+
+\bibitem{rasmus2015semi}
+Antti Rasmus, Mathias Berglund, Mikko Honkala, Harri Valpola, and Tapani Raiko.
+\newblock Semi-supervised learning with ladder networks.
+\newblock In {\em Advances in neural information processing systems}, 2015.
+
+\bibitem{berthelot2019mixmatch}
+David Berthelot, Nicholas Carlini, Ian Goodfellow, Nicolas Papernot, Avital
+  Oliver, and Colin~A Raffel.
+\newblock Mixmatch: A holistic approach to semi-supervised learning.
+\newblock In {\em Advances in Neural Information Processing Systems}, 2019.
+
+\bibitem{miyato2018virtual}
+Takeru Miyato, Shin-ichi Maeda, Masanori Koyama, and Shin Ishii.
+\newblock Virtual adversarial training: a regularization method for supervised
+  and semi-supervised learning.
+\newblock {\em IEEE transactions on pattern analysis and machine intelligence},
+  41(8):1979--1993, 2018.
+
+\bibitem{Berthelot2020ReMixMatchSL}
+David Berthelot, N.~Carlini, E.~D. Cubuk, Alex Kurakin, Kihyuk Sohn, Han Zhang,
+  and Colin Raffel.
+\newblock Remixmatch: Semi-supervised learning with distribution matching and
+  augmentation anchoring.
+\newblock In {\em ICLR}, 2020.
+
+\bibitem{sohn2020fixmatch}
+Kihyuk Sohn, David Berthelot, Chun-Liang Li, Zizhao Zhang, Nicholas Carlini,
+  Ekin~D Cubuk, Alex Kurakin, Han Zhang, and Colin Raffel.
+\newblock Fixmatch: Simplifying semi-supervised learning with consistency and
+  confidence.
+\newblock {\em arXiv preprint arXiv:2001.07685}, 2020.
+
+\bibitem{becker1992self}
+Suzanna Becker and Geoffrey~E. Hinton.
+\newblock Self-organizing neural network that discovers surfaces in random-dot
+  stereograms.
+\newblock {\em Nature}, 355(6356):161--163, 1992.
+
+\bibitem{jax2018github}
+James Bradbury, Roy Frostig, Peter Hawkins, Matthew~James Johnson, Chris Leary,
+  Dougal Maclaurin, and Skye Wanderman-Milne.
+\newblock {JAX}: composable transformations of {P}ython+{N}um{P}y programs,
+  2018.
+
+\bibitem{haiku2020github}
+Tom Hennigan, Trevor Cai, Tamara Norman, and Igor Babuschkin.
+\newblock {H}aiku: {S}onnet for {JAX}, 2020.
+
+\bibitem{goodfellow2014generative}
+Ian Goodfellow, Jean Pouget-Abadie, Mehdi Mirza, Bing Xu, David Warde-Farley,
+  Sherjil Ozair, Aaron Courville, and Yoshua Bengio.
+\newblock Generative adversarial nets.
+\newblock In {\em Advances in neural information processing systems}, pages
+  2672--2680, 2014.
+
+\bibitem{zagoruyko2016wide}
+Sergey Zagoruyko and Nikos Komodakis.
+\newblock Wide residual networks.
+\newblock {\em arXiv preprint arXiv:1605.07146}, 2016.
+
+\bibitem{BatchNorm}
+Sergey Ioffe and Christian Szegedy.
+\newblock Batch normalization: Accelerating deep network training by reducing
+  internal covariate shift.
+\newblock In {\em International Conference on Machine Learning}, 2015.
+
+\bibitem{nair2010rectified}
+Vinod Nair and Geoffrey~E. Hinton.
+\newblock Rectified linear units improve restricted boltzmann machines.
+\newblock In {\em International Conference on Machine Learning}, 2010.
+
+\bibitem{LARS}
+Yang You, Igor Gitman, and Boris Ginsburg.
+\newblock Scaling {SGD} batch size to 32k for imagenet training.
+\newblock {\em arXiv preprint arXiv:1708.03888}, 2017.
+
+\bibitem{SGDR}
+Ilya Loshchilov and Frank Hutter.
+\newblock {SGDR:} stochastic gradient descent with warm restarts.
+\newblock In {\em International Conference on Learning Representations}, 2017.
+
+\bibitem{Goyal2017}
+Priya Goyal, Piotr Doll{\'a}r, Ross Girshick, Pieter Noordhuis, Lukasz
+  Wesolowski, Aapo Kyrola, Andrew Tulloch, Yangqing Jia, and Kaiming He.
+\newblock Accurate, large minibatch sgd: Training imagenet in 1 hour.
+\newblock {\em arXiv preprint arXiv:1706.02677}, 2017.
+
+\bibitem{zhou2017places}
+Bolei Zhou, Agata Lapedriza, Aditya Khosla, Aude Oliva, and Antonio Torralba.
+\newblock Places: A 10 million image database for scene recognition.
+\newblock {\em Transactions on Pattern Analysis and Machine Intelligence},
+  2017.
+
+\bibitem{kornblith2019better}
+Simon Kornblith, Jonathon Shlens, and Quoc~V Le.
+\newblock Do better {I}mage{N}et models transfer better?
+\newblock In {\em Computer Cision and Pattern Recognition}, 2019.
+
+\bibitem{gong2020maxup}
+Chengyue Gong, Tongzheng Ren, Mao Ye, and Qiang Liu.
+\newblock Maxup: A simple way to improve generalization of neural network
+  training.
+\newblock {\em arXiv preprint arXiv:2002.09024}, 2020.
+
+\bibitem{dmlab}
+Xiaohua Zhai, Joan Puigcerver, Alexander~I Kolesnikov, Pierre Ruyssen, Carlos
+  Riquelme, Mario Lucic, Josip Djolonga, Andr{\'e}~Susano Pinto, Maxim Neumann,
+  Alexey Dosovitskiy, Lucas Beyer, Olivier Bachem, Michael Tschannen, Marcin
+  Michalski, Olivier Bousquet, Sylvain Gelly, and Neil Houlsby.
+\newblock A large-scale study of representation learning with the visual task
+  adaptation benchmark.
+\newblock {\em arXiv: Computer Vision and Pattern Recognition}, 2019.
+
+\bibitem{zhai2019s4l}
+Xiaohua Zhai, Avital Oliver, Alexander Kolesnikov, and Lucas Beyer.
+\newblock {S4L}: Self-supervised semi-supervised learning.
+\newblock In {\em International Conference on Computer Vision}, 2019.
+
+\bibitem{cifar}
+Alex Krizhevsky.
+\newblock Learning multiple layers of features from tiny images.
+\newblock Technical report, University of Toronto, 2009.
+
+\bibitem{sun397}
+Jianxiong {Xiao}, James {Hays}, Krista~A. {Ehinger}, Aude {Oliva}, and Antonio
+  {Torralba}.
+\newblock Sun database: Large-scale scene recognition from abbey to zoo.
+\newblock In {\em Computer Vision and Pattern Recognition}, 2010.
+
+\bibitem{pascal}
+Mark Everingham, Luc Van~Gool, Christopher~KI Williams, John Winn, and Andrew
+  Zisserman.
+\newblock The {P}ascal visual object classes ({VOC}) challenge.
+\newblock {\em International Journal of Computer Vision}, 88(2):303--338, 2010.
+
+\bibitem{dtd}
+Mircea Cimpoi, Subhransu Maji, Iasonas Kokkinos, Sammy Mohamed, and Andrea
+  Vedaldi.
+\newblock Describing textures in the wild.
+\newblock In {\em Computer Vision and Pattern Recognition}, 2014.
+
+\bibitem{ren2015faster}
+Shaoqing Ren, Kaiming He, Ross Girshick, and Jian Sun.
+\newblock Faster {R-CNN}: Towards real-time object detection with region
+  proposal networks.
+\newblock In {\em Neural Information Processing Systems}, 2015.
+
+\bibitem{laina2016depth}
+I.~{Laina}, C.~{Rupprecht}, V.~{Belagiannis}, F.~{Tombari}, and N.~{Navab}.
+\newblock Deeper depth prediction with fully convolutional residual networks.
+\newblock In {\em International Conference on 3D Vision}, 2016.
+
+\bibitem{poole2019variational}
+Ben Poole, Sherjil Ozair, Aaron van~den Oord, Alexander~A Alemi, and George
+  Tucker.
+\newblock On variational bounds of mutual information.
+\newblock {\em arXiv preprint arXiv:1905.06922}, 2019.
+
+\bibitem{he2015delving}
+Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun.
+\newblock Delving deep into rectifiers: Surpassing human-level performance on
+  imagenet classification.
+\newblock In {\em Proceedings of the IEEE international conference on computer
+  vision}, 2015.
+
+\bibitem{pascanu2013difficulty}
+Razvan Pascanu, Tomas Mikolov, and Yoshua Bengio.
+\newblock On the difficulty of training recurrent neural networks.
+\newblock In {\em International Conference on Machine Learning}, 2013.
+
+\bibitem{cubuk2019randaugment}
+Ekin~D Cubuk, Barret Zoph, Jonathon Shlens, and Quoc~V Le.
+\newblock Randaugment: Practical automated data augmentation with a reduced
+  search space.
+\newblock {\em arXiv preprint arXiv:1909.13719}, 2019.
+
+\bibitem{szegedy2016rethinking}
+Christian Szegedy, Vincent Vanhoucke, Sergey Ioffe, Jon Shlens, and Zbigniew
+  Wojna.
+\newblock Rethinking the inception architecture for computer vision.
+\newblock In {\em Computer Vision and Pattern Recognition}, pages 2818--2826,
+  2016.
+
+\bibitem{food101}
+Lukas Bossard, Matthieu Guillaumin, and Luc Van~Gool.
+\newblock Food-101 -- mining discriminative components with random forests.
+\newblock In {\em European Conference on Computer Vision}, 2014.
+
+\bibitem{Birdsnap}
+Thomas Berg, Jiongxin Liu, Seung~Woo Lee, Michelle~L. Alexander, David~W.
+  Jacobs, and Peter~N. Belhumeur.
+\newblock Birdsnap: Large-scale fine-grained visual categorization of birds.
+\newblock In {\em Computer Vision and Pattern Recognition}, 2014.
+
+\bibitem{carsdataset}
+Jonathan Krause, Michael Stark, Jia Deng, and Li~Fei-Fei.
+\newblock {3D} object representations for fine-grained categorization.
+\newblock In {\em Workshop on 3D Representation and Recognition}, Sydney,
+  Australia, 2013.
+
+\bibitem{aircraft}
+Subhransu Maji, Esa Rahtu, Juho Kannala, Matthew~B. Blaschko, and Andrea
+  Vedaldi.
+\newblock Fine-grained visual classification of aircraft.
+\newblock {\em arXiv preprint arXiv:1306.5151}, 2013.
+
+\bibitem{pets}
+O.~M. Parkhi, A.~Vedaldi, A.~Zisserman, and C.~V. Jawahar.
+\newblock Cats and dogs.
+\newblock In {\em Computer Vision and Pattern Recognition}, 2012.
+
+\bibitem{caltech101}
+Li~Fei-Fei, Rob Fergus, and Pietro Perona.
+\newblock Learning generative visual models from few training examples: An
+  incremental bayesian approach tested on 101 object categories.
+\newblock {\em Computer Vision and Pattern Recognition Workshop}, 2004.
+
+\bibitem{flowers}
+Maria-Elena Nilsback and Andrew Zisserman.
+\newblock Automated flower classification over a large number of classes.
+\newblock In {\em Indian Conference on Computer Vision, Graphics and Image
+  Processing}, 2008.
+
+\bibitem{donahue2014decaf}
+Jeff Donahue, Yangqing Jia, Oriol Vinyals, Judy Hoffman, Ning Zhang, Eric
+  Tzeng, and Trevor Darrell.
+\newblock Decaf: A deep convolutional activation feature for generic visual
+  recognition.
+\newblock In {\em International Conference on Machine Learning}, 2014.
+
+\bibitem{owen2007robust}
+Art~B Owen.
+\newblock A robust hybrid of lasso and ridge regression.
+\newblock {\em Contemporary Mathematics}, 443(7):59--72, 2007.
+
+\bibitem{zhuang2019local}
+Chengxu Zhuang, Alex~Lin Zhai, and Daniel Yamins.
+\newblock Local aggregation for unsupervised learning of visual embeddings.
+\newblock In {\em International Conference on Computer Vision}, 2019.
+
+\bibitem{pathak2017learning}
+Deepak Pathak, Ross Girshick, Piotr Doll{\'a}r, Trevor Darrell, and Bharath
+  Hariharan.
+\newblock Learning features by watching objects move.
+\newblock In {\em Conference on Computer Vision and Pattern Recognition}, 2017.
+
+\bibitem{GroupNorm}
+Yuxin Wu and Kaiming He.
+\newblock Group normalization.
+\newblock In {\em European Conference on Computer Vision}, 2018.
+
+\end{thebibliography}
+
+}
+
+\clearpage
+\appendix
+\input{appendix.tex}
+\end{document}

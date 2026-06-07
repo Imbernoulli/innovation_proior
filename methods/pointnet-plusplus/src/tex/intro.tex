@@ -1,0 +1,56 @@
+% Understanding sets of points in geometric space is an important problem. 
+
+We are interested in analyzing geometric point sets which are collections of points in a Euclidean space. A particularly important type of geometric point set is point cloud captured by 3D scanners, e.g., from appropriately equipped autonomous vehicles. As a set, such data has to be invariant to permutations of its members. In addition, the distance metric defines local neighborhoods that may exhibit different properties. For example, the density and other attributes of points may not be uniform across different locations --- in 3D scanning the density variability can come from perspective effects, radial density variations, motion, etc.
+
+Few prior works study deep learning on point sets. PointNet~\cite{qi2016pointnet} is a pioneering effort that directly processes point sets. The basic idea of PointNet is to learn a spatial encoding of each point and then aggregate all individual point features to a global point cloud signature.
+By its design, PointNet does not capture local structure induced by the metric. However, exploiting local structure has proven to be important for the success of convolutional architectures. A CNN takes data defined on regular grids as the input and is able to progressively capture features at increasingly larger scales along a multi-resolution hierarchy. At lower levels neurons have smaller receptive fields whereas at higher levels they have larger receptive fields. The ability to abstract local patterns along the hierarchy allows better generalizability to unseen cases.
+
+We introduce a hierarchical neural network, named as PointNet++, to process a set of points sampled in a metric space in a hierarchical fashion. The general idea of PointNet++ is simple. We first partition the set of points into overlapping local regions by the distance metric of the underlying space. Similar to CNNs, we extract local features capturing fine geometric structures from small neighborhoods; such local features are further grouped into larger units and processed to produce higher level features. This process is repeated until we obtain the features of the whole point set. 
+
+\begin{wrapfigure}{R}{7cm}
+  %\vspace{-10pt}
+  \begin{center}
+    \includegraphics[width=7cm]{./fig/raw_scans_wcolor.pdf}
+  \end{center}  %\vspace{-15pt}
+  \caption{Visualization of a scan captured from a Structure Sensor (left: RGB; right: point cloud).}
+  \label{fig:rawscans}
+\end{wrapfigure}
+
+The design of PointNet++ has to address two issues: how to generate the partitioning of the point set, and how to abstract sets of points or local features through a local feature learner. The two issues are correlated because the partitioning of the point set has to produce common structures across partitions, so that weights of local feature learners can be shared, as in the convolutional setting. We choose our local feature learner to be PointNet. As demonstrated in that work, PointNet is an effective architecture to process an unordered set of points for semantic feature extraction. In addition, this architecture is robust to input data corruption. As a basic building block, PointNet abstracts sets of local points or features into higher level representations. In this view, PointNet++ applies PointNet recursively on a nested partitioning of the input set. 
+
+%\todo{Emphasize more on the non-uniform density problem as well as how our approaches well solve the problem.}
+One issue that still remains is how to generate overlapping partitioning of a point set. Each partition is defined as a neighborhood ball in the underlying Euclidean space, whose parameters include centroid location and scale. To evenly cover the whole set, the centroids are selected among input point set by a farthest point sampling (FPS) algorithm. Compared with volumetric CNNs that scan the space with fixed strides, our local receptive fields are dependent on both the input data and the metric, and thus more efficient and effective. 
+
+Deciding the appropriate scale of local neighborhood balls, however, is a more challenging yet intriguing problem, due to the entanglement of feature scale and non-uniformity of input point set. We assume that the input point set may have variable density at different areas, which is quite common in real data such as Structure Sensor scanning \cite{occipital2016structure} (see Fig.~\ref{fig:rawscans}).  Our input point set is thus very different from CNN inputs which can be viewed as data defined on regular grids with uniform constant density. In CNNs, the counterpart to local partition scale is the size of kernels. \cite{simonyan2014very} shows that using smaller kernels helps to improve the ability of CNNs. Our experiments on point set data, however, give counter evidence to this rule. Small neighborhood may consist of too few points due to sampling deficiency, which might be insufficient to allow PointNets to capture patterns robustly. 
+
+A significant contribution of our paper is that PointNet++ leverages neighborhoods at multiple scales to achieve both robustness and detail capture. Assisted with random input dropout during training, the network learns to adaptively weight patterns detected at different scales and combine multi-scale features according to the input data. Experiments show that our PointNet++ is able to process point sets efficiently and robustly. In particular, results that are significantly better than state-of-the-art have been obtained on challenging benchmarks of 3D point clouds.
+
+% PointNet++ can be viewed as applying PointNet recursively on a point set. The basic idea is fairly simple. We first build a nested partitioning of the points according to the metric defined on the space. This nested partitioning may have multiple layers and thus forms a hierarchical tree grouping of points; in addition, regions at the same level overlaps with each other to form an over-complete coverage. A PointNet is first applied to each leaf node to extract local features. Up along the hierarchy, local features can be aggregated at larger scales by applying PointNet recursively at each level of the tree. This process repeats till we reach the root node to produce the global feature for the whole point set. The features can be back-propagated along the path to each input points for per point analysis.
+
+
+
+
+
+
+
+
+
+
+% Basic story: 
+% Feature learning of point sets in metric space e.g. 3D point cloud from LiDAR scans with Euclidean distances, molecules, ``elements'' with distance metrics. We want to learn both local point feature (with context) and global point set feature for applications like set classification and set segmentation.
+
+% We have achieved hierarchical feature learning (weight sharing, multiple levels of abstraction with increasing receptive fields) with novel neural network designs.
+
+% We also illustrated the challenges of non-uniform sampling density on feature learning and proposed several effective solutions.
+
+% Empirically we show that our hierarchical network achieved state-of-the-art on several benchmarks of 3D point cloud understanding.
+
+% \begin{figure}[ht!]
+%     \centering
+%     \includegraphics[width=0.7\linewidth,height=2.5cm]{fig/raw_scans_wcolor.pdf}
+%     \caption{A visualization of scans captured from a Structure Sensor.}
+%     \label{fig:rawscans}
+% \end{figure}
+
+% Skeleton:
+% Learning on point cloud is an important problem, since it is the natural data format we acquire via sensors such as Lidar. There have been very few deep learning frameworks along this track.

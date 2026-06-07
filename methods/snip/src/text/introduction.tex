@@ -1,0 +1,92 @@
+\section{Introduction}
+%Neural network pruning has gained renewed interest with the success of deep neural networks in a variety of computer vision and machine learning tasks.
+%Despite the success of deep neural networks in a variety of computer vision and machine learning tasks, they are highly overparametrized making them computationally expensive with excessive memory requirements.
+Despite the success of deep neural networks in machine learning, they are often found to be highly overparametrized making them computationally expensive with excessive memory requirements.
+%Specifically, modern neural networks are highly overparametrized (usually millions of learnable parameters) making them computationally expensive with huge memory requirements.
+Pruning such large networks with minimal loss in performance is appealing for real-time applications, especially on resource-limited devices.
+In addition, compressed neural networks utilize the model capacity efficiently, and this interpretation can be used to derive better generalization bounds for neural networks~(\cite{arora2018stronger}).
+%which could encourage research on the generalization of neural networks~(\cite{arora2018stronger}).% and/or scalable incremental learning algorithms~(\cite{?}).\NOTE{refine this}
+
+In network pruning, given a large reference neural network, the goal is to learn a much smaller subnetwork that mimics the performance of the reference network.
+The majority of existing methods in the literature attempt to find a subset of weights from the pretrained reference network either based on a saliency criterion~(\cite{NIPS1988_119,lecun1990optimal,han2015learning}) or utilizing sparsity enforcing penalties~(\cite{chauvin1989back,Carreira-Perpiñán_2018_CVPR}).
+%Unfortunately, since pruning is included as a part of the iterative optimization procedure, all these methods are prohibitively slow due to many expensive {\em prune -- retrain cycles}, and require highly heuristic design choices making them non-trivial to extend to new architectures and/or tasks.
+Unfortunately, since pruning is included as a part of an iterative optimization procedure, all these methods require many expensive {\em prune -- retrain cycles} and heuristic design choices with additional hyperparameters, making them non-trivial to extend to new architectures and tasks.
+ 
+
+%This unreasonably high training time hinders the use of pruning methods in large-scale applications.
+%Thus, being able to prune the reference network once at the beginning and training a much smaller network with minimal loss in performance is a highly desirable goal.
+
+In this work, we introduce a saliency criterion that identifies connections in the network that are important to the given task in a data-dependent way before training.
+%Specifically, we discover important connections based on their influence on the loss function at a variance scaling initialization (we call this connection sensitivity).
+Specifically, we discover important connections based on their influence on the loss function at a variance scaling initialization, which we call connection sensitivity.
+%regardless of the weights of the connections. 
+%Hence, our method can also be interpreted as an architecture selection method.
+Given the desired sparsity level, redundant connections are pruned once prior to training (\ie, single-shot), and then the sparse pruned network is trained in the standard way.
+%Our approach has several attractive properties as listed below:
+Our approach has several attractive properties:
+\begin{tight_itemize}
+\vspace{-2mm}
+\item \emph{Simplicity.}\;
+    %Since the network is pruned once at random initialization, we have eliminated the need for pretraining and complex pruning schedules.
+    Since the network is pruned once prior to training, there is no need for pretraining and complex pruning schedules.
+    Our method has no additional hyperparameters and once pruned, training of the sparse network is performed in the standard way.
+    % and in theory, the training can be accelerated using software libraries that support sparse matrix computations.
+\item \emph{Versatility.}\;
+	Since our saliency criterion chooses structurally important connections, it is robust to architecture variations.
+	Therefore our method can be applied to various architectures including convolutional, residual and recurrent networks with no modifications. 
+\item \emph{Interpretability.}\;
+    %Our method chooses connections that are important to the given task where the task is defined by the loss function and the dataset.
+	%By varying the data used for pruning and visualizing the retained connections, we verify that they are indeed important for the given task.
+    Our method determines important connections with a mini-batch of data at single-shot. 
+    %By varying this mini-batch used for pruning and visualizing the retained connections, we are able to verify that they are indeed important for the given task.
+    By varying this mini-batch used for pruning, our method enables us to verify that the retained connections are indeed essential for the given task.   
+\end{tight_itemize}
+
+We evaluate our method on \mnist{}, \cifar{-10}, and \timagenet{} classification datasets with widely varying architectures.
+Despite being the simplest, our method obtains extremely sparse networks with virtually the same accuracy as the existing baselines across all tested architectures.
+%Furthermore, we provide interesting experiments by visualizing the important connections determined by our method, which, we believe sheds some light towards understanding neural networks.\NOTE{subject to results}
+Furthermore, we investigate the relevance of the retained connections as well as the effect of the network initialization and the dataset on the saliency score. 
+
+
+
+\SKIP{
+Our approach has several attractive properties:
+\begin{tight_itemize}
+\vspace{-2mm}
+\item \emph{Simplicity.}\;
+    It requires no complex pruning -- learning schedule as well as any additional hyperparameters, being procedually simple and easy to use.
+\item \emph{Promptitude.}\;
+    It prune a given network only once, at random initialization without pretraining, achieving sparse network quickly.
+\item \emph{Scalability.}\;
+    It is architecture independent and model-agnostic and can be applied to various large-scale modern network types including convolutional, residual, recurrent networks without adjusting the algorithm.
+\item \emph{Interpretability.}\;
+    Our saliency measure is directly dependent on data, allowing one to interpret whether the right connections are survived from pruning.
+\item \NOTE{Update, add, or remove. Once done, move around to fit into the intro.}
+\end{tight_itemize}
+
+General explanation
+\begin{tight_itemize}
+\item problem received new attention
+\item big networks, computation speed, memory
+\end{tight_itemize}
+
+Problems and motivation
+\begin{tight_itemize}
+\item standard magnitude-based pruning: heuristic, requires fully-trained network
+\item Improve the efficiency of pruning algorithms by introducing a new approach.
+\item Bayesian can't be applied to large network, resnets, lstms.
+\end{tight_itemize}
+
+Approach
+\begin{tight_itemize}
+\item
+\end{tight_itemize}
+
+Contributions.
+\begin{tight_itemize}
+\item efficient pruning (\eg requires no pre-training or non-trivial pruning schedule)
+\item new approach that can scale
+\item demonstrate its applicability to various architectures (convolutional, fully-connected, recurrent, residual)
+\item can be applied generally to training neural networks (sparse network encourages generalizability)
+\end{tight_itemize}
+}

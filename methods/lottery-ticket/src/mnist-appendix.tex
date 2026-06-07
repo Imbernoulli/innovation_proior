@@ -1,0 +1,208 @@
+\section{Hyperparameter Exploration for Fully-Connected Networks}
+\label{app:mnist}
+
+This Appendix accompanies Section \ref{sec:fc} of the main paper. It explores the space of hyperparameters for the Lenet
+architecture evaluated in Section \ref{sec:fc} with two purposes in mind:
+
+\begin{enumerate}
+\item To explain the hyperparameters selected in the main body of the paper.
+\item To evaluate the extent to which the lottery ticket experiment patterns extend to other choices of hyperparameters.
+\end{enumerate}
+
+\subsection{Experimental Methodology}
+
+This Section considers the fully-connected Lenet architecture~\citep{lenet}, which comprises
+two fully-connected hidden layers and a ten unit output layer, on the MNIST dataset. Unless otherwise stated, the hidden layers have 300 and 100 units each.
+
+The MNIST dataset consists of 60,000 training examples and 10,000 test examples. We randomly sampled a 5,000-example validation set from
+the training set and used the remaining 55,000 training examples as our training set for the rest of the paper (including Section \ref{sec:fc}). The hyperparameter
+ selection experiments throughout this Appendix are evaluated using the validation set for determining both the iteration of early-stopping and
+ the accuracy at early-stopping;
+ the networks in the
+main body of this paper (which make use of these hyperparameters) have their accuracy evaluated on the test set. The training set is presented to the network
+in mini-batches of 60 examples; at each epoch, the entire training set is shuffled.
+
+Unless otherwise noted, each line in each graph comprises data from three separate experiments. The line itself traces the average performance
+of the experiments and the error bars indicate the minimum and maximum performance of any one experiment.
+
+Throughout this Appendix, we perform the lottery ticket experiment iteratively with a pruning rate
+of 20\% per iteration (10\% for the output layer); we justify the choice of this pruning rate later in this Appendix. Each layer of the network is pruned independently.
+On each iteration of the lottery
+ticket experiment, the network is trained for 50,000 training iterations regardless of when early-stopping occurs; in other words, no validation or test
+data is taken into account during the training process, and early-stopping times are determined retroactively by examining validation performance.
+We evaluate validation and test performance every 100 iterations.
+
+For the main body of the paper, we opt to use the Adam optimizer~\citep{adam} and Gaussian Glorot initialization~\citep{xavier}. Although we can achieve more
+impressive results on the lottery ticket experiment with other hyperparameters, we intend these
+choices to be as generic as possible in an effort to minimize the extent to which our main results depend on hand-chosen hyperparameters. In this Appendix,
+we select the learning rate for Adam that we use in the main body of the paper.
+
+In addition, we consider a wide range of other hyperparameters, including
+other optimization algorithms (SGD with and without momentum), initialization strategies (Gaussian distributions with various standard deviations),
+network sizes (larger and smaller hidden layers), and pruning strategies (faster and slower pruning rates). In each experiment, we vary the chosen
+hyperparameter while keeping all others at their default values (Adam with the chosen learning rate, Gaussian Glorot initialization, hidden layers
+with 300 and 100 units). The data presented in this appendix was collected by training variations of the Lenet architecture more than 3,000 times.
+
+\subsection{Learning Rate}
+
+In this Subsection, we perform the lottery ticket experiment on the Lenet architecture as optimized with Adam, SGD, and SGD with momentum at various
+learning rates.
+
+\begin{figure}
+\centering
+\includegraphics[width=.7\textwidth]{graphs/mnist/lenet/adam_rate_sweep/legend}
+\includegraphics[width=.5\textwidth]{graphs/mnist/lenet/adam_rate_sweep/iteration}%
+\includegraphics[width=.5\textwidth]{graphs/mnist/lenet/adam_rate_sweep/accuracy}
+\caption{The early-stopping iteration and validation accuracy at that iteration of the iterative lottery ticket experiment on the Lenet architecture trained with MNIST using
+the Adam optimizer at various learning rates. Each line represents a different learning rate.}
+\label{fig:appendix-adam}
+\end{figure}
+
+\begin{figure}
+\centering
+\includegraphics[width=.7\textwidth]{graphs/mnist/lenet/sgd_rate_sweep/legend}
+\includegraphics[width=.5\textwidth]{graphs/mnist/lenet/sgd_rate_sweep/iteration}%
+\includegraphics[width=.5\textwidth]{graphs/mnist/lenet/sgd_rate_sweep/accuracy}
+\caption{The early-stopping iteration and validation accuracy at that iteration of the iterative lottery ticket experiment on the Lenet architecture trained with MNIST using
+stochastic gradient descent at various learning rates.}
+\label{fig:appendix-sgd}
+\end{figure}
+
+Here, we select the learning rate that we use for Adam in the main body of the paper. 
+Our criteria for selecting the learning rate are as follows:
+\begin{enumerate}
+\item On the unpruned network, it should minimize training iterations necessary to reach early-stopping and maximize validation accuracy at that iteration. That is,
+   it should be a reasonable hyperparameter for optimizing the unpruned network even if we are not running the lottery ticket experiment.
+\item When running the iterative lottery ticket experiment, it should make it possible to match the early-stopping iteration and accuracy of the original
+           network with as few parameters as possible.
+\item Of those options that meet (1) and (2), it should be on the conservative (slow) side so that it is more likely to productively optimize heavily pruned networks
+           under a variety of conditions with a variety of hyperparameters.
+\end{enumerate}
+
+Figure \ref{fig:appendix-adam} shows the early-stopping iteration and validation accuracy at that iteration of performing the iterative lottery ticket
+experiment with the Lenet architecture optimized with Adam at various learning rates. According to the graph on 
+the right of Figure \ref{fig:appendix-adam}, several learning rates between 0.0002 and 0.002 achieve
+similar levels of validation accuracy on the original network and maintain that performance to similar levels as the network is pruned. Of those learning
+rates, 0.0012 and 0.002 produce the fastest early-stopping times and maintain them to the smallest network sizes. We choose 0.0012 due to its higher validation accuracy
+on the unpruned network and in consideration of criterion (3) above.
+
+We note that, across all of these learning rates, the lottery ticket pattern (in which learning becomes faster and validation accuracy increases with iterative
+pruning) remains present. Even for those learning rates that did not satisfy the early-stopping criterion within 50,000 iterations (2.5e-05 and 0.0064) still showed accuracy
+improvements with pruning.
+
+\subsection{Other Optimization Algorithms}
+
+\subsubsection{SGD}
+
+Here, we explore the behavior of the lottery ticket experiment when the network is optimized with stochastic gradient descent (SGD) at various learning rates.
+The results of doing so appear in Figure \ref{fig:appendix-sgd}. The lottery ticket pattern appears across all learning rates, including those that fail to
+satisfy the early-stopping criterion
+within 50,000 iterations. SGD learning rates 0.4 and 0.8 reach early-stopping in a similar number of iterations as the best Adam learning rates
+(0.0012 and 0.002) but maintain this performance when the network has been pruned further (to less than 1\% of its original size for SGD vs.
+about 3.6\% of the original size for Adam). Likewise, on pruned networks, these SGD learning rates achieve equivalent  accuracy to
+the best Adam learning rates,
+and they maintain that high accuracy when the network is pruned as much as the Adam learning rates.
+
+\begin{figure}
+\centering
+\includegraphics[width=.7\textwidth]{graphs/mnist/lenet/momentum_rate_sweep/legend}
+\includegraphics[width=.5\textwidth]{graphs/mnist/lenet/momentum_rate_sweep/iteration}%
+\includegraphics[width=.5\textwidth]{graphs/mnist/lenet/momentum_rate_sweep/accuracy}
+\caption{The early-stopping iteration and validation accuracy at that iteration of the iterative lottery ticket experiment on the Lenet architecture trained with MNIST using
+stochastic gradient descent with momentum (0.9) at various learning rates.}
+\label{fig:appendix-momentum}
+\end{figure}
+
+\subsubsection{Momentum}
+
+Here, we explore the behavior of the lottery ticket experiment when the network is optimized with SGD with momentum (0.9) at various learning rates.
+The results of doing so appear in Figure \ref{fig:appendix-momentum}.
+Once again, the lottery ticket pattern appears across all learning rates, with learning rates between 0.025 and 0.1 maintaining high validation accuracy
+and faster learning for the longest number of pruning iterations. Learning rate 0.025 achieves the highest validation accuracy on the
+unpruned network; however, its validation accuracy never increases
+as it is pruned, instead decreasing gradually, and higher learning rates reach early-stopping faster.
+
+\subsection{Iterative Pruning Rate}
+
+When running the iterative lottery ticket experiment on Lenet, we prune each layer of the network separately at a particular rate. That is, after training the network,
+we prune $k\%$ of the weights in each layer ($\frac{k}{2}\%$ of the weights in the output layer) before resetting the weights to their original initializations and
+training again. In the main body of the paper, we find that iterative pruning finds smaller winning tickets than one-shot pruning, indicating that pruning too much
+of the network at once diminishes performance.
+Here, we explore different values of $k$.
+
+Figure \ref{fig:appendix-rate} shows the effect of the amount of the network pruned on each pruning iteration on early-stopping time and validation accuracy.
+There is a tangible difference in learning speed and validation accuracy at early-stopping between the lowest pruning
+rates (0.1 and 0.2) and higher pruning rates (0.4 and above). The lowest pruning rates reach higher validation accuracy and maintain that validation
+accuracy to smaller network
+sizes; they also maintain fast early-stopping times to smaller network sizes. For the experiments throughout the main body of the paper and this Appendix, we use
+a pruning rate of 0.2, which maintains much of the accuracy and learning speed of 0.1 while reducing the number of training iterations necessary to get
+to smaller network sizes.
+
+In all of the Lenet experiments, we prune the output layer at half the rate of the rest of the network. Since the output layer is so small (1,000 weights out of 266,000 for
+the overall Lenet architecture), we found that pruning it reaches a point of diminishing returns much earlier the other layers.
+
+\subsection{Initialization Distribution}
+
+\begin{figure}
+\centering
+\includegraphics[width=.5\textwidth]{graphs/mnist/lenet/pruning_rate_sweep/legend}
+\includegraphics[width=.5\textwidth]{graphs/mnist/lenet/pruning_rate_sweep/iteration}%
+\includegraphics[width=.5\textwidth]{graphs/mnist/lenet/pruning_rate_sweep/accuracy}
+\caption{The early-stopping iteration and validation accuracy at that iteration of the iterative lottery ticket experiment when pruned at different rates. Each line
+represents a different \emph{pruning rate}---the percentage of lowest-magnitude weights that are pruned from each layer after each training iteration.}
+\label{fig:appendix-rate}
+\end{figure}
+
+\begin{figure}
+\centering
+\includegraphics[width=.5\textwidth]{graphs/mnist/lenet/normal_init_sweep/legend}
+\includegraphics[width=.5\textwidth]{graphs/mnist/lenet/normal_init_sweep/iteration}%
+\includegraphics[width=.5\textwidth]{graphs/mnist/lenet/normal_init_sweep/accuracy}
+\caption{The early-stopping iteration and validation accuracy at that iteration of the iterative lottery ticket experiment initialized with Gaussian distributions
+with various standard deviations. Each line is a different standard deviation for a Gaussian distribution centered at 0.}
+\label{fig:appendix-normal}
+\end{figure}
+
+To this point, we have considered only a Gaussian Glorot \citep{xavier} initialization scheme for the network.  Figure \ref{fig:appendix-normal} performs
+the lottery ticket experiment while initializing the Lenet architecture from Gaussian distributions with a variety of standard deviations. The networks
+were optimized with Adam at the learning rate chosen earlier. The lottery ticket pattern continues to appear across all standard deviations. When initialized
+from a Gaussian distribution with standard deviation 0.1, the Lenet architecture maintained high validation accuracy and low early-stopping times for the longest,
+approximately matching the performance of the Glorot-initialized network.
+
+\subsection{Network Size}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=.7\textwidth]{graphs/mnist/lenet/network_size_sweep/legend}
+\includegraphics[width=\textwidth]{graphs/mnist/lenet/network_size_sweep/iteration}
+\includegraphics[width=\textwidth]{graphs/mnist/lenet/network_size_sweep/accuracy}
+\caption{The early-stopping iteration and validation accuracy at at that iteration of the iterative lottery ticket experiment on the Lenet
+architecture with various layer sizes. The label for each line is the size of the first and second hidden layers of the network. All networks had
+Gaussian Glorot initialization and were optimized with Adam (learning rate 0.0012). Note that the x-axis of this plot charts the number of \emph{weights}
+remaining, while all other graphs in this section have charted the \emph{percent} of weights remaining.}
+\label{fig:appendix-size}
+\end{figure}
+
+Throughout this section, we have considered the Lenet architecture with 300 units in the first hidden layer and 100 units in the second hidden layer.
+Figure \ref{fig:appendix-size} shows the early-stopping iterations and validation accuracy at that iteration of the Lenet architecture with several other layer sizes. All
+networks we tested maintain the 3:1 ratio between units in the first hidden layer and units in the second hidden layer.
+
+The lottery ticket hypothesis naturally invites a collection of questions related to network size. Generalizing, those questions tend to take the following
+form: according to the lottery ticket hypothesis, do larger networks, which contain more subnetworks, find ``better'' winning tickets? In line with the
+generality of this question, there are several different answers.
+
+If we evaluate a winning ticket by the accuracy it achieves, then larger networks do find
+better winning tickets. The right graph in Figure \ref{fig:appendix-size} shows that, for any particular number of weights (that is, any particular
+point on the x-axis), winning tickets derived from initially larger networks reach higher accuracy. Put another way, in terms of accuracy, the lines
+are approximately arranged from bottom to top in increasing order of network size. It is possible that, since larger networks have more subnetworks,
+gradient descent found a better winning ticket. Alternatively, the initially larger networks have more units even when pruned to the same number of weights
+as smaller networks, meaning they are able to contain sparse subnetwork configurations that cannot be expressed by initially smaller networks.
+
+If we evaluate a winning ticket by the time necessary for it to reach early-stopping, then larger networks have less of an advantage. The left graph in Figure \ref{fig:appendix-size}
+shows that, in general, early-stopping iterations do not vary greatly between networks of different initial sizes that have been pruned to the same number of weights. 
+Upon exceedingly close inspection, winning tickets derived from initially larger networks tend to learn marginally faster than winning tickets derived from
+initially smaller networks, but these differences are slight.
+
+If we evaluate a winning ticket by the size at which it returns to the same accuracy as the original network, the large networks do not have an advantage.
+Regardless of the initial network size, the right graph in Figure \ref{fig:appendix-size} shows that winning tickets return to the accuracy of the original network
+when they are pruned to between about 9,000 and 15,000 weights.

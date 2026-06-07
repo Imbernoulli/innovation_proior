@@ -1,0 +1,1368 @@
+\setcounter{figure}{5}    %
+\setcounter{equation}{8}  %
+\setcounter{table}{2}     %
+\setcounter{algorithm}{2} %
+
+\section{Additional results}
+\label{app:results}
+
+\figGridsImgcSampling
+\figGridsImgcTraining
+\figGridsCifaruSampling
+\figGridsCifaruTraining
+\figGridsCifarcTraining
+\figGridsFfhqAfhqTraining
+\figNfeSweep
+\afterpage{\tabOdeTable}
+\afterpage{\tabSdeTable}
+
+{
+Figure~\ref{fig:GridsImgcSampling} presents generated images for class-conditional ImageNet-64~\cite{Deng2009imagenet} using the pre-trained ADM model by Dhariwal and Nichol~\cite{Dhariwal2021}.
+The original DDIM~\cite{Song2020ddim} and iDDPM~\cite{Nichol2021a} samplers are compared to ours in both deterministic and stochastic settings (Sections~\refpaper{sec:deterministic} and~\refpaper{sec:stochasticity}).
+Figure~\ref{fig:GridsImgcTraining} shows the corresponding results that we obtain by training the model from scratch using our improved training configuration (Section~\refpaper{sec:training}).
+}
+
+{
+The original samplers and training configurations by Song~et~al.~\cite{Song2021sde} are compared to ours in
+  Figures~\ref{fig:GridsCifaruSampling} and~\ref{fig:GridsCifaruTraining} (unconditional CIFAR-10~\cite{Krizhevsky2009cifar}),
+  Figure~\ref{fig:GridsCifarcTraining} (class-conditional CIFAR-10),
+  and Figure~\ref{fig:GridsFfhqAfhqTraining} (FFHQ~\cite{Karras2018stylegan} and AFHQv2~\cite{Choi2020afhq}).
+}
+For ease of comparison, the same latent codes $\xx_0$ are used for each dataset/scenario across different training configurations and ODE choices.
+Figure~\ref{fig:NfeSweep} shows generated image quality with various NFE when using deterministic sampling.
+
+Tables~\ref{tab:OdeTable} and~\ref{tab:SdeTable} summarize the numerical results on deterministic and stochastic sampling methods in various datasets, previously shown as functions of NFE in Figures~\refpaper{fig:OdePlotNfe} and~\refpaper{fig:SdePlotNfe}.
+
+\section{Derivation of formulas}
+\label{app:formulas}
+
+\subsection{Original ODE~/~SDE formulation from previous work}
+\label{app:originalode}
+
+Song~et~al.~\cite{Song2021sde} define their forward SDE (Eq.~5 in \cite{Song2021sde}) as
+\begin{equation}
+  \diff\xx = \boldsymbol{f}(\xx, t) ~\diff t + g(t) ~\diff \omega_t
+  \text{,}
+\end{equation}
+where $\omega_t$ is the standard Wiener process and $\boldsymbol{f}(\cdot, \odetime): \mathbb{R}^d \rightarrow \mathbb{R}^d$ and $g(\cdot): \mathbb{R} \rightarrow \mathbb{R}$ are the drift and diffusion coefficients, respectively, where $d$ is the dimensionality of the dataset.
+These coefficients are selected differently for the variance preserving (VP) and variance exploding (VE) formulations, and $\boldsymbol{f}(\cdot)$ is always of the form $\boldsymbol{f}(\xx, \odetime) = f(\odetime) ~\xx$, where $f(\cdot): \mathbb{R} \rightarrow \mathbb{R}$.
+Thus, the SDE can be equivalently written as
+\begin{equation}
+  \label{eq:songsde}
+  \diff\xx = f(t) ~\xx ~\diff t + g(t) ~\diff \omega_t
+  \text{.}
+\end{equation}
+
+The perturbation kernels of this SDE (Eq.~29 in \cite{Song2021sde}) have the general form
+\begin{equation}
+  \label{eq:songperturbation}
+  p_{0t}\big( \xx(t) ~|~ \xx(0) \big) = \mathcal{N} \big( \xx(t); ~s(t) ~\xx(0), ~s(t)^2 ~\sigma(t)^2 ~\boldi \big)
+  \text{,}
+\end{equation}
+where {$\mathcal{N}(\xx; \boldsymbol{\mu}, \boldsymbol{\Sigma})$ denotes the probability density function of $\mathcal{N}(\boldsymbol{\mu}, \boldsymbol{\Sigma})$ evaluated at $\xx$,}
+\begin{equation}
+  \label{eq:songscale}
+  s(t) = \exp\left( \int_0^t f(\xi) ~\diff\xi \right)
+  \text{,}
+  \hspace{4mm}\text{and}\hspace{4mm}
+  \sigma(t) = \sqrt{\int_0^t \frac{g(\xi)^2}{s(\xi)^2} ~\diff\xi}
+  \text{.}
+\end{equation}
+
+The marginal distribution $p_t(\xx)$ is obtained by integrating the perturbation kernels over $\xx(0)$:
+\begin{equation}
+  \label{eq:songmarginal}
+  p_t(\xx) = \int_{\mathbb{R}^d} p_{0t}(\xx ~|~ \xx_0) ~\pdata(\xx_0) ~\diff \xx_0
+  \text{.}
+\end{equation}
+
+Song~et~al.~\cite{Song2021sde} define the probability flow ODE (Eq.~13 in \cite{Song2021sde}) so that it obeys this same $p_t(\xx)$:
+\begin{equation}
+  \label{eq:songode}
+  \diff\xx = \left[ f(t) ~\xx - \tfrac{1}{2} ~g(t)^2 ~\nablaxx \log p_t(\xx) \right] ~\diff t
+  \text{.}
+\end{equation}
+
+\subsection{Our ODE formulation (Eq.~\refpaper{eq:ode} and Eq.~\refpaper{eq:odescale})}
+\label{app:ourode}
+
+The original ODE formulation (Eq.~\ref{eq:songode}) is built around the functions $f$ and $g$ that correspond directly to specific terms that appear in the formula; the properties of the marginal distribution (Eq.~\ref{eq:songscale}) can only be derived indirectly based on these functions.
+However, $f$ and $g$ are of little practical interest in themselves, whereas the marginal distributions are of utmost importance in terms of training the model in the first place, bootstrapping the sampling process, and understanding how the ODE behaves in practice.
+Given that the idea of the probability flow ODE is to match a particular set of marginal distributions, it makes sense to treat the marginal distributions as first-class citizens and define the ODE directly based on $\sigma(t)$ and $s(t)$, eliminating the need for $f(t)$ and $g(t)$.
+
+Let us start by expressing the marginal distribution of Eq.~\ref{eq:songmarginal} in closed form:
+\begin{eqnarray}
+  p_t(\xx) &=& \int_{\mathbb{R}^d} p_{0t}(\xx ~|~ \xx_0) ~\pdata(\xx_0) ~\diff \xx_0 \\
+  &=& \int_{\mathbb{R}^d} \pdata(\xx_0) ~\Big[ \mathcal{N} \big( \xx; ~s(t) ~\xx_0, ~s(t)^2 ~\sigma(t)^2 ~\boldi \big) \Big] ~\diff \xx_0 \\
+  &=& \int_{\mathbb{R}^d} \pdata(\xx_0) ~\Big[ s(t)^{-d} ~\mathcal{N} \big( \xx / s(t); ~\xx_0, ~\sigma(t)^2 ~\boldi \big) \Big] ~\diff \xx_0 \\
+  &=& s(t)^{-d} \int_{\mathbb{R}^d} \pdata(\xx_0) ~\mathcal{N} \big( \xx / s(t); ~\xx_0, ~\sigma(t)^2 ~\boldi \big) ~\diff \xx_0 \\
+  &=& s(t)^{-d} ~\Big[ \pdata \ast \mathcal{N} \big( \boldzero, ~\sigma(t)^2 ~\boldi \big) \Big] \big( \xx / s(t) \big)
+  \text{,}
+\end{eqnarray}
+where $p_a \ast p_b$ denotes the convolution of probability density functions $p_a$ and $p_b$.
+The expression inside the brackets corresponds to a mollified version of $\pdata$ obtained by adding i.i.d.\ Gaussian noise to the samples.
+Let us denote this distribution by $p(\xx; \sigma)$:
+\begin{equation}
+  \label{eq:psigma}
+  p(\xx; \sigma) = \pdata \ast \mathcal{N} \big( \boldzero, ~\sigma(t)^2 ~\boldi \big)
+  \hspace{5mm}\text{and}\hspace{5mm}
+  p_t(\xx) = s(t)^{-d} ~p\big( \xx / s(t); \sigma(t) \big)
+  \text{.}
+\end{equation}
+
+We can now express the probability flow ODE (Eq.~\ref{eq:songode}) using $p(\xx; \sigma)$ instead of $p_t(\xx)$:
+\begin{eqnarray}
+  \diff\xx &=& \left[ f(t) \xx - \tfrac{1}{2} ~g(t)^2 ~\nablaxx \log \big[ p_t(\xx) \big] \right] ~\diff t \\
+  &=& \left[ f(t) \xx - \tfrac{1}{2} ~g(t)^2 ~\nablaxx \log \big[ s(t)^{-d} ~p\big( \xx / s(t); \sigma(t) \big) \big] \right] ~\diff t \\
+  &=& \left[ f(t) \xx - \tfrac{1}{2} ~g(t)^2 ~\big[ \nablaxx \log s(t)^{-d} + \nablaxx \log p\big( \xx / s(t); \sigma(t) \big) \big] \right] ~\diff t \\
+  &=& \left[ f(t) \xx - \tfrac{1}{2} ~g(t)^2 ~\nablaxx \log p\big( \xx / s(t); \sigma(t) \big) \right] ~\diff t
+  \label{eq:tempode}
+  \text{.}
+\end{eqnarray}
+
+Next, let us rewrite $f(t)$ in terms of $s(t)$ based on Eq.~\ref{eq:songscale}:
+\begin{eqnarray}
+  \exp\left( \int_0^t f(\xi) ~\diff\xi \right) &=& s(t) \\
+  \int_0^t f(\xi) ~\diff\xi &=& \log s(t) \\
+  \diff \bigg[ \int_0^t f(\xi) ~\diff\xi \bigg] \big/ \diff t &=& \diff \big[ \log s(t) \big] / \diff t \\
+  f(t) &=& \dot s(t) / s(t)
+  \label{eq:tempf}
+  \text{.}
+\end{eqnarray}
+
+Similarly, we can also rewrite $g(t)$ in terms of $\sigma(t)$:
+\begin{eqnarray}
+  \sqrt{\int_0^t \frac{g(\xi)^2}{s(\xi)^2} ~\diff\xi} &=& \sigma(t) \\
+  \int_0^t \frac{g(\xi)^2}{s(\xi)^2} ~\diff\xi &=& \sigma(t)^2 \\
+  \diff \bigg[ \int_0^t \frac{g(\xi)^2}{s(\xi)^2} ~\diff\xi \bigg] \big/ \diff t &=& \diff \big[ \sigma(t)^2 \big] / \diff t \\
+  g(t)^2 / s(t)^2 &=& 2 ~\dot\sigma(t) ~\sigma(t) \\
+  g(t) / s(t) &=& \sqrt{2 ~\dot\sigma(t) ~\sigma(t)} \\
+  g(t) &=& s(t) ~\sqrt{2 ~\dot\sigma(t) ~\sigma(t)}
+  \label{eq:tempg}
+  \text{.}
+\end{eqnarray}
+
+Finally, substitute $f$ (Eq.~\ref{eq:tempf}) and $g$ (Eq.~\ref{eq:tempg}) into the ODE of Eq.~\ref{eq:tempode}:
+\begin{eqnarray}
+  \diff\xx &=& \left[ [f(t)] ~\xx - \tfrac{1}{2} ~[g(t)]^2 ~\nablaxx \log p\big( \xx / s(t); \sigma(t) \big) \right] ~\diff t \\
+  &=& \bigg[ \big[ \dot s(t) / s(t) \big] ~\xx - \tfrac{1}{2} ~\Big[ s(t) \sqrt{2 ~\dot\sigma(t) ~\sigma(t)} \Big]^2 ~\nablaxx \log p\big( \xx / s(t); \sigma(t) \big) \bigg] ~\diff t \\
+  &=& \bigg[ \big[ \dot s(t) / s(t) \big] ~\xx - \tfrac{1}{2} ~\Big[ 2 ~s(t)^2 ~\dot\sigma(t) ~\sigma(t) \Big] ~\nablaxx \log p\big( \xx / s(t); \sigma(t) \big) \bigg] ~\diff t \\
+  %
+  &=& \left[ \frac{\dot s(t)}{s(t)} ~\xx -s(t)^2 ~\dot\sigma(t) ~\sigma(t) ~\nablaxx \log p\left(\frac{\xx}{s(t)}; \sigma(t)\right) \right] ~\diff t
+  \text{.}
+\end{eqnarray}
+
+Thus we have obtained Eq.~\refpaper{eq:odescale} in the main paper, and Eq.~\refpaper{eq:ode} is recovered by setting $s(t) = 1$:
+\begin{equation}
+  \diff\xx = -\dot\sigma(t) ~\sigma(t) ~\nablaxx \log p\big( \xx; \sigma(t) \big) ~\diff t
+  \text{.}
+\end{equation}
+
+Our formulation (Eq.~\refpaper{eq:odescale}) highlights the fact that every realization of the probability flow ODE is simply a reparameterization of the same canonical ODE; changing $\sigma(t)$ corresponds to reparameterizing $t$, whereas changing $s(t)$ corresponds to reparameterizing $\xx$.
+
+\subsection{Denoising score matching (Eq.~\refpaper{eq:score} and Eq.~\refpaper{eq:scoredenoiser})}
+\label{app:scorematching}
+
+For the sake of completeness, we derive the connection between score matching and denoising for a finite dataset. For a more general treatment and further background on the topic, see Hyv\"arinen~\cite{Hyvarinen05} and Vincent~\cite{Vincent11}.
+
+Let us assume that our training set consists of a finite number of samples $\{\signal_1, \dots, \signal_Y\}$.
+This implies $\pdata(\xx)$ is represented by a mixture of Dirac delta distributions:
+\begin{equation}
+  \pdata(\xx) = \frac{1}{Y} \sum_{i=1}^Y \delta \big( \xx - \signal_i \big)
+  \text{,}
+\end{equation}
+which allows us to also express $p(\xx; \sigma)$ in closed form based on Eq.~\ref{eq:psigma}:
+\begin{eqnarray}
+  p(\xx; \sigma) &=& \pdata \ast \mathcal{N} \big( \boldzero, ~\sigma(t)^2 ~\boldi \big) \\
+  &=& \int_{\mathbb{R}^d} \pdata(\xx_0) ~\mathcal{N} \big( \xx; ~\xx_0, ~\sigma^2 ~\boldi \big) ~\diff\xx_0 \\
+  &=& \int_{\mathbb{R}^d} \Bigg[ \frac{1}{Y} \sum_{i=1}^Y \delta \big( \xx_0 - \signal_i \big) \Bigg] \mathcal{N} \big( \xx; ~\xx_0, ~\sigma^2 ~\boldi \big) ~\diff\xx_0 \\
+  &=& \frac{1}{Y} \sum_{i=1}^Y \int_{\mathbb{R}^d} \mathcal{N} \big( \xx; ~\xx_0, ~\sigma^2 ~\boldi \big) ~\delta \big( \xx_0 - \signal_i \big) ~\diff\xx_0 \\
+  &=& \frac{1}{Y} \sum_{i=1}^Y \mathcal{N} \big( \xx; ~\signal_i, ~\sigma^2 ~\boldi \big)
+  \label{eq:diracpsigma}
+  \text{.}
+\end{eqnarray}
+
+Let us now consider the denoising score matching loss of Eq.~\refpaper{eq:score}.
+By expanding the expectations, we can rewrite the formula as an integral over the noisy samples $\xx$:
+\begin{eqnarray}
+  \mathcal{L}(D; \sigma) &=& \mathbb{E}_{\signal \sim \pdata} ~\mathbb{E}_{\noise \sim \mathcal{N}(\boldzero, \sigma^2 \boldi)} ~\big\lVert D(\signal + \noise; \sigma) - \signal \big\rVert^2_2 \\
+  &=& \mathbb{E}_{\signal \sim \pdata} ~\mathbb{E}_{\xx \sim \mathcal{N}(\signal, \sigma^2 \boldi)} ~\big\lVert D(\xx; \sigma) - \signal \big\rVert^2_2 \\
+  &=& \mathbb{E}_{\signal \sim \pdata} \int_{\mathbb{R}^d} \mathcal{N}(\xx; ~\signal, ~\sigma^2 ~\boldi) ~\big\lVert D(\xx; \sigma) - \signal \big\rVert^2_2 ~\diff\xx \\
+  &=& \frac{1}{Y} \sum_{i=1}^Y \int_{\mathbb{R}^d} \mathcal{N}(\xx; ~\signal_i, ~\sigma^2 ~\boldi) ~\big\lVert D(\xx; \sigma) - \signal_i \big\rVert^2_2 ~\diff\xx \\
+  &=& \int_{\mathbb{R}^d} \underbrace{\frac{1}{Y} \sum_{i=1}^Y \mathcal{N}(\xx; ~\signal_i, ~\sigma^2 ~\boldi) ~\big\lVert D(\xx; \sigma) - \signal_i \big\rVert^2_2}_{=: ~ \mathcal{L}(D; \xx, \sigma)}  ~\diff\xx
+  %
+  \label{eq:slicedloss}
+  \text{.}
+\end{eqnarray}
+
+Eq.~\ref{eq:slicedloss} means that we can minimize $\mathcal{L}(D; \sigma)$ by minimizing $\mathcal{L}(D; \xx, \sigma)$ independently for each $\xx$:
+\begin{equation}
+  D(\xx; \sigma) = \argmin_{D(\xx; \sigma)} \mathcal{L}(D; \xx, \sigma)
+  \text{.}
+\end{equation}
+This is a convex optimization problem; its solution is uniquely identified by setting the gradient w.r.t. $D(\xx; \sigma)$ to zero:
+\begin{eqnarray}
+  \boldzero &=& \nabla_{D(\xx; \sigma)} \Big[ \mathcal{L}(D; \xx, \sigma) \Big] \\
+  \boldzero &=& \nabla_{D(\xx; \sigma)} \Bigg[ \frac{1}{Y} \sum_{i=1}^Y \mathcal{N}(\xx; ~\signal_i, ~\sigma^2 ~\boldi) ~\big\lVert D(\xx; \sigma) - \signal_i \big\rVert^2_2 \Bigg] \\
+  \boldzero &=& \sum_{i=1}^Y \mathcal{N}(\xx; ~\signal_i, ~\sigma^2 ~\boldi) ~\nabla_{D(\xx; \sigma)} \Big[ \big\lVert D(\xx; \sigma) - \signal_i \big\rVert^2_2 \Big] \\
+  \boldzero &=& \sum_{i=1}^Y \mathcal{N}(\xx; ~\signal_i, ~\sigma^2 ~\boldi) ~\Big[ 2 ~D(\xx; \sigma) - 2~\signal_i \Big] \\
+  \boldzero &=& \Bigg[ \sum_{i=1}^Y \mathcal{N}(\xx; ~\signal_i, ~\sigma^2 ~\boldi) \Bigg] D(\xx; \sigma) - \sum_{i=1}^Y \mathcal{N}(\xx; ~\signal_i, ~\sigma^2 ~\boldi) ~\signal_i \\
+  D(\xx; \sigma) &=& \frac{ \sum_i \mathcal{N}(\xx; ~\signal_i, ~\sigma^2 ~\boldi) ~\signal_i }{ \sum_i \mathcal{N}(\xx; ~\signal_i, ~\sigma^2 ~\boldi) }
+  \label{eq:idealdenoiser}
+  \text{,}
+\end{eqnarray}
+which gives a closed-form solution for the ideal denoiser $D(\xx; \sigma)$.
+Note that Eq.~\ref{eq:idealdenoiser} is feasible to compute in practice for small datasets\,---\,we show the results for CIFAR-10 in Figure~\refpaper{fig:denoising}b.
+
+Next, let us consider the score of the distribution $p(\xx; \sigma)$ defined in Eq.~\ref{eq:diracpsigma}:
+\begin{eqnarray}
+  \nablaxx \log p(\xx; \sigma) &=& \frac{\nablaxx p(\xx; \sigma)}{p(\xx; \sigma)} \\
+  &=& \frac{ \nablaxx \Big[ \frac{1}{Y} \sum_i \mathcal{N} \big( \xx; ~\signal_i, ~\sigma^2 ~\boldi \big) \Big] }{ \Big[ \frac{1}{Y} \sum_i \mathcal{N} \big( \xx; ~\signal_i, ~\sigma^2 ~\boldi \big) \Big] } \\
+  &=& \frac{ \sum_i \nablaxx \mathcal{N} \big( \xx; ~\signal_i, ~\sigma^2 ~\boldi \big) }{ \sum_i \mathcal{N} \big( \xx; ~\signal_i, ~\sigma^2 ~\boldi \big) }
+  \label{eq:diracscoretemp}
+  \text{.}
+\end{eqnarray}
+
+We can simplify the numerator of Eq.~\ref{eq:diracscoretemp} further:
+\begin{eqnarray}
+  \nablaxx \mathcal{N} \big( \xx; ~\signal_i, ~\sigma^2 ~\boldi \big) &=& \nablaxx \Bigg[ \big( 2 \pi \sigma^2 \big)^{-\frac{d}{2}} ~\exp \frac{\lVert \xx - \signal_i \rVert_2^2}{-2 ~\sigma^2} \Bigg] \\
+  &=& \big( 2 \pi \sigma^2 \big)^{-\frac{d}{2}} ~\nablaxx \Bigg[ \exp \frac{\lVert \xx - \signal_i \rVert_2^2}{-2 ~\sigma^2} \Bigg] \\
+  &=& \Bigg[\big( 2 \pi \sigma^2 \big)^{-\frac{d}{2}} \exp \frac{\lVert \xx - \signal_i \rVert_2^2}{-2 ~\sigma^2} \Bigg] ~\nablaxx \Bigg[ \frac{\lVert \xx - \signal_i \rVert_2^2}{-2 ~\sigma^2} \Bigg] \\
+  &=& \mathcal{N} \big( \xx; ~\signal_i, ~\sigma^2 ~\boldi \big) ~\nablaxx \Bigg[ \frac{\lVert \xx - \signal_i \rVert_2^2}{-2 ~\sigma^2} \Bigg] \\
+  &=& \mathcal{N} \big( \xx; ~\signal_i, ~\sigma^2 ~\boldi \big) \bigg[ \frac{\signal_i - \xx}{\sigma^2} \bigg]
+  \text{.}
+\end{eqnarray}
+
+Let us substitute the result back to Eq.~\ref{eq:diracscoretemp}:
+\begin{eqnarray}
+  \nablaxx \log p(\xx; \sigma) &=& \frac{ \sum_i \nablaxx \mathcal{N} \big( \xx; ~\signal_i, ~\sigma^2 ~\boldi \big) }{ \sum_i \mathcal{N} \big( \xx; ~\signal_i, ~\sigma^2 ~\boldi \big) } \\
+  &=& \frac{ \sum_i \mathcal{N} \big( \xx; ~\signal_i, ~\sigma^2 ~\boldi \big) \Big[ \frac{\signal_i - \xx}{\sigma^2} \Big] }{ \sum_i \mathcal{N} \big( \xx; ~\signal_i, ~\sigma^2 ~\boldi \big) } \\
+  &=& \Bigg( \frac{ \sum_i \mathcal{N} \big( \xx; ~\signal_i, ~\sigma^2 ~\boldi \big) \signal_i }{ \sum_i \mathcal{N} \big( \xx; ~\signal_i, ~\sigma^2 ~\boldi \big) } - \xx \Bigg) \big/ \sigma^2
+  \label{eq:diracscore}
+  \text{.}
+\end{eqnarray}
+
+Notice that the fraction in Eq.~\ref{eq:diracscore} is identical to Eq.~\ref{eq:idealdenoiser}.
+We can thus equivalently write Eq.~\ref{eq:diracscore} as
+\begin{equation}
+  \nablaxx \log p(\xx; \sigma) = \big( D(\xx; ~\sigma) - \xx \big) / \sigma^2
+  \text{,}
+\end{equation}
+which matches Eq.~\refpaper{eq:scoredenoiser} in the main paper.
+
+\subsection{Evaluating our ODE in practice (Algorithm~\refpaper{alg:heun})}
+\label{app:odeinpractice}
+
+Let us consider $\xx$ to be a scaled version of an original, non-scaled variable $\hat\xx$ and substitute $\xx = s(t) ~\hat\xx$ into the score term that appears in our scaled ODE (Eq.~\refpaper{eq:odescale}):
+\begin{eqnarray}
+  && \nablaxx \log p\big( \xx / s(t); \sigma(t) \big) \\
+  &=& \nabla_{[ s(t) \hat \xx ]} \log p\big( [s(t) ~\hat\xx] / s(t); \sigma(t) \big) \\
+  &=& \nabla_{s(t) \hat \xx} \log p\big( \hat\xx; \sigma(t) \big) \\
+  &=& \tfrac{1}{s(t)} \nabla_{\hat\xx} \log p\big( \hat\xx; \sigma(t) \big)
+  \text{.}
+\end{eqnarray}
+
+We can further rewrite this with respect to $D(\cdot)$ using Eq.~\refpaper{eq:scoredenoiser}:
+\begin{equation}
+  \nablaxx \log p\big( \xx / s(t); \sigma(t) \big) ~=~ \tfrac{1}{s(t) \sigma(t)^2} \Big( D\big( \hat\xx; \sigma(t) \big) - \hat\xx \Big)
+  \label{eq:scaledscore}
+  \text{.}
+\end{equation}
+
+Let us now substitute Eq.~\ref{eq:scaledscore} into Eq.~\refpaper{eq:odescale}, approximating the ideal denoiser $D(\cdot)$ with our trained model $D_\theta(\cdot)$:
+\begin{eqnarray}
+  \diff\xx &=& \left[ \dot s(t) ~\xx / s(t) - s(t)^2 ~\dot\sigma(t) ~\sigma(t) ~\Big[ \tfrac{1}{s(t) \sigma(t)^2} \Big( D_\theta \big( \hat\xx; \sigma(t) \big) - \hat\xx \Big) \Big] \right] ~\diff t \\
+  &=& \left[ \tfrac{\dot s(t)}{s(t)} ~\xx - \tfrac{\dot\sigma(t) s(t)}{\sigma(t)} \Big( D_\theta \big( \hat\xx; \sigma(t) \big) - \hat\xx \Big) \right] ~\diff t
+  \text{.}
+\end{eqnarray}
+
+Finally, backsubstitute $\hat\xx = \xx / s(t)$:
+\begin{eqnarray}
+  \diff\xx &=& \left[ \tfrac{\dot s(t)}{s(t)} ~\xx - \tfrac{\dot\sigma(t) s(t)}{\sigma(t)} \Big( D_\theta \big( [\hat\xx]; \sigma(t) \big) - [\hat\xx] \Big) \right] ~\diff t \\
+  &=& \left[ \tfrac{\dot s(t)}{s(t)} ~\xx - \tfrac{\dot\sigma(t) s(t)}{\sigma(t)} \Big( D_\theta \big( [\xx / s(t)]; \sigma(t) \big) - [\xx / s(t)] \Big) \right] ~\diff t \\
+  &=& \left[ \tfrac{\dot s(t)}{s(t)} ~\xx - \tfrac{\dot\sigma(t) s(t)}{\sigma(t)} D_\theta \big( \xx / s(t); \sigma(t) \big) + \tfrac{\dot\sigma(t)}{\sigma(t)} ~\xx \right] ~\diff t \\
+  &=& \left[ \left( \tfrac{\dot\sigma(t)}{\sigma(t)} + \tfrac{\dot s(t)}{s(t)} \right) \xx - \tfrac{\dot\sigma(t) s(t)}{\sigma(t)} D_\theta \big( \xx / s(t); \sigma(t) \big) \right] ~\diff t
+  \label{eq:practicalode}
+  \text{.}
+\end{eqnarray}
+
+We can equivalenty write Eq.~\ref{eq:practicalode} as
+\begin{equation}
+  \diff\xx / \diff t = \bigg( \frac{\dot\sigma(t)}{\sigma(t)} + \frac{\dot s(t)}{s(t)} \bigg) \xx - \frac{\dot\sigma(t) s(t)}{\sigma(t)} D_\theta \bigg( \frac{\xx}{s(t)}; \sigma(t) \bigg)
+  \text{,}
+\end{equation}
+matching lines 4 and 7 of Algorithm~\refpaper{alg:heun}.
+
+\subsection{Our SDE formulation (Eq.~\refpaper{eq:sde})}
+\label{app:oursde}
+
+We derive the SDE of Eq.~\refpaper{eq:sde} by the following strategy:
+\begin{itemize}
+\item
+The desired marginal densities $p\big( \xx; \sigma(t) \big)$ are convolutions of the data density $\pdata$ and an isotropic Gaussian density with standard deviation $\sigma(t)$ (see Eq.~\ref{eq:psigma}). Hence, considered as a function of the time $t$, the density evolves according to a heat diffusion PDE with time-varying diffusivity. As a first step, we find this PDE.%
+\item
+We then use the Fokker--Planck equation to recover a family of SDEs for which the density evolves according to this PDE. Eq.~\refpaper{eq:sde} is obtained from a suitable parametrization of this family.
+\end{itemize}
+
+\subsubsection{Generating the marginals by heat diffusion}
+
+We consider the time evolution of a probability density $\pd(\xx, t)$. Our goal is to find a PDE whose solution with the initial value $\pd(\xx, 0) := \pdata(\xx)$ is $\pd(\xx, t) = p\big( \xx, \sigma(t) \big)$. That is, the PDE should reproduce the marginals we postulate in Eq.~\ref{eq:psigma}.
+
+The desired marginals are convolutions of $\pdata$ with isotropic normal distributions of time-varying standard deviation $\sigma(t)$, and as such, can be generated by the heat equation with time-varying diffusivity $\condu(t)$. The situation is most conveniently analyzed in the Fourier domain, where the marginal densities are simply pointwise products of a Gaussian function and the transformed data density. To find the diffusivity that induces the correct standard deviations, we first write down the heat equation PDE:
+\begin{equation}
+  \frac{\partial \pd(\xx, t)}{\partial t} = \condu(t) \Deltaxx \pd(\xx, t)
+  \label{eq:pde}
+  \text{.}
+\end{equation}
+
+The Fourier transformed counterpart of Eq.~\ref{eq:pde}, where the transform is taken along the $\xx$-dimension, is given by
+\begin{equation}
+  \frac{\partial \hat \pd(\freq, t)}{\partial t} = - \condu(t) |\freq|^2 \hat \pd(\freq, t)
+  \label{eq:pdeft}
+  \text{.}
+\end{equation}
+
+The target solution $\pd(\xx, t)$ and its Fourier transform $\hat \pd(\freq, t)$ are given by Eq.~\ref{eq:psigma}:
+\begin{eqnarray}
+  \pd(\xx, t) &=& p\big( \xx; \sigma(t) \big) = \pdata(\xx) \ast \mathcal{N}\big( \boldzero, ~\sigma(t)^2 ~\boldi \big) \\
+  \hat \pd(\freq, t) &=& \pdatahat(\freq) ~\exp\Big( {-}\tfrac{1}{2} ~|\freq|^2 ~\sigma(t)^2 \Big)
+  \text{.}
+\end{eqnarray}
+
+Differentiating the target solution along the time axis, we have
+\begin{eqnarray}
+  \frac{\partial \hat \pd(\freq, t)}{\partial t} &=& - \dot\sigma(t) \sigma(t) ~|\freq|^2 ~ \pdatahat(\freq) ~\exp\Big( {-}\tfrac{1}{2} ~|\freq|^2 ~\sigma(t)^2 \Big) \\
+  &=& - \dot \sigma(t) \sigma(t) ~|\freq|^2 ~\hat\pd(\freq,t)
+  \label{eq:pdesolutionftd}
+  \text{.}
+\end{eqnarray}
+
+Eqs.~\ref{eq:pdeft} and \ref{eq:pdesolutionftd} share the same left hand side. Equating them allows us to solve for $\condu(t)$ that generates the desired evolution:
+\begin{eqnarray}
+  - \condu(t) |\freq|^2 \hat \pd(\freq, t) &=& - \dot \sigma(t) \sigma(t) ~ |\freq|^2 ~ \hat \pd(\freq,t) \\
+  \condu(t) &=& \dot \sigma(t) \sigma(t)
+  \text{.}
+\end{eqnarray}
+
+To summarize, the desired marginal densities corresponding to noise levels $\sigma(t)$ are generated by the PDE
+\begin{equation}
+  \frac{\partial \pd(\xx, t)}{\partial t} = \dot \sigma(t) \sigma(t) \Deltaxx \pd(\xx, t)
+  \label{eq:marginalpde}
+\end{equation}
+from the initial density $\pd(\xx, 0) = \pdata(\xx)$.
+
+\subsubsection{Derivation of our SDE}
+
+Given an SDE
+\begin{equation}
+  \diff \xx = \ff(\xx, t) ~ \diff t ~ + ~ \gb(\xx, t) ~ \diff\wproc
+  \label{eq:sdegeneral}
+  \text{,}
+\end{equation}
+the Fokker--Planck PDE describes the time evolution of its solution probability density $\fp(\xx, t)$ as
+\begin{equation}
+  \frac{\partial \fp(\xx, t)}{\partial t} = -\nablaxx \cdot \big( \ff(\xx,t) ~\fp(\xx,t) \big) + \tfrac{1}{2} \nablaxx \nablaxx : \big( \mathbf{D}(\xx, t) ~\fp(\xx, t) \big)
+  \text{,}
+\end{equation}
+where $\mathbf{D}_{ij} = \sum_k \gb_{ik} \gb_{jk}$ is the \emph{diffusion tensor}. %
+We consider the special case $\gb(\xx, t) = g(t) ~\boldi$ of $\xx$-independent white noise addition, whereby the equation simplifies to
+\begin{equation}
+  \frac{\partial \fp(\xx, t)}{\partial t} = -\nablaxx \cdot \big( \ff(\xx,t) ~\fp(\xx,t) \big) + \tfrac{1}{2} ~g(t)^2 ~\Deltaxx \fp(\xx, t)
+  \label{eq:fokkerplanck}
+  \text{.}
+\end{equation}
+
+We are seeking an SDE whose solution density is described by the PDE in Eq.~\ref{eq:marginalpde}. Setting $\fp(\xx, t) = q(\xx, t)$ and equating Eqs.~\ref{eq:fokkerplanck} and \ref{eq:marginalpde}, we find the sufficient condition that the SDE must satisfy
+\begin{eqnarray}
+  -\nablaxx \cdot \big( \ff(\xx,t) ~\pd(\xx,t) \big) + \tfrac{1}{2} ~g(t)^2 ~\Deltaxx \pd(\xx, t) &=& \dot\sigma(t) ~\sigma(t) ~\Deltaxx \pd(\xx, t) \\
+  \nablaxx \cdot \big( \ff(\xx,t) ~\pd(\xx,t) \big) &=& \Big( \tfrac{1}{2} ~g(t)^2 - \dot\sigma(t) ~\sigma(t) \Big) ~\Deltaxx \pd(\xx, t)
+  \text{.}
+\end{eqnarray}
+
+Any choice of functions $\ff(\xx,t)$ and $g(t)$ satisfying this equation constitute a sought after SDE. Let us now find a specific family of such solutions. The key idea is given by the identity $\nablaxx \cdot \nablaxx = \Deltaxx$. Indeed, if we set $\ff(\xx,t) ~\pd(\xx,t) = \upsilon(t) ~\nablaxx \pd(\xx,t)$ for any choice of $\upsilon(t)$, the term $\Deltaxx \pd(\xx,t)$ appears on both sides and cancels out:
+\begin{eqnarray}
+  \nablaxx \cdot \big( \upsilon(t) ~\nablaxx \pd(\xx,t) \big) &=& \Big( \tfrac{1}{2} ~g(t)^2 - \dot\sigma(t) ~\sigma(t) \Big) ~\Deltaxx \pd(\xx, t) \\
+  \upsilon(t) ~\Deltaxx \pd(\xx,t) &=& \Big( \tfrac{1}{2} ~g(t)^2 - \dot\sigma(t) ~\sigma(t) \Big) ~\Deltaxx \pd(\xx, t) \\
+  \upsilon(t) &=& \tfrac{1}{2} ~g(t)^2 - \dot\sigma(t) ~\sigma(t)
+  \text{.}
+\end{eqnarray}
+
+The stated $\ff(\xx,t)$ is in fact proportional to the score function, as the formula matches the gradient of the logarithm of the density:
+\begin{eqnarray}
+  \ff(\xx, t) &=& \upsilon(t) ~\frac{\nablaxx q(\xx,t)}{q(\xx,t)} \\
+  &=& \upsilon(t) ~\nablaxx \log q(\xx, t) \\
+  &=& \Big( \tfrac{1}{2} ~g(t)^2 - \dot\sigma(t) ~\sigma(t) \Big) ~\nablaxx \log q(\xx, t)
+  \text{.}
+\end{eqnarray}
+
+Substituting this back into Eq.~\ref{eq:sdegeneral} and writing $p(\xx; \sigma(t))$ in place of $q(\xx,t)$, we recover a family of SDEs whose solution densities have the desired marginals with noise levels $\sigma(t)$ for any choice of $g(t)$:
+\begin{equation}
+  \diff \xx = \Big( \tfrac{1}{2} ~g(t)^2 - \dot\sigma(t) ~\sigma(t) \Big) ~\nablaxx \log p\big( \xx; \sigma(t) \big) ~\diff t ~+~ g(t) ~\diff\wproc
+  \text{.}
+\end{equation}
+
+The free parameter $g(t)$ effectively specifies the rate of noise replacement at any given time instance. The special case choice of $g(t) = 0$ corresponds to the probability flow ODE. The parametrization by $g(t)$ is not particularly intuitive, however. To obtain a more interpretable parametrization, we set $g(t) = \sqrt{2 ~\churn(\odetime)} ~\sigma(\odetime)$, which yields the (forward) SDE of Eq.~\refpaper{eq:sde} in the main paper:
+\begin{equation}
+  \diff \xx_{+} =
+    -\dot\sigma(\odetime) \sigma(\odetime) \nablaxx \log p\big( \xx; \sigma(\odetime) \big) \,\diff\odetime\, + \,
+      \churn(\odetime) \sigma(\odetime)^2 \nablaxx \log p\big( \xx; \sigma(\odetime) \big) \,\diff\odetime +
+      \sqrt{2 \churn(\odetime)} \sigma(\odetime) \,\diff\wproc
+  \label{eq:sdeforward}
+  \text{.}
+\end{equation}
+
+The noise replacement is now proportional to the standard deviation $\sigma(t)$ of the noise, with the proportionality factor $\churn(t)$. Indeed, expanding the score function in the middle term according to Eq.~\refpaper{eq:scoredenoiser} yields $\beta(t) ~\big[ D\big( \xx;\sigma(t) \big) - \xx \big] ~\diff t$, which changes $\xx$ proportionally to the negative noise component; the stochastic term injects new noise at the same rate. Intuitively, scaling the magnitude of Langevin exploration according to the current noise standard deviation is a reasonable baseline, as the data manifold is effectively ``spread out'' by this amount due to the blurring of the density.
+
+The \emph{reverse} SDE used in denoising diffusion is simply obtained by applying the time reversal formula of Anderson~\cite{Anderson1982} (as stated in Eq. 6 of Song et al.~\cite{Song2021sde}) on Eq.~\ref{eq:sdeforward}; the entire effect of the reversal is a change of sign in the middle term. 
+
+The scaled generalization of the SDE can be derived using a similar approach as with the ODE previously.
+As such, the derivation is omitted here.
+
+\subsection{Our preconditioning and training (Eq.~\refpaper{eq:precloss})}
+\label{app:ourprecond}
+
+Following Eq.~\refpaper{eq:score}, the denoising score matching loss for a given denoiser $D_\theta$ on a given noise level $\sigma$ is given by
+\begin{equation}
+  \mathcal{L}(D_\theta; \sigma) = \mathbb{E}_{\signal \sim \pdata} ~\mathbb{E}_{\noise \sim \mathcal{N}(\boldzero, \sigma^2 \boldi)} ~\big\lVert D_\theta(\signal + \noise; \sigma) - \signal \big\rVert^2_2
+  \text{.}
+\end{equation}
+
+We obtain overall training loss by taking a weighted expectation of $\mathcal{L}(D_\theta; \sigma)$ over the noise levels:
+\begin{eqnarray}
+  \mathcal{L}(D_\theta) &=& \mathbb{E}_{\sigma \sim \ptrain} \big[ \lambda(\sigma) ~\mathcal{L}(D_\theta; \sigma) \big] \\
+  &=& \mathbb{E}_{\sigma \sim \ptrain} ~\Big[ \lambda(\sigma) ~\mathbb{E}_{\signal \sim \pdata} ~\mathbb{E}_{\noise \sim \mathcal{N}(\boldzero, \sigma^2 \boldi)} ~\big\lVert D_\theta(\signal + \noise; \sigma) - \signal \big\rVert^2_2 \Big] \\
+  &=& \mathbb{E}_{\sigma \sim \ptrain} ~\mathbb{E}_{\signal \sim \pdata} ~\mathbb{E}_{\noise \sim \mathcal{N}(\boldzero, \sigma^2 \boldi)}  ~\Big[ \lambda(\sigma) ~\big\lVert D_\theta(\signal + \noise; \sigma) - \signal \big\rVert^2_2 \Big] \\
+  &=& \mathbb{E}_{\sigma, \signal, \noise} \Big[ \lambda(\sigma) ~\big\lVert D_\theta(\signal + \noise; \sigma) - \signal \big\rVert^2_2 \Big]
+  \label{eq:totalloss}
+  \text{,}
+\end{eqnarray}
+where the noise levels are distributed according to $\sigma \sim \ptrain$ and weighted by $\lambda(\sigma)$.
+
+Using our definition of $D_\theta(\cdot)$ from Eq.~\refpaper{eq:preconditioning}, we can further rewrite $\mathcal{L}(D_\theta)$ as
+\begin{eqnarray}
+  && \mathbb{E}_{\sigma, \signal, \noise} \Big[ \lambda(\sigma) \big\lVert \cskip(\sigma) (\signal {+} \noise) + \cout(\sigma) F_\theta\big(\Fargs\big) - \signal \big\rVert^2_2 \Big] \label{eq:lossexpanded} \\
+  &=& \mathbb{E}_{\sigma, \signal, \noise} \Big[ \lambda(\sigma) \big\lVert \cout(\sigma) F_\theta\big(\Fargs\big) - \big( \signal - \cskip(\sigma) (\signal + \noise) \big) \big\rVert^2_2 \Big] \\
+  &=& \mathbb{E}_{\sigma, \signal, \noise} \Big[ \lambda(\sigma) \cout(\sigma)^2 \big\lVert F_\theta\big(\Fargs\big) - \tfrac{1}{\cout(\sigma)} \big( \signal - \cskip(\sigma) (\signal {+} \noise) \big) \big\rVert^2_2 \Big] \\
+  &=& \mathbb{E}_{\sigma, \signal, \noise} \Big[ w(\sigma) ~\big\lVert F_\theta\big(\Fargs\big) - F_\text{target}(\signal, \noise; \sigma) \big\rVert^2_2 \Big]
+  \text{,}
+\end{eqnarray}
+which matches Eq.~\refpaper{eq:precloss} and corresponds to traditional supervised training of $F_\theta$ using standard $L_2$ loss with effective weight $w(\cdot)$ and target $F_\text{target}(\cdot)$ given by
+\begin{equation}
+  w(\sigma) = \lambda(\sigma) ~\cout(\sigma)^2
+  \hspace{4mm}\text{and}\hspace{4mm}
+  F_\text{target}(\signal, \noise; \sigma) = \tfrac{1}{\cout(\sigma)} \big( \signal - \cskip(\sigma) (\signal + \noise) \big)
+  \text{,}
+\end{equation}
+
+We can now derive formulas for $\cin(\sigma)$, $\cout(\sigma)$, $\cskip(\sigma)$, and $\lambda(\sigma)$ from first principles, shown in the ``Ours'' column of Table~\refpaper{tab:specifics}.
+
+First, we require the training inputs of $F_\theta(\cdot)$ to have unit variance:
+\begin{eqnarray}
+  \Var_{\signal, \noise} \big[ \cin(\sigma) (\signal + \noise) \big] &=& 1 \\
+  \cin(\sigma)^2 ~\Var_{\signal, \noise} \big[ \signal + \noise \big] &=& 1 \\
+  \cin(\sigma)^2 \big( \sdata^2 + \sigma^2 \big) &=& 1 \\
+  \cin(\sigma) &=& 1 \big/ \sqrt{\sigma^2 + \sdata^2}
+  \text{.}
+\end{eqnarray}
+
+Second, we require the effective training target $F_\text{target}$ to have unit variance:
+\begin{eqnarray}
+  \Var_{\signal, \noise} \big[ F_\text{target}(\signal, \noise; \sigma) \big] &=& 1 \\
+  \Var_{\signal, \noise} \Big[ \tfrac{1}{\cout(\sigma)} \big( \signal - \cskip(\sigma) (\signal + \noise) \big) \Big] &=& 1 \\
+  \tfrac{1}{\cout(\sigma)^2} \Var_{\signal, \noise} \big[ \signal - \cskip(\sigma) (\signal + \noise) \big] &=& 1 \\
+  \cout(\sigma)^2 &=& \Var_{\signal, \noise} \big[ \signal - \cskip(\sigma) (\signal + \noise) \big] \\
+  \cout(\sigma)^2 &=& \Var_{\signal, \noise} \Big[ \big( 1 - \cskip(\sigma) \big) ~\signal + \cskip(\sigma) ~\noise \Big] \\
+  \cout(\sigma)^2 &=& \big( 1 - \cskip(\sigma) \big)^2 ~\sdata^2 + \cskip(\sigma)^2 ~\sigma^2
+  \label{eq:coutpre}
+  \text{.}
+\end{eqnarray}
+
+Third, we select $\cskip(\sigma)$ to minimize $\cout(\sigma)$, so that the errors of $F_\theta$ are amplified as little as possible:
+\begin{equation}
+  \cskip(\sigma) = \argmin_{\cskip(\sigma)} \cout(\sigma)
+  \text{.}
+\end{equation}
+Since $\cout(\sigma) \ge 0$, we can equivalently write
+\begin{equation}
+  \cskip(\sigma) = \argmin_{\cskip(\sigma)} \cout(\sigma)^2
+  \text{.}
+\end{equation}
+This is a convex optimization problem; its solution is uniquely identified by setting the derivative w.r.t. $\cskip(\sigma)$ to zero:
+\begin{eqnarray}
+  0 &=& \diff\big[ \cout(\sigma)^2 \big] / \diff\cskip(\sigma) \\
+  0 &=& \diff\Big[ \big(1 - \cskip(\sigma)\big)^2 ~\sdata^2 + \cskip(\sigma)^2 ~\sigma^2 \Big] / \diff\cskip(\sigma) \\
+  0 &=& \sdata^2 ~\diff \Big[ \big(1 - \cskip(\sigma)\big)^2 \Big] / \diff\cskip(\sigma) + \sigma^2 ~\diff\big[\cskip(\sigma)^2 \big] / \diff \cskip(\sigma) \\
+  0 &=& \sdata^2 ~\big[ 2 ~\cskip(\sigma) - 2 \big] + \sigma^2 ~\big[ 2 ~\cskip(\sigma) \big] \\
+  0 &=& \big( \sigma^2 + \sdata^2 \big) ~\cskip(\sigma) - \sdata^2 \\
+  \cskip(\sigma) &=& \sdata^2 / \big( \sigma^2 + \sdata^2 \big)
+  \label{eq:cskip}
+  \text{.}
+\end{eqnarray}
+
+We can now substitute Eq.~\ref{eq:cskip} into Eq.~\ref{eq:coutpre} to complete the formula for $\cout(\sigma)$:
+\begin{eqnarray}
+  \cout(\sigma)^2 &=& \big( 1 - \big[ \cskip(\sigma) \big] \big)^2 ~\sdata^2 + \big[ \cskip(\sigma) \big]^2 ~\sigma^2 \\
+  \cout(\sigma)^2 &=& \bigg( 1 - \bigg[ \frac{\sdata^2}{\sigma^2 + \sdata^2} \bigg] \bigg)^2 ~\sdata^2 + \bigg[ \frac{\sdata^2}{\sigma^2 + \sdata^2} \bigg]^2 ~\sigma^2 \\
+  \cout(\sigma)^2 &=& \bigg[ \frac{\sigma^2 ~\sdata}{\sigma^2 + \sdata^2} \bigg]^2 + \bigg[ \frac{\sdata^2 ~\sigma}{\sigma^2 + \sdata^2} \bigg]^2 \\
+  \cout(\sigma)^2 &=& \frac{\big( \sigma^2 ~\sdata \big)^2 + \big( \sdata^2 ~\sigma \big)^2}{\big( \sigma^2 + \sdata^2 \big)^2} \\
+  \cout(\sigma)^2 &=& \frac{(\sigma \cdot \sdata)^2 ~\big( \sigma^2 + \sdata^2 \big)}{\big( \sigma^2 + \sdata^2 \big)^2} \\
+  \cout(\sigma)^2 &=& \frac{(\sigma \cdot \sdata)^2}{\sigma^2 + \sdata^2} \\
+  \cout(\sigma) &=& \sigma \cdot \sdata \big/ \sqrt{\sigma^2 + \sdata^2}
+  \text{.}
+\end{eqnarray}
+
+Fourth, we require the effective weight $w(\sigma)$ to be uniform across noise levels:
+\begin{eqnarray}
+  w(\sigma) &=& 1 \\
+  \lambda(\sigma) ~\cout(\sigma)^2 &=& 1 \\
+  \lambda(\sigma) &=& 1 / \cout(\sigma)^2 \\
+  \lambda(\sigma) &=& 1 \big/ \bigg[ \frac{\sigma \cdot \sdata}{\sqrt{\sigma^2 + \sdata^2}} \bigg]^2 \\
+  \lambda(\sigma) &=& 1 \big/ \bigg[ \frac{(\sigma \cdot \sdata)^2}{\sigma^2 + \sdata^2} \bigg] \\
+  \lambda(\sigma) &=& \big( \sigma^2 + \sdata^2 \big) / (\sigma \cdot \sdata)^2
+  \text{.}
+\end{eqnarray}
+
+We follow previous work and initialize the output layer weights to zero. Consequently, upon initialization $F_\theta(\cdot) = 0$ and the expected value of the loss at each noise level is $1$. This can be seen by substituting the choices of $\lambda(\sigma)$ and $\cskip(\sigma)$ into Eq.~\ref{eq:lossexpanded}, considered at a fixed $\sigma$:
+\begin{eqnarray}
+  && \mathbb{E}_{\signal, \noise} \Big[ \lambda(\sigma) \big\lVert \cskip(\sigma) (\signal {+} \noise) + \cout(\sigma) F_\theta\big(\Fargs\big) - \signal \big\rVert^2_2 \Big] \\
+  %
+  &=& \mathbb{E}_{\signal, \noise} \bigg[ \frac{\sigma^2 + \sdata^2}{(\sigma \cdot \sdata)^2} \bigg\lVert \frac{\sdata^2}{\sigma^2 + \sdata^2} (\signal {+} \noise) - \signal \bigg\rVert^2_2 \bigg] \\
+  &=& \mathbb{E}_{\signal, \noise} \bigg[ \frac{\sigma^2 + \sdata^2}{(\sigma \cdot \sdata)^2} \bigg\lVert \frac{\sdata^2 \noise - \sigma^2 \signal}{\sigma^2 + \sdata^2} \bigg\rVert^2_2 \bigg] \\
+  &=& \mathbb{E}_{\signal, \noise} \bigg[ \frac{1}{\sigma^2 + \sdata^2} \bigg\lVert \frac{\sdata}{\sigma} \noise - \frac{\sigma}{\sdata} \signal \bigg\rVert^2_2 \bigg] \\
+  &=& \frac{1}{\sigma^2 + \sdata^2} \mathbb{E}_{\signal, \noise} \bigg[   \frac{\sdata^2}{\sigma^2} \langle \noise, \noise \rangle + \frac{\sigma^2}{\sdata^2} \langle \signal, \signal \rangle - 2 \langle \signal, \noise \rangle \bigg] \\
+  &=& \frac{1}{\sigma^2 + \sdata^2} \bigg[ \frac{\sdata^2}{\sigma^2} \underbrace{\Var(\noise)}_{= \sigma^2} + \frac{\sigma^2}{\sdata^2} \underbrace{\Var(\signal)}_{= \sdata^2} - 2 \underbrace{\Cov(\signal, \noise)}_{=0} \bigg] \\
+  &=& 1
+\end{eqnarray}
+
+\section{Reframing previous methods in our framework}
+\label{app:reframing}
+
+In this section, we derive the formulas shown in Table~\refpaper{tab:specifics} for previous methods, discuss the corresponding original samplers and pre-trained models, and detail the practical considerations associated with using them in our framework.
+
+In practice, the original implementations of these methods differ considerably in terms of the definitions of model inputs and outputs, dynamic range of image data, scaling of $\xx$, and interpretation of $\sigma$.
+We eliminate this variation by standardizing on a unified setup where the model always matches our definition of $F_\theta$, image data is always represented in the continuous range $[-1, 1]$, and the details of $\xx$ and $\sigma$ are always in agreement with Eq.~\refpaper{eq:odescale}.
+
+We minimize the accumulation of floating point round-off errors by always executing Algorithms~\refpaper{alg:heun} and~\refpaper{alg:stochastic} at double precision (\texttt{float64}).
+However, we still execute the network $F_\theta(\cdot)$ at single precision (\texttt{float32}) to minimize runtime and remain faithful to previous work in terms of network architecture.
+
+\subsection{Variance preserving formulation}
+\label{app:reframingvp}
+
+\subsubsection{VP sampling}
+
+Song~et~al.~\cite{Song2021sde} define the VP SDE (Eq.~32 in \cite{Song2021sde}) as
+\begin{equation}
+  \diff\xx = -\tfrac{1}{2} ~\Big( \bmin + t ~\big( \bmax - \bmin \big) \Big) ~\xx ~\diff t + \sqrt{ \bmin + t ~\big( \bmax - \bmin \big) } ~\diff \omega_t
+  \text{,}
+\end{equation}
+which matches Eq.~\ref{eq:songsde} with the following choices for $f$ and $g$:
+\begin{equation}
+  \label{eq:vpfg}
+  f(t) = -\tfrac{1}{2} ~\beta(t)
+  \text{,}\hspace{4mm}
+  g(t) = \sqrt{\beta(t)}
+  \text{,}\hspace{4mm}\text{and}\hspace{4mm}
+  \beta(t) = \big( \bmax - \bmin \big) ~t + \bmin
+  \text{.}
+\end{equation}
+
+Let $\alpha(t)$ denote the integral of $\beta(t)$:
+\begin{eqnarray}
+  \alpha(t) &=& \int_0^t \beta(\xi) ~\diff\xi \\
+  &=& \int_0^t \Big[ \big( \bmax - \bmin \big) ~\xi + \bmin \Big] ~\diff\xi \\
+  &=& \tfrac{1}{2} ~\big( \bmax - \bmin \big) ~t^2 + \bmin ~t \\
+  &=& \tfrac{1}{2} ~\bdyn ~t^2 + \bmin ~t
+  \text{,}
+\end{eqnarray}
+where $\bdyn = \bmax - \bmin$.
+We can now obtain the formula for $\sigma(t)$ by substituting Eq.~\ref{eq:vpfg} into Eq.~\ref{eq:songscale}:
+\begin{eqnarray}
+  \sigma(t) &=& \sqrt{\int_0^t \frac{\big[ g(\xi) \big]^2}{\big[ s(\xi) \big]^2} ~\diff\xi} \\
+  &=& \sqrt{\int_0^t \frac{\big[ \sqrt{\beta(\xi)} \big]^2}{\big[ 1 / \sqrt{e^{\alpha(\xi)}} \big]^2} ~\diff\xi} \\
+  &=& \sqrt{\int_0^t \frac{\beta(\xi)}{1 / e^{\alpha(\xi)}} ~\diff\xi} \\
+  &=& \sqrt{\int_0^t \dot\alpha(\xi) ~e^{\alpha(\xi)} ~\diff\xi} \\
+  &=& \sqrt{e^{\alpha(t)} - e^{\alpha(0)}} \\
+  &=& \sqrt{e^{\frac{1}{2} \bdyn t^2 + \bmin t} - 1}
+  \label{eq:vpsigma}
+  \text{,}
+\end{eqnarray}
+which matches the ``Schedule'' row of Table~\refpaper{tab:specifics}.
+Similarly for $s(t)$:
+\begin{eqnarray}
+  s(t) &=& \exp\left( \int_0^t \big[ f(\xi) \big] ~\diff\xi \right) \\
+  &=& \exp\left( \int_0^t \big[ -\tfrac{1}{2} ~\beta(\xi) \big] ~\diff\xi \right) \\
+  &=& \exp\left( -\tfrac{1}{2} \left[ \int_0^t \beta(\xi) ~\diff\xi \right] \right) \\
+  &=& \exp\left( -\tfrac{1}{2} ~\alpha(t) \right) \\
+  &=& 1 / \sqrt{e^{\alpha(t)}} \\
+  &=& 1 / \sqrt{e^{\frac{1}{2} \bdyn t^2 + \bmin t}}
+  \label{eq:vpscale}
+  \text{,}
+\end{eqnarray}
+which matches the ``Scaling'' row of Table~\refpaper{tab:specifics}.
+We can equivalently write Eq.~\ref{eq:vpscale} in a slightly simpler form by utilizing Eq.~\ref{eq:vpsigma}:
+\begin{equation}
+  s(t) = 1 / \sqrt{\sigma(t)^2 + 1}
+  \label{eq:vpscalesimple}
+  \text{.}
+\end{equation}
+
+Song~et~al.~\cite{Song2021sde} choose to distribute the sampling time steps $\{t_0, \dots, t_{N-1}\}$ at uniform intervals within $[\epsilon_\text{s}, 1]$.
+This corresponds to setting
+\begin{equation}
+  t_{i<N} = 1 + \tfrac{i}{N-1}(\epsilon_\text{s} - 1)
+  \text{,}
+\end{equation}
+which matches the ``Time steps'' row of Table~\refpaper{tab:specifics}.
+
+Finally, Song~et~al.~\cite{Song2021sde} set $\bmin = 0.1$, $\bmax = 20$, and $\epsilon_\text{s} = 10^{-3}$ (Appendix~C in \cite{Song2021sde}), and choose to represent images in the range $[-1, 1]$.
+These choices are readily compatible with our formulation and are reflected by the ``Parameters'' section of Table~\refpaper{tab:specifics}.
+
+\subsubsection{VP preconditioning}
+
+In the VP case, Song~et~al.~\cite{Song2021sde} approximate the score of $p_t(\xx)$ of Eq.~\ref{eq:songmarginal} as%
+\footnote{\tiny\url{https://github.com/yang-song/score\_sde\_pytorch/blob/1618ddea340f3e4a2ed7852a0694a809775cf8d0/models/utils.py\#L144}}
+\begin{equation}
+  \nablaxx \log p_t(\xx) ~\approx~ \underbrace{{-}\tfrac{1}{\bar\sigma(t)} ~F_\theta\big( \xx; ~(M{-}1)t \big)}_{\score(\xx; F_\theta, t)}
+  \label{eq:vpprecondorig}
+  \text{,}
+\end{equation}
+where $M = 1000$, $F_\theta$ denotes the network, and $\bar\sigma(t)$ corresponds to the standard deviation of the perturbation kernel of Eq.~\ref{eq:songperturbation}.
+
+Let us expand the definitions of $p_t(\xx)$ and $\bar\sigma(t)$ from Eqs.~\ref{eq:psigma} and~\ref{eq:songperturbation}, respectively, and substitute $\xx = s(t) \hat\xx$ to obtain the corresponding formula with respect to the non-scaled variable $\hat\xx$:
+\begin{eqnarray}
+  \nabla_{\xx} \log \big[ p\big( \xx / s(t); \sigma(t) \big) \big] &\approx& {-}\tfrac{1}{[s(t) \sigma(t)]} ~F_\theta\big( \xx; ~(M{-}1)t \big) \\
+  \nabla_{[s(t) \hat\xx]} \log p\big( [s(t) ~\hat\xx] / s(t); \sigma(t) \big) &\approx& {-}\tfrac{1}{s(t) \sigma(t)} ~F_\theta\big( [s(t) ~\hat\xx]; ~(M{-}1)t \big) \\
+  \tfrac{1}{s(t)} \nabla_{\hat\xx} \log p\big( \hat\xx; \sigma(t) \big) &\approx& {-}\tfrac{1}{s(t) \sigma(t)} ~F_\theta\big( s(t) ~\hat\xx; ~(M{-}1)t \big) \\
+  \nabla_{\hat\xx} \log p\big( \hat\xx; \sigma(t) \big) &\approx& {-}\tfrac{1}{\sigma(t)} ~F_\theta\big( s(t) ~\hat\xx; ~(M{-}1)t \big)
+  \text{.}
+\end{eqnarray}
+
+We can now replace the left-hand side with Eq.~\refpaper{eq:scoredenoiser} and expand the definition of $s(t)$ from Eq.~\ref{eq:vpscalesimple}:
+\begin{eqnarray}
+  \Big[ \Big( D\big( \hat\xx; \sigma(t) \big) - \hat\xx \Big) / \sigma(t)^2 \Big] &\approx& {-}\tfrac{1}{\sigma(t)} ~F_\theta\big( s(t) ~\hat\xx; ~(M{-}1)t \big) \\
+  D\big( \hat\xx; \sigma(t) \big) &\approx& \hat\xx - \sigma(t) ~F_\theta\big( s(t) ~\hat\xx; ~(M{-}1)t \big) \\
+  D\big( \hat\xx; \sigma(t) \big) &\approx& \hat\xx - \sigma(t) ~F_\theta\bigg( \bigg[ \tfrac{1}{\sqrt{\sigma(t)^2 + 1}} \bigg] ~\hat\xx; ~(M{-}1)t \bigg)
+  \text{,}
+\end{eqnarray}
+which can be further expressed in terms of $\sigma$ by replacing $\sigma(t) \rightarrow \sigma$ and $t \rightarrow \sigma^{-1}(\sigma)$:
+\begin{equation}
+  D(\hat\xx; \sigma) ~\approx~ \hat\xx - \sigma ~F_\theta\Big( \tfrac{1}{\sqrt{\sigma^2 + 1}} ~\hat\xx; ~(M{-}1) ~\sigma^{-1}(\sigma) \Big)
+  \label{eq:vpprecondtemp}
+  \text{.}
+\end{equation}
+
+We adopt the right-hand side of Eq.~\ref{eq:vpprecondtemp} as the definition of $D_\theta$, obtaining
+\begin{equation}
+  D_\theta(\hat\xx; \sigma) = \underbrace{1~\cdot}_{\cskip}\hat\xx ~\underbrace{-~\sigma}_{\cout} \,\cdot ~F_\theta\Big( \underbrace{\tfrac{1}{\sqrt{\sigma^2 + 1}}}_{\cin} \,\cdot~\hat\xx; ~\underbrace{(M{-}1)~\sigma^{-1}(\sigma)}_{\cnoise} \Big)
+  \label{eq:vpprecond}
+  \text{,}
+\end{equation}
+where $\cskip$, $\cout$, $\cin$, and $\cnoise$ match the ``Network and preconditioning'' section of Table~\refpaper{tab:specifics}.
+
+\subsubsection{VP training}
+
+Song~et~al.~\cite{Song2021sde} define their training loss as%
+\footnote{\tiny\url{https://github.com/yang-song/score\_sde\_pytorch/blob/1618ddea340f3e4a2ed7852a0694a809775cf8d0/losses.py\#L73}}
+\begin{equation}
+  \mathbb{E}_{t \sim \mathcal{U}(\epsilon_\text{t}, 1), \signal \sim \pdata, \bar\noise \sim \mathcal{N}(\boldzero, \boldi)} \Big[ \big\lVert \bar\sigma(t) ~\score\big( s(t) ~\signal + \bar\sigma(t) ~\bar\noise; ~F_\theta, t \big) + \bar\noise \big\rVert^2_2 \Big]
+  \text{,}
+\end{equation}
+where the definition of $\score(\cdot)$ is the same as in Eq.~\ref{eq:vpprecondorig}.
+Let us simplify the formula by substituting $\bar\sigma(t) = s(t) \sigma(t)$ and $\bar\noise = \noise / \sigma(t)$, where $\noise \sim \mathcal{N}(\boldzero, \sigma(t)^2 \boldi)$:
+\begin{eqnarray}
+  && \mathbb{E}_{t, \signal, \bar\noise} \Big[ \big\lVert s(t) \sigma(t) ~\score\big( s(t) ~\signal + [s(t)\sigma(t)] ~\bar\noise; ~F_\theta, t \big) + \bar\noise \big\rVert^2_2 \Big] \\
+  &=& \mathbb{E}_{t, \signal, \noise} \Big[ \big\lVert s(t) \sigma(t) ~\score\big( s(t) ~\signal + s(t)\sigma(t) ~[\noise / \sigma(t)]; ~F_\theta, t \big) + [\noise / \sigma(t)] \big\rVert^2_2 \Big] \\
+  &=& \mathbb{E}_{t, \signal, \noise} \Big[ \big\lVert s(t) \sigma(t) ~\score\big( s(t) ~(\signal + \noise); ~F_\theta, t \big) + \noise / \sigma(t) \big\rVert^2_2 \Big]
+  \label{eq:vplosstemp}
+  \text{.}
+\end{eqnarray}
+
+We can express $\score(\cdot)$ in terms of $D_\theta(\cdot)$ by combining Eqs.~\ref{eq:vpprecondorig}, \ref{eq:vpscalesimple}, and \ref{eq:scaledscore}:
+\begin{equation}
+  \score\big( s(t) ~\xx; F_\theta, t \big) ~=~ \tfrac{1}{s(t) \sigma(t)^2} \Big( D_\theta \big( \xx; \sigma(t) \big) - \xx \Big)
+  \text{.}
+\end{equation}
+
+Substituting this back into Eq.~\ref{eq:vplosstemp} gives
+\begin{eqnarray}
+  && \mathbb{E}_{t, \signal, \noise} \Big[ \big\lVert s(t) \sigma(t) ~\Big[ \tfrac{1}{s(t) \sigma(t)^2} \Big( D_\theta \big( \signal + \noise; \sigma(t) \big) - (\signal + \noise) \Big) \Big] + \tfrac{1}{\sigma(t)} ~\noise \big\rVert^2_2 \Big] \\
+  &=& \mathbb{E}_{t, \signal, \noise} \Big[ \big\lVert \tfrac{1}{\sigma(t)} \Big( D_\theta \big( \signal + \noise; \sigma(t) \big) - (\signal + \noise) \Big) + \tfrac{1}{\sigma(t)} ~\noise \big\rVert^2_2 \Big] \\
+  &=& \mathbb{E}_{t, \signal, \noise} \Big[ \tfrac{1}{\sigma(t)^2} ~\big\lVert D_\theta \big( \signal + \noise; \sigma(t) \big) - \signal \big\rVert^2_2 \Big]
+  \text{.}
+\end{eqnarray}
+
+We can further express this in terms of $\sigma$ by replacing $\sigma(t) \rightarrow \sigma$ and $t \rightarrow \sigma^{-1}(\sigma)$:
+\begin{equation}
+  \underbrace{\mathbb{E}_{\sigma^{-1}(\sigma) \sim \mathcal{U}(\epsilon_\text{t}, 1)}}_{\ptrain} \mathbb{E}_{\signal, \noise} \Big[ \underbrace{\tfrac{1}{\sigma^2}}_{\lambda} \big\lVert D_\theta \big( \signal + \noise; \sigma \big) - \signal \big\rVert^2_2 \Big]
+  \label{eq:vploss}
+  \text{,}
+\end{equation}
+which matches Eq.~\ref{eq:totalloss} with the choices for $\ptrain$ and $\lambda$ shown in the ``Training'' section of Table~\refpaper{tab:specifics}.
+
+\subsubsection{VP practical considerations}
+
+The pre-trained VP model that we use on CIFAR-10 corresponds to the ``DDPM++ cont.\ (VP)'' checkpoint%
+\footnote{\tiny\texttt{vp/cifar10\_ddpmpp\_continuous/checkpoint\_8.pth}, \url{https://drive.google.com/drive/folders/1xYjVMx10N9ivQQBIsEoXEeu9nvSGTBrC}}
+provided by Song~et~al.~\cite{Song2021sde}.
+It contains a total of 62 million trainable parameters and supports a continuous range of noise levels $\sigma \in \big[ \sigma(\epsilon_\text{t}), \sigma(1) \big] \approx [0.001, 152]$, i.e., wider than our preferred sampling range $[0.002, 80]$.
+We import the model directly as $F_\theta(\cdot)$ and run Algorithms~\refpaper{alg:heun} and~\refpaper{alg:stochastic} using the definitions in Table~\refpaper{tab:specifics}.
+
+In Figure~\refpaper{fig:OdePlotNfe}a, the differences between the original sampler (blue) and our reimplementation (orange) are explained by oversights in the implementation of Song~et~al.~\cite{Song2021sde}, also noted by Jolicoeur-Martineau~et~al.~\cite{Jolicoeur2021} (Appendix~D in \cite{Jolicoeur2021}).
+First, the original sampler employs an incorrect multiplier%
+\footnote{\tiny\url{https://github.com/yang-song/score\_sde\_pytorch/blob/1618ddea340f3e4a2ed7852a0694a809775cf8d0/sampling.py\#L182}}
+in the Euler step: it multiplies $\diff\xx / \diff t$ by $-1 / N$ instead of $(\epsilon_\text{s} - 1) / (N - 1)$.
+Second, it either overshoots or undershoots on the last step by going from $t_{N-1} = \epsilon_\text{s}$ to $t_N = \epsilon_\text{s} - 1 / N$, where $t_N < 0$ when $N < 1000$.
+In practice, this means that the generated images contain noticeable noise that becomes quite severe with, e.g., $N = 128$.
+Our formulation avoids these issues, because the step sizes in Algorithm~\refpaper{alg:heun} are computed consistently from $\{t_i\}$ and $t_N = 0$.
+
+\subsection{Variance exploding formulation}
+\label{app:reframingve}
+
+\subsubsection{VE sampling in theory}
+
+Song~et~al.~\cite{Song2021sde} define the VE SDE (Eq.~30 in \cite{Song2021sde}) as
+\begin{equation}
+  \diff\xx = \smin \bigg( \frac{\smax}{\smin} \bigg)^t \sqrt{2 \log \frac{\smax}{\smin}} ~\diff \omega_t
+  \text{,}
+\end{equation}
+which matches Eq.~\ref{eq:songsde} with
+\begin{equation}
+  \label{eq:vefg}
+  f(t) = 0
+  \text{,}\hspace{4mm}
+  g(t) = \smin \sqrt{2\log\sdyn} ~\sdyn^t
+  \text{,}\hspace{4mm}\text{and}\hspace{4mm}
+  \sdyn = \smax / \smin
+  \text{.}
+\end{equation}
+
+The VE formulation does not employ scaling, which can be easily seen from Eq.~\ref{eq:songscale}:
+\begin{equation}
+  s(t) = \exp\left( \int_0^t \big[ f(\xi) \big] ~\diff\xi \right) = \exp\left( \int_0^t \big[ 0 \big] ~\diff\xi \right) = \exp(0) = 1
+  \text{.}
+\end{equation}
+
+Substituting Eq.~\ref{eq:vefg} into Eq.~\ref{eq:songscale} suggests the following form for $\sigma(t)$:
+\begin{eqnarray}
+  \sigma(t) &=& \sqrt{\int_0^t \frac{\big[ g(\xi) \big]^2}{\big[ s(\xi) \big]^2} ~\diff\xi} \\
+  &=& \sqrt{\int_0^t \frac{\big[ \smin \sqrt{2\log\sdyn} ~\sdyn^\xi \big]^2}{\big[ 1 \big]^2} ~\diff\xi} \\
+  &=& \sqrt{\int_0^t \smin^2 ~\big[ 2\log\sdyn \big] ~\big[ \sdyn^{2\xi} \big] ~\diff\xi} \\
+  &=& \smin \sqrt{\int_0^t \Big[ \log \big( \sdyn^2 \big) \Big] ~\Big[ \big( \sdyn^2 \big)^\xi \Big] ~\diff\xi} \\
+  &=& \smin \sqrt{\big( \sdyn^2 \big)^t - \big( \sdyn^2 \big)^0} \\
+  &=& \smin \sqrt{\sdyn^{2t} - 1}
+  \label{eq:fakevesigma}
+  \text{.}
+\end{eqnarray}
+
+Eq.~\ref{eq:fakevesigma} is consistent with the perturbation kernel reported by Song~et~al. (Eq.~29 in \cite{Song2021sde}).
+However, we note that this does not fulfill their intended definition of $\sigma(t) = \smin ~\big( \tfrac{\smax}{\smin} \big)^t$ (Appendix~C in~\cite{Song2021sde}).
+
+\subsubsection{VE sampling in practice}
+
+The original implementation%
+\footnote{\small\url{https://github.com/yang-song/score\_sde\_pytorch}}
+of Song~et~al.~\cite{Song2021sde} uses reverse diffusion predictor%
+\footnote{\tiny\url{https://github.com/yang-song/score\_sde\_pytorch/blob/1618ddea340f3e4a2ed7852a0694a809775cf8d0/sampling.py\#L191}}
+to integrate discretized reverse probability flow%
+\footnote{\tiny\url{https://github.com/yang-song/score\_sde\_pytorch/blob/1618ddea340f3e4a2ed7852a0694a809775cf8d0/sde\_lib.py\#L102}}
+of discretized VE SDE%
+\footnote{\tiny\url{https://github.com/yang-song/score\_sde\_pytorch/blob/1618ddea340f3e4a2ed7852a0694a809775cf8d0/sde\_lib.py\#L246}}.
+Put together, these yield the following update rule for $\xx_{i+1}$:
+\begin{equation}
+  \label{eq:vestep}
+  \xx_{i+1} = \xx_i + \tfrac{1}{2} ~\big( \bar\sigma_i^2 - \bar\sigma_{i+1}^2 \big) ~\nablaxx \log \bar p_i (\xx)
+  \text{,}
+\end{equation}
+where
+\begin{equation}
+  \bar\sigma_{i<N} = \smin ~\bigg( \frac{\smax}{\smin} \bigg)^{1 - i / (N-1)}
+  \hspace{4mm}\text{and}\hspace{4mm}
+  \bar\sigma_N = 0
+  \text{.}
+\end{equation}
+
+Interestingly, Eq.~\ref{eq:vestep} is identical to the Euler iteration of our ODE with the following choices:
+\begin{equation}
+  s(t) = 1
+  \text{,}\hspace{4mm}
+  \sigma(t) = \sqrt{t}
+  \text{,}\hspace{4mm}\text{and}\hspace{4mm}
+  t_i = \bar\sigma_i^2
+  \text{.}
+\end{equation}
+
+These formulas match the ``Sampling'' section of Table~\refpaper{tab:specifics}, and their correctness can be verified by substituting them into line 5 of Algorithm~\refpaper{alg:heun}:
+\begin{eqnarray}
+  \xx_{i+1} &=& \xx_i + (t_{i+1} - t_i) ~\boldsymbol{d}_i \\
+  &=& \xx_i + (t_{i+1} - t_i) \bigg[ \bigg( \frac{\dot\sigma(t)}{\sigma(t)} + \frac{\dot s(t)}{s(t)} \bigg) \xx - \frac{\dot\sigma(t) s(t)}{\sigma(t)} D \bigg( \frac{\xx}{s(t)}; \sigma(t) \bigg) \bigg] \\
+  &=& \xx_i + (t_{i+1} - t_i) \bigg[ \frac{\dot\sigma(t)}{\sigma(t)} ~\xx - \frac{\dot\sigma(t)}{\sigma(t)} ~D \big( \xx; \sigma(t) \big) \bigg] \\
+  &=& \xx_i - (t_{i+1} - t_i) ~\dot\sigma(t) ~\sigma(t) \bigg[ \Big( D \big( \xx; \sigma(t) \big) - \xx \Big) \big/ \sigma(t)^2 \bigg] \\
+  &=& \xx_i - (t_{i+1} - t_i) ~\dot\sigma(t) ~\sigma(t) ~\nablaxx \log p\big( \xx; \sigma(t) \big) \\
+  &=& \xx_i - (t_{i+1} - t_i) \Big[ \tfrac{1}{2\sqrt{t}} \Big] \Big[ \sqrt{t} \Big] ~\nablaxx \log p\big( \xx; \sigma(t) \big) \\
+  &=& \xx_i + \tfrac{1}{2} ~(t_i - t_{i+1}) ~\nablaxx \log p\big( \xx; \sigma(t) \big) \\
+  &=& \xx_i + \tfrac{1}{2} ~\big( \bar\sigma_i^2 - \bar\sigma_{i+1}^2 \big) ~\nablaxx \log p\big( \xx; \sigma(t) \big)
+  \text{,}
+\end{eqnarray}
+which is made identical to Eq.~\ref{eq:vestep} by the choice $\bar p_i(\xx) = p\big( \xx; \sigma(t_i) \big)$.
+
+Finally, Song~et~al.~\cite{Song2021sde} set $\smin = 0.01$ and $\smax = 50$ for CIFAR-10 (Appendix~C in \cite{Song2021sde}), and choose to represent their images in the range $[0, 1]$ to match previous SMLD models.
+Since our standardized range $[-1, 1]$ is twice as large, we must multiply $\smin$ and $\smax$ by 2$\times$ to compensate.
+The ``Parameters'' section of Table~\refpaper{tab:specifics} reflects these adjusted values.
+
+\subsubsection{VE preconditioning}
+
+In the VE case, Song~et~al.~\cite{Song2021sde} approximate the score of $p_t(\xx)$ of Eq.~\ref{eq:songmarginal} directly as%
+\footnote{\tiny\url{https://github.com/yang-song/score\_sde\_pytorch/blob/1618ddea340f3e4a2ed7852a0694a809775cf8d0/models/utils.py\#L163}}
+\begin{equation}
+  \nablaxx \log p_t(\xx) ~\approx~ \bar{F}_\theta\big( \xx; \sigma(t) \big)
+  \label{eq:vescoreorig}
+  \text{,}
+\end{equation}
+where the network $\bar{F}_\theta$ is designed to include additional pre-%
+\footnote{\tiny\url{https://github.com/yang-song/score\_sde\_pytorch/blob/1618ddea340f3e4a2ed7852a0694a809775cf8d0/models/ncsnpp.py\#L239}}
+and%
+\footnote{\tiny\url{https://github.com/yang-song/score\_sde\_pytorch/blob/1618ddea340f3e4a2ed7852a0694a809775cf8d0/models/ncsnpp.py\#L261}}
+postprocessing%
+\footnote{\tiny\url{https://github.com/yang-song/score\_sde\_pytorch/blob/1618ddea340f3e4a2ed7852a0694a809775cf8d0/models/ncsnpp.py\#L379}}
+steps:
+\begin{equation}
+  \bar{F}_\theta\big( \xx; \sigma \big) ~=~ \tfrac{1}{\sigma} ~F_\theta\big( 2 \xx {-} 1; \log(\sigma) \big)
+  \label{eq:veprecondorig}
+  \text{.}
+\end{equation}
+For consistency, we handle the pre- and postprocessing using $\{\cskip, \cout, \cin, \cnoise\}$ as opposed to baking them into the network itself.
+
+We cannot use Eqs.~\ref{eq:vescoreorig} and~\ref{eq:veprecondorig} directly in our framework, however, because they assume that the images are represented in range $[0, 1]$.
+In order to use $[-1, 1]$ instead, we replace $p_t(\xx) \rightarrow p_t(2 \xx {-} 1)$, $\xx \rightarrow \tfrac{1}{2} \xx + \tfrac{1}{2}$ and $\sigma \rightarrow \tfrac{1}{2} \sigma$:
+\begin{eqnarray}
+  \nabla_{[\frac{1}{2} \xx + \frac{1}{2}]} \log p_t \big( 2 \big[ \tfrac{1}{2} \xx + \tfrac{1}{2} \big] {-} 1 \big) &\approx& \tfrac{1}{[\frac{1}{2} \sigma]} ~F_\theta\big( 2 \big[ \tfrac{1}{2} \xx + \tfrac{1}{2} \big] {-} 1; \log \big[ \tfrac{1}{2} \sigma \big] \big) \\
+  2 ~\nabla_{\xx} \log p_t(\xx) &\approx& \tfrac{2}{\sigma} ~F_\theta\Big( \xx; \log \big( \tfrac{1}{2} \sigma \big) \Big) \\
+  \nabla_{\xx} \log p(\xx; \sigma) &\approx& \tfrac{1}{\sigma} ~F_\theta\Big( \xx; \log \big( \tfrac{1}{2} \sigma \big) \Big)
+  \label{eq:veprecondtemp}
+  \text{.}
+\end{eqnarray}
+
+We can now express the model in terms of $D_\theta(\cdot)$ by replacing the left-hand side of Eq.~\ref{eq:veprecondtemp} with Eq.~\refpaper{eq:scoredenoiser}:
+\begin{eqnarray}
+  \Big( D_\theta \big( \xx; \sigma \big) - \xx \Big) / \sigma^2 &=& \tfrac{1}{\sigma} ~F_\theta\Big( \xx; \log\big( \tfrac{1}{2} \sigma \big) \Big) \label{eq:vedenoisertemp} \\
+  D_\theta \big( \xx; \sigma \big) &=& \underbrace{1~\cdot}_{\cskip} \xx + \underbrace{\sigma~\cdot}_{\cout} F_\theta\Big(\underbrace{1~\cdot}_{\cin} \xx; ~\underbrace{\log \big( \tfrac{1}{2} \sigma \big)}_{\cnoise} \Big)
+  \label{eq:veprecond}
+  \text{,}
+\end{eqnarray}
+where $\cskip$, $\cout$, $\cin$, and $\cnoise$ match the ``Network and preconditioning'' section of Table~\refpaper{tab:specifics}.
+
+\subsubsection{VE training}
+
+Song~et~al.~\cite{Song2021sde} define their training loss similarly for VP and VE, so we can reuse Eq.~\ref{eq:vplosstemp} by borrowing the definition of $\score(\cdot)$ from Eq.~\ref{eq:vedenoisertemp}:
+\begin{eqnarray}
+  && \mathbb{E}_{t, \signal, \noise} \Big[ \big\lVert s(t) \sigma(t) ~\score\big( s(t) ~(\signal + \noise); ~F_\theta, t \big) + \noise / \sigma(t) \big\rVert^2_2 \Big] \\
+  &=& \mathbb{E}_{t, \signal, \noise} \Big[ \big\lVert \sigma(t) ~\score\big( \signal + \noise; ~F_\theta, t \big) + \noise / \sigma(t) \big\rVert^2_2 \Big] \\
+  &=& \mathbb{E}_{t, \signal, \noise} \Big[ \big\lVert \sigma(t) ~\Big[ \Big( D_\theta \big( \signal + \noise; \sigma(t) \big) - (\signal + \noise) \Big) / \sigma(t)^2 \Big] + \noise / \sigma(t) \big\rVert^2_2 \Big] \\
+  &=& \mathbb{E}_{t, \signal, \noise} \Big[ \tfrac{1}{\sigma(t)^2} ~\big\lVert D_\theta \big( \signal + \noise; \sigma(t) \big) - \signal \big\rVert^2_2 \Big]
+  \label{eq:velosstemp}
+  \text{.}
+\end{eqnarray}
+
+For VE training, the original implementation%
+\footnote{\tiny\url{https://github.com/yang-song/score\_sde\_pytorch/blob/1618ddea340f3e4a2ed7852a0694a809775cf8d0/sde_lib.py\#L234}}
+defines $\sigma(t) = \smin ~\big( \tfrac{\smax}{\smin} \big)^t$.
+We can thus rewrite Eq.~\ref{eq:velosstemp} as
+\begin{equation}
+  \underbrace{\mathbb{E}_{\ln(\sigma) \sim \mathcal{U}( \ln(\smin), \ln(\smax))}}_{\ptrain} \mathbb{E}_{\signal, \noise} \Big[ \underbrace{\tfrac{1}{\sigma^2}}_{\lambda} \big\lVert D_\theta \big( \signal + \noise; \sigma \big) - \signal \big\rVert^2_2 \Big]
+  \text{,}
+\end{equation}
+which matches Eq.~\ref{eq:totalloss} with the choices for $\ptrain$ and $\lambda$ shown in the ``Training'' section of Table~\refpaper{tab:specifics}.
+
+\subsubsection{VE practical considerations}
+
+The pre-trained VE model that we use on CIFAR-10 corresponds to the ``NCSN++ cont. (VE)'' checkpoint%
+\footnote{\tiny\texttt{ve/cifar10\_ncsnpp\_continuous/checkpoint\_24.pth}, \url{https://drive.google.com/drive/folders/1b0gy\_LLgO\_DaQBgoWXwlVnL\_rcAUgREh}}
+provided by Song~et~al.~\cite{Song2021sde}.
+It contains a total of 63 million trainable parameters and supports a continuous range of noise levels $\sigma \in \big[ \sigma(\epsilon_\text{t}), \sigma(1) \big] \approx [0.02, 100]$.
+This is narrower than our preferred sampling range $[0.002, 80]$, so we set $\smin = 0.02$ in all related experiments.
+Note that this limitation is lifted by our training improvements in config~\textsc{e}, so we revert back to using $\smin = 0.002$ with configs~\textsc{e} and~\textsc{f} in Table~\refpaper{tab:TrainingTable}.
+When importing the model, we remove the pre- and postprocessing steps shown in Eq.~\ref{eq:veprecondorig} to stay consistent with the definition of $F_\theta(\cdot)$ in Eq.~\ref{eq:veprecond}.
+With these changes, we can run Algorithms~\refpaper{alg:heun} and~\refpaper{alg:stochastic} using the definitions in Table~\refpaper{tab:specifics}.
+
+In Figure~\refpaper{fig:OdePlotNfe}b, the differences between the original sampler (blue) and our reimplementation (orange) are explained by floating point round-off errors that the original implementation suffers from at high step counts.
+Our results are more accurate in these cases because we represent $\xx_i$ at double precision in Algorithm~\refpaper{alg:heun}.
+
+\subsection{Improved DDPM and DDIM}
+\label{app:reframingiddpm}
+
+\subsubsection{DDIM ODE formulation}
+\label{app:ddim}
+
+Song~et~al.~\cite{Song2020ddim} make the observation that their deterministic DDIM sampler can be expressed as Euler integration of the following ODE (Eq.~14 in \cite{Song2020ddim}):
+\begin{equation}
+  \label{eq:ddimode}
+  \diff\xx(t) = \epsilon_\theta^{(t)} \left( \frac{\xx(t)}{\sqrt{\sigma(t)^2 + 1}} \right) ~\diff\sigma(t)
+  \text{,}
+\end{equation}
+where $\xx(t)$ is a scaled version of the iterate that appears in their discrete update formula (Eq.~10 in \cite{Song2020ddim}) and $\epsilon_\theta$ is a model trained to predict the normalized noise vector, i.e., $\epsilon_\theta^{(t)}\big( \xx(t) / \sqrt{\sigma(t)^2 + 1} \big) \approx \noise(t) / \sigma(t)$ for $\xx(t) = \signal(t) + \noise(t)$.
+In our formulation, $D_\theta$ is trained to approximate the clean signal, i.e., $D_\theta\big( \xx(t); \sigma(t) \big) \approx \signal$, so we can reinterpret $\epsilon_\theta$ in terms of $D_\theta$ as follows:
+\begin{eqnarray}
+  \noise(t) &=& \xx(t) - \signal(t) \\
+  \big[ \noise(t) / \sigma(t) \big] &=& \big( \xx(t) - \big[ \signal(t) \big] \big) / \sigma(t) \\
+  \epsilon_\theta^{(t)} \big( \xx(t) / \sqrt{\sigma(t)^2 + 1} \big) &=& \big( \xx(t) - D_\theta \big( \xx(t); \sigma(t) \big) \big) / \sigma(t)
+  \text{.}
+\end{eqnarray}
+
+Assuming ideal $\epsilon(\cdot)$ and $D(\cdot)$ in $L_2$ sense, we can further simplify the above formula using Eq.~\refpaper{eq:scoredenoiser}:
+\begin{eqnarray}
+  \epsilon^{(t)} \big( \xx(t) / \sqrt{\sigma(t)^2 + 1} \big) &=& \big( \xx(t) - D \big( \xx(t); \sigma(t) \big) \big) / \sigma(t) \label{eq:ddimdenoiser} \\
+  &=& -\sigma(t) ~\Big[ \Big( D \big( \xx(t); \sigma(t) \big) - \xx(t) \Big) / \sigma(t)^2 \Big] \\
+  &=& -\sigma(t) ~\nabla_{\xx(t)} \log p\big( \xx(t); \sigma(t) \big)
+  \label{eq:ddimeps}
+  \text{.}
+\end{eqnarray}
+
+Substituting Eq.~\ref{eq:ddimeps} back into Eq.~\ref{eq:ddimode} gives
+\begin{equation}
+  \diff\xx(t) = -\sigma(t) ~\nabla_{\xx(t)} \log p\big( \xx(t); \sigma(t) \big) ~\diff\sigma(t)
+  \text{,}
+\end{equation}
+which we can further simplify by setting $\sigma(t) = t$:
+\begin{equation}
+  \diff\xx = -t ~\nablaxx \log p\big( \xx; \sigma(t) \big) ~\diff t
+  \text{.}
+\end{equation}
+This matches our Eq.~\refpaper{eq:odescale} with $s(t) = 1$ and $\sigma(t) = t$, reflected by the ``Sampling'' section of Table~\refpaper{tab:specifics}.
+
+\subsubsection{iDDPM time step discretization}
+
+The original DDPM formulation of Ho~et~al.~\cite{Ho2020} defines the forward process (Eq.~2 in \cite{Ho2020}) as a Markov chain that gradually adds Gaussian noise to $\bar\xx_0 \sim \pdata$ according to a discrete variance schedule $\{\beta_1, \dots, \beta_T\}$:
+\begin{equation}
+  q(\bar\xx_t ~|~ \bar\xx_{t-1}) = \mathcal{N}\big( \bar\xx_t; ~\sqrt{1 - \beta_t} ~\bar\xx_{t-1}, ~\beta_t ~\boldi \big)
+  \text{.}
+\end{equation}
+
+The corresponding transition probability from $\bar\xx_0$ to $\bar\xx_t$ (Eq.~4 in \cite{Ho2020}) is given by
+\begin{equation}
+  \label{eq:ddpmtrans}
+  q(\bar\xx_t ~|~ \bar\xx_0) = \mathcal{N}\big( \bar\xx_t; ~\sqrt{\bar\alpha_t} ~\bar\xx_0, ~(1 - \bar\alpha_t) ~\boldi \big)
+  \text{,}\hspace{4mm}\text{where}\hspace{4mm}
+  \bar\alpha_t = \prod_{s=1}^t ~(1 - \beta_s)
+  \text{.}
+\end{equation}
+
+Ho~et~al.~\cite{Ho2020} define $\{\beta_t\}$ based on a linear schedule and then calculate the corresponding $\{\bar\alpha_t\}$ from Eq.~\ref{eq:ddpmtrans}.
+Alternatively, one can also define $\{\bar\alpha_t\}$ first and then solve for $\{\beta_t\}$:
+\begin{eqnarray}
+  \label{eq:ddpmbeta}
+  \bar\alpha_t &=& \prod_{s=1}^t ~(1 - \beta_s) \\
+  \bar\alpha_t &=& \bar\alpha_{t-1} ~(1 - \beta_t) \\
+  \beta_t &=& 1 - \frac{\bar\alpha_t}{\bar\alpha_{t-1}}
+  \text{.}
+\end{eqnarray}
+
+The improved DDPM formulation of Nichol~and~Dhariwal~\cite{Nichol2021a} employs a cosine schedule for $\bar\alpha_t$ (Eq.~17 in \cite{Nichol2021a}), defined as
+\begin{equation}
+  \bar\alpha_t = \frac{f(t)}{f(0)}
+  \text{,}\hspace{4mm}\text{where}\hspace{4mm}
+  f(t) = \cos^2 \bigg( \frac{t/T + s}{1 + s} \cdot \frac{\pi}{2} \bigg)
+  \text{,}
+\end{equation}
+where $s = 0.008$.
+In their implementation%
+\footnote{\small\url{https://github.com/openai/improved-diffusion}},
+however, Nichol~et~al. leave out the division by $f(0)$ and simply define%
+\footnote{\tiny\url{https://github.com/openai/improved-diffusion/blob/783b6740edb79fdb7d063250db2c51cc9545dcd1/improved_diffusion/gaussian_diffusion.py\#L39}}
+\begin{equation}
+  \label{eq:ddpmalpha}
+  \bar\alpha_t = \cos^2 \bigg( \frac{t/T + s}{1 + s} \cdot \frac{\pi}{2} \bigg)
+  \text{.}
+\end{equation}
+
+To prevent singularities near $t = T$, they also clamp $\beta_t$ to $0.999$.
+We can express the clamping in terms of $\bar\alpha_t$ by utilizing Eq.~\ref{eq:ddpmtrans} and Eq.~\ref{eq:ddpmbeta}:
+\begin{eqnarray}
+  \label{eq:ddpmclamp}
+  \bar\alpha'_t &=& \prod_{s=1}^t ~\big( 1 - [\beta'_s] \big) \\
+  &=& \prod_{s=1}^t ~\Big( 1 - \min\big( [\beta_s], ~0.999) \Big) \\
+  &=& \prod_{s=1}^t ~\bigg( 1 - \min\bigg( 1 - \frac{\bar\alpha_s}{\bar\alpha_{s-1}}, ~0.999 \bigg) \bigg) \\
+  &=& \prod_{s=1}^t ~\max\bigg( \frac{\bar\alpha_s}{\bar\alpha_{s-1}}, ~0.001 \bigg)
+  \text{.}
+\end{eqnarray}
+
+Let us now reinterpret the above formulas in our unified framework.
+Recall from Table~\refpaper{tab:specifics} that we denote the original iDDPM sampling steps by $\{u_j\}$ in the order of descending noise level $\sigma(u_j)$, where $j \in \{0, \dots, M\}$.
+To harmonize the notation of Eq.~\ref{eq:ddpmtrans}, Eq.~\ref{eq:ddpmalpha}, and Eq.~\ref{eq:ddpmclamp}, we thus have to replace $T \longrightarrow M$ and $t \longrightarrow M-j$:
+\begin{eqnarray}
+  q(\bar\xx_j ~|~ \bar\xx_M) &=& \mathcal{N}\big( \bar\xx_j; ~\sqrt{\bar\alpha'_j} ~\bar\xx_M, ~(1 - \bar\alpha'_j) ~\boldi \big) \label{eq:ddpmtransnew} \text{,} \\[2mm]
+  \bar\alpha_j &=& \cos^2 \bigg( \frac{(M - j) / M + C_2}{1 + C_2} \cdot \frac{\pi}{2} \bigg) \label{eq:ddpmalphanew} \text{,}\hspace{4mm}\text{and} \\
+  \bar\alpha'_j &=& \prod_{s=M-1}^j ~\max\bigg( \frac{\bar\alpha_j}{\bar\alpha_{j+1}}, ~C_1 \bigg) ~=~ \bar\alpha'_{j+1} ~\max\bigg( \frac{\bar\alpha_j}{\bar\alpha_{j+1}}, ~C_1 \bigg) \label{eq:ddpmclampnew}
+  \text{,}
+\end{eqnarray}
+where the constants are $C_1 = 0.001$ and $C_2 = 0.008$.
+
+We can further simplify Eq.~\ref{eq:ddpmalphanew}:
+\begin{eqnarray}
+  \bar\alpha_j &=& \cos^2 \bigg( \frac{(M - j) / M + C_2}{1 + C_2} \cdot \frac{\pi}{2} \bigg) \\
+  &=& \cos^2 \bigg( \frac{\pi}{2} ~\frac{(1 + C_2) - j / M}{1 + C_2} \bigg)\\
+  &=& \cos^2 \bigg( \frac{\pi}{2} - \frac{\pi}{2} ~\frac{j}{M (1 + C_2)} \bigg)\\
+  &=& \sin^2 \bigg( \frac{\pi}{2} ~\frac{j}{M (1 + C_2)} \bigg)
+  \text{,}
+\end{eqnarray}
+giving the formula shown in the ``Parameters'' section of Table~\refpaper{tab:specifics}.
+
+To harmonize the definitions of $\xx$ and $\bar\xx$, we must match the perturbation kernel of Eq.~\ref{eq:songperturbation} with the transition probability of Eq.~\ref{eq:ddpmtransnew} for each time step $t = u_j$:
+\begin{eqnarray}
+  p_{0t}\big( \xx(u_j) ~|~ \xx(0) \big) &=& q(\bar\xx_j ~|~ \bar\xx_M) \\
+  \mathcal{N} \big( \xx(u_j); ~s(t) ~\xx(0), ~s(u_j)^2 ~\sigma(u_j)^2 ~\boldi \big) &=& \mathcal{N}\left( \bar\xx_j; ~\sqrt{\bar\alpha'_j} ~\bar\xx_M, ~\big( 1 - \bar\alpha'_j \big) ~\boldi \right)
+  \text{.}
+\end{eqnarray}
+
+Substituting $s(t) = 1$ and $\sigma(t) = t$ from Appendix~\ref{app:ddim}, as well as $\bar\xx_M = \xx(0)$:
+\begin{equation}
+  \mathcal{N} \big( \xx(u_j); ~\xx(0), ~u_j^2 ~\boldi \big) = \mathcal{N}\left( \bar\xx_j; ~\sqrt{\bar\alpha'_j} ~\xx(0), ~\big( 1 - \bar\alpha'_j \big) ~\boldi \right)
+  \text{.}
+\end{equation}
+
+We can match the means of these two distributions by defining $\bar\xx_j = \sqrt{\bar\alpha'_j} ~\xx(u_j)$:
+\begin{eqnarray}
+  \mathcal{N} \big( \xx(u_j); ~\xx(0), ~u_j^2 ~\boldi \big) &=& \mathcal{N}\left( \sqrt{\bar\alpha'_j} ~\xx(u_j); ~\sqrt{\bar\alpha'_j} ~\xx(0), ~\big( 1 - \bar\alpha'_j \big) ~\boldi \right) \\
+  &=& \mathcal{N}\bigg( \xx(u_j); ~\xx(0), ~\frac{1 - \bar\alpha'_j}{\bar\alpha'_j} ~\boldi \bigg)
+  \text{.}
+\end{eqnarray}
+
+Matching the variances and solving for $\bar\alpha'_j$ gives
+\begin{eqnarray}
+  u_j^2 &=& (1 - \bar\alpha'_j) ~/~ \bar\alpha'_j \\
+  u_j^2 ~\bar\alpha'_j &=& 1 - \bar\alpha'_j \\
+  u_j^2 ~\bar\alpha'_j + \bar\alpha'_j &=& 1 \\
+  (u_j^2 + 1) ~\bar\alpha'_j &=& 1 \\
+  \bar\alpha'_j &=& 1 ~/~ (u_j^2 + 1)
+  \text{.}
+\end{eqnarray}
+
+Finally, we can expand the left-hand side using Eq.~\ref{eq:ddpmclampnew} and solve for $u_{j-1}$:
+\begin{eqnarray}
+  \bar\alpha'_{j+1} ~\max(\bar\alpha_j / \bar\alpha_{j+1}, ~C_1) &=& 1 ~/~ (u_j^2 + 1) \\
+  \bar\alpha'_j ~\max(\bar\alpha_{j-1} / \bar\alpha_j, ~C_1) &=& 1 ~/~ (u_{j-1}^2 + 1) \\
+  \big[ 1 ~/~ (u_j^2 + 1) \big] ~\max(\bar\alpha_{j-1} / \bar\alpha_j, ~C_1) &=& 1 ~/~ (u_{j-1}^2 + 1) \\
+  \max(\bar\alpha_{j-1} / \bar\alpha_j, ~C_1) ~(u_{j-1}^2 + 1) &=& u_j^2 + 1 \\
+  u_{j-1}^2 + 1 &=& (u_j^2 + 1) ~/~ \max(\bar\alpha_{j-1} / \bar\alpha_j, ~C_1) \\
+  u_{j-1} &=& \sqrt{\frac{u_j^2 + 1}{\max(\bar\alpha_{j-1} / \bar\alpha_j, ~C_1)} - 1}
+  \text{,}
+\end{eqnarray}
+giving a recurrence formula for $\{u_j\}$, bootstrapped by $u_M = 0$, that matches the ``Time steps'' row of Table~\refpaper{tab:specifics}.
+
+\subsubsection{iDDPM preconditioning and training}
+
+We can solve $D_\theta(\cdot)$ from Eq.~\ref{eq:ddimdenoiser} by substituting $\sigma(t) = t$ from Appendix~\ref{app:ddim}:
+\begin{eqnarray}
+  \epsilon_\theta^{(j)} \left( \xx / \sqrt{\sigma^2 + 1} \right) &=& \big( \xx - D_\theta(\xx; \sigma) \big) / \sigma \\
+  D_\theta(\xx; \sigma) &=& \xx - \sigma ~\epsilon_\theta^{(j)} \left( \xx / \sqrt{\sigma^2 + 1} \right)
+  \text{.}
+\end{eqnarray}
+
+We choose to define $F_\theta(\cdot; j) = \epsilon_\theta^{(j)}(\cdot)$ and solve $j$ from $\sigma$ by finding the nearest $u_j$:
+\begin{equation}
+  D_\theta(\xx; \sigma) = \underbrace{1~\cdot}_{\cskip} \xx ~\underbrace{-~\sigma}_{\cout} \,\cdot ~F_\theta\Big( \underbrace{\tfrac{1}{\sqrt{\sigma^2 + 1}}}_{\cin} \,\cdot~\xx; ~\underbrace{\argmin_j |u_j - \sigma|}_{\cnoise} \Big)
+  \label{eq:iddpmprecond}
+  \text{,}
+\end{equation}
+where $\cskip$, $\cout$, $\cin$, and $\cnoise$ match the ``Network and preconditioning'' section of Table~\refpaper{tab:specifics}.
+
+Note that Eq.~\ref{eq:iddpmprecond} is identical to the VP preconditioning formula in Eq.~\ref{eq:vpprecond}.
+Furthermore, Nichol~and~Dhariwal~\cite{Nichol2021a} define their main training loss $L_\text{simple}$ (Eq.~14 in \cite{Nichol2021a}) the same way as Song~et~al.~\cite{Song2021sde}, with $\sigma$ drawn uniformly from $\{u_j\}$.
+Thus, we can reuse Eq.~\ref{eq:vploss} with $\sigma = u_j$, $j \sim \mathcal{U}(0, M-1)$, and $\lambda(\sigma) = 1 / \sigma^2$, matching the ``Training'' section of Table~\refpaper{tab:specifics}.
+In addition to $L_\text{simple}$, Nichol~and~Dhariwal~\cite{Nichol2021a} also employ a secondary loss term $L_\text{vlb}$; we refer the reader to Section~3.1 in \cite{Nichol2021a} for details.
+
+\subsubsection{iDDPM practical considerations}
+
+The pre-trained iDDPM model that we use on ImageNet-64 corresponds to the ``ADM (dropout)'' checkpoint%
+\footnote{\small\texttt{https://openaipublic.blob.core.windows.net/diffusion/jul-2021/64x64\_diffusion.pt}}
+provided by Dhariwal~and~Nichol~\cite{Dhariwal2021}.
+It contains 296 million trainable parameters and supports a discrete set of $M = 1000$ noise levels $\sigma \in \{u_j\} \approx \{$20291, 642, 321, 214, 160, 128, 106, 92, 80, 71, $\dots$, 0.0064$\}$.
+The fact that we can only evaluate $F_\theta$ these specific choices of $\sigma$ presents three practical challenges:
+\begin{enumerate}
+\item
+In the context of DDIM, we must choose how to resample $\{u_j\}$ to yield $\{t_i\}$ for $N \ne M$.
+Song~et~al.~\cite{Song2020ddim} employ a simple resampling scheme where $t_i = u_{k \cdot i}$ for resampling factor $k \in \mathbb{Z}^+$.
+This scheme, however, requires that $1000 \equiv 0 \pmod{N}$, which limits the possible choices for $N$ considerably.
+Nichol~and~Dhariwal~\cite{Nichol2021a}, on the other hand, employ a more flexible scheme where $t_i = u_j$ with $j = \lfloor (M - 1) / (N - 1) \cdot i \rfloor$.
+We note, however, that in practice the values of $u_{j<8}$ are considerably larger than our preferred $\smax = 80$.
+We choose to skip these values by defining $j = \lfloor j_0 + (M - 1 - j_0) / (N - 1) \cdot i \rfloor$ with $j_0 = 8$, matching the ``Time steps'' row in Table~\refpaper{tab:specifics}.
+In Figure~\refpaper{fig:OdePlotNfe}c, the differences between the original sampler (blue) and our reimplementation (orange) are explained by this choice.
+\item
+In the context of our time step discretization (Eq.~\refpaper{eq:discretization}), we must ensure that $\sigma_i \in \{u_j\}$.
+We accomplish this by rounding each $\sigma_i$ to its nearest supported counterpart, i.e., $\sigma_i \gets u_{\argmin_j |u_j - \sigma_i|}$, and setting $\smin = 0.0064 ~\approx~ u_{N-1}$.
+This is sufficient, because Algorithm~\refpaper{alg:heun} only evaluates $D_\theta(\cdot; \sigma)$ with $\sigma \in \{\sigma_{i<N}\}$.
+\item
+In the context of our stochastic sampler, we must ensure that $\hat\odetime_i \in \{u_j\}$.
+We accomplish this by replacing line~5 of Algorithm~\refpaper{alg:stochastic} with $\hat\odetime_i \gets u_{\argmin_j |u_j - (\odetime_i + \gamma_i \odetime_i)|}$.
+\end{enumerate}
+
+With these changes, we are able to import the pre-trained model directly as $F_\theta(\cdot)$ and run Algorithms~\refpaper{alg:heun} and~\refpaper{alg:stochastic} using the definitions in Table~\refpaper{tab:specifics}.
+Note that the model outputs both \smash{$\epsilon_\theta(\cdot)$} and $\Sigma_\theta(\cdot)$, as described in Section~3.1 of \cite{Nichol2021a}; we use only the former and ignore the latter.
+
+\section{Further analysis of deterministic sampling}
+\label{app:deterministic}
+
+\subsection{Truncation error analysis and choice of discretization parameters}
+\label{app:truncationerror}
+
+As discussed in Section~\refpaper{sec:deterministic},
+the fundamental reason why diffusion models tend to require a large number of sampling steps is that any numerical ODE solver is necessarily an approximation; the larger the steps, the farther away we drift from the true solution at each step.
+Specifically, given the value of $\xx_{i-1}$ at time step $i-1$, the solver approximates the true $\xx^*_i$ as $\xx_i$, resulting in local truncation error $\lte_i = \xx^*_i - \xx_i$.
+The local errors get accumulated over the $N$ steps, ultimately leading to global truncation error $\gte_N$.
+
+Euler's method is a first order ODE solver, meaning that $\lte_i = \mathcal{O}\left(h_i^2\right)$ for any sufficiently smooth $\xx(t)$, where $h_i = |t_i - t_{i-1}|$ is the local step size~\cite{Suli2003}.
+In other words, there exist some $C$ and $H$ such that $||\lte_i|| < C h_i^2$ for every $h_i < H$, i.e., halving $h_i$ reduces $\lte_i$ by 4$\times$.
+Furthermore, if we assume that $D_\theta$ is Lipschitz continuous\,---\,which is true for all network architectures considered in this paper\,---\,the global truncation error is bounded by $||\gte_N|| \le E \max_i ||\lte_i||$, where the value of $E$ depends on $N$, $t_0$, $t_N$, and the Lipschitz constant~\cite{Suli2003}.
+Thus, reducing the global error for given $N$, which in turn enables reducing $N$ itself, boils down to choosing the solver and $\{t_i\}$ so that $\max_i ||\lte_i||$ is minimized.
+
+\figOdePlotExp
+
+To gain insight on how the local truncation error behaves in practice, we measure the values of $\lte_i$ over different noise levels using the VE-based CIFAR-10 model.
+For a given noise level, we set $t_i = \sigma^{-1}(\sigma_i)$ and choose some $t_{i-1} > t_i$ depending on the case.
+We then sample $\xx_{i-1}$ from $p(\xx; \sigma_{i-1})$ and estimate the true $\xx^*_i$ by performing 200 Euler steps over uniformly selected subintervals between $t_{i-1}$ and $t$.
+Finally, we plot the mean and standard deviation of the root mean square error (RMSE), i.e., $||\lte_i|| / \scriptstyle\sqrt{\dim\lte}$, as a function of $\sigma_i$, averaged over 200 random samples of $\xx_{i-1}$.
+Results for Euler's method are shown in Figure~\ref{fig:OdePlotExp}a, where the blue curve corresponds to uniform step size $h_\sigma = 1.25$ with respect to $\sigma$, i.e., $\sigma_{i-1} = \sigma_i + h_\sigma$ and $t_{i-1} = \sigma^{-1}(\sigma_{i-1})$.
+We see that the error is very large ($\text{RMSE} \approx 0.56$) for low noise levels ($\sigma_i \le 0.5$) and considerably smaller for high noise levels.
+This is in line with the common intuition that, in order to reduce $\gte_N$, the step size should be decreased monotonically with decreasing $\sigma$.
+Each curve is surrounded by a shaded region that indicates standard deviation, barely visible at low values of $\sigma$.
+This indicates that $\lte_i$ is nearly constant with respect to $\xx_{i-1}$, and thus there would be no benefit in varying $\{t_i\}$ schedule on a per-sample basis.
+
+A convenient way to vary the local step size depending on the noise level is to define $\{\sigma_i\}$ as a linear resampling of some monotonically increasing, unbounded warp function $w(z)$.
+In other words, $\sigma_{i<N} = w(A i + B)$ and $\sigma_N = 0$, where constants $A$ and $B$ are selected so that $\sigma_0 = \smax$ and $\sigma_{N-1} = \smin$. %
+In practice, we set $\smin = \max(\sigma_\text{lo}, 0.002)$ and $\smax = \min(\sigma_\text{hi}, 80)$, where $\sigma_\text{lo}$ and $\sigma_\text{hi}$ are the lowest and highest noise levels supported by a given model, respectively; we have found these choices to perform reasonably well in practice.
+Now, to balance $\lte_i$ between low and high noise levels, we can, for example, use a polynomial warp function $w(z) = z^\rho$ parameterized by the exponent $\rho$.
+This choice leads to the following formula for $\{\sigma_i\}$:
+\begin{equation}
+\label{eq:discretizationII}
+\sigma_{i<N} = \left( {\smax}^\frac{1}{\rho} + \frac{i}{N-1} \left( {\smin}^\frac{1}{\rho} - {\smax}^\frac{1}{\rho} \right) \right)^\rho, \sigma_N = 0,
+\end{equation}
+which reduces to uniform discretization when $\rho=1$ and gives more and more emphasis to low noise levels as $\rho$ increases.\footnote{
+  In the limit, Eq.~\ref{eq:discretizationII} reduces to the same geometric sequence employed by original VE ODE when \mbox{$\rho \rightarrow \infty$}.
+  Thus, our discretization can be seen as a parametric generalization of the one proposed by Song~et~al.~\cite{Song2021sde}.
+}
+
+Based on the value of $\sigma_i$, we can now compute $\sigma_{i-1} = \big( \sigma_i^{1 / \rho} - A \big)^\rho$, which enables us to visualize $\lte_i$ for different choices of $\rho$ in Figure~\ref{fig:OdePlotExp}a.
+We see that increasing $\rho$ reduces the error for low noise levels ($\sigma < 10$) while increasing it for high noise levels ($\sigma > 10$).
+Approximate balance is achieved at $\rho=2$, but RMSE remains relatively high ($\sim0.03$), meaning that Euler's method drifts away from the correct result by several ULPs at each step.
+While the error could be reduced by increasing $N$, we would ideally like the RMSE to be well below 0.01 even with low step counts.
+
+Heun's method introduces an additional correction step for $\xx_{i+1}$ to account for the fact that $\diff\xx / \diff\odetime$ may change between $t_i$ and $t_{i+1}$; Euler's method assumes it to be constant.
+The correction leads to cubic convergence of the local truncation error, i.e., $\lte_i = \mathcal{O}\left(h_i^3\right)$, at the cost of one additional evaluation of $D_\theta$ per step.
+We discuss the general family of Heun-like schemes later in Appendix~\ref{app:alpha}.
+Figure~\ref{fig:OdePlotExp}b shows local truncation error for Heun's method using the same setup as Figure~\ref{fig:OdePlotExp}a.
+We see that the differences in $||\lte_i||$ are generally more pronounced, which is to be expected given the quadratic vs.~cubic convergence of the two methods.
+Cases where Euler's method has low RMSE tend to have even lower RMSE with Heun's method, and vice versa for cases with high RMSE.
+Most remarkably, the red curve shows almost constant $\text{RMSE} \in [0.0030, 0.0045]$.
+This means that the combination of Eq.~\ref{eq:discretizationII} and Heun's method is, in fact, very close to optimal with $\rho=3$.
+
+Thus far, we have only considered the raw numerical error, i.e., component-wise deviation from the true result in RGB space.
+The raw numerical error is relevant for certain use cases, e.g., image manipulation where the ODE is first evaluated in the direction of increasing $t$ and then back to $t=0$ again\,---\,in this case, $||\gte_N||$ directly tells us how much the original image degrades in the process and we can use $\rho=3$ to minimize it.
+Considering the generation of novel images from scratch, however, it is reasonable to expect different noise levels to introduce different kinds of errors that may not necessarily be on equal footing considering their perceptual importance.
+We investigate this in Figure~\ref{fig:OdePlotExp}c, where we plot FID as a function of $\rho$ for different models and different choices of $N$.
+Note that the ImageNet-64 model was only trained for a discrete set of noise levels; in order to use it with Eq.~\ref{eq:discretizationII}, we round each $t_i$ to its nearest supported counterpart, i.e., $t'_i = u_{\argmin_j |u_j - t_i|}$.
+
+From the plot, we can see that even though $\rho=3$ leads to relatively good FID, it can be reduced further by choosing $\rho > 3$.
+This corresponds to intentionally introducing error at high noise levels to reduce it at low noise levels, which makes intuitive sense because the value of $\smax$ is somewhat arbitrary to begin with\,---\,increasing $\smax$ can have a large impact on $||\gte_N||$, but it does not affect the resulting image distribution nearly as much.
+In general, we have found $\rho=7$ to perform reasonably well in all cases, and use this value in all other experiments.
+
+\subsection{\texorpdfstring{General family of 2\textsuperscript{nd} order Runge--Kutta variants}{General family of 2nd order Runge-Kutta variants}}
+\label{app:alpha}
+
+Heun's method illustrated in Algorithm~\refpaper{alg:heun} belongs to a family of explicit two-stage 2\textsuperscript{nd} order Runge--Kutta methods, each having the same computational cost.
+A common parameterization~\cite{Suli2003} of this family is,
+\begin{equation}
+\dd_i = f(\xx_i;t_i)\ \ \ \textrm{;} \ \ \ \xx_{i+1} = \xx_i + h\Big[\Big(1-{\tfrac{1}{2\alpha}}\Big)\dd_i+{\tfrac{1}{2\alpha}}f(\xx_i + \alpha h \dd_i;t_i+\alpha h)\Big]\textrm{,}
+\end{equation}
+where $h=t_{i+1}-t_i$ and $\alpha$ is a parameter that controls where the additional gradient is evaluated and how much it influences the step taken.
+Setting $\alpha=1$ corresponds to Heun's method, and $\alpha=\tfrac{1}{2}$ and $\alpha=\tfrac{2}{3}$ yield so-called midpoint and Ralston methods, respectively.
+All these variants differ in the kind of approximation error they incur due to the geometry of the underlying function $f$.
+
+To establish the optimal $\alpha$ in our use case, we ran a separate series of experiments.
+According to the results, it appears that $\alpha=1$ is very close to being optimal.
+Nonetheless, the experimentally best choice was $\alpha=1.1$ that performed slightly better, even though values greater than one are theoretically hard to justify as they overshoot the target $t_{i+1}$.
+As we have no good explanation for this observation and cannot tell if it holds in general, we chose not to make $\alpha$ a new hyperparameter and instead fixed it to $1$, corresponding exactly to Heun's method.
+Further analysis is left as future work, including the possibility of having $\alpha$ vary during sampling.
+
+An additional benefit of setting $\alpha=1$ is that it makes it possible to use pre-trained neural networks $D_\theta(\xx;\sigma)$ that have been trained only for specific values of $\sigma$.
+This is because a Heun step evaluates the additional gradient at exactly $t_{i+1}$ unlike the other 2\textsuperscript{nd} order variants.
+Hence it is sufficient to ensure that each $t_i$ corresponds to a value of $\sigma$ that the network was trained for.
+
+\algAlpha
+
+Algorithm~\ref{alg:alpha} shows the pseudocode for a general 2\textsuperscript{nd} order solver parameterized by $\alpha$.
+For clarity, the pseudocode assumes the specific choices of $\sigma(t)=t$ and $s(t)=1$ that we advocate in Section~\refpaper{sec:deterministic}.
+Note that the fallback to Euler step (line~11) can occur only when $\alpha \ge 1$.
+
+\section{Further results with stochastic sampling}
+\label{app:stochastic}
+
+\subsection{Image degradation due to excessive stochastic iteration}
+\label{app:degradation}
+
+\figDegradation
+
+Figure~\ref{fig:Degradation} illustrates the image degradation caused by excessive Langevin iteration (Section~\refpaper{sec:stochasticity}, ``Practical considerations'').
+These images are generated by doing a specified number of iterations at a fixed noise level $\sigma$ so that at each iteration an equal amount of noise is added and removed.
+In theory, Langevin dynamics should bring the distribution towards the ideal distribution $p(\xx;\sigma)$ but as noted in Section~\refpaper{sec:stochasticity}, 
+  this holds only if the denoiser $D_\theta(\xx;\sigma)$ induces a conservative vector field in Eq.~\refpaper{eq:scoredenoiser}.
+
+As seen in the figure, it is clear that the image distribution suffers from repeated iteration in all cases, although the exact failure mode depends on dataset and noise level.
+For low noise levels (below $0.2$ or so), the images tend to oversaturate starting at 2k iterations and become fully corrupted after that.
+Our heuristic of setting $\Stmin > 0$ is designed to prevent stochastic sampling altogether at very low noise levels to avoid this effect.
+
+For high noise levels, we can see that iterating without the standard deviation correction, i.e., when $\Snoise=1.000$, the images tend to become more abstract and devoid of color at high iteration counts;
+  this is especially visible in the 10k column of CIFAR-10 where the images become mostly black and white with no discernible backgrounds.
+Our heuristic inflation of standard deviation by setting $\Snoise > 1$ counteracts this tendency efficiently, as seen in the corresponding images on the right hand side of the figure.
+Notably, this still does not fix the oversaturation and corruption at low noise levels, suggesting multiple sources for the detrimental effects of excessive iteration.
+Further research will be required to better understand the root causes of these observed effects.
+
+\figSdePlotChurn
+
+Figure~\ref{fig:SdePlotChurn} presents the output quality of our stochastic sampler in terms of FID as a function of $\Schurn$ at fixed NFE,
+  using pre-trained networks of Song~et~al.~\cite{Song2021sde} and Dhariwal and Nichol~\cite{Dhariwal2021}.
+Generally, for each case and combination of our heuristic corrections, there is an optimal amount of stochasticity after which the results start to degrade.
+It can also be seen that regardless of the value of $\Schurn$, the best results are obtained by enabling all corrections, although whether $\Snoise$ or $\StminStmax$ is more important depends on the case.
+
+\subsection{\texorpdfstring{{Stochastic sampling parameters}}{Stochastic sampling parameters}}
+\label{app:stochasticparams}
+
+\tabStochasticParams
+
+Table~\ref{tab:StochasticParams} lists {the values for $\Schurn$, $\Stmin$, $\Stmax$, and $\Snoise$ that we used in our stochastic sampling experiments}.
+These were determined with a grid search over the combinations listed in the rightmost column.
+It can be seen that the optimal parameters depend on the case;
+  better understanding of the degradation phenomena will hopefully give rise to more direct ways of handling the problem in the future.
+
+\section{Implementation details}
+\label{app:implementation}
+
+We implemented our techniques in a newly written codebase, based loosely on the original implementations by
+Song~et~al.\footnote{\small\url{https://github.com/yang-song/score\_sde\_pytorch}}~\cite{Song2021sde},
+Dhariwal~and~Nichol\footnote{\small\url{https://github.com/openai/guided-diffusion}}~\cite{Dhariwal2021},
+and Karras~et~al.\footnote{\small\url{https://github.com/NVlabs/stylegan3}}~\cite{Karras2021alias}.
+We performed extensive testing to verify that our implementation produced exactly the same results as previous work, including samplers, pre-trained models, network architectures, training configurations, and evaluation.
+We ran all experiments using PyTorch 1.10.0, CUDA 11.4, and CuDNN 8.2.0 on NVIDIA DGX-1's with 8 Tesla V100 GPUs each.
+
+{Our implementation and pre-trained models are available at \url{https://github.com/NVlabs/edm}}
+
+\subsection{FID calculation}
+\label{app:fid}
+
+We calculate FID~\cite{Heusel2017} between 50,000 generated images and all available real images, without any augmentation such as $x$-flips.
+We use the pre-trained Inception-v3 model provided with StyleGAN3%
+\footnote{\tiny\texttt{https://api.ngc.nvidia.com/v2/models/nvidia/research/stylegan3/versions/1/files/metrics/inception-2015-12-05.pkl}}~\cite{Karras2021alias}
+that is, in turn, a direct PyTorch translation of the original TensorFlow-based model%
+\footnote{\tiny\texttt{http://download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz}}.
+We have verified that our FID implementation produces identical results compared to Dhariwal~and~Nichol~\cite{Dhariwal2021} and Karras~et~al.~\cite{Karras2021alias}.
+To reduce the impact of random variation, typically in the order of $\pm$2\%, we compute FID three times in each experiment and report the minimum.
+We also highlight the difference between the highest and lowest achieved FID in Figures \refpaper{fig:SdePlotNfe}, \refpaper{fig:TrainingPlots}b, \ref{fig:OdePlotExp}c, and \ref{fig:SdePlotChurn}.
+
+\subsection{Augmentation regularization}
+\label{app:augmentdetails}
+
+In Section~\refpaper{sec:training}, we propose to combat overfitting of $D_\theta$ using conditional augmentation.
+We build our augmentation pipeline around the same concepts that were originally proposed by Karras~et~al.~\cite{Karras2020ada} in the context of GANs.
+In practice, we employ a set of 6 geometric transformations; we have found other types of augmentations, such as color corruption and image-space filtering, to be consistently harmful for diffusion-based models.
+
+The details of our augmentation pipeline are shown in Table~\ref{tab:AugmentPipe}.
+We apply the augmentations independently to each training image $\signal \sim \pdata$ prior to adding the noise $\noise \sim \mathcal{N}(\boldzero, \sigma^2 \boldi)$.
+First, we determine whether to enable or disable each augmentation based on a weighted coin toss.
+The probability of enabling a given augmentation (``Prob.'' column) is fixed to 12\% for CIFAR-10 and 15\% for FFHQ and AFHQv2, except for $x$-flips that are always enabled.
+We then draw 8 random parameters from their corresponding distributions (``Parameters'' column); if a given augmentation is disabled, we override the associated parameters with zero.
+Based on these, we construct a homogeneous 2D transformation matrix based on the parameters (``Transformation'' column).
+This transformation is applied to the image using the implementation of~\cite{Karras2020ada} that employs 2$\times$ supersampled high-quality Wavelet filters.
+Finally, we construct a 9-dimensional conditioning input vector (``Conditioning'' column) and feed it to the denoiser network, in addition to the image and noise level inputs.
+
+\tabAugmentPipe
+
+The role of the conditioning input is to present the network with a set of auxiliary tasks; in addition to the main task of modeling $p(\xx; \sigma)$, we effectively ask the network to also model an infinite set of distributions $p(\xx; \sigma, \boldsymbol{a})$ for each possible choice of the augmentation parameters $\boldsymbol{a}$.
+These auxiliary tasks provide the network with a large variety of unique training samples, preventing it from overfitting to any individual sample.
+Still, the auxiliary tasks appear to be beneficial for the main task; we speculate that this is because the denoising operation itself is similar for every choice of $\boldsymbol{a}$.
+
+We have designed the conditioning input so that zero corresponds to the case where no augmentations were applied.
+During sampling, we simply set $\boldsymbol{a} = \boldzero$ to obtain results consistent with the main task.
+We have not observed any leakage between the auxiliary tasks and the main task; the generated images exhibit no traces of out-of-domain geometric transformations even with $A_\text{prob} = 100$\%.
+In practice, this means that we are free to choose the constants $\{A_\text{prob}, A_\text{scale}, A_\text{aniso}, A_\text{trans}\}$ any way we like as long as the results improve.
+Horizontal flips serve as an interesting example.
+Most of the prior work augments the training set with random $x$-flips, which is beneficial for most datasets but has the downside that any text or logos may appear mirrored in the generated images.
+With our non-leaky augmentations, we get the same benefits without the downsides by executing the $x$-flip augmentation with 100\% probability.
+Thus, we rely exclusively on our augmentation scheme and disable dataset $x$-flips to ensure that the generated images stay true to the original distribution.
+
+\subsection{Training configurations}
+\label{app:training}
+
+\tabTrainingParams
+
+Table~\ref{tab:TrainingParams} shows the exact set of hyperparameters that we used in our training experiments reported in {Section~\refpaper{sec:training}}.
+{We will first detail the configurations used with CIFAR-10, FFHQ, and AFHQv2, and then discuss the training of our improved ImageNet model.}
+
+Config~\textsc{a} {of Table~\refpaper{tab:TrainingTable} (``Baseline'')} corresponds to the original setup of Song~et~al.~\cite{Song2021sde} for the two {cases} (VP and VE), and config~\textsc{f} {(``Ours'')} corresponds to our improved setup.
+We trained each model until a total of 200 million images had been drawn from the training set, abbreviated as ``200 Mimg'' in Table~\ref{tab:TrainingParams}; this corresponds to a total of $\sim$400,000 training iterations using a batch size of 512.
+We saved a snapshot of the model every 2.5 million images and reported results for the snapshot that achieved the lowest FID according to our deterministic sampler with NFE $=$ 35 or NFE $=$ 79, depending on the resolution.
+
+In config~\textsc{b}, we re-adjust the basic hyperparameters to enable faster training and obtain a more meaningful point of comparison.
+Specifically, we increase the parallelism from 4 to 8 GPUs and batch size from 128 to 512 or 256, depending on the resolution.
+We also disable gradient clipping, i.e., forcing $\lVert \diff\mathcal{L}(D_\theta) / \diff\theta \rVert_2 \le 1$, that we found to provide no benefit in practice.
+Furthermore, we increase the learning rate from 0.0002 to 0.001 for CIFAR-10, ramping it up during the first 10 million images, and standardize the half-life of the exponential moving average of $\theta$ to 0.5 million images.
+Finally, we adjust the dropout probability for each dataset as shown in Table~\ref{tab:TrainingParams} via a full grid search at 1\% increments.
+Our total training time is approximately 2 days {for CIFAR-10} at 32$\times$32 resolution and 4 days {for FFHQ and AFHQv2} at 64$\times$64 resolution.
+
+In config~\textsc{c}, we improve the expressive power of the model by removing the 4$\times$4 layers and doubling the capacity of the 16$\times$16 layers instead; we found the former to mainly contribute to overfitting, whereas the latter were critical for obtaining high-quality results.
+The original models of Song~et~al.~\cite{Song2021sde} employ 128 {channels} at 64$\times$64 (where applicable) and 32$\times$32, and 256 {channels} at 16$\times$16, 8$\times$8, and 4$\times$4.
+We change these numbers to 128 {channels} at 64$\times$64 (where applicable), and 256 {channels} at 32$\times$32, 16$\times$16, and 8$\times$8.
+We abbreviate these counts in Table~\ref{tab:TrainingParams} as multiples of 128, listed from the highest resolution to the lowest.
+In practice, this rebalancing reduces the total number of trainable parameters slightly, resulting in $\sim$56 million parameters for each model at 32$\times$32 resolution and $\sim$62 million parameters at 64$\times$64 resolution.
+
+In {config~\textsc{d}}, we replace the original preconditioning with our improved formulas (``Network and preconditioning'' section in Table~\refpaper{tab:specifics}).
+{In config~\textsc{e}}, we do the same for the noise distribution and loss weighting (``Training'' section in Table~\refpaper{tab:specifics}).
+{Finally, in config~\textsc{f}}, we enable augmentation regularization as discussed in Appendix~\ref{app:augmentdetails}.
+The other hyperparameters remain the same as in config~\textsc{c}.
+
+{
+With ImageNet-64, it is necessary to train considerably longer compared to the other datasets in order to reach state-of-the-art results.
+To reduce the training time, we employed 32 NVIDIA Ampere GPUs (4 nodes) with a batch size of 4096 (128 per GPU) and utilized the high-performance Tensor Cores via mixed-precision FP16/FP32 training.
+In practice, we store the trainable parameters as FP32 but cast them to FP16 when evaluating $F_\theta$, except for the embedding and self-attention layers, where we found the limited exponent range of FP16 to occasionally lead to stability issues.
+We trained the model for two weeks, corresponding to $\sim$2500 million images drawn from the training set and $\sim$600,000 training iterations, using learning rate 0.0001, exponential moving average of 50 million images, and the same model architecture and dropout probability as Dhariwal and Nichol~\cite{Dhariwal2021}.
+We did not find overfitting to be a concern, and thus chose to not employ augmentation regularization.
+}
+
+\subsection{Network architectures}
+\label{app:architectures}
+
+\tabNetworkDetails
+
+As a result of our {training} improvements, the VP and VE cases become otherwise identical in config~\textsc{f} except for the network architecture; VP employs the \ddpmpp{} architecture while VE employs \ncsnpp{}, both of which were originally proposed by Song~et~al.~\cite{Song2021sde}.
+These architectures correspond to relatively straightforward variations of the same U-net backbone with {three differences, as illustrated in Table~\ref{tab:NetworkDetails}}.
+First, \ddpmpp{} employs box filter $[1, 1]$ for the upsampling and downsampling layers whereas \ncsnpp{} employs bilinear filter $[1, 3, 3, 1]$.
+Second, \ddpmpp{} inherits its positional encoding scheme for the noise level directly from DDPM~\cite{Ho2020} whereas \ncsnpp{} replaces it with random Fourier features~\cite{Tancik2020fourier}.
+Third, \ncsnpp{} incorporates additional residual skip connections from the input image to each block in the encoder, as explained in Appendix~H of~\cite{Song2021sde} (``progressive growing architectures'').
+
+For class conditioning and augmentation regularization, we extend the original \ddpmpp{} and \ncsnpp{} arhictectures by introducing two optional conditioning inputs alongside the noise level input.
+We represent class labels as one-hot encoded vectors that we first scale by \smash{$\sqrt{C}$}, where $C$ is the total number of classes, and then feed through a fully-connected layer.
+For the augmentation parameters, we feed the conditioning inputs of Appendix~\ref{app:augmentdetails} through a fully-connected layer as-is.
+We then combine the resulting feature vectors with the original noise level conditioning vector through elementwise addition.
+
+{
+For class-conditional ImageNet-64, we use the ADM architecture of Dhariwal and Nichol~\cite{Dhariwal2021} with no changes.
+The model has a total of $\sim$296 million trainable parameters.
+As detailed in Tables~\ref{tab:TrainingParams} and~\ref{tab:NetworkDetails}, the most notable differences to \ddpmpp{} include the use of a slightly shallower model (3 residual blocks per resolution instead of 4) with considerably more channels (e.g., 768 in the lowest resolution instead of 256), more self-attention layers interspersed throughout the network (22 instead of 6), and the use of multi-head attention (e.g., 12 heads in the lowest resolution).
+We feel that the precise impact of architectural choices remains an interesting question for future work.
+}
+
+\subsection{Licenses}
+\label{app:licenses}
+
+Datasets:
+\begin{itemize}
+\item \makebox[24mm][l]{CIFAR-10~\cite{Krizhevsky2009cifar}:}  MIT license
+\item \makebox[24mm][l]{FFHQ~\cite{Karras2018stylegan}:}       Creative Commons BY-NC-SA 4.0 license
+\item \makebox[24mm][l]{AFHQv2~\cite{Choi2020afhq}:}           Creative Commons BY-NC 4.0 license
+\item \makebox[24mm][l]{ImageNet~\cite{Deng2009imagenet}:}     The license status is unclear
+\end{itemize}
+
+Pre-trained models:
+\begin{itemize}
+\item \makebox[72mm][l]{CIFAR-10 models by Song~et~al.~\cite{Song2021sde}:}                 Apache V2.0 license
+\item \makebox[72mm][l]{ImageNet-64 model by Dhariwal~and~Nichol~\cite{Dhariwal2021}:}      MIT license
+\item \makebox[72mm][l]{Inception-v3 model by Szegedy~et~al.~\cite{Szegedy2016inception}:}  Apache V2.0 license
+\end{itemize}
+

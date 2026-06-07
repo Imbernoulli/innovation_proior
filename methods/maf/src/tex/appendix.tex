@@ -1,0 +1,437 @@
+
+\section{Equivalence between MAF and IAF}
+\label{sec:equivalence}
+
+In this section, we present the equivalence between MAF and IAF in full mathematical detail. Let $\pi_x\br{\vect{x}}$ be the true density the train data $\set{\vect{x}_n}$ is sampled from. Suppose we have a MAF whose base density is $\pi_u\br{\vect{u}}$, and whose transformation from $\vect{u}$ to $\vect{x}$ is $f$. The MAF defines the following density over the $\vect{x}$ space:
+\begin{equation}
+\label{eq:maf_px}
+p_x\br{\vect{x}} = \pi_u\br{f^{-1}\br{\vect{x}}}\abs{\det\br{\deriv{f^{-1}}{\vect{x}}}}.
+\end{equation}
+Using the definition of $p_x\br{\vect{x}}$ in Equation~\eqref{eq:maf_px}, we can write the Kullback--Leibler divergence from $\pi_x\br{\vect{x}}$ to $p_x\br{\vect{x}}$ as follows:
+\begin{align}
+\kl{\pi_x\br{\vect{x}}}{p_x\br{\vect{x}}} &= \avg{\log{\pi_x\br{\vect{x}}}-\log{p_x\br{\vect{x}}}}{\pi_x\br{\vect{x}}} \\
+&= \avg{\log{\pi_x\br{\vect{x}}}-\log{\pi_u\br{f^{-1}\br{\vect{x}}}} - \log{\abs{\det\br{\deriv{f^{-1}}{\vect{x}}}}}}{\pi_x\br{\vect{x}}}.
+\label{eq:kl_pix_px}
+\end{align}
+The inverse transformation $f^{-1}$ from $\vect{x}$ to $\vect{u}$ can be seen as describing an implicit IAF with base density $\pi_x\br{\vect{x}}$, which would define the following density over the $\vect{u}$ space:
+\begin{equation}
+\label{eq:maf_pu}
+p_u\br{\vect{u}} = \pi_x\br{f\br{\vect{u}}}\abs{\det\br{\deriv{f}{\vect{u}}}}.
+\end{equation}
+By making the change of variables $\vect{x} \mapsto \vect{u}$ in Equation~\eqref{eq:kl_pix_px} and using the definition of $p_u\br{\vect{u}}$ in Equation~\eqref{eq:maf_pu} we obtain
+\begin{align}
+\kl{\pi_x\br{\vect{x}}}{p_x\br{\vect{x}}} &=
+\avg{\log{\pi_x\br{f\br{\vect{u}}}}-\log{\pi_u\br{\vect{u}}} + \log{\abs{\det\br{\deriv{f}{\vect{u}}}}}}{p_u\br{\vect{u}}} \\
+& = \avg{\log{p_u\br{\vect{u}}}-\log{\pi_u\br{\vect{u}}}}{p_u\br{\vect{u}}}.
+\label{eq:kl_pu_piu}
+\end{align}
+Equation~\eqref{eq:kl_pu_piu} is the definition of the KL divergence from $p_u\br{\vect{u}}$ to $\pi_u\br{\vect{u}}$, hence
+\begin{equation}
+\kl{\pi_x\br{\vect{x}}}{p_x\br{\vect{x}}} = \kl{p_u\br{\vect{u}}}{\pi_u\br{\vect{u}}}. 
+\end{equation}
+
+Suppose now that we wish to fit the implicit density $p_u\br{\vect{u}}$ to the base density $\pi_u\br{\vect{u}}$ by minimizing the above KL\@. This corresponds exactly to the objective minimized when employing IAF as a recognition network in stochastic variational inference \citep{Kingma:2016}, where $\pi_u\br{\vect{u}}$ would be the (typically intractable) posterior. The first step in stochastic variational inference would be to rewrite the expectation in Equation~\eqref{eq:kl_pu_piu} with respect to the base distribution $\pi_x\br{\vect{x}}$ used by IAF\@, which corresponds exactly to Equation~\eqref{eq:kl_pix_px}. This is often referred to as the reparameterization trick \citep{Kingma:2014, Rezende:2014}. The second step would be to approximate Equation~\eqref{eq:kl_pix_px} with Monte Carlo, using samples $\set{\vect{x}_n}$ drawn from $\pi_x\br{\vect{x}}$, as follows:
+\begin{align}
+\kl{p_u\br{\vect{u}}}{\pi_u\br{\vect{u}}} &= \avg{\log{\pi_x\br{\vect{x}}}-\log{\pi_u\br{f^{-1}\br{\vect{x}}}} - \log{\abs{\det\br{\deriv{f^{-1}}{\vect{x}}}}}}{\pi_x\br{\vect{x}}} \\
+&\approx \frac{1}{N}\sum_n\br{\log{\pi_x\br{\vect{x}_n}}-\log{\pi_u\br{f^{-1}\br{\vect{x}_n}}} - \log{\abs{\det\br{\deriv{f^{-1}}{\vect{x}}}}}}.
+\label{eq:svi_obj}
+\end{align}
+Using the definition of $p_x\br{\vect{x}}$ in Equation~\eqref{eq:maf_px}, we can rewrite Equation~\eqref{eq:svi_obj} as
+\begin{equation}
+\frac{1}{N}\sum_n\br{\log{\pi_x\br{\vect{x}_n}}-\log{p_x\br{\vect{x}_n}}} = 
+-\frac{1}{N}\sum_n\log{p_x\br{\vect{x}_n}} + \mathrm{const}.
+\label{eq:ml_obj}
+\end{equation}
+Since samples $\set{\vect{x}_n}$ drawn from $\pi_x\br{\vect{x}}$ correspond precisely to the train data for MAF, we can recognize in Equation~\eqref{eq:ml_obj} the training objective for MAF\@. In conclusion, training a MAF by maximizing its total log likelihood $\sum_n\log{p_x\br{\vect{x}_n}}$ on train data $\set{\vect{x}_n}$ is equivalent to variationally training an implicit IAF with MAF's base distribution $\pi_u\br{\vect{u}}$ as its target.
+
+
+\section{Batch normalization}
+\label{sec:batchnorm}
+
+In our implementation of MAF, we inserted a batch normalization layer \citep{Ioffe:2015} between every two autoregressive layers, and between the last autoregressive layer and the base distribution. We did the same for Real NVP (the original implementation of Real NVP also uses batch normalization layers between coupling layers \citep{Dinh:2017}). The purpose of a batch normalization layer is to normalize its inputs $\vect{x}$ to have approximately zero mean and unit variance. In this section, we describe in full detail our implementation of batch normalization and its use as a layer in normalizing flows.
+
+A batch normalization layer can be thought of as a transformation between two vectors of the same dimensionality. For consistency with our notation for autoregressive and coupling layers, let $\vect{x}$ be the vector closer to the data, and $\vect{u}$ be the vector closer to the base distribution. Batch normalization implements the transformation $\vect{x} = f\br{\vect{u}}$ defined by
+\begin{equation}
+\vect{x} = \br{\vect{u} - \bm{\beta}}\odot\exp\br{-\bm{\gamma}}\odot\br{\vect{v}+\epsilon}^{\frac{1}{2}} + \vect{m}.
+\end{equation}
+In the above, $\odot$ denotes elementwise multiplication. All other operations are  to be understood elementwise. The inverse transformation $f^{-1}$ is given by
+\begin{equation}
+\vect{u} = \br{\vect{x} - \vect{m}}\odot\br{\vect{v} + \epsilon}^{-\frac{1}{2}}\odot\exp{\bm{\gamma}} + \bm{\beta},
+\end{equation}
+and the absolute determinant of its Jacobian is
+\begin{equation}
+\abs{\det\br{\deriv{f^{-1}}{\vect{x}}}} = \exp\br{\sum_i\br{\gamma_i - \frac{1}{2}\log\br{v_{i} + \epsilon}}}.
+\end{equation}
+Vectors $\bm{\beta}$ and $\bm{\gamma}$ are parameters of the transformation that are learnt during training. In typical implementations of batch normalization, parameter $\bm{\gamma}$ is not exponentiated. In our implementation, we chose to exponentiate $\bm{\gamma}$ in order to ensure its positivity and simplify the expression of the log absolute determinant. Parameters $\vect{m}$ and $\vect{v}$ correspond to the mean and variance of $\vect{x}$ respectively. During training, we set $\vect{m}$ and $\vect{v}$ equal to the sample mean and variance of the current minibatch (we used minibatches of 100 examples). At validation and test time, we set them equal to the sample mean and variance of the entire train set. Other implementations use averages over minibatches \citep{Ioffe:2015} or maintain running averages during training \citep{Dinh:2017}. Finally, $\epsilon$ is a hyperparameter that ensures numerical stability if any of the elements of $\vect{v}$ is near zero. In our experiments, we used $\epsilon = 10^{-5}$.
+
+
+\section{Number of parameters}
+\label{sec:parameters}
+
+To get a better idea of the computational trade-offs between different model choices versus the performance gains they achieve, we compare the number of parameters for each model. We only count connection weights, as they contribute the most, and ignore biases and batch normalization parameters. We assume that masking reduces the number of connections by approximately half.
+
+For all models, let $D$ be the number of inputs, $H$ be the number of units in a hidden layer and $L$ be the number of hidden layers. We assume that all hidden layers have the same number of units (as we did in our experiments). For MAF MoG, let $C$ be the number of components per conditional. For Real NVP and MAF, let $K$ be the number of coupling layers/autoregressive layers respectively. Table~\ref{table:parameters} lists the number of parameters for each model.
+
+For each extra component we add to MADE MoG, we increase the number of parameters by $DH$. For each extra autoregressive layer we add to MAF, we increase the number of parameters by $\frac{3}{2}DH + \frac{1}{2}\br{L-1}H^2$. If we have one or two hidden layers $L$ (as we did in our experiments) and assume that $D$ is comparable to $H$, the number of extra parameters in both cases is about the same. In other words, increasing flexibility by stacking has a parameter cost that is similar to adding more components to the conditionals, as long as the number of hidden layers is small.
+
+Comparing Real NVP with MAF, we can see that Real NVP has about $1.3$ to $2$ times more parameters than a MAF of comparable size. Given that our experiments show that Real NVP is less flexible than a MAF of comparable size, we can conclude that MAF makes better use of its available capacity. The number of parameters of Real NVP could be reduced by tying weights between the scaling and shifting networks.
+
+\begin{table}[tbp]
+
+\caption{Approximate number of parameters for each model, as measured by number of connection weights. Biases and batch normalization parameters are ignored.}
+\label{table:parameters}
+
+\renewcommand{\arraystretch}{1.6}
+\centering
+
+\begin{tabularx}{0.5\textwidth}{@{}Xl@{}}
+
+\toprule
+
+& \# of parameters \\
+
+\midrule
+
+MADE & $\frac{3}{2}DH + \frac{1}{2}\br{L-1}H^2 $ \\
+MADE MoG & $\br{C + \frac{1}{2}}DH + \frac{1}{2}\br{L-1}H^2 $ \\
+Real NVP & $2KDH + 2K\br{L-1}H^2$ \\
+MAF & $\frac{3}{2}KDH + \frac{1}{2}K\br{L-1}H^2 $ \\
+
+\bottomrule
+
+\end{tabularx}
+\end{table}
+
+
+\section{Additional experimental details}
+\label{sec:experimental_details}
+
+\subsection{Models}
+
+MADE, MADE MoG and each autoregressive layer in MAF is a feedforward neural network (with masked weight matrices), with $L$ hidden layers of $H$ hidden units each. Similarly, each coupling layer in Real NVP contains two feedforward neural networks, one for scaling and one for shifting, each of which also has $L$ hidden layers of $H$ hidden units each. For each dataset, we gave a number of options for $L$ and $H$ (the same options where given to all models) and for each model we selected the option that performed best on the validation set. Table~\ref{table:model_sizes} lists the combinations of $L$ and $H$ that were given as options for each dataset.
+
+In terms of nonlinearity for the hidden units, MADE, MADE MoG and MAF used rectified linear units, except for the GAS datasets where we used hyperbolic tangent units. In the coupling layer of Real NVP, we used hyberbolic tangent hidden units for the scaling network and rectified linear hidden units for the shifting network.
+
+\begin{table}[htbp]
+
+\caption{Number of hidden layers $L$ and number of hidden units $H$ given as options for each dataset. Each combination is reported in the format $L\times H$.}
+\label{table:model_sizes}
+
+\renewcommand{\arraystretch}{1.2}
+\centering
+
+\begin{tabularx}{\textwidth}{@{}
+>{\centering\arraybackslash}X
+>{\centering\arraybackslash}X
+>{\centering\arraybackslash}X
+>{\centering\arraybackslash}p{0.9in}
+>{\centering\arraybackslash}X
+>{\centering\arraybackslash}X
+>{\centering\arraybackslash}X
+@{\hspace{0.3em}}}
+
+\toprule
+
+POWER & GAS & HEPMASS & MINIBOONE & BSDS300 & MNIST & CIFAR-10 \\
+
+\midrule
+
+$1\times 100$ & $1\times 100$ & $1\times 512$ & $1\times 512$ & $1\times \hphantom{0}512$ & $1\times 1024$ & $1\times 1024$ \\
+
+$2\times 100$ & $2\times 100$ & $2\times 512$ & $2\times 512$ & $2\times \hphantom{0}512$ & & $2\times 1024$ \\
+
+& & & & $1\times 1024$ & & $2\times 2048$ \\
+
+& & & & $2\times 1024$ & & \\
+
+\bottomrule
+
+\end{tabularx}
+
+\end{table}
+
+
+\subsection{Datasets}
+
+In the following paragraphs, we give a brief description of the four UCI datasets (POWER, GAS, HEPMASS, MINIBOONE) and of the way they were preprocessed.
+
+\textbf{POWER}. The POWER dataset \citep{POWER_dataset} contains measurements of electric power consumption in a household  over a period of $47$ months. It is actually a time series but was treated as if each example were an i.i.d.~sample from the marginal distribution. The time feature was turned into an integer for the number of minutes in the day and then uniform random noise was added to it. The date was discarded, along with the global reactive power parameter, which seemed to have many values at exactly zero, which could have caused arbitrarily large spikes in the learnt distribution. Uniform random noise was added to each feature in the interval $\left[0, \epsilon_i\right]$, where $\epsilon_i$ is large enough to ensure that with high probability there are no identical values for the $\nth{i}$ feature but small enough to not change the data values significantly.
+
+\textbf{GAS}. Created by \citet{Fonollosa:2015}, this dataset represents the readings of an array of $16$ chemical sensors exposed to gas mixtures over a $12$ hour period. Similarly to POWER, it is a time series but was treated as if each example were an i.i.d.~sample from the marginal distribution. Only the data from the file \texttt{ethylene\_CO.txt} was used, which corresponds to a mixture of ethylene and carbon monoxide. After removing strongly correlated attributes, the dimensionality was reduced to $8$.
+
+\textbf{HEPMASS}. Used by \citet{Baldi:2016}, this dataset describes particle collisions in high energy physics. Half of the data are examples of particle-producing collisions (positive), whereas the rest come from a background source (negative). Here we used the positive examples from the ``$1000$'' dataset, where the particle mass is $1000$. Five features were removed because they had too many reoccurring values; values that repeat too often can result in spikes in the density and misleading results.
+
+\textbf{MINIBOONE}. Used by \citet{Roe:2005}, this dataset comes from the MiniBooNE experiment at Fermilab. Similarly to HEPMASS, it contains a number of positive examples (electron neutrinos) and a number of negative examples (muon neutrinos). Here we use the positive examples. These had some obvious outliers ($11$) which had values at exactly $-1000$ for every column and were removed. Also, seven of the features had far too high a count for a particular value, e.g.~$0.0$, so these were removed as well.
+
+
+Table~\ref{table:dataset_sizes} lists the dimensionality and the number of train, validation and test examples for all seven datasets. The first three
+datasets in Table~\ref{table:dataset_sizes} were subsampled so that the product of the dimensionality and number of examples would be approximately $10\mathrm{M}$. For the four UCI datasets, $10\%$ of the data was held out and used as test data and $10\%$ of the remaining data was used as validation data. From the BSDS300 dataset we randomly extracted $1\mathrm{M}$ patches for training, $50\mathrm{K}$ patches for validation and $250\mathrm{K}$ patches for testing. For MNIST and CIFAR-10 we held out $10\%$ of the train data for validation. We augmented the CIFAR-10 train set with the horizontal flips of all remaining $45\mathrm{K}$ train examples.
+
+\begin{table}[hbp]
+
+\caption{Dimensionality $D$ and number of examples $N$ for each dataset.}
+\label{table:dataset_sizes}
+
+\renewcommand{\arraystretch}{1.2}
+\centering
+
+\begin{tabularx}{\textwidth}{@{}
+X
+>{\raggedleft\arraybackslash}X
+@{\hspace{0.6in}}>{\raggedleft\arraybackslash}X
+>{\raggedleft\arraybackslash}X
+>{\raggedleft\arraybackslash}X
+@{}}
+
+\toprule
+
+ & & \multicolumn{3}{c}{$N$} \\
+
+\cmidrule(l){3-5}
+
+ & $D$ & train & validation & test \\
+
+\midrule
+
+POWER & $6$ & $1{,}659{,}917$ & $184{,}435$ & $204{,}928$ \\
+
+GAS & $8$ & $852{,}174$ & $94{,}685$ & $105{,}206$ \\
+
+HEPMASS & $21$ & $315{,}123$ & $35{,}013$ & $174{,}987$ \\
+
+MINIBOONE & $43$ & $29{,}556$ & $3{,}284$ & $3{,}648$ \\
+
+BSDS300 & $63$ & $1{,}000{,}000$ & $50{,}000$ & $250{,}000$ \\
+
+MNIST & $784$ & $50{,}000$ & $10{,}000$ & $10{,}000$ \\
+
+CIFAR-10 & $3072$ & $90{,}000$ & $5{,}000$ & $10{,}000$ \\
+
+\bottomrule
+
+\end{tabularx}
+
+\end{table}
+
+\section{Additional results}
+\label{sec:more_results}
+
+\subsection{Pairwise comparison}
+
+On the MINIBOONE dataset, the model with highest average test log likelihood is MAF MoG ($5$). However, due to the relatively small size of this dataset, the average test log likelihoods of some other models have overlapping error bars with that of MAF MoG ($5$). To assess whether the differences are statistically significant, we performed a pairwise comparison, which is a more powerful statistical test. In particular, we calculated the difference in test log probability between every other model and MAF MoG ($5$) on each test example, and assessed whether this difference is significantly positive, which would indicate that MAF MoG ($5$) performs significantly better. The results of this comparison are shown in Table~\ref{table:pairwise_comparison}. We can see that MAF MoG ($5$) is significantly better than all other models except for MAF ($5$).
+
+
+
+\begin{table}[tbp]
+
+\renewcommand{\arraystretch}{\myarraystretch}
+\centering
+
+\caption{Pairwise comparison results for MINIBOONE\@. Values correspond to average difference in log probability (in nats) from the best performing model, i.e.~MAF MoG ($5$). Error bars correspond to $2$ standard deviations. Significantly positive values indicate that MAF MoG ($5$) performs better.}
+\label{table:pairwise_comparison}
+
+\begin{tabularx}{0.4\textwidth}{
+@{}p{1in}
+>{\raggedleft\arraybackslash}X@{\errbarsize{${}\pm{}$}}p{0.45in}
+@{}}
+
+\toprule
+& \multicolumn{2}{c}{MINIBOONE} \\
+\midrule
+
+Gaussian          
+& $25.55$ & \errbarsize{$0.88$} \\
+
+\midrule[0em]
+
+MADE
+& $3.91$ & \errbarsize{$0.20$} \\
+
+MADE MoG
+& $0.59$ & \errbarsize{$0.16$} \\
+
+\midrule[0em]
+
+Real NVP ($5$)
+& $1.87$ & \errbarsize{$0.16$} \\
+
+Real NVP ($10$) 
+& $2.15$ & \errbarsize{$0.21$} \\
+
+\midrule[0em]
+
+MAF ($5$)
+& $\mathbf{0.07}$ & \errbarsize{$\mathbf{0.11}$} \\
+
+MAF ($10$)      
+& $0.55$ & \errbarsize{$0.12$} \\
+
+MAF MoG ($5$)
+& $\mathbf{0.00}$ & \errbarsize{$\mathbf{0.00}$} \\
+
+\bottomrule
+\end{tabularx}
+\end{table}
+
+
+
+\subsection{Bits per pixel}
+
+In the main text, the results for MNIST and CIFAR-10 were reported in log likelihoods in logit space, since this is the objective that the models were trained to optimize. For comparison with other results in the literature, in Table~\ref{table:conditional_bpp} we report the same results in bits per pixel. For CIFAR-10, different colour components count as different pixels (i.e.~an image is thought of as having $32\!\times\! 32 \!\times\! 3$ pixels).
+
+In order to calculate bits per pixel, we need to transform the densities returned by a model (which refer to logit space) back to image space in the range $\left[0, 256\right]$. Let $\vect{x}$ be an image of $D$ pixels in logit space and $\vect{z}$ be the corresponding image in $\left[0, 256\right]$ image space. The transformation from $\vect{z}$ to $\vect{x}$ is
+\begin{equation}
+\vect{x} = \logit\br{\lambda + \br{1-2\lambda}\frac{\vect{z}}{256}},
+\end{equation}
+where $\lambda\!=\!10^{-6}$ for MNIST and $\lambda\!=\!0.05$ for CIFAR-10. If $p\br{\vect{x}}$ is the density in logit space as returned by the model, using the above transformation the density of $\vect{z}$ can be calculated as
+\begin{equation}
+p_z\br{\vect{z}} = p\br{\vect{x}}\left(\frac{1-2\lambda}{256}\right)^D\left(\prod_i\sigm{x_i}\br{1-\sigm{x_i}}\right)^{-1},
+\end{equation}
+where $\sigm{\cdot}$ is the logistic sigmoid function. From that, we can calculate the bits per pixel $b\br{\vect{x}}$ of image $\vect{x}$ as follows:
+\begin{align}
+b\br{\vect{x}} &= -\frac{\log_2{p_z\br{\vect{z}}}}{D} \\
+&= -\frac{\log{p\br{\vect{x}}}}{D\log{2}} - \log_2\br{1-2\lambda} + 8 + \frac{1}{D}\sum_i\br{\log_2{\sigm{x_i}} + \log_2\br{1 - \sigm{x_i}}}.
+\end{align}
+The above equation was used to convert between the average log likelihoods reported in the main text and the results of Table~\ref{table:conditional_bpp}.
+
+
+\begin{table}[tbp]
+
+\caption{Bits per pixel for conditional density estimation (lower is better). The best performing model for each dataset is shown in bold. Error bars correspond to $2$ standard deviations.}
+
+\label{table:conditional_bpp}
+
+\renewcommand{\arraystretch}{\myarraystretch}
+\centering
+
+\begin{tabularx}{\textwidth}{
+@{}p{1in}
+>{\raggedleft\arraybackslash}X@{\errbarsize{${}\pm{}$}}X
+>{\raggedleft\arraybackslash}X@{\errbarsize{${}\pm{}$}}X
+>{\raggedleft\arraybackslash}X@{\errbarsize{${}\pm{}$}}X
+>{\raggedleft\arraybackslash}X@{\errbarsize{${}\pm{}$}}X
+@{}}
+
+\toprule
+& \multicolumn{4}{c}{MNIST} & \multicolumn{4}{c}{CIFAR-10} \\
+\cmidrule(l){2-5}
+\cmidrule(l){6-9}
+& \multicolumn{2}{c}{unconditional} & \multicolumn{2}{c}{conditional}
+& \multicolumn{2}{c}{unconditional} & \multicolumn{2}{c}{conditional} \\
+\midrule
+
+Gaussian          
+& $2.01$ & \errbarsize{$0.01$}
+& $1.97$ & \errbarsize{$0.01$}
+& $4.63$ & \errbarsize{$0.01$}
+& $4.79$ & \errbarsize{$0.02$} \\
+
+\midrule[0em]
+
+MADE
+& $2.04$ & \errbarsize{$0.01$}
+& $2.00$ & \errbarsize{$0.01$}
+& $5.67$ & \errbarsize{$0.01$}
+& $5.65$ & \errbarsize{$0.01$} \\
+
+MADE MoG
+& $\mathbf{1.41}$ & \errbarsize{$\mathbf{0.01}$}
+& $\mathbf{1.39}$ & \errbarsize{$\mathbf{0.01}$}
+& $5.93$          & \errbarsize{$0.01$}
+& $5.80$          & \errbarsize{$0.01$} \\
+
+\midrule[0em]
+
+Real NVP ($5$)  
+& $1.93$ & \errbarsize{$0.01$}
+& $1.94$ & \errbarsize{$0.01$}
+& $4.53$ & \errbarsize{$0.01$}
+& $4.50$ & \errbarsize{$0.01$} \\
+
+Real NVP ($10$) 
+& $2.02$ & \errbarsize{$0.02$}
+& $2.02$ & \errbarsize{$0.08$}
+& $4.54$ & \errbarsize{$0.01$}
+& $4.58$ & \errbarsize{$0.01$} \\
+
+\midrule[0em]
+
+MAF ($5$)       
+& $1.89$ & \errbarsize{$0.01$}
+& $1.89$ & \errbarsize{$0.01$}*
+& $4.36$ & \errbarsize{$0.01$}
+& $4.34$ & \errbarsize{$0.01$}* \\
+
+MAF ($10$)      
+& $1.91$          & \errbarsize{$0.01$}
+& $1.92$          & \errbarsize{$0.01$}*
+& $\mathbf{4.31}$ & \errbarsize{$\mathbf{0.01}$}
+& $\mathbf{4.30}$ & \errbarsize{$\mathbf{0.01}$}* \\
+
+MAF MoG ($5$)
+& $1.52$ & \errbarsize{$0.01$}
+& $1.51$ & \errbarsize{$0.01$}
+& $4.37$ & \errbarsize{$0.01$}
+& $4.36$ & \errbarsize{$0.01$} \\
+
+\bottomrule
+\end{tabularx}
+\end{table}
+
+
+\subsection{Generated images}
+
+Figures~\ref{fig:BSDS300}, \ref{fig:mnist} and \ref{fig:cifar10} show generated images and real examples for BSDS300, MNIST and CIFAR-10 respectively. Images were generated by MAF MoG ($5$) for BSDS300, conditional MAF ($5$) for MNIST, and conditional MAF ($10$) for CIFAR-10.
+
+The BSDS300 generated images are visually indistinguishable from the real ones. For MNIST and CIFAR-10, generated images lack the fidelity produced by modern image-based generative approaches, such as RealNVP \citep{Dinh:2017} or PixelCNN++ \citep{Salimans:2017}. This is because our version of MAF has no knowledge about image structure, as it was designed for general-purpose density estimation and not for realistic-looking image synthesis. However, if the latter is desired, it would be possible to incorporate image modelling techniques in the design of MAF (such as convolutions or a multi-scale architecture as used by Real NVP \citep{Dinh:2017}) in order to improve quality of generated images.
+
+\begin{figure}[tbp]
+
+\newcommand{\imwidth}{0.8cm}
+\newcommand{\colsep}{\hspace{1pt}}
+\renewcommand{\arraystretch}{0.3}
+
+\centering
+
+\subfloat[Generated images]{\input{tex/BSDS300_samples.tex}}
+\hfill
+\subfloat[Real images]{\input{tex/BSDS300_data.tex}}
+
+\caption{Generated and real images from BSDS300\@.}
+\label{fig:BSDS300}
+
+\end{figure}
+
+\begin{figure}[tbp]
+
+\newcommand{\imwidth}{0.8cm}
+\newcommand{\colsep}{\hspace{1pt}}
+\renewcommand{\arraystretch}{0.3}
+
+\centering
+
+\subfloat[Generated images]{\input{tex/mnist_samples.tex}}
+\hfill
+\subfloat[Real images]{\input{tex/mnist_data.tex}}
+
+\caption{Class-conditional generated and real images from MNIST\@. Rows are different classes. Generated images are sorted by decreasing log likelihood from left to right.}
+\label{fig:mnist}
+
+\end{figure}
+
+\begin{figure}[tbp]
+
+\newcommand{\imwidth}{0.8cm}
+\newcommand{\colsep}{\hspace{1pt}}
+\renewcommand{\arraystretch}{0.3}
+
+\centering
+
+\subfloat[Generated images]{\input{tex/cifar10_samples.tex}}
+\hfill
+\subfloat[Real images]{\input{tex/cifar10_data.tex}}
+
+\caption{Class-conditional generated and real images from CIFAR-10. Rows are different classes. Generated images are sorted by decreasing log likelihood from left to right.}
+\label{fig:cifar10}
+
+\end{figure}

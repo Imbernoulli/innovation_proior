@@ -1,0 +1,129 @@
+\section{Visualization, ablation, and modes of error}
+\seclabel{experiments}
+%The CNN works well, but what did it learn, what design choices are critical, and what are its failure modes?
+
+\subsection{Visualizing learned features}
+\seclabel{vis}
+
+\begin{figure*}[t!]
+\centering
+%cat-x3-y2-c248-p1.pdf
+%dog-x2-y2-c142-p1.pdf
+%dog-x3-y2-c142-p1.pdf
+%dots-x3-y3-c204-p1.pdf
+%person-x2-y3-c132-p1.pdf
+%red-x6-y3-c146-p1.pdf
+%sheep-x2-y3-c117-p1.pdf
+%text-x5-y2-c163-p1.pdf
+%windows-x3-y3-c161-p1.pdf
+\includegraphics[width=\linewidth,clip=true,trim=0 0 0.2em 0]{figures/feature-explorer/person-x2-y3-c132-p1.pdf}\\
+\includegraphics[width=\linewidth,clip=true,trim=0 0 0.2em 0]{figures/feature-explorer/dots-x3-y3-c204-p1.pdf}\\
+\includegraphics[width=\linewidth,clip=true,trim=0 0 0.2em 0]{figures/feature-explorer/red-x6-y3-c146-p1.pdf}\\
+\includegraphics[width=\linewidth,clip=true,trim=0 0 0.2em 0]{figures/feature-explorer/text-x5-y2-c163-p1.pdf}\\
+\includegraphics[width=\linewidth,clip=true,trim=0 0 0.2em 0]{figures/feature-explorer/windows-x3-y3-c161-p1.pdf}\\
+\includegraphics[width=\linewidth,clip=true,trim=0 0 0.2em 0]{figures/feature-explorer/specular-x3-y3-c34-p1.pdf}
+\caption{\textbf{Top regions for six \pool{5} units.} 
+Receptive fields and activation values are drawn in white. 
+Some units are aligned to concepts, such as people (row 1) or text (4).
+Other units capture texture and material properties, such as dot arrays (2) and specular reflections (6).
+}
+\figlabel{vislittle}
+\vspace{-0.5em}
+\end{figure*}
+\begin{table*}[t!]
+\centering
+\renewcommand{\arraystretch}{1.2}
+\renewcommand{\tabcolsep}{1.2mm}
+\resizebox{\linewidth}{!}{
+\begin{tabular}{@{}l|r*{19}{c}|c@{}}
+\textbf{VOC 2007 test}        & aero      & bike      & bird      & boat      & bottle     & bus        & car        & cat        & chair      & cow        & table      & dog        & horse      & mbike      & person     & plant      & sheep      & sofa       & train      & tv         & mAP       \\
+\hline
+R-CNN \pool{5}  &  51.8  &  60.2  &  36.4  &  27.8  &  23.2  &  52.8  &  60.6  &  49.2  &  18.3  &  47.8  &  44.3  &  40.8  &  56.6  &  58.7  &  42.4  &  23.4  &  46.1  &  36.7  &  51.3  &  55.7  &  44.2 \\
+R-CNN \fc{6}  &  59.3  &  61.8  &  43.1  &  34.0  &  25.1  &  53.1  &  60.6  &  52.8  &  21.7  &  47.8  &  42.7  &  47.8  &  52.5  &  58.5  &  44.6  &  25.6  &  48.3  &  34.0  &  53.1  &  58.0  &  46.2 \\
+R-CNN \fc{7}  &  57.6  &  57.9  &  38.5  &  31.8  &  23.7  &  51.2  &  58.9  &  51.4  &  20.0  &  50.5  &  40.9  &  46.0  &  51.6  &  55.9  &  43.3  &  23.3  &  48.1  &  35.3  &  51.0  &  57.4  &  44.7 \\
+\hline
+R-CNN FT \pool{5}  &  58.2  &  63.3  &  37.9  &  27.6  &  26.1  &  54.1  &  66.9  &  51.4  &  26.7  &  55.5  &  43.4  &  43.1  &  57.7  &  59.0  &  45.8  &  28.1  &  50.8  &  40.6  &  53.1  &  56.4  &  47.3 \\
+R-CNN FT \fc{6}  &  63.5  &  66.0  &  47.9  &  37.7  &  29.9  &  62.5  &  70.2  &  60.2  &  32.0  &  57.9  &  47.0  &  53.5  &  60.1  &  64.2  &  52.2  &  31.3  &  55.0  &  50.0  &  57.7  &  63.0  &  53.1 \\
+R-CNN FT \fc{7}  &  64.2  &  69.7  &  50.0  &  41.9  &  32.0  &  62.6  &  71.0  &  60.7  &  32.7  &  58.5  &  46.5  &  56.1  &  60.6  &  66.8  &  54.2  &  31.5  &  52.8  &  48.9  &  57.9  &  64.7  &  54.2 \\
+\hline
+R-CNN FT \fc{7} BB  &  \bf{68.1}  &  \bf{72.8}  &  \bf{56.8}  &  \bf{43.0}  &  \bf{36.8}  &  \bf{66.3}  &  \bf{74.2}  &  \bf{67.6}  &  \bf{34.4}  &  \bf{63.5}  &  \bf{54.5}  &  \bf{61.2}  &  \bf{69.1}  &  \bf{68.6}  &  \bf{58.7}  &  \bf{33.4}  &  \bf{62.9}  &  \bf{51.1}  &  \bf{62.5}  &  \bf{64.8}  &  \bf{58.5} \\
+\hline
+\hline
+DPM v5 \cite{release5}  &  33.2  &  60.3  &  10.2  &  16.1  &  27.3  &  54.3  &  58.2  &  23.0  &  20.0  &  24.1  &  26.7  &  12.7  &  58.1  &  48.2  &  43.2  &  12.0  &  21.1  &  36.1  &  46.0  &  43.5  &  33.7 \\
+DPM ST \cite{lim2013sketch}  &  23.8  &  58.2  &  10.5  &  \phz8.5  &  27.1  &  50.4  &  52.0  &  \phz7.3  &  19.2  &  22.8  &  18.1  &  \phz8.0  &  55.9  &  44.8  &  32.4  &  13.3  &  15.9  &  22.8  &  46.2  &  44.9  &  29.1 \\
+DPM HSC \cite{HSC}  &  32.2  &  58.3  &  11.5  &  16.3  &  30.6  &  49.9  &  54.8  &  23.5  &  21.5  &  27.7  &  34.0  &  13.7  &  58.1  &  51.6  &  39.9  &  12.4  &  23.5  &  34.4  &  47.4  &  45.2  &  34.3 \\
+\end{tabular}
+}
+\caption{\textbf{Detection average precision (\%) on VOC 2007 test.}
+Rows 1-3 show R-CNN performance without fine-tuning.
+Rows 4-6 show results for the CNN pre-trained on ILSVRC 2012
+and then fine-tuned (FT) on VOC 2007 trainval.
+Row 7 includes a simple bounding-box regression (BB) stage that reduces localization errors (\secref{bboxreg}).
+Rows 8-10 present DPM methods as a strong baseline.  
+The first uses only HOG, while the next two
+use different feature learning approaches to augment or replace HOG. 
+}
+\tablelabel{voc2007}
+%\vspace{-1em}
+\end{table*}
+
+\begin{table*}[t!]
+\centering
+\renewcommand{\arraystretch}{1.2}
+\renewcommand{\tabcolsep}{1.2mm}
+\resizebox{\linewidth}{!}{
+\begin{tabular}{@{}l|r*{19}{c}|c@{}}
+\textbf{VOC 2007 test}        & aero      & bike      & bird      & boat      & bottle     & bus        & car        & cat        & chair      & cow        & table      & dog        & horse      & mbike      & person     & plant      & sheep      & sofa       & train      & tv         & mAP       \\
+\hline
+R-CNN T-Net&  64.2  &  69.7  &  50.0  &  41.9  &  32.0  &  62.6  &  71.0  &  60.7  &  32.7  &  58.5  &  46.5  &  56.1  &  60.6  &  66.8  &  54.2  &  31.5  &  52.8  &  48.9  &  57.9  &  64.7  &  54.2 \\
+R-CNN T-Net BB &  68.1  &  72.8  &  56.8  &  43.0  &  36.8  &  66.3  &  74.2  &  67.6  &  34.4  &  63.5  &  54.5  &  61.2  &  69.1  &  68.6  &  58.7  &  33.4  &  62.9  &  51.1  &  62.5  &  64.8  &  58.5 \\
+\hline
+R-CNN O-Net & 71.6 & 73.5 & 58.1 & 42.2 & 39.4 & 70.7 & 76.0 & 74.5 & 38.7 & 71.0 & 56.9 & 74.5 & 67.9 & 69.6 & 59.3 & \bf{35.7} & 62.1 & 64.0 & 66.5 & \bf{71.2} & 62.2 \\
+R-CNN O-Net BB & \bf{73.4} & \bf{77.0} & \bf{63.4} & \bf{45.4} & \bf{44.6} & \bf{75.1} & \bf{78.1} & \bf{79.8} & \bf{40.5} & \bf{73.7} & \bf{62.2} & \bf{79.4} & \bf{78.1} & \bf{73.1} & \bf{64.2} & 35.6 & \bf{66.8} & \bf{67.2} & \bf{70.4} & 71.1 & \bf{66.0} \\
+\end{tabular}
+}
+\caption{\textbf{Detection average precision (\%) on VOC 2007 test for two different CNN architectures.}
+The first two rows are results from \tableref{voc2007} using Krizhevsky \etal's architecture (T-Net).
+Rows three and four use the recently proposed 16-layer architecture from Simonyan and Zisserman (O-Net) \cite{vggverydeep}.
+}
+\tablelabel{voc2007oxfordnet}
+\vspace{-1em}
+\end{table*}
+
+
+First-layer filters can be visualized directly
+and are easy to understand \cite{krizhevsky2012imagenet}. They capture
+oriented edges and opponent colors. Understanding the subsequent layers
+is more challenging. Zeiler and Fergus present a visually attractive deconvolutional
+approach in \cite{zeiler2011adaptive}. We propose a simple (and complementary) non-parametric method that directly shows what the network learned. 
+
+The idea is to single out a particular unit (feature) in the network and use it as if it were an object
+detector in its own right. That is, we compute the unit's activations on a
+large set of held-out region proposals (about 10 million), sort the proposals from
+highest to lowest activation, perform non-maximum suppression, and then display the top-scoring regions. Our method lets the selected unit
+``speak for itself'' by showing exactly which inputs it fires on. We avoid
+averaging in order to see different visual modes and gain
+insight into the invariances computed by the unit.
+
+We visualize units from layer \pool{5}, which is the max-pooled output of
+the network's fifth and final convolutional layer.  
+The \pool{5} feature map is $6 \times 6 \times 256 = 9216$-dimensional. 
+Ignoring boundary effects, each \pool{5} unit has a receptive field of $195
+\times 195$ pixels in the original $227 \times 227$ pixel input.
+A central \pool{5} unit has a nearly global view, while one near the edge has a smaller, clipped support.
+%Layer \pool{5} is the last layer for which units have a compact receptive field, making it easier to show which part of the image is responsible for an activation.
+%We can also gain some intuition into the representation
+%learned by the next layer, \fc{6}, because it takes multiple weighted combinations of \pool{5} activations.
+
+Each row in \figref{vislittle} displays the top 16 activations for a \pool{5} unit from a CNN that we fine-tuned on VOC 2007 trainval.
+Six of the 256 functionally unique units are visualized (\asecref{extravis} includes more).
+%The first unit was selected because
+%it corresponds to a large positive weight in a person-detector SVM (trained on \pool{5}).
+%The remaining units were selected to show a representative sample of what the network learns to represent.
+These units were selected to show a representative sample of what the network learns.
+In the second row, we see a unit that fires on dog faces and dot arrays.
+The unit corresponding to the third row is a red blob detector.
+There are also detectors for human faces and more abstract patterns such as text and triangular structures with windows.
+The network appears to learn a representation that combines a small number of class-tuned features together with a distributed representation of shape, texture, color, and material properties.
+%These visualizations demonstrate the richness and diversity of \pool{5} features. 
+The subsequent fully connected layer \fc{6} has the ability to model a large set of compositions of these rich features. 

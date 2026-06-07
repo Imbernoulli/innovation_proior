@@ -1,0 +1,44 @@
+\definecolor{skyblue}{RGB}{213,0,0}
+\definecolor{yellowgreen}{RGB}{255,23,68}
+\definecolor{darkyellow}{RGB}{255,82,82}
+\definecolor{orange}{RGB}{255,138,128}
+
+\begin{tikzpicture}
+\begin{axis}[
+    enlarge x limits=0.2,ymin=0,ymax=1.8,
+    ybar=\pgflinewidth,
+    tick align=inside,
+    xtick=data,
+    x tick label style={rotate=90},
+    bar width=5pt,
+    ymajorgrids = true,
+    symbolic x coords={PPI, Flickr, Reddit, Yelp, Amazon},
+    ylabel=Fraction of training time,
+    width=\textwidth,
+    height=0.8\textwidth,
+    y label style={at={(axis description cs:0.1,.6)},anchor=south},
+    yticklabel style={/pgf/number format/precision=2,/pgf/number format/fixed},
+    legend style={font=\small},
+    legend cell align=left,
+    legend columns=5,
+    legend style={at={(0.5,1.2)},anchor=north,/tikz/column 5/.style={column sep=5pt},draw=none,/tikz/every even column/.append style={column sep=0.1cm}}]
+\addplot[style={skyblue,fill=skyblue,mark=none}]
+            coordinates {(PPI,.006) (Flickr,.012) (Reddit,0.205) (Yelp,.145) (Amazon, 0.506)};
+\addplot[style={yellowgreen,fill=yellowgreen,mark=none}]
+            coordinates {(PPI,0.053) (Flickr,0.114) (Reddit,0.178) (Yelp,.006)(Amazon,0.07)};  
+\addplot[style={darkyellow,fill=darkyellow,mark=none}]
+            coordinates {(PPI, .007) (Flickr,.232) (Reddit,.222) (Yelp,.08)(Amazon,0.116)};  
+% \addplot[style={orange,fill=orange,mark=none}]
+%             coordinates {(PPI, .08436/2) (Flickr,.24003/2) (Reddit,.13430/2) (Yelp,.25785/2)};  
+\addplot[style={orange,fill=orange,mark=none}]
+            coordinates {(PPI, .21) (Flickr,1.59) (Reddit,1.20) (Yelp,.747)(Amazon,0.970)};  
+            
+\legend{Node,Edge,RW,MRW}
+\pgfplotsset{
+    legend image code/.code={
+        \draw [#1] (0cm,-0.1cm) rectangle (0.4cm,0.1cm);
+    },
+}
+\end{axis}
+\fill [white] (0.1,-0.5) rectangle (0.2,-1.44);%-0.5,-1.34
+\end{tikzpicture}

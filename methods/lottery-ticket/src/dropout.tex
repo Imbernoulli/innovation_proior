@@ -1,0 +1,33 @@
+\textbf{Dropout.} 
+Dropout~\citep{dropout, dropout-pre} improves accuracy by randomly disabling a fraction of the units (i.e., randomly
+sampling a subnetwork) on each training iteration.
+\citet{understanding-dropout} characterize dropout as simultaneously training the ensemble of all subnetworks.
+Since the lottery ticket hypothesis suggests that one of these subnetworks comprises a winning ticket, it is natural to ask whether dropout and our
+strategy for finding winning tickets interact.
+
+Figure \ref{fig:dropout} shows the results of training Conv-2, Conv-4, and Conv-6 with a dropout rate of 0.5. Dashed lines are the network performance
+without dropout (the solid lines in Figure \ref{fig:question-1}).\footnote{We choose new learning rates for the networks as trained with
+dropout---see Appendix \ref{app:dropout}.} We
+continue to find winning tickets when training with dropout. Dropout increases initial test accuracy
+(2.1, 3.0, and 2.4 percentage points on average for Conv-2, Conv-4, and Conv-6, respectively), and iterative pruning increases it further (up to an additional
+2.3, 4.6, and 4.7 percentage points, respectively, on average).
+Learning becomes faster with iterative pruning as before, but less dramatically in the case of Conv-2.
+
+These improvements suggest that our
+iterative pruning strategy interacts with dropout in a complementary way. 
+\citet{dropout} observe that dropout induces sparse activations in the final network; it is possible that dropout-induced
+sparsity primes a network to be pruned. If so, dropout techniques that target weights~\citep{dropconnect} or learn per-weight dropout
+probabilities~\citep{variational-sparsifies, l0-reg} could make winning tickets even easier to find.
+
+\begin{figure}
+\centering
+\includegraphics[width=.8\textwidth]{graphs/cifar10/conv/conv_paper_dropoutall_w/legend}%
+\vspace{-1em}
+\includegraphics[width=.5\textwidth]{graphs/cifar10/conv/conv_paper_dropoutall_w/iteration}%
+\includegraphics[width=.5\textwidth]{graphs/cifar10/conv/conv_paper_dropoutall_w/accuracy}%
+\vspace{-.5em}
+\caption{Early-stopping iteration and test accuracy at early-stopping of Conv-2/4/6 when iteratively pruned and trained with dropout.
+The dashed lines are the same networks trained without dropout (the solid lines in Figure \ref{fig:question-1}). Learning rates are 0.0003 for
+Conv-2 and 0.0002 for Conv-4 and Conv-6.}
+\label{fig:dropout}
+\end{figure}

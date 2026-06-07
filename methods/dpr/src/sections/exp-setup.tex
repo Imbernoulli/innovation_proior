@@ -1,0 +1,53 @@
+
+\section{Experimental Setup}
+\label{sec:exp-setup}
+
+In this section, we describe the data we used for experiments and the basic setup.
+
+
+\subsection{Wikipedia Data Pre-processing}
+\label{sec:wiki-preprocessing}
+
+Following~\cite{lee2019latent}, we use the English Wikipedia dump from Dec.~20, 2018 as the source documents for answering questions.
+We first apply the pre-processing code released in DrQA~\cite{chen2017reading} to extract the clean, text-portion of articles from the Wikipedia dump.
+This step removes semi-structured data, such as tables, info-boxes, lists, as well as the disambiguation pages.
+We then split each article into multiple, disjoint text blocks of 100 words as \emph{passages}, serving as our basic retrieval units, following~\cite{wang2019multi}, which results in 21,015,324 passages in the end.\footnote{However, \citet{wang2019multi} also propose splitting documents into overlapping passages, which we do not find advantageous compared to the non-overlapping version.}
+Each passage is also prepended with the title of the Wikipedia article where the passage is from, along with an \ttt{[SEP]} token.%
+
+
+\subsection{Question Answering Datasets}
+\label{sec:qa-datasets}
+
+We use the same five QA datasets and training/dev/testing splitting method as in previous work~\cite{lee2019latent}.
+Below we briefly describe each dataset and refer readers to their paper for the details of data preparation.
+
+\noindent
+\textbf{Natural Questions (NQ)}~\cite{kwiatkowski2019natural} was designed for end-to-end question answering.
+The questions were mined from real Google search queries and the answers were spans in Wikipedia articles identified by annotators.
+
+\noindent
+\textbf{TriviaQA}~\cite{joshi-etal-2017-triviaqa} contains a set of trivia questions with answers that were originally scraped from the Web.
+
+\noindent
+\textbf{WebQuestions (WQ)}~\cite{berant2013semantic} consists of questions selected using Google Suggest API, where the answers are entities in Freebase.
+
+\noindent
+\textbf{CuratedTREC (TREC)}~\cite{baudivs2015modeling} sources questions from TREC QA tracks as well as various Web sources
+and is intended for open-domain QA from unstructured corpora.
+
+\noindent
+\textbf{SQuAD v1.1}~\cite{rajpurkar2016squad} is a popular benchmark dataset for reading comprehension.
+Annotators were presented with a Wikipedia paragraph, and asked to write questions that could be answered from the given text.
+Although SQuAD has been used previously for open-domain QA research, it is not ideal because many questions lack context in absence of the provided paragraph.
+We still include it in our experiments for providing a fair comparison to previous work and we will discuss more in Section~\ref{sec:retrieval_main_results}.
+
+
+\paragraph{Selection of positive passages} %
+
+Because only pairs of questions and answers are provided in TREC, WebQuestions and TriviaQA\footnote{We use the unfiltered TriviaQA version and discard the noisy evidence documents mined from Bing.}, we use the highest-ranked passage from BM25 that contains the answer as the positive passage.  If none of the top 100 retrieved passages has the answer, the question will be discarded.
+For SQuAD and Natural Questions, since the original passages have been split and processed differently than our pool of candidate passages, we match and replace each gold passage with the corresponding passage in the candidate pool.\footnote{The improvement of using gold contexts over passages that contain answers is small. See Section~\ref{sec:pos_pass} and Appendix~\ref{sec:distant}.}
+We discard the questions when the matching is failed due to different Wikipedia versions or pre-processing.
+Table~\ref{tab:split-stats} shows the number of questions in training/dev/test sets for all the datasets and the actual questions used for training the retriever.
+
+
+\input{tables/split-stats.tex}

@@ -1,0 +1,34 @@
+\begin{algorithmic}
+  \State \textbf{Inputs:} \\
+    $f_\xi$, $\pi_\phi$, $Q_{\theta_1}$, $Q_{\theta_2}$: parametric networks for encoder, policy, and Q-functions respectively.\\
+    $\mathrm{aug}$: random shifts image augmentation.\\
+    $\sigma(t)$: scheduled standard deviation for the exploration noise defined in~\cref{eq:decay}. \\
+    $T$, $B$, $\alpha$, $\tau$, $c$: training steps, mini-batch size, learning rate, target update rate, clip value.
+    \State \textbf{Training routine:}
+    \For{each timestep $t=1..T$}
+    \State $\sigma_t \leftarrow \sigma(t)$ \Comment{Compute stddev for the exploration noise}
+    \State  $\va_t \leftarrow \pi_\phi(f_\xi( \vx_{t})) + \epsilon$ and $\epsilon \sim \gN(0, \sigma_t^2)$ \Comment{Add noise to the deterministic action}
+    \State  $\vx_{t+1} \sim P(\cdot | \vx_{t}, \va_t)$ \Comment{Run transition function for one step}
+    \State $\mathcal{D} \leftarrow \mathcal{D} \cup (\vx_t, \va_t, R(\vx_t, \va_t), \vx_{t+1})$ 
+    \Comment Add a transition to the replay buffer
+    \State \textsc{UpdateCritic}($\mathcal{D},\sigma_t$) 
+    \State \textsc{UpdateActor}($\mathcal{D},\sigma_t$) 
+    
+    \EndFor
+    \Procedure{UpdateCritic}{$\mathcal{D}, \sigma$}
+        \State $\{(\vx_t, \va_t, r_{t:t+n-1}, \vx_{t+n})\} \sim \mathcal{D}$ \Comment Sample a mini batch of $B$ transitions
+        \State $\vh_t, \vh_{t+n} \leftarrow f_\xi(\mathrm{aug}(\vx_t)), f_\xi(\mathrm{aug}(\vx_{t+n}))$ \Comment Apply data augmentation and encode
+        \State $\va_{t+n} \leftarrow \pi_\phi(\vh_{t+n}) + \epsilon$ and $\epsilon \sim \mathrm{clip}(\gN(0, \sigma^2))$ \Comment{Sample action}
+        \State Compute $\gL_{\theta_1, \xi}$ and  $\gL_{\theta_2, \xi}$ using~\cref{eq:critic} \Comment{Compute critic losses}
+        \State $\xi \leftarrow \xi -\alpha \nabla_\xi (\gL_{\theta_1, \xi} + \gL_{\theta_2, \xi})  $ \Comment Update encoder weights
+        \State $\theta_k \leftarrow \theta_k -\alpha \nabla_{\theta_k} \gL_{\theta_k, \xi} \quad \forall k \in \{1,2\}$ \Comment {Update critic weights}
+        \State $\bar{\theta}_k \leftarrow (1-\tau)\bar{\theta}_k + \tau  \theta_k \quad \forall k \in \{1,2\}$ \Comment Update critic target weights
+    \EndProcedure
+    \Procedure{UpdateActor}{$\mathcal{D},\sigma$}
+        \State $\{(\vx_t)\} \sim \mathcal{D}$ \Comment Sample a mini batch of $B$ observations
+        \State $\vh_t \leftarrow f_\xi(\mathrm{aug}(\vx_t))$ \Comment Apply data augmentation and encode
+        \State $\va_{t} \leftarrow \pi_\phi(\vh_{t}) + \epsilon$ and $\epsilon \sim \mathrm{clip}(\gN(0, \sigma^2))$ \Comment{Sample action}
+        \State Compute $\gL_{\phi}$ using~\cref{eq:actor} \Comment{Compute actor loss}
+        \State $\phi \leftarrow \phi -\alpha \nabla_\phi \gL_{\phi} $ \Comment Update actor's weights only
+    \EndProcedure
+\end{algorithmic}

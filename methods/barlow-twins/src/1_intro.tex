@@ -1,0 +1,74 @@
+
+
+\section{Introduction}
+% \JZ{Latex command for Jure's comments}\\
+% \LJ{Latex command for Li's comments}\\
+% \IM{Latex command for Ishan's comments}\\
+% \YL{Latex command for Yann's comments}\\
+% \SD{Latex command for Stephane's comments}
+
+\begin{figure}[ht]
+\vskip 0.2in
+\begin{center}
+%\columnwidth
+\centerline{\includegraphics[width=9cm]{fig_method_rev2.png}}
+\caption{\AlgoName{}'s objective function measures the cross-correlation matrix between the embeddings of two identical networks fed with distorted versions of a batch of samples, and tries to make this matrix close to the identity. This causes the embedding vectors of distorted versions of a sample to be similar, while minimizing the redundancy between the components of these vectors. \AlgoName{} is competitive with state-of-the-art methods for self-supervised learning while being conceptually simpler, naturally avoiding trivial constant (i.e. collapsed) embeddings, and being robust to the training batch size.}
+\label{fig:fig_method}
+\end{center}
+\vskip -0.2in
+\end{figure}
+
+Self-supervised learning aims to learn useful representations of the input data without relying on human annotations. 
+Recent advances in self-supervised learning for visual data~\cite{caron2020swav,grill2020bootstrap,chen2020simple,he2019momentum,misra2019self} show that it is possible to learn self-supervised representations that are competitive with supervised representations. 
+A common underlying theme that unites these methods is that they all aim to learn representations that are invariant under different distortions (also referred to as `data augmentations'). 
+This is typically achieved by maximizing similarity of representations obtained from different distorted versions of a sample using a variant of Siamese networks~\cite{hadsell2006dimensionality}.
+As there are trivial solutions to this problem, like a constant representation, these methods rely on different mechanisms to learn useful representations.
+%A common way to prevent trivial solutions is to introduce an asymmetric mechanism either in the loss function or in the parameter updates.
+
+Contrastive methods like \textsc{SimCLR}~\cite{chen2020simple} define `positive' and `negative' sample pairs which are treated differently in the loss function.
+Additionally, they can also use asymmetric learning updates wherein momentum encoders~\cite{he2019momentum} are updated separately from the main network. 
+Clustering methods use one distorted sample to compute `targets' for the loss, and another distorted version of the sample to predict these targets, followed by an alternate optimization scheme like k-means in \textsc{DeepCluster}~\cite{caron2018deep} or non-differentiable operators in \textsc{SwAV}~\cite{caron2020swav} and \textsc{SeLa}~\cite{asano2019self}.
+% avoid collapse by imposing constraints on the size of the clusters~\cite{asano2019self}.
+In another recent line of work, \textsc{BYOL}~\cite{grill2020bootstrap} and \textsc{SimSiam}~\cite{chen2020exploring}, both the network architecture and parameter updates are modified to introduce asymmetry. The network architecture is modified to be asymmetric using a special `predictor' network and the parameter updates are asymmetric such that the model parameters are only updated using one distorted version of the input, while the representations from another distorted version are used as a fixed target.
+~\cite{chen2020exploring} conclude that the asymmetry of the learning update, `stop-gradient', is critical to preventing trivial solutions.
+
+%by extracting signals of high relative entropy from the highly redundant sensory input. , in order to disentangle the unknown factors of variation of the natural world
+In this paper, we propose a new method, \AlgoName{}, which applies \emph{redundancy-reduction} --- a principle first proposed in neuroscience --- to self-supervised learning. In his influential article \emph{Possible Principles Underlying the Transformation of Sensory Messages} \citep{barlow_possible_nodate}, neuroscientist H. Barlow hypothesized that the goal of sensory processing is to recode highly redundant sensory inputs into a factorial code (a code with statistically independent components). This principle has been fruitful in explaining the organization of the visual system, from the retina to cortical areas (see \citep{barlow_redundancy_2001} for a review and \citep{ocko_emergence_2018,lindsey_unified_2020,schwartz_natural_2001} for recent efforts), and has led to a number of algorithms for supervised and unsupervised learning \citep{redlich_redundancy_1993,redlich_supervised_1993,deco_non-linear_1997,foldiak_forming_1990,linsker_self-organization_1988,schmidhuber_semilinear_1996,balle_end--end_2017}. Based on this principle, we propose an objective function which tries to make the cross-correlation matrix computed from twin embeddings as close to the identity matrix as possible. \AlgoName{} is conceptually simple, easy to implement and learns useful representations as opposed to trivial solutions. Compared to other methods, it does not require large batches \cite{chen2020simple}, nor does it require any asymmetric mechanisms like prediction networks \cite{grill2020bootstrap}, momentum encoders \cite{he2019momentum}, non-differentiable operators \cite{caron2020swav} or stop-gradients \cite{chen2020exploring}. Intriguingly, \AlgoName{} strongly benefits from the use of very high-dimensional embeddings. \AlgoName{} outperforms previous methods on ImageNet for semi-supervised classification in the low-data regime (55\% top-1 accuracy for 1\% labels), and is on par with current state of the art for ImageNet classification with a linear classifier head, as well as for a number of transfer tasks of classification and object detection. 
+%\footnote{The code for \AlgoName{} is available as supplementary material, and pre-trained models will be made available upon acceptance.}
+
+%, thus avoiding learning trivial representations by reducing redundancy between output units.$
+%What is Barlow's hypothesis? Discuss Barlow and followers in redundancy reduction: motivation. Discuss other whitening methods: does not scale. 
+%Also, they did not control for batch size 1024. 
+%Discuss the Info Botlleneck Principle, our method can be understood and derived in a principled way from this framework.
+
+%In this paper, we show that such asymmetry is not critical to learning useful representations. We propose \AlgoName{} which learns by decorrelating features obtained from augmented versions of a sample, rather than maximizing their similarity as is typically done in prior work.
+%Our method does not require asymmetric mechanisms like prediction heads, momentum encoders, non-differentiable operators or stop-gradients.
+
+%We show that \AlgoName{} works well across a variety of network architectures, and different batch sizes for optimization.
+
+
+
+%Our contributions are:
+%- proposing a new loss function for SSL which is not contrastive. Motivated by simple information theory consideration.
+%- showing that it is competitive with alternative methods for SSL
+%- it does not require asymmetry, and it is robust to batch size.
+
+% While it is an open question how exactly these methods avoid trivial solutions,~\cite{chen2020exploring} attribute some of their success to both these factors and hypothesize that asymmetric parameter updates can be interpreted as an alternate optimization scheme.
+
+% We present an alternative self-supervised learning method that learns based on the principle of decorrelating the features obtained from the augmented versions of a sample. Our method uses a symmetric loss function and parameter updates. Our method does not use rely on asymmetric learning tricks such as operators that introduce asymmetry by stopping the gradient flow~\cite{caron2020swav,chen2020exploring} or separate momentum parameters or activations~\cite{he2019momentum,wu2018unsupervised}.
+
+% An important problem of self-supervised learning without generation is to avoid collapse, which the the phenomenon of the two networks learning a constant representation that satisfies the objective function but isn't informative about the input image.
+
+% \paragraph{Negative examples to avoid Collapse}
+% SimCLR, MOCO, etc.
+
+% \paragraph{Asymmetric methods to avoid collapse} BYOL avoids collapse by using a predictor network which breaks the symmetry between the two networks, and by also enforcing an exponential moving average on the target network to slow down the progression of the weights on the target network. Combined together these two tricks avoid collapse, in a way that is still unclear but explored by theory and ablation studies @REF Yuandong + Blog post@. SimSiam show that it is not necessary to have a moving average on one branch to obtain good representations, but that stop-gradient on one of the branch and that the assymetry between branch are two crucial elements to avoid collapse. Other work show that batchnorm @Blog post@ or some sort of layernorm is useful to avoid collapse @New BYOL paper@. 
+% \paragraph{Clustering methods to avoid collapse}
+% SwaV
+
+% \paragraph{Whitening Methods to avoid Collapse}
+% Whitening ICLR paper. But it was not proven to scale
+
+
+% \paragraph{Redundancy Reduction is a Fundamental Organization Principle of Neuroscience}
+% Barlow

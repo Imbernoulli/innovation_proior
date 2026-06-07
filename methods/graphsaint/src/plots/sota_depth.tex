@@ -1,0 +1,74 @@
+\tikzset{mark size=4}
+\begin{tikzpicture}
+\def \gsaint{red}
+\def \fastgcn{blue}
+\def \sgcn{black}
+\def \asgcn{black!50!green}
+\def \ppi{asterisk}
+\def \flickr{x}
+\def \reddit{+}
+\def \yelp{Mercedes star}
+\begin{axis}[grid,xmin=1.5,xmax=6.5,ymin=0,ymax=9.5,
+    xlabel=GCN depth,
+    ylabel=Normalized training time,
+    width=\textwidth,
+    height=0.78\textwidth,
+    scatter/classes={%
+    ppi={mark=\ppi,black!70,thick},
+    flickr={mark=\flickr,black!70,thick},
+    reddit={mark=\reddit,black!70,thick},
+    yelp={mark=\yelp,black!70,thick},
+    gsaint={mark=square*,\gsaint},
+    sgcn={mark=square*,\sgcn},
+    fastgcn={mark=square*,\fastgcn},
+    asgcn={mark=square*,\asgcn},
+    gsaintppi={mark=\ppi,\gsaint},
+    gsaintflickr={mark=\flickr,\gsaint},
+    gsaintreddit={mark=\reddit,\gsaint},
+    gsaintyelp={mark=\yelp,\gsaint},
+    fastgcnppi={mark=\ppi,\fastgcn},
+    fastgcnflickr={mark=\flickr,\fastgcn},
+    fastgcnreddit={mark=\reddit,\fastgcn},
+    fastgcnyelp={mark=\yelp,\fastgcn},
+    sgcnppi={mark=\ppi,\sgcn},
+    sgcnflickr={mark=\flickr,\sgcn},
+    sgcnreddit={mark=\reddit,\sgcn},
+    sgcnyelp={mark=\yelp,\sgcn},
+    asgcnppi={mark=\ppi,\asgcn},
+    asgcnflickr={mark=\flickr,\asgcn},
+    asgcnreddit={mark=\reddit,\asgcn},
+    asgcnyelp={mark=\yelp,\asgcn}
+    },
+    legend style={font=\small},
+    legend cell align=left,
+    legend columns=2,
+    legend style={at={(0.44,1.27)},anchor=north,/tikz/column 2/.style={column sep=5pt},draw=none},
+    y label style={at={(axis description cs:0.12,.5)},anchor=south},]
+
+% \addplot[thick,color=\gsaint,mark=\reddit] 
+%     coordinates{(1,1)(2,1.65)(3,2.26)(4,2.88)(5,3.52)};
+% \addplot[thick,color=\gsaint,mark=\ppi] 
+%     coordinates{(1,1)(2,1.6)(3,2.14)(4,3.44)(5,4.04)};
+% \addplot[thick,color=\sgcn,mark=\reddit] 
+%     coordinates{(1,1)(2,5.64)(3,12.13)(4,24.13)(5,50.09)};
+% \addplot[thick,color=\sgcn,mark=\yelp] 
+%     coordinates{(1,1)(2,4.7)(3,9.29)(4,11.89)(5,34.65)};
+
+
+\addplot[thick,color=\gsaint,mark=\reddit] 
+    coordinates{%(1,0.606)
+    (2,1)(3,1.37)(4,1.75)(5,2.13)(6,2.74)(7,3.03)};
+\addplot[thick,color=\sgcn,mark=\reddit] 
+    coordinates{%(1,0.17)
+    (2,1)(3,2.15)(4,4.27)(5,8.88)(6,18.46)};
+
+\addplot[thick,color=\gsaint,mark=\yelp] 
+    coordinates{%(1,0.63)
+    (2,1)(3,1.34)(4,2.15)(5,3.53)(6,4.22)(7,4.90)};
+\addplot[thick,color=\sgcn,mark=\yelp] 
+    coordinates{%(1,0.21)
+    (2,1)(3,1.97)(4,2.53)(5,7.37)};
+
+\legend{{\graphsaint}: Reddit,S-GCN: Reddit, {\graphsaint}: Yelp,S-GCN: Yelp}
+\end{axis}
+\end{tikzpicture}

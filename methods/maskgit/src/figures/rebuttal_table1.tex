@@ -1,0 +1,64 @@
+
+\setlength{\tabcolsep}{2pt}
+\begin{table}[h]
+\small
+    \centering
+    
+    \resizebox{1.0\linewidth}{!}{
+        \begin{tabular}{l lc cc c cc}
+        \toprule
+        &&& \multicolumn{2}{c}{ImageNet256x256} && \multicolumn{2}{c}{ImageNet512x512}  \\\cline{4-5} \cline{7-8}
+ Model & Classifier guidance && FID & IS && FID & IS            \\ 
+\midrule
+% ADM~[9]  & & & 23.24& 58.06 && 10.94 & 101.0  \\
+% % VQ-GAN~[11]       & & & n/a & n/a && 15.78 & 78.3  \\
+% VQGAN\cite{Esser21vqgan} & & & 26.52$^\ast$ & 66.18$^\ast$ && 15.78 & 78.3 \\
+% MaskGIT                         & & & 7.32 & 156.0 && 6.18 & 182.1 \\ \cline{2-8}
+
+ADM~\cite{dhariwal2021diffusion}  & 1.0 guidance  && 4.59 & 186.70  && 7.72 & 172.71 \\
+VQGAN~\cite{Esser21vqgan} & 0.05 acceptance rate    &&  5.88 & 304.8 && n/a  & n/a \\
+MaskGIT & 0.05 acceptance rate    &          & \textbf{4.02} & \textbf{355.6} && \textbf{4.46} & \textbf{342.0} \\
+  \bottomrule
+    \end{tabular}
+    
+    }
+    \vspace{-3mm}
+    \caption{\small{Class-conditional image synthesis on ImageNet for methods with classifier guidance.}}
+    \label{tab:supp_cc_classifier}
+\vspace{-3mm}
+\end{table}
+
+
+% \setlength{\tabcolsep}{4pt}
+% \begin{table}[t]
+% \small
+%     \centering
+%     {\small
+%     \resizebox{\linewidth}{!}{
+%         \begin{tabular}{ll ccccc}
+% \toprule
+% Dataset & Model &  FID & IS & Precision & Recall & \# Steps \\
+% \midrule
+% ImageNet & ADM\cite{dhariwal2021diffusion} & 23.24 & 58.06 & 0.73 & 0.60 & 250 \\
+% 512x512 & MaskGIT \cite{dhariwal2021diffusion} & 7.32 & 156.0 & 0.78 & 0.50 & 12 \\
+%  \cline{2-7}
+% & ADM guid.\cite{dhariwal2021diffusion} & 7.72 & 172.71 & \textbf{0.87} & 0.42 & 250 \\
+% & MaskGIT guid.$^\blackdiamond$ & \textbf{4.46} & \textbf{342.0} & 0.83 & \textbf{0.44} & 240 \\
+%  \cline{2-7}
+% & ADM guid. + ADM upsa. & \textbf{3.83} & 221.72 & 0.84 & 0.53 & 500 \\
+% \midrule
+% ImageNet 
+% & ADM guid.\cite{dhariwal2021diffusion} & 4.59 & 186.70 & 0.82 & \textbf{0.52} & 250 \\
+% 256x256 & VQGAN guid.\cite{Esser21vqgan}$^\blackdiamond$ & 5.88 & 304.8 & n/a & n/a & 5120\\
+% & MaskGIT guid.$^\blackdiamond$ & \textbf{4.02} & \textbf{355.6} & \textbf{0.83} & 0.50 & 200 \\
+%  \cline{2-7}
+% & ADM guid + ADM upsa. & \textbf{3.94} & 215.84 & 0.83 & 0.53 & 500 \\
+%   \bottomrule
+%     \end{tabular}
+%     }
+%     }
+%     \vspace{-.1cm}
+%     \caption{\small{Class-conditional ImageNet comparison for methods with classifier guidance. \small{$^\blackdiamond$ represents with classifier guidance using rejection sampling with 0.05 acceptance rate as in VQGAN\cite{Esser21vqgan}.}}}
+%     \label{tab:classifier}
+% \vspace{-2mm}
+% \end{table}

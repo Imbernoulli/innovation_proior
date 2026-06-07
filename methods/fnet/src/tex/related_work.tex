@@ -1,0 +1,31 @@
+\section{Related work}
+\label{sec:related_work}
+
+\subsection{Fourier Transforms in neural networks}
+\label{subsec:fourier_transforms_neural_networks}
+
+Fourier analysis features heavily in studies of the universal approximation properties of neural networks; see, for example, \citep{cybenko1989approximation, barron1993universal}. In terms of practical applications, discrete Fourier Transforms (DFT), and in particular the Fast Fourier Transform (FFT), have been used to tackle signal processing problems such as fitting neural networks to FFTs of electrocardiogram signals \citep{minami1999real, gothwal2011cardiac, mironovova2015fast} and vibration signals \citep{zhang2013fault}, or to evolve solutions of Partial Differential Equations \citep{li2020fourier}.
+
+Because ordinary multiplication in the frequency domain corresponds to a convolution in the time domain, FFTs have been deployed in Convolutional Neural Networks to speed up computations, in Recurrent Neural Networks to speed up training and reduce exploding and vanishing gradients, and generally to approximate dense, linear layers to reduce computational complexity; see references cited in Section \ref{sec:introduction}. DFTs have also been used indirectly in several Transformer works. The Performer \citep{choromanski2020masked} linearizes the Transformer self-attention mechanism by leveraging random Fourier features to approximate a Gaussian representation of the softmax kernel. In our work, rather than approximating attention, we replace attention with the Fourier Transform, which acts as an alternate hidden representation mixing mechanism.  \citet{tamkin2020language} use spectral filters to generate hierarchical features, showing that the filtered embeddings perform well in different tasks (word-level, sentence-level or document-level), depending on which frequency scales are filtered. In contrast to FNet, they separate Fourier frequencies, rather than using the transform to combine features.
+% TODO: Only include unpublished work in arXiv preprint:
+Finally, through personal communication, we were alerted to concurrent, unpublished work \citep{backurs2021note} that describes an FFT based neural model that is very similar to FNet.
+
+
+\subsection{Modeling semantic relations via attention}
+\label{subsec:power_of_attention}
+
+Attention models have achieved state of the art results across virtually all NLP tasks and even some image tasks \citep{dosovitskiy2020image}.
+This success is generally attributed to the flexibility and capacity of attention. Although some works \citep{ramsauer2020hopfield} have endeavoured to gain a deeper understanding of attention, the pervasive intuition is that the success of attention models derives from the token-dependent attention patterns in different layers; see, for example, \citep{tenney-etal-2019-bert}. However, it is natural to ask: Do we really need the flexibility, and associated cost, of attention? 
+
+\citet{tay2020synthesizer} empirically investigated the importance of the dot product operation in the attention mechanism in their Synthesizer model (related to our ``Linear'' baseline below). They find that learnt token-dependent attention weights are highly expressive, but not necessarily crucial for realizing accurate NLP models. \citet{you2020hard} replace attention weights in the Transformer encoder and decoder with unparameterized Gaussian distributions, showing minimal performance degradation provided they retain learnable cross-attention weights. Similarly, \citet{raganato2020fixed} find little to no accuracy degradation when replacing all but one of the attention heads of each attention layer in the \emph{encoder} with fixed, non-learnable positional patterns. Finally, \citet{tolstikhin2021mlp} present MLP-Mixer, where attention is replaced by MLPs, with limited performance degradation in image classification tasks. 
+
+
+\subsection{Efficient and long sequence models}
+\label{subsec:efficient_transformers}
+
+The standard attention mechanism \citep{vaswani2017attention} has a quadratic time and memory bottleneck with respect to sequence length. This limits its applicability in tasks involving long range dependencies. Most efforts to improve attention efficiency are based on sparsifying the attention matrix. \citet{tay2020efficient} survey many of the recent efficient attention works; see also citations in Section \ref{sec:introduction}. Several ``efficient Transformers'' achieve \O{N\sqrt{N}} or even \O{N} theoretical complexity. However, the constants hidden by this notation can be large. For example, in models such as Longformer \citep{beltagy2020longformer}, ETC \citep{ainslie2020etc}, and BigBird \citep{zaheer2020big}, attention is \O{N} as a function of the input length, but quadratic in the number of ``global tokens''; the latter must be sufficiently large to ensure good performance.
+
+The Long-Range Arena benchmark \citep{tay2020long} attempts to compare many of the efficient Transformers in a series of tasks requiring long range dependencies, finding that the Performer \citep{choromanski2020rethinking}, Linear Transformer \citep{katharopoulos2020transformers}, Linformer \citep{wang2020linformer}, and Image Transformer (Local Attention) \citep{parmar2018image} were the fastest on TPUs and had the lowest peak memory usages per device.\footnote{Memory usage is often overlooked, but empirical studies have shown that Transformer architectures are often memory-bound \citep{ivanov2020data, shazeer2019fast}.} Instead, in this paper we completely replace self-attention with a different mixing, namely the Fourier Transform, which offers: (1) performance,
+(2) reduced model size (no learnable parameters), and (3) simplicity.
+
+Finally, we note that, in an effort to investigate different token mixing mechanisms, we compare a vanilla BERT model \citep{devlin2018bert} with a vanilla FNet, ignoring more recent Transformer optimizations, which we consider orthogonal to this work; see, for example, \citep{narang2021transformer, kim2020fastformers, shleifer2020pre}.

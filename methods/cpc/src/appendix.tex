@@ -1,0 +1,29 @@
+\appendix
+
+\newpage
+\section{Appendix}
+
+\subsection{Estimating the Mutual Information with InfoNCE}
+
+By optimizing InfoNCE, the CPC loss we defined in Equation \ref{loss}, we are maximizing the mutual information between $c_t$ and $z_{t+k}$ (which is bounded by the MI between $c_t$ and $x_{t+k}$). This can be shown as follows.
+
+As already shown in Section \ref{sec:nce}, the optimal value for $f(x_{t+k}, c_{t})$ is given by $\frac{p(x_{t+k}|c_{t})}{p(x_{t+k})}$. Inserting this back in to Equation \ref{loss} and splitting $X$ into the positive example and the negative examples $X_{\text{neg}}$ results in:
+\begin{align}
+\mathcal{L^{\text{opt}}_{\text{N}}} &= - \mathop{{}\mathbb{E}}_{X} \log\left[  \frac{\frac{p(x_{t+k}|c_{t})}{p(x_{t+k})}}{\frac{p(x_{t+k}|c_{t})}{p(x_{t+k})} + \sum_{x_j \in X_{\text{neg}}} \frac{p(x_{j}|c_{t})}{p(x_{j})}}\right] \\
+&= \mathop{{}\mathbb{E}}_{X}\log\left[1 + \frac{p(x_{t+k})}{p(x_{t+k}|c_{t})} \sum_{x_j \in X_{\text{neg}}} \frac{p(x_{j}|c_{t})}{p(x_{j})}\right] \\
+&\approx \mathop{{}\mathbb{E}}_{X}\log\left[1 + \frac{p(x_{t+k})}{p(x_{t+k}|c_{t})} (N-1) \mathop{{}\mathbb{E}}_{x_j} \frac{p(x_{j}|c_{t})}{p(x_{j})}\right] \label{mi_approx} \\
+&= \mathop{{}\mathbb{E}}_{X}\log\left[1 + \frac{p(x_{t+k})}{p(x_{t+k}|c_{t})} (N-1)\right] \\
+&\geq \mathop{{}\mathbb{E}}_{X}\log\left[\frac{p(x_{t+k})}{p(x_{t+k}|c_{t})} N\right] \label{mi_ineq} \\
+&= - I(x_{t+k}, c_t) + \log(N),
+\end{align}
+Therefore, $I(x_{t+k}, c_t)\geq \log(N) - \mathcal{L^{\text{opt}}_{\text{N}}}$. This trivially also holds for other $f$ that obtain a worse (higher) $\mathcal{L}_{\text{N}}$. Equation \ref{mi_approx} quickly becomes more accurate as $N$ increases. At the same time $\log(N) - \mathcal{L_{\text{N}}}$ also increases, so it's useful to use large values of $N$. %Equation \ref{mi_ineq} holds because $\log(1+ak)\geq \log(a(k+1))$ for $k>0$ when $0<a\leq 1$ and because $p(x_{t+k}|c_{t})\geq p(x_{t+k})$ when $x_{t+k}$ and $c_t$ are sampled from their joint distribution.
+
+InfoNCE is also related to MINE \cite{belghazi2018mine}. Without loss of generality let's write $f(x, c) = e^{F(x, c)}$, then
+\begin{align}
+\mathop{{}\mathbb{E}}_{X}\left[ \log \frac{f(x, c)}{\sum_{x_j \in X} f(x_j, c)}\right] 
+&= \mathop{{}\mathbb{E}}_{(x, c)} \Big[F(x, c)\Big] - \mathop{{}\mathbb{E}}_{(x, c)}\Big[\log\sum_{x_j \in X} e^{F(x_j, c)}\Big] \\
+&= \mathop{{}\mathbb{E}}_{(x, c)} \Big[F(x, c)\Big] - \mathop{{}\mathbb{E}}_{(x, c)}\Big[\log \Big(e^{F(x, c)} + \sum_{x_j \in X_{\text{neg}}} e^{F(x_j, c)}\Big)\Big] \\
+&\leq \mathop{{}\mathbb{E}}_{(x, c)} \Big[F(x, c)\Big] - \mathop{{}\mathbb{E}}_{c}\Big[\log \sum_{x_j \in X_{\text{neg}}} e^{F(x_j, c)}\Big] \\
+&= \mathop{{}\mathbb{E}}_{(x, c)} \Big[F(x, c)\Big] - \mathop{{}\mathbb{E}}_{c}\Big[\log \frac{1}{N-1}\sum_{x_j \in X_{\text{neg}}} e^{F(x_j, c)} + \log(N-1)\Big]
+\end{align}
+is equivalent to the MINE estimator (up to a constant). So we maximize a lower bound on this estimator. We found that using MINE directly gave identical performance when the task was non-trivial, but became very unstable if the target was easy to predict from the context (e.g., when predicting a single step in the future and the target overlaps with the context).

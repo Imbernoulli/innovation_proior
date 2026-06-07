@@ -1,0 +1,50 @@
+%!TEX root = pixelrnn.tex
+\section{Model}
+\label{framework}
+
+
+Our aim is to estimate a distribution over natural images that can be used to tractably compute the likelihood of images and to generate new ones. The network scans the image one row at a time and one pixel at a time within each row.  For each pixel it predicts the conditional distribution over the possible pixel values given the scanned context. Figure \ref{depen} illustrates this process. The joint distribution over the image pixels is factorized into a product of conditional distributions. The parameters used in the predictions are shared across all pixel positions in the image. 
+
+To capture the generation process, \citet{theis2015generative} propose to use a two-dimensional LSTM network \cite{graves2009offline} that starts at the top left pixel and proceeds towards the bottom right pixel. The advantage of the LSTM network is that it effectively handles long-range dependencies that are central to object and scene understanding. The two-dimensional structure ensures that the signals are well propagated both in the left-to-right and top-to-bottom directions. 
+
+In this section we first focus on the form of the distribution,
+whereas the next section will be devoted to describing the architectural innovations inside PixelRNN.
+
+
+\subsection{Generating an Image Pixel by Pixel}
+
+The goal is to assign a probability $p(\vec{x})$ to each image $\vec{x}$ formed of $n \times n$ pixels. We can write the image $\vec{x}$ as a one-dimensional sequence $x_1,...,x_{n^2}$ where pixels are taken from the image row by row. To estimate the joint distribution $p(\vec{x})$ we write it as the product of the conditional distributions over the pixels:
+\vspace{-0.3cm}
+\begin{equation}
+p(\vec{x}) = \prod_{i=1}^{n^2} p(x_i | x_1,...,x_{i-1})
+\end{equation}
+% \vspace{-0.2cm}
+The value $p(x_i | x_1,...,x_{i-1})$ is the probability of the $i$-th pixel $x_i$ given all the previous pixels $x_1,...,x_{i-1}$. The generation proceeds row by row and pixel by pixel. Figure \ref{depen} (Left) illustrates the conditioning scheme.
+
+
+Each pixel $x_i$ is in turn jointly determined by three values, one for each of the color channels Red, Green and Blue (RGB). We rewrite the distribution $p(x_i|\vec{x}_{<i})$ as the following product:
+\begin{equation}
+p(x_{i,R}|\vec{x}_{<i})p(x_{i,G}|\vec{x}_{<i},x_{i,R})p(x_{i,B}|\vec{x}_{<i},x_{i,R},x_{i,G})
+\label{eq:color_conditioning}
+\end{equation} 
+Each of the colors is thus conditioned on the other channels as well as on all the previously generated pixels. 
+
+Note that during {training} and evaluation the distributions over the pixel values are computed \emph{in parallel}, while the generation of an image is \emph{sequential}. 
+
+\subsection{Pixels as Discrete Variables}
+
+Previous approaches use a continuous distribution for the values of the pixels in the image (e.g. \citet{theis2015generative, uria2013deep}). By contrast we model $p(\vec{x})$ as a discrete distribution, with every conditional distribution in Equation \ref{eq:color_conditioning} being a multinomial that is modeled with a softmax layer. Each channel variable $x_{i,*}$ simply takes one of 256 distinct values. The discrete distribution is representationally simple and has the advantage of being arbitrarily multimodal without prior on the shape (see Fig.~\ref{fig:softmax_activations}). Experimentally we also find the discrete distribution to be easy to learn and to produce better performance compared to a continuous distribution (Section \ref{sect:experiments}). 
+
+
+
+
+
+
+
+
+
+
+
+
+
+

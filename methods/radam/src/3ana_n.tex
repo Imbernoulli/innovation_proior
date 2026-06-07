@@ -1,0 +1,214 @@
+% !TEX encoding = UTF-8
+% !TEX Root = 0_main.tex
+
+\vspace{-0.1cm}
+\section{Variance of the Adaptive Learning Rate}
+\label{sec:ana}
+\vspace{-0.1cm}
+
+In this section, we first introduce empirical evidence, then analyze the variance of the adaptive learning rate to support our hypothesis 
+-- \emph{Due to the lack of samples in the early stage, the adaptive learning rate has an undesirably large variance, which leads to suspicious/bad local optima}.
+
+% To begin with, we first analyze a special case.
+
+To convey our intuition, we begin with a special case. 
+When $t = 1$, we have $\psi(g_1) = \sqrt{1/g_1^2}$. 
+We view $\{g_1, \cdots, g_t\}$ as i.i.d. Gaussian random variables following $\cN(0, \sigma^2)$\footnote{The mean zero normal assumption is valid at the beginning of the training, since weights are sampled from normal distributions with mean zero \citep{balduzzi2017shattered}, further analysis is conducted in Section~\ref{subsec:sma-ema}.}.
+Therefore, $1/g_1^2$ is subject to the scaled inverse chi-squared distribution, $\sics(1, 1/\sigma^2)$, and $\Var[\sqrt{1/g_1^2}]$ is divergent.
+% Noted 
+% $\Var[\sqrt{1/g_1^2}] \propto \int_0^{\infty} x^{-1} e^{-x} dx$
+% and it is divergent. 
+It means that the adaptive ratio can be undesirably large in the first stage of learning.
+Meanwhile, setting a small learning rate at the early stage can reduce the variance ($\Var[\alpha x] = \alpha^2\Var[x]$), thus alleviating this problem.
+Therefore, we suggest it is the unbounded variance of the adaptive learning rate in the early stage
+that causes the problematic updates. 
+
+\begin{figure}[t]
+\centering
+    \includegraphics[width=0.8\textwidth]{fig/histogram_3.pdf}
+\vspace{-0.3cm}
+\caption{The histogram of the absolute value of gradients (on a log scale) during the training of Transformers on the De-En IWSLT' 14 dataset. using Adam-2k, RAdam and Adam-eps. }
+\vspace{-0.4cm}
+\label{fig:histogram_3}
+\end{figure}
+
+\vspace{-0.1cm}
+\subsection{Warmup as Variance Reduction}
+\vspace{-0.1cm}
+In this section, we design a set of controlled experiments to verify our hypothesis. 
+Particularly, we design two variants of Adam that reducing the variance of the adaptive learning rate: \textit{Adam-2k} and \textit{Adam-eps}. We compare them to vanilla Adam with and without warmup on the IWSLT'14 German to English translation dataset~\citep{cettolo2014report}. 
+
+In order to reduce the variance of the adaptive learning rate ($\psi(.)$), Adam-2k only updates $\psi(.)$ in the first two thousand iterations, while the momentum ($\phi(.)$) and parameters ($\theta$) are fixed\footnote{Different from \cite{gotmare2018a}, all parameters and first moments are frozen in the first 2000 iterations.}; other than this, it follows the original Adam algorithm.
+To make comparison with other methods, its iterations are indexed from -1999 instead of 1.
+In Figure~\ref{fig:eps2k}, we observe that, after getting these additional two thousand samples for estimating the adaptive learning rate, Adam-2k avoids the convergence problem of the vanilla-Adam. 
+Also, comparing Figure~\ref{fig:histogram_2} and Figure~\ref{fig:histogram_3}, getting large enough samples prevents the gradient distribution from being distorted. 
+These observations verify our hypothesis that the lack of sufficient data samples in the early stage is the root cause of the convergence issue. 
+
+Another straightforward way to reduce the variance is to increase the value of $\epsilon$ in $\hat{\psi}(g_1, \cdots, g_t) = \frac{\sqrt{1-\beta_2^t}}{\epsilon + \sqrt{(1 - \beta_2)\sum_{i = 1}^t \beta_2^{t-i}g_i^2}}$.
+Actually, if we assume $\hat{\psi}(.)$ is subject to the uniform distribution, its variance equals to $\frac{1}{12 \epsilon^2}$.
+Therefore, we design Adam-eps, which uses a non-negligibly large $\epsilon = 10^{-4}$, while $\epsilon = 10^{-8}$ for vanilla Adam.
+Its performance is summarized in Figure~\ref{fig:eps2k}. 
+We observe that it does not suffer from the serious convergence problem of vanilla-Adam. This further demonstrates that the convergence problem can be alleviated by reducing the variance of the adaptive learning rate, and also explains why tuning $\epsilon$ is important in practice \citep{liu2019roberta}. 
+Besides, similar to Adam-2k, it prevents the gradient distribution from being distorted (as shown in Figure~\ref{fig:histogram_3}). 
+% However, the experimental results in Figure~\ref{fig:eps2k} show that it produces a much worse performance comparing to Adam-2k and Adam-warmup. 
+However, as in Figure~\ref{fig:eps2k}, it produces a much worse performance comparing to Adam-2k and Adam-warmup. 
+We conjecture that this is because large $\epsilon$ induces a large bias into the adaptive learning rate and slows down the optimization process. 
+Thus, we need a more principled and rigorous way to control the variance of the adaptive learning rate. 
+In the next subsection, we will present a theoretical analysis of the variance of the adaptive learning rate. 
+
+
+\vspace{-0.1cm}
+\subsection{Analysis of Adaptive Learning Rate Variance}
+\vspace{-0.1cm}
+As mentioned before, Adam uses the exponential moving average to calculate the adaptive learning rate. 
+For gradients $\{g_1, \cdots, g_t\}$, their exponential moving average has a larger variance than their simple average. 
+Also, in the early stage ($t$ is small), the difference of the exponential weights of $\{g_1, \cdots, g_t\}$ is relatively small (up to $1 - \beta_2^{t-1}$).
+Therefore, for ease of analysis, we approximate the distribution of the exponential moving average as the distribution of the simple average~\citep{nau2014forecasting}, \ie, $p(\psi(.)) = p(\sqrt{\frac{1-\beta_2^t}{(1 - \beta_2)\sum_{i = 1}^t \beta_2^{t-i}g_i^2}}) \approx p(\sqrt{\frac{t}{\sum_{i=1}^t g_i^2}})$. Since $g_i \sim \gN(0, \sigma^2)$, we have $\frac{t}{\sum_{i=1}^t g_i^2} \sim \sics(t, \frac{1}{\sigma^2})$. 
+Therefore, we assume $\frac{1-\beta_2^t}{(1 - \beta_2)\sum_{i = 1}^t \beta_2^{t-i}g_i^2}$ also subjects to a scaled inverse chi-square distribution with $\rho$ degrees of freedom (further analysis on this approximation is conducted in Section~\ref{subsec:sma-ema}). 
+Based on this assumption, we can calculate $\Var[\psi^2(.)]$ and the PDF of $\psi^2(.)$.
+Now, we proceed to the analysis of its square root variance, \ie, $\Var[\psi(.)]$, and show how the variance changes with $\rho$ (which corresponds to number of used training samples). 
+
+\vspace{-0.1cm}
+\begin{theorem}
+If $\psi^2(.) \sim \sics(\rho, \frac{1}{\sigma^2})$, $\Var[\psi(.)]$ monotonically decreases as $\rho$ increases.
+\label{theorem: variance_mono}
+\end{theorem}
+\vspace{-0.5cm}
+\begin{proof}
+% \vspace{-0.3in}
+For $\forall\, \rho > 4$, we have:
+\begin{align}
+\Var[\psi(.)] =
+% \Var[\sqrt{x}] = 
+% \E[x] - \E[\sqrt{x}]^2 
+\E[\psi^2(.)] - \E[\psi(.)]^2 
+= \tau^2 (\frac{\rho}{\rho-2} - \frac{\rho \,2^{2\rho - 5}}{\pi}\gB(\frac{\rho-1}{2}, \frac{\rho-1}{2})^2),
+% \; \forall\, \rho > 4
+\label{eqn:analytic-sqrt-var}
+% \vspace{-0.5in}
+\end{align}
+where $\gB(.)$ is the beta function. 
+By analyzing the derivative of $\Var[\psi(.)]$, we know it monotonically decreases as $\rho$ increases. 
+The detailed derivation is elaborated in the Appendix~\ref{app:proof_mono}. 
+\end{proof}
+\vspace{-0.3cm}
+
+Theorem~\ref{theorem: variance_mono} gives a qualitative analysis of the variance of the adaptive learning rate.
+It shows that, due to the lack of used training samples in the early stage, $\Var[\psi(.)]$ is larger than the late stage (Figure~\ref{fig:var_approx}).
+To rigorously constraint the variance, we perform a quantified analysis on $\Var[\psi(.)]$ by estimating the degree of freedoms $\rho$. 
+
+% \section{Variance of Adaptive Rate}
+
+% % In this section, we first analyze the variance of adaptive learning rates, then introduce the empirical results that support our hypothesis -- it is the noise of the adaptive learning rate in the early stage causes the convergence problems.
+% % In this section, we first analyze the variance of adaptive learning rates, then introduce the empirical results that supports our hypothesis 
+% In this section, we first  introduce the empirical results, then analyze the variance of adaptive learning rates to support our hypothesis 
+% -- \emph{Due to the lack of samples in the early stage, the adaptive learning rate has undesirably large variance, which leads to suspicious / bad local optimas}.
+
+% To begin with, we first analyze a special case.
+% When $t = 1$, we have $\psi(g_1) = \sqrt{\frac{1}{g_1^2}}$. 
+% In this paper, we view $\{g_1, \cdots, g_t\}$ as i.i.d. random variables drawn from a Normal distribution $\cN(0, \sigma^2)$\footnote{The mean zero normal assumption is valid at the begining of the training, since weights are sampled from normal distributions with mean zero \citep{balduzzi2017shattered}.}.
+% % Now, let's move to the special case of $t = 1$. 
+% % Since $g_1 \sim \gN(0, \sigma^2)$
+% Therefore, $\frac{1}{g_1^2}$ is subject to the scaled inverse chi-squared distribution, $\sics(1, \frac{1}{\sigma^2})$.
+% It is easy to find that 
+% $\Var[\sqrt{\frac{1}{g_1^2}}] \propto \int_0^{\infty} x^{-1} e^{-x} dx$, which is divergent. 
+% It means that, the adaptive ratio can be undesirable large in the first stage of learning.
+% % or cause convergence problems. 
+% At the same time, setting a small learning rate at the early stage can reduce variance (since $\Var[\alpha x] = \alpha^2\Var[x]$) thus alleviating this problem.
+% Therefore, we suggest that the large variance of the adaptive learning rate in the early stage
+% % can cause convergence problems.
+% is the cause of problematic updates. 
+% % In the following of this section, we first analyze the variance of adaptive learning rates, then introduce the empirical results that supports our hypothesis.
+
+% \subsection{Warmup as Variance Reduction}
+% In this section, we design controlled experiments to verify our hypothesis that it is the large variance of the adaptive learning rate causes the convergence issue. 
+% Particularly, we design two variants of Adam: Adam-2k and Adam-eps, make comparisons to Adam with warmup and the vanilla Adam (without warmup) on the IWSLT'14 German to English dataset~\citep{cettolo2014report}. 
+% In the first two thousand iterations of Adam-2k, only its exponential moving 2nd moments are updated, while its exponential moving average and parameters are fixed\footnote{Different from the previous work~\cite{gotmare2018a}, all parameters and all first moments are frozen during the first two thousand iterations.}; other than this, it follows the original Adam algorithms. 
+% To compare with others, its iterations are indexed from -1999 instead of 1.
+% As in Figure~\ref{fig:eps2k}, we observe that, after getting these additional two thousand samples to estimate its second moments, Adam avoids the convergence problem met by the vanilla-Adam. 
+% Also, comparing Figure~\ref{fig:histogram_2} and \ref{fig:histogram_3}, getting enough samples prevents the gradient distribution from being distorted. 
+% These observations verify that, it is the lack of enough samples causes the convergence issue. 
+
+% To further verify our hypothesis, we try to demonstrate that the convergence problem can be avoided by reducing the variance of the adaptive learning rate.
+% % To reduce the variance of the adaptive learning rate, a straight forward way is to increase the value of $\epsilon$ in $\hat{\psi}(g_1, \cdots, g_t) = \frac{\sqrt{1-\beta_2^t}}{\epsilon + \sqrt{(1 - \beta_2)\sum_{i = 1}^t \beta_2^{t-i}g_i^2}}$.
+% A straight forward way to reduce the variance is to increase the value of $\epsilon$ in $\hat{\psi}(g_1, \cdots, g_t) = \frac{\sqrt{1-\beta_2^t}}{\epsilon + \sqrt{(1 - \beta_2)\sum_{i = 1}^t \beta_2^{t-i}g_i^2}}$.
+% Actually, if we assume $\hat{\psi}(.)$ is subject to the uniform distribution, its variance equals to $\frac{1}{12 \epsilon^2}$.
+% Therefore, we design an additional variant,
+% % of the Vanilla-Adam, 
+% Adam-eps, which sets $\epsilon$ from a negligible value ($1\times 10^{-8}$) to a non-negligible value ($1\times 10^{-4}$).
+% Its performance is also summarized in Figure~\ref{fig:eps2k}. 
+% We observe that it avoids the serious convergence problem met by vanilla-Adam and verifies that the convergence problem can be alleviated by reducing the variance of the adaptive learning rate. 
+% Besides, similar to Adam-2k, it prevents the gradient distribution distortion (as shown in Figure~\ref{fig:histogram_3}). 
+% However, it results in worse performance comparing to Adam-2k or Adam-warmup. 
+% We conjecture this is because large $\epsilon$ distorts the original design of Adam, i.e., updates are not uniformly scaled. 
+% % As a brief summary, we introduce both theoretical analysis and empirical evidence supports that the adaptive learning rate has undesirably large variance in the first stage of training, and can cause convergence problems. 
+% Now, let's move to theoretical analysis on the variance of the adaptive learning rate. 
+
+% \begin{figure}[t]
+% \centering
+%     \includegraphics[width=\textwidth]{fig/histogram_3.pdf}
+% \caption{The histogram of the absolute value of gradients (on a log scale) during the training of Transformers on the De-En IWSLT' 14 dataset. }
+% \label{fig:histogram_3}
+% \end{figure}
+
+
+% \subsection{Analysis of Adaptive Learning Rate Variance}
+% As mentioned before, Adam uses the exponential moving average to calculate the adaptive learning rate. 
+% % Assume $\{g_1, \cdots, g_t\}$ are i.i.d., their exponential moving average has a larger variance than their simple average. 
+% As to gradients $\{g_1, \cdots, g_t\}$, their exponential moving average has a larger variance than their simple average. 
+% Also, in the early stage ($t$ is small), the difference of the exponential weights of $\{g_1, \cdots, g_t\}$ is relative small (up to $1 - \beta_2^{t-1}$).
+% Therefore, for ease of analysis, we approximate the moving average as the simple average, \ie, $\psi(.) = \sqrt{\frac{1-\beta_2^t}{(1 - \beta_2)\sum_{i = 1}^t \beta_2^{t-i}g_i^2}} \approx \sqrt{\frac{t}{\sum_{i=1}^t g_i^2}}$.
+% Since $g_i \sim \gN(0, \sigma^2)$, we have $\frac{t}{\sum_{i=1}^t g_i^2} \sim \sics(t, \frac{1}{\sigma^2})$. 
+% Therefore, we assume $\frac{1-\beta_2^t}{(1 - \beta_2)\sum_{i = 1}^t \beta_2^{t-i}g_i^2}$ also subjects to a scaled inverse chi-square distribution with $\rho$ degrees of freedom (further analysis on this approximation is conducted in Section~\ref{subsec:sma-ema}). 
+% Now, we proceed to the analysis of $\Var[\psi(.)]$. 
+
+% \begin{theorem}
+% If $\psi^2(.) \sim \sics(\rho, \frac{1}{\sigma^2})$, $\Var[\psi(.)]$ monotonically decreases as $\rho$ increases.
+% \label{theorem: variance_mono}
+% \end{theorem}
+
+% \begin{proof}
+% For ease of notation, we refer $\psi^2(.)$ as $x$ and $\frac{1}{\sigma^2}$ as $\tau^2$. 
+% Thus, $x \sim \sics(\rho, \tau^2)$ and:
+% \begin{equation}
+% p(x) = \frac{(\tau^2\rho/2)^{\rho/2}}{\Gamma(\rho/2)}\frac{\exp[\frac{-\rho\tau^2}{2x}]}{x^{1 + \rho/2}}
+% \quad\mbox{and}\quad
+% \E[x] = \frac{\rho}{(\rho - 2) \sigma^2} \;(\forall\, \rho > 2).
+% \label{eqn:inv-chi-sq-pdf-mean}
+% \end{equation}
+% Therefore, we have:
+% \begin{equation}
+%     \E[\sqrt{x}] = \int_{0}^{\infty} \sqrt{x}\, p(x)\,dx = \frac{\tau \sqrt{\rho} \,\Gamma(\rho/2 - 1)}{\sqrt{2} \,\Gamma(\rho)/2)}\; (\forall\, \rho > 4).
+%     \label{eqn:expect-sqrt-x}
+% \end{equation}
+% Based on Equation~\ref{eqn:inv-chi-sq-pdf-mean} and \ref{eqn:expect-sqrt-x}, $\forall\, \rho > 4$, we have:
+% \begin{equation}
+% \Var[\psi(.)] = \Var[\sqrt{x}] = \E[x] - \E[\sqrt{x}]^2 = \tau^2 (\frac{\rho}{\rho-2} - \frac{\rho \,2^{2\rho - 5}}{\pi}\gB(\frac{\rho-1}{2}, \frac{\rho-1}{2})^2).
+% \label{eqn:analytic-sqrt-var}
+% \end{equation}
+% By analyzing the derivative of $\Var[\psi(.)]$, we know it monotonically decreases as $\rho$ increases. 
+% Detailed derivation is omitted here and elaborated in the Appendix. 
+% \end{proof}
+
+% Theorem~\ref{theorem: variance_mono} indicates that, due to the lack of samples in the early stage, the variance of the adaptive learning rate is larger than the late stage.
+% % We will conduct more analysis to quantify the variance of $\Var[\psi(.)]$ in the next Section. 
+% Now, we proceed to a quantified analysis on $\Var[\psi(.)]$ to explore its descent speed. 
+
+
+% % In the next section, we further design controlled experiments to verify that the large variance is the cause of the convergence problems, and warmup works as a variance reduction technique.
+
+% % \begin{figure}[t]
+% % \centering
+% % \begin{subfigure}[b]{0.5\textwidth}
+% %     \centering
+% %     \includegraphics[width=\textwidth]{fig/ppl.pdf}
+% %     \caption{\,}
+% % \end{subfigure}%
+% % \begin{subfigure}[b]{0.5\textwidth}
+% %     \centering
+% %     \includegraphics[width=\textwidth]{fig/loss.pdf}
+% %     \caption{\,}
+% % \end{subfigure}
+% % \caption{Training of Transformers on the De-En IWSLT'14 dataset. (a) Training perplexity in the first 50k gradient updates. (b) Training loss in the first 50k gradient updates.}
+% %     \label{fig:eps2k}
+% % \end{figure}

@@ -1,0 +1,304 @@
+\appendix
+\section*{Supplementary}
+
+\section{Overview}
+% \begin{itemize}
+%     \item \todo{Experiment.} compare pointnet with volumetric cnn and multi-view cnn on corrupted data (missing data). On both classification and segmentation. 
+%     \item \todo{Writing.} network details.
+%     \item \todo{Dump results.} more applications: normal prediction, correspondence, CAD model retrieval
+%     \item (DONE) analysis on bottleneck and number of input points
+%     \item (DONE) MNIST
+%     \item \todo{Writing. Experiment.} details on object detection system
+%     \item \todo{Dump results.} more output visualizations for critical points!! visualization of classification and part segmentation errors. visualization of detection results.
+%     \item (DONE) proof of theorems
+% \end{itemize}
+This document provides additional quantitative results, technical details and more qualitative test examples to the main paper.
+
+In Sec~\ref{sec:cla_robust} we extend the robustness test to compare PointNet with VoxNet on incomplete input. In Sec~\ref{sec:network} we provide more details on neural network architectures, training parameters and in Sec~\ref{sec:detection} we describe our detection pipeline in scenes. Then Sec~\ref{sec:supp_application} illustrates more applications of PointNet, while Sec~\ref{sec:architecture} shows more analysis experiments. Sec~\ref{sec:proof} provides a proof for our theory on PointNet. At last, we show more visualization results in Sec~\ref{sec:visu}.
+
+
+\section{Comparison between PointNet and VoxNet (Sec 5.2)}
+\label{sec:cla_robust}
+We extend the experiments in Sec 5.2 Robustness Test to compare PointNet and VoxNet~\cite{maturana2015voxnet} (a representative architecture for volumetric representation) on robustness to missing data in the input point cloud. Both networks are trained on the same train test split with 1024 number of points as input. For VoxNet we voxelize the point cloud to $32 \times 32 \times 32$ occupancy grids and augment the training data by random rotation around up-axis and jittering.
+
+At test time, input points are randomly dropped out by a certain ratio. As VoxNet is sensitive to rotations, its prediction uses average scores from 12 viewpoints of a point cloud. As shown in Fig~\ref{fig:compare}, we see that our PointNet is much more robust to missing points. VoxNet's accuracy dramatically drops when half of the input points are missing, from $86.3\%$ to $46.0\%$ with a $40.3\%$ difference, while our PointNet only has a $3.7\%$ performance drop. This can be explained by the theoretical analysis and explanation of our PointNet -- it is learning to use a collection of \textit{critical points} to summarize the shape, thus it is very robust to missing data.
+
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.7\linewidth]{fig/pointnet_vs_voxnet.pdf}
+    \caption{\textbf{PointNet v.s. VoxNet~\cite{maturana2015voxnet} on incomplete input data.} Metric is overall classification accurcacy on ModelNet40 test set. Note that VoxNet is using 12 viewpoints averaging while PointNet is using only one view of the point cloud. Evidently PointNet presents much stronger robustness to missing points.}
+    \label{fig:compare}
+\end{figure}
+
+% =============================
+% Network details
+% =============================
+\section{Network Architecture and Training Details (Sec 5.1)}
+\label{sec:network}
+\paragraph{PointNet Classification Network} As the basic architecture is already illustrated in the main paper, here we provides more details on the joint alignment/transformation network and training parameters.
+
+The first transformation network is a mini-PointNet that takes raw point cloud as input and regresses to a $3\times3$ matrix. It's composed of a shared $MLP(64,128,1024)$ network (with layer output sizes 64, 128, 1024) on each point, a max pooling across points and two fully connected layers with output sizes $512$, $256$. The output matrix is initialized as an identity matrix. All layers, except the last one, include ReLU and batch normalization. The second transformation network has the same architecture as the first one except that the output is a  $64\times64$ matrix. The matrix is also initialized as an identity. A regularization loss (with weight 0.001) is added to the softmax classification loss to make the matrix close to orthogonal.
+
+We use dropout with keep ratio $0.7$ on the last fully connected layer, whose output dimension $256$, before class score prediction. The decay rate for batch normalization starts with $0.5$ and is gradually increased to $0.99$. We use adam optimizer with initial learning rate $0.001$, momentum $0.9$ and batch size $32$. The learning rate is divided by 2 every 20 epochs. Training on ModelNet takes 3-6 hours to converge with TensorFlow and a GTX1080 GPU.
+
+\paragraph{PointNet Segmentation Network} The segmentation network is an extension to the classification PointNet. Local point features (the output after the second transformation network) and global feature (output of the max pooling) are concatenated for each point. No dropout is used for segmentation network. Training parameters are the same as the classification network.
+
+As to the task of shape part segmentation, we made a few modifications to the basic segmentation network architecture (Fig 2 in main paper) in order to achieve best performance, as illustrated in Fig~\ref{fig:part_seg_net}. We add a one-hot vector indicating the class of the input and concatenate it with the max pooling layer's output. We also increase neurons in some layers and add skip links to collect local point features in different layers and concatenate them to form point feature input to the segmentation network.
+
+\begin{figure}
+\centering
+\includegraphics[width=\linewidth]{fig/part_seg_net.pdf}
+\caption{\textbf{Network architecture for part segmentation.} T1 and T2 are alignment/transformation networks for input points and features. FC is fully connected layer operating on each point. MLP is multi-layer perceptron on each point. One-hot is a vector of size 16 indicating category of the input shape.}
+\label{fig:part_seg_net}
+\end{figure}
+
+While \cite{Wu2014248} and \cite{Yi16} deal with each object category independently, due to the lack of training data for some categories (the total number of shapes for all the categories in the data set are shown in the first line), we train our PointNet across categories (but with one-hot vector input to indicate category). To allow fair comparison, when testing these two models, we only predict part labels for the given specific object category. 
+
+As to semantic segmentation task, we used the architecture as in Fig 2 in the main paper.
+
+It takes around six to twelve hours to train the model on ShapeNet part dataset and around half a day to train on the Stanford semantic parsing dataset.
+
+\paragraph{Baseline 3D CNN Segmentation Network}
+In ShapeNet part segmentation experiment, we compare our proposed segmentation version PointNet to two traditional methods as well as a 3D volumetric CNN network baseline. In Fig~\ref{fig:voxnet}, we show the baseline 3D volumetric CNN network we use. We generalize the well-known 3D CNN architectures, such as VoxNet \cite{maturana2015voxnet} and 3DShapeNets \cite{wu20153d} to a fully convolutional 3D CNN segmentation network.
+
+%In the CAD model part segmentation experiment, we compare our proposed segmentation version PointNet to two traditional methods based on shape local features and inter-shape correspondence, as well as a 3D volumetric CNN network as baseline methods. Our PointNet method is a data-driven deep learning method. The comparison between traditional methods to data-driven methods are inherently hard since data-driven methods require more training data than traditional methods. Though we try to test all the methods on the same ShapeNet train/validation/test split, we still think it is crucial to compare our proposed learning-based PointNet with another deep learning method. In Fig.~\ref{fig:voxnet}, we show the baseline 3D volumetric CNN network we use. We generalize the well-known 3D CNN architectures, such as VoxNet \cite{maturana2015voxnet} and 3D ShapeNet \cite{wu20153d} that are invented for classification task, to a 3D CNN segmentation network.
+
+\begin{figure}[t!]
+\centering
+\includegraphics[width=\linewidth]{fig/voxnet.pdf}
+\caption{\textbf{Baseline 3D CNN segmentation network.} The network is fully convolutional and predicts part scores for each voxel.}
+\label{fig:voxnet}
+\end{figure}
+
+For a given point cloud, we first convert it to the volumetric representation as a occupancy grid with resolution $32 \times 32 \times 32$. Then, five 3D convolution operations each with 32 output channels and stride of 1 are sequentially applied to extract features. The receptive field is 19 for each voxel. %In order to do the final per-pixel label prediction, we choose to keep the size of the feature maps to $32 \times 32 \times 32$ by allowing zero-padding. Zero-padding is reasonable since there are no occupancy for those padded voxels.
+Finally, a sequence of 3D convolutional layers with kernel size $1\times 1\times 1$ is appended to the computed feature map to predict segmentation label for each voxel. ReLU and batch normalization are used for all layers except the last one. The network is trained across categories, however, in order to compare with other baseline methods where object category is given, we only consider output scores in the given object category.
+
+\section{Details on Detection Pipeline (Sec 5.1)}
+\label{sec:detection}
+We build a simple 3D object detection system based on the semantic segmentation results and our object classification PointNet.
+
+We use connected component with segmentation scores to get object proposals in scenes. Starting from a random point in the scene, we find its predicted label and use BFS to search nearby points with the same label, with a search radius of $0.2$ meter. If the resulted cluster has more than 200 points (assuming a 4096 point sample in a 1m by 1m area), the cluster's bounding box is marked as one object proposal. For each proposed object, it's detection score is computed as the average point score for that category. Before evaluation, proposals with extremely small areas/volumes are pruned. For tables, chairs and sofas, the bounding boxes are extended to the floor in case the legs are separated with the seat/surface.
+
+We observe that in some rooms such as auditoriums lots of objects (e.g. chairs) are close to each other, where connected component would fail to correctly segment out individual ones. Therefore we leverage our classification network and uses sliding shape method to alleviate the problem for the chair class. We train a binary classification network for each category and use the classifier for sliding window detection. The resulted boxes are pruned by non-maximum suppression. The proposed boxes from connected component and sliding shapes are combined for final evaluation.
+
+ In Fig~\ref{fig:pr_curve}, we show the precision-recall curves for object detection. We trained six models, where each one of them is trained on five areas and tested on the left area. At test phase, each model is tested on the area it has never seen. The test results for all six areas are aggregated for the PR curve generation.
+ 
+ \begin{figure}
+ \includegraphics[width=0.8\linewidth]{fig/pr_curve.png}
+ \centering
+ \caption{\textbf{Precision-recall curves for object detection in 3D point cloud.} We evaluated on all six areas for four categories: table, chair, sofa and board. IoU threshold is 0.5 in volume.}
+ \label{fig:pr_curve}
+ \end{figure}
+ 
+% =============================
+% More Applications
+% =============================
+\section{More Applications (Sec 5.1)}
+\label{sec:supp_application}
+\paragraph{Model Retrieval from Point Cloud} Our PointNet learns a global shape signature for every given input point cloud. We expect geometrically similar shapes have similar global signature. In this section, we test our conjecture on the shape retrieval application. To be more specific, for every given query shape from ModelNet test split, we compute its global signature (output of the layer before the score prediction layer) given by our classification PointNet and retrieve similar shapes in the train split by nearest neighbor search. Results are shown in Fig~\ref{fig:retrieval}.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=\linewidth]{fig/retrieval.pdf}
+    \caption{\textbf{Model retrieval from point cloud.} For every given point cloud, we retrieve the top-5 similar shapes from the ModelNet test split. From top to bottom rows, we show examples of chair, plant, nightstand and bathtub queries. Retrieved results that are in wrong category are marked by red boxes.}
+    \label{fig:retrieval}
+\end{figure}
+
+\paragraph{Shape Correspondence}
+%Since our PointNet learns many per-point functions at the first stage and then aggregates the computed per-point features together using a max-pooling to compute the global shape feature. Thus, there is an inherent correspondence between every coordinate of the global features for a pair of shapes. 
+
+In this section, we show that point features learnt by PointNet can be potentially used to compute shape correspondences. Given two shapes, we compute the correspondence between their \textit{critical point sets} $C_S$'s by matching the pairs of points that activate the same dimensions in the global features. Fig~\ref{fig:chair_corr} and Fig~\ref{fig:table_corr} show the detected shape correspondence between two similar chairs and tables.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=\linewidth]{fig/chair_corr.png}
+    \caption{\textbf{Shape correspondence between two chairs.} For the clarity of the visualization, we only show 20 randomly picked correspondence pairs.}
+    \label{fig:chair_corr}
+\end{figure}
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=\linewidth]{fig/table_corr.png}
+    \caption{\textbf{Shape correspondence between two tables.} For the clarity of the visualization, we only show 20 randomly picked correspondence pairs.}
+    \label{fig:table_corr}
+\end{figure}
+
+
+% =============================
+% More Architecture Analysis
+% =============================
+\section{More Architecture Analysis (Sec 5.2)}
+\label{sec:architecture}
+% \paragraph{Volumetric Reconstruction} To validate proof under Thm2 saying that in the worst case our network will degrade to learn a volumetric respentation for the 3D shape? 
+
+\paragraph{Effects of Bottleneck Dimension and Number of Input Points}
+Here we show our model's performance change with regard to the size of the first max layer output as well as the number of input points. In Fig~\ref{fig:net_param} we see that performance grows as we increase the number of points however it saturates at around 1K points. The max layer size plays an important role, increasing the layer size from 64 to 1024 results in a $2-4\%$ performance gain. It indicates that we need enough point feature functions to cover the 3D space in order to discriminate different shapes.
+
+It's worth notice that even with 64 points as input (obtained from furthest point sampling on meshes), our network can achieve decent performance.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.8\linewidth]{fig/bottleneck.pdf}
+    \caption{\textbf{Effects of bottleneck size and number of input points.} The metric is overall classification accuracy on ModelNet40 test set.}
+    \label{fig:net_param}
+\end{figure}
+
+\paragraph{MNIST Digit Classification}
+While we focus on 3D point cloud learning, a sanity check experiment is to apply our network on a 2D point clouds - pixel sets.
+
+To convert an MNIST image into a 2D point set we threshold pixel values and add the pixel (represented as a point with $(x,y)$ coordinate in the image) with values larger than 128 to the set. We use a set size of 256. If there are more than 256 pixels int he set, we randomly sub-sample it; if there are less, we pad the set with the one of the pixels in the set (due to our max operation, which point to use for the padding will not affect outcome).
+
+
+As seen in Table~\ref{tab:mnist}, we compare with a few baselines including multi-layer perceptron that considers input image as an ordered vector, a RNN that consider input as sequence from pixel (0,0) to pixel (27,27), and a vanilla version CNN. While the best performing model on MNIST is still well engineered CNNs (achieving less than $0.3\%$ error rate), it's interesting to see that our PointNet model can achieve reasonable performance by considering image as a 2D point set.
+
+% vanila CNN: https://www.microsoft.com/en-us/research/publication/best-practices-for-convolutional-neural-networks-applied-to-visual-document-analysis/
+\begin{table}[h!]
+    \centering
+    \begin{tabular}[width=\linewidth]{l|c|c}
+    \hline
+    ~                      & input & error (\%) \\ \hline
+    Multi-layer perceptron~\cite{simard2003best} & vector & 1.60  \\
+    LeNet5~\cite{lecun1998gradient}                 & image & 0.80 \\ \hline
+    Ours PointNet          & point set & 0.78 \\ \hline
+    \end{tabular}
+    \caption{\textbf{MNIST classification results.} We compare with vanilla versions of other deep architectures to show that our network based on point sets input is achieving reasonable performance on this traditional task.}
+    \label{tab:mnist}
+\end{table}
+
+\paragraph{Normal Estimation}
+In segmentation version of PointNet, local point features and global feature are concatenated in order to provide context to local points. However, it's unclear whether the context is learnt through this concatenation. In this experiment, we validate our design by showing that our segmentation network can be trained to predict point normals, a local geometric property that is determined by a point's neighborhood.
+
+%Our proposed PointNet learns 1024 per-point functions and uses a max-pooling operation to aggregate the per-point features into the global shape feature. Then for classification task, we push this learnt global shape signature to the subsequent classifier. The jump for per-point feature (extremely local) to the shape feature (extremely global) seems fine. However, for segmentation task, one may wonder if the local context entails crucial information to determine the local fine-grained segmentation details. Even though in our segmentation version PointNet we concatenate the learn global shape signature and the per-point local features together to do the label predictions, it is still unclear if such combination can capture the necessary local information around each point. 
+
+We train a modified version of our segmentation PointNet in a supervised manner to regress to the ground-truth point normals. We just change the last layer of our segmentation PointNet to predict normal vector for each point. We use absolute value of cosine distance as loss.
+
+Fig.~\ref{fig:normal_recon} compares our PointNet normal prediction results (the left columns) to the ground-truth normals computed from the mesh (the right columns). We observe a reasonable normal reconstruction. Our predictions are more smooth and continuous than the ground-truth which includes flipped normal directions in some region.
+%Having the ability to correctly predict the point normal, one of the local geometric features that require the combination of the information of a point and its neighbors, shows our PointNet has the potential to capture the local information via simply combining the per-point feature and the aggregated global feature.
+
+\begin{figure}[t!]
+\centering
+\includegraphics[width=0.9\linewidth]{fig/normal_recon2.pdf}
+\caption{\textbf{PointNet normal reconstrution results.} In this figure, we show the reconstructed normals for all the points in some sample point clouds and the ground-truth normals computed on the mesh.}
+\label{fig:normal_recon}
+\end{figure}
+
+\paragraph{Segmentation Robustness} As discussed in Sec 5.2 and Sec~\ref{sec:cla_robust}, our PointNet is less sensitive to data corruption and missing points for classification tasks since the global shape feature is extracted from a collection of \textit{critical points} from the given input point cloud. In this section, we show that the robustness holds for segmentation tasks too. The per-point part labels are predicted based on the combination of per-point features and the learnt global shape feature. In Fig~\ref{fig:seg_robust}, we illustrate the segmentation results for the given input point clouds $S$ (the left-most column), the \textit{critical point sets} $\mathcal{C}_S$ (the middle column) and the \textit{upper-bound shapes} $\mathcal{N}_S$.
+%One may observe that the segmentation results for the entire shape family containing all the shapes transiting between $\mathcal{C}_S$ and $\mathcal{N}_S$ are consistent, meaning that \textbf{losing some points that are not \textit{critical} does not affect the segmentation result}.
+
+\begin{figure}[t!]
+\centering
+\includegraphics[width=0.9\linewidth]{fig/seg_robust.pdf}
+\caption{\textbf{The consistency of segmentation results.} We illustrate the segmentation results for some sample given point clouds $S$, their \textit{critical point sets} $\mathcal{C}_S$ and \textit{upper-bound shapes} $\mathcal{N}_S$. We observe that the shape family between the $\mathcal{C}_S$ and $\mathcal{N}_S$ share a consistent segmentation results.}
+\label{fig:seg_robust}
+\end{figure}
+
+\begin{comment}
+In Sec 5.2 \textit{3D Object Part Segmentation}, we apply our proposed PointNet on segmenting the CAD models into semantic parts. While our segmentation PointNet (illustrated in Fig. 2, \textit{Segmentation Network}) achieves the state-of-the-art result on complete ShapeNet shapes, it performs reasonably well on partial data (e.g. simulated Kinect scans) as well. Since most real world scans are very partial due to occlusions, a model's robustness to partial input is key to evaluate its value in practice. Table~\ref{tab:segmentation_partial} summarizes the performance of our PointNet and the proposed baseline 3D CNN method when being applied to complete and partial data.
+
+\begin{table}[h!]
+    \small
+    \centering
+    \begin{tabular}[width=\linewidth]{l|cccc}
+    \hline
+    ~ & complete input & partial input \\ \hline
+    3D CNN & 75.3 & 69.7 \\ \hline
+    Ours PointNet & \textbf{80.6} & \textbf{75.3}  \\ \hline
+    \end{tabular}
+    \caption{\textbf{Segmentation results on partial scans.} Metric is mean IoU across all shapes. We perform rotation augmentation when training our PointNet on complete data to fairly compare with the simulated Kinect scans, that are generated from multiple perspective. Both networks are trained respectively on the complete data and the partial data and then tested on the testing splits.}
+    \label{tab:segmentation_partial}
+\end{table}
+\end{comment}
+
+
+\paragraph{Network Generalizability to Unseen Shape Categories}
+%As discussed in the previous sections, our proposed PointNet learns several useful per-point functions and computes the global shape signature by max pooling all the point features.
+%In Sec 5.3, we visualize the learnt per-point functions and observe that they work in the way to detect if some points intersect with some specific regions. And, by aggregating the learnt per-point features, PointNet selects some \textit{critical points} and produces the global shape feature by summarizing the activation values of them.
+In Fig~\ref{fig:unseen}, we visualize the \textit{critical point sets} and the \textit{upper-bound shapes} for new shapes from unseen categories (face, house, rabbit, teapot) that are not present in ModelNet or ShapeNet. It shows that the learnt per-point functions are generalizable. However, since we train mostly on man-made objects with lots of planar structures, the reconstructed upper-bound shape in novel categories also contain more planar surfaces. 
+ 
+\begin{figure}[t!]
+\centering
+\includegraphics[width=\linewidth]{fig/unseen.pdf}
+\caption{\textbf{The critical point sets and the upper-bound shapes for unseen objects.} We visualize the \textit{critical point sets} and the \textit{upper-bound shapes} for teapot, bunny, hand and human body, which are not in the ModelNet or ShapeNet shape repository to test the generalizability of the learnt per-point functions of our PointNet on other unseen objects. The images are color-coded to reflect the depth information.}
+\label{fig:unseen}
+\end{figure}
+
+\section{Proof of Theorem (Sec 4.3)}
+\label{sec:proof}
+\input{./tex/appendix}
+
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.7\linewidth]{fig/kernels.pdf}
+    \caption{\textbf{Point function visualization.} For each per-point function $h$, we calculate the values $h(p)$ for all the points $p$ in a cube of diameter two located at the origin, which spatially covers the unit sphere to which our input shapes are normalized when training our PointNet. In this figure, we visualize all the points $p$ that give $h(p)>0.5$ with function values color-coded by the brightness of the voxel. We randomly pick 15 point functions and visualize the activation regions for them.}
+    \label{fig:functions}
+\end{figure}
+
+\section{More Visualizations}
+\label{sec:visu}
+\paragraph{Classification Visualization}
+%In this section, we investigate the classification version PointNet, visualize the shape global feature space via 2D embedding and provide some error analysis on the failure cases.
+
+We use t-SNE\cite{maaten2008visualizing} to embed point cloud global signature (1024-dim) from our classification PointNet into a 2D space. Fig~\ref{fig:tsne} shows the embedding space of ModelNet 40 test split shapes. Similar shapes are clustered together according to their semantic categories.
+
+\begin{figure*}[t!]
+\centering
+\includegraphics[width=\linewidth]{fig/tsne.png}
+\caption{\textbf{2D embedding of learnt shape global features.} We use t-SNE technique to visualize the learnt global shape features for the shapes in ModelNet40 test split.}
+\label{fig:tsne}
+\end{figure*}
+
+
+\paragraph{Segmentation Visualization} We present more segmentation results on both complete CAD models and simulated Kinect partial scans. We also visualize failure cases with error analysis. Fig~\ref{fig:part_seg_complete} and Fig~\ref{fig:part_seg_partial} show more segmentation results generated on complete CAD models and their simulated Kinect scans. Fig~\ref{fig:part_seg_failure} illustrates some failure cases. Please read the caption for the error analysis.
+
+\begin{figure*}[t!]
+\centering
+\includegraphics[width=0.82\linewidth]{fig/part_seg_complete.pdf}
+\caption{\textbf{PointNet segmentation results on complete CAD models.} }
+\label{fig:part_seg_complete}
+\end{figure*}
+
+\begin{figure*}[t!]
+\centering
+\includegraphics[width=0.82\linewidth]{fig/part_seg_partial.pdf}
+\caption{\textbf{PointNet segmentation results on simulated Kinect scans.} }
+\label{fig:part_seg_partial}
+\end{figure*}
+
+\begin{figure*}[t!]
+\centering
+\includegraphics[width=\linewidth]{fig/part_seg_failure.pdf}
+\caption{\textbf{PointNet segmentation failure cases.} In this figure, we summarize six types of common errors in our segmentation application. The prediction and the ground-truth segmentations are given in the first and second columns, while the difference maps are computed and shown in the third columns. The red dots correspond to the wrongly labeled points in the given point clouds. (a) illustrates the most common failure cases: the points on the boundary are wrongly labeled. In the examples, the label predictions for the points near the intersections between the table/chair legs and the tops are not accurate. However, most segmentation algorithms suffer from this error. (b) shows the errors on exotic shapes. For examples, the chandelier and the airplane shown in the figure are very rare in the data set. (c) shows that small parts can be overwritten by nearby large parts. For example, the jet engines for airplanes (yellow in the figure) are mistakenly classified as body (green) or the plane wing (purple). (d) shows the error caused by the inherent ambiguity of shape parts. For example, the two bottoms of the two tables in the figure are classified as table legs and table bases (category \textit{other} in \cite{Yi16}), while ground-truth segmentation is the opposite. (e) illustrates the error introduced by the incompleteness of the partial scans. For the two caps in the figure, almost half of the point clouds are missing. (f) shows the failure cases when some object categories have too less training data to cover enough variety. There are only 54 bags and 39 caps in the whole dataset for the two categories shown here.}
+\label{fig:part_seg_failure}
+\end{figure*}
+
+\paragraph{Scene Semantic Parsing Visualization}
+We give a visualization of semantic parsing in Fig~\ref{fig:semantic_large} where we show input point cloud, prediction and ground truth for both semantic segmentation and object detection for two office rooms and one conference room. The area and the rooms are unseen in the training set.
+
+
+\begin{figure*}
+    \centering
+    \includegraphics[width=\linewidth]{fig/semantic_large.jpg}
+    \caption{\textbf{Examples of semantic segmentation and object detection.} First row is input point cloud, where walls and ceiling are hided for clarity. Second and third rows are prediction and ground-truth of semantic segmentation on points, where points belonging to different semantic regions are colored differently (chairs in red, tables in purple, sofa in orange, board in gray, bookcase in green, floors in blue, windows in violet, beam in yellow, column in magenta, doors in khaki and clutters in black). The last two rows are object detection with bounding boxes, where predicted boxes are from connected components based on semantic segmentation prediction.}
+    \label{fig:semantic_large}
+\end{figure*}
+
+\paragraph{Point Function Visualization} Our classification PointNet computes $K$ (we take $K=1024$ in this visualization) dimension point features for each point and aggregates all the per-point local features via a max pooling layer into a single $K$-dim vector, which forms the global shape descriptor. 
+
+To gain more insights on what the learnt per-point functions $h$'s detect, we visualize the points $p_i$'s that give high per-point function value $f(p_i)$ in Fig~\ref{fig:functions}. This visualization clearly shows that different point functions learn to detect for points in different regions with various shapes scattered in the whole space. 
+
+
+% \paragraph{Global Feature Visualization} In Fig~\ref{fig:kp_ss_visu}, we visualize more results of the \textit{critical point sets} $\mathcal{C}_S$ and the \textit{upper-bound shapes} $\mathcal{N}_S$ for some sample shapes $S$. The point sets between the two shapes will give exactly the same global shape feature $f(S)$. 
+
+% We can see clearly from Fig~\ref{fig:kp_ss_visu} that the \textit{critical point sets} $\mathcal{C}_S$ summarizes the skeleton of the shape.
+% %, or sample a sparse collection of points to describe the geometry of the whole shape.
+% The \textit{upper-bound shapes} $\mathcal{N}_S$ illustrates the largest possible point cloud that give the same global shape feature $f(S)$ as the input point cloud $S$. $\mathcal{C}_S$ and $\mathcal{N}_S$ reflect the robustness of PointNet, meaning that losing some non-critical points does not change the global shape signature $f(S)$ at all.
+
+% \begin{figure*}[t!]
+% \centering
+% \includegraphics[width=0.9\linewidth]{fig/kp_ss_visu2.pdf}
+% \includegraphics[width=0.9\linewidth]{fig/kp_ss_visu1.pdf}
+% \caption{\textbf{Visualization of critical point sets and upper-bound shapes.} The first row shows the input point clouds $S$. The second and the third rows show the \textit{critical point sets} $\mathcal{C}_S$ and the \textit{upper-bound shapes} $\mathcal{N}_S$ respectively.}
+% \label{fig:kp_ss_visu}
+% \end{figure*}

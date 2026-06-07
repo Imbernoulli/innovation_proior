@@ -1,0 +1,218 @@
+% !TEX encoding = UTF-8
+% !TEX Root = 0_main.tex
+
+% \vspace{-0.2in}
+\section{Preliminaries and Motivations}
+% \vspace{-0.1in}
+
+\noindent
+\textbf{Generic adaptive methods.} Algorithm~\ref{algo:adaptive} is a generic framework (all operations are element-wise).
+It describes various popular stochastic gradient descent algorithms~\citep{reddi2019convergence}.
+% like Adam~\citep{kingma2014adam} and, Adagrad~\citep{duchi2011adaptive} and RMSprop~\citep{tieleman2012lecture}.
+Specifically, different optimization algorithms can be specified by different choices of $\phi(.)$ and $\psi(.)$, where
+$\phi(.)$ specifies how the momentum at time step $t$ is calculated, and $\psi(.)$ how the adaptive learning rate at $t$ is calculated.
+For example, 
+% in the vanilla SGD, these two functions are set to:
+% \begin{align*}
+% \vspace{-0.1in}
+% \phi(g_1, \cdots, g_t) = g_t \quad\mbox{and}\quad \psi(g_1, \cdots, g_t) = 1.
+% \vspace{-0.2in}
+% \end{align*}
+% And 
+in the Adam algorithm, we have:
+\begin{align}
+% \vspace{-0.2in}
+\phi(g_1, \cdots, g_t) = \frac{(1 - \beta_1)\sum_{i = 1}^t \beta_1^{t-i}g_i}{1 - \beta_1^t} 
+\quad\mbox{and}\quad 
+\psi(g_1, \cdots, g_t) = \sqrt{\frac{1-\beta_2^t}{(1 - \beta_2)\sum_{i = 1}^t \beta_2^{t-i}g_i^2}}.
+\label{eqn:adam}
+%\vspace{0.1in}
+\end{align}
+For numerical stability, the function $\psi(.)$ in Equation~\ref{eqn:adam} is usually calculated as $\hat{\psi}(g_1, \cdots, g_t) = \frac{\sqrt{1-\beta_2^t}}{\epsilon + \sqrt{(1 - \beta_2)\sum_{i = 1}^t \beta_2^{t-i}g_i^2}}$, 
+where $\epsilon$ is a relatively small / negligible value (\eg, $1\times 10^{-8}$). 
+% \vspace{-0.1in}
+% \setlength{\textfloatsep}{-1pt}
+
+\begin{algorithm}[!ht]
+\DontPrintSemicolon
+\KwIn{$\{\alpha_t\}_{t = 1}^T$: step size, $\{\phi_t, \psi_t\}_{t = 1}^T$: function to calculate momentum and adaptive rate, \newline
+$\theta_0$: initial parameter, $f(\theta)$: stochastic objective function.}
+\KwOut{$\theta_T$: resulting parameters}
+\While{$t = 1$ to $T$}{
+    $g_t \gets \nabla_{\theta} f_t(\theta_{t - 1})$ (Calculate gradients w.r.t. stochastic objective at timestep t)\;
+    $m_t \gets \phi_t (g_1, \cdots, g_t)$ (Calculate momentum)\;
+    $l_t \gets \psi_t (g_1, \cdots, g_t)$ (Calculate adaptive learning rate)\;
+    $\theta_t \gets \theta_{t-1} - \alpha_t m_t l_t$ (Update parameters)\;
+}
+\Return{$\theta_T$}
+\caption{Generic adaptive optimization method setup. All operations are element-wise. }
+\label{algo:adaptive}
+\end{algorithm}
+
+% \begin{figure}[!htb]
+\begin{figure}[t]
+\centering
+\vspace{-0.3in}
+    \includegraphics[width=\textwidth]{fig/histogram_4.pdf}
+\vspace{-0.6cm}
+\caption{The absolute gradient histogram of the Transformers on the De-En IWSLT' 14 dataset during the training (stacked along the y-axis). X-axis is absolute value in the log scale and the height is the frequency. Without warmup, the gradient distribution is distorted in the first 10 steps. }
+\vspace{-0.3cm}
+\label{fig:histogram_2}
+\end{figure}
+
+\noindent
+\textbf{Learning rate warmup.} Instead of setting the learning rate $\alpha_t$ as a constant or in a decreasing order, 
+% a learning rate warmup strategy sets $\alpha_t$ as some small values in the first few steps.
+a learning rate warmup strategy sets $\alpha_t$ as smaller values in the first few steps, thus not satisfying $\forall t\, \alpha_{t+1} \leq \alpha_{t}$.
+% and decrease $\alpha_t$ after $T_w$ steps. 
+For example, linear warmup sets $\alpha_t = t \,\alpha_0$ when $t < T_w$.
+%In many machine learning applications, e.g., neural machine translation, it has been empirically observed that these adaptive stochastic optimization algorithms require a learning rate warmup stage, (\eg, a widely used warmup strategy is to set the learning rate as $\alpha_t = t \,\alpha_0$ in the first $T_w$ steps, \ie, $t < T_w$); otherwise, the loss is trapped in bad/suspicious local optima. S
+Warmup has been demonstrated to be beneficial in many deep learning applications.
+For example, in the NMT experiments in Figure~\ref{fig:eps2k}, the training loss convergences around 10 when warmup is not applied (Adam-vanilla), and it surprisingly decreases to below 3 after applying warmup (Adam-warmup). 
+
+
+To further analyze this phenomenon, we visualize the histogram of the absolute value of gradients on a log scale in Figure~\ref{fig:histogram_2}.
+We observe that, without applying warmup, the gradient distribution is distorted to have a mass center in relatively small values within 10 updates. Such gradient distortion means that the vanilla Adam is trapped in bad/suspicious local optima after the first few updates. 
+Warmup essentially reduces the impact of these problematic updates to avoid the convergence problem.
+%Intuitively, since the widely used adaptive learning rates are designed as the inverse scale of the gradient (\eg, $\psi(.)$ in Equation~\ref{eqn:adam}), small gradients would have larger adaptive learning rates, and random fluctuations of these gradients would be amplified and hinder the optimizer from advancing model training. 
+% Therefore, the vanilla Adam will be trapped in this stage after the first few updates
+%Therefore, such gradient distortion can trap the vanilla Adam after the first few updates, and it is necessary to fix those problematic updates to avoid the convergence problems.
+In the following sections, we focus our analysis on learning rate warmup for the Adam algorithm, while it can be applied to other algorithms that use similar adaptive learning rate ($\psi(.)$) designs, \eg, RMSprop~\citep{tieleman2012lecture} and Nadam~\citep{dozat2016incorporating}. 
+
+
+% \section{Preliminaries}
+
+% As in Algorithm~\ref{algo:adaptive}, we follow the previous work~\citep{reddi2019convergence} and use a generic framework (all operations are element-wise) to describe adaptive gradient descent methods, which covers popular algorithms like Adam~\citep{kingma2014adam}, Adagrad~\citep{duchi2011adaptive} and RMSprop~\citep{tieleman2012lecture}.
+% Thus, different optimization algorithms can be described as different choices of $\phi(.)$ and $\psi(.)$.
+% For example, 
+% % in the vanilla SGD, these two functions are set to:
+% % $$
+% % \phi(g_1, \cdots, g_t) = g_t \quad\mbox{and}\quad \psi(g_1, \cdots, g_t) = 1.
+% % $$
+% in the Adam algorithm, these two functions are set to:
+% % $$
+% % \phi(g_1, \cdots, g_t) = \frac{(1 - \beta_1)\sum_{i = 1}^t \beta_1^{t-i}g_t}{1 - \beta_1^t} 
+% % \quad\mbox{and}\quad 
+% % \psi(g_1, \cdots, g_t) = \frac{\sqrt{1-\beta_2^t}}{\sqrt{(1 - \beta_2)\sum_{i = 1}^t \beta_2^{t-i}g_i^2} + \epsilon}
+% % $$
+% % where $\epsilon$ is for numerical stability, and is usually set to relative small value (\eg, $1\times 10^{-8}$). In our most analysis, we 
+% \begin{equation}
+% \phi(g_1, \cdots, g_t) = \frac{(1 - \beta_1)\sum_{i = 1}^t \beta_1^{t-i}g_t}{1 - \beta_1^t} 
+% \quad\mbox{and}\quad 
+% \psi(g_1, \cdots, g_t) = \sqrt{\frac{1-\beta_2^t}{(1 - \beta_2)\sum_{i = 1}^t \beta_2^{t-i}g_i^2}}.
+% \label{eqn:adam}
+% \end{equation}
+% For numerical stability, $\psi(.)$ is usually calculated as $\hat{\psi}(g_1, \cdots, g_t) = \frac{\sqrt{1-\beta_2^t}}{\epsilon + \sqrt{(1 - \beta_2)\sum_{i = 1}^t \beta_2^{t-i}g_i^2}}$, 
+% where $\epsilon$ is set to relative small values (\eg, $1\times 10^{-8}$). % this introduction is used later to introduce Adam-eps.
+% % We further summarize several popular optimization algorithms in Table~\ref{tab:adaptive}. 
+% % It is worth mentioning that, all operations in this paper are element-wise. 
+
+% \begin{algorithm}[t]
+% \DontPrintSemicolon
+% \KwIn{$\{\alpha_t\}_{t = 1}^T$: step size, 
+% $\{\phi_t, \psi_t\}_{t = 1}^T$: function to calculate momentum and adaptive rate, \newline
+% $\theta_0$: initial parameter, $f(\theta)$: stochastic objective function.}
+% \KwOut{$\theta_t$: resulting parameters}
+% \While{$t = 1$ to $T$}{
+%     $g_t \gets \Delta_{\theta} f_t(\theta_{t - 1})$ (Calculate gradients w.r.t. stochastic objective at timestep t)\;
+%     $m_t \gets \phi_t (g_1, \cdots, g_t)$ (Calculate momentum)\;
+%     $v_t \gets \psi_t (g_1, \cdots, g_t)$ (Calculate adaptive learning rate)\;
+%     $\theta_t \gets \theta_{t-1} - \alpha_t m_t v_t$ (Update parameters)\;
+% }
+% \Return{$\theta_T$}
+% \caption{Generic Adaptive Method Setup. All operations are element-wise. }
+% \label{algo:adaptive}
+% \end{algorithm}
+
+% In many machine learning applications, e.g., neural machine translation, it has been empirically observed that these adaptive stochastic optimization algorithms require a learning rate warmup stage, i.e., using small learning rates in the first few epochs; otherwise, the loss fails to descent normally or even explores. 
+% For example, a widely used warmup strategy is to set learning rate as $\alpha_t = t \,\alpha_0$ in the first $T_w$ steps (\ie, $t < T_w$), 
+% As in Figure~\ref{fig:eps2k}, the perplexity convergences around 500 when warmup is not employed (Adam-vanilla), and it successfully descents under 10 after applying warmup (Adam-warmup). 
+% % We conduct further analysis on this phenomenon. 
+% To further analyze this phenomenon, we visualize the histogram of the absolute value of gradients (on a log scale) in Figure~\ref{fig:histogram_2}.
+% We observe that, without applying warm up, the gradient distribution is distorted to have a mass center in smaller values within 10 updates, and is trapped in this stage. 
+% % Specifically, since small gradient would have larger adaptive learning rate, 
+% % the variance of the gradient would be amplified and hinder the optimizer from advancing model training. 
+% Intuitively, since the widely used adaptive learning rates are designed as the inverse scale of the gradient (\eg, $\psi(.)$ in Equation~\ref{eqn:adam}), small gradients would have larger adaptive learning rate, and their variance would be amplified and hinder the optimizer from advancing model training. 
+% Therefore, we conjecture the convergence problems met by Adam-vanilla is caused by the problematic updates in the early stage.
+% % that this issue is due to the lack of robustness of the adaptive learning rate. 
+% % this issue is due to the lack of robustness of the adaptive learning rate. 
+% % In the following section, we will first provide theoretical and empirical evidences to verify our intuition, then proceed to the design of our proposed rectification term. 
+% In the following sections, we focus our analysis on the Adam algorithm, while it can be applied to other algorithms that uses similar adaptive learning rate ($\psi(.)$) designs, \eg, RMSprop~\citep{tieleman2012lecture} and Nadam~\citep{dozat2016incorporating}. 
+
+% \begin{minipage}{0.35\textwidth}
+% \begin{figure}[H]
+% \centering
+% % \begin{tabular}[H]{ c } 
+% % \includegraphics[width=\textwidth]{fig/ppl.pdf}\\
+% \includegraphics[width=\textwidth]{fig/ppl_loss_legend.pdf}
+% % \end{tabular}
+% \caption{Training of Transformers on the De-En IWSLT'14 dataset. Up: Training perplexity w.r.t. gradient update \#; Bottom: Training loss w.r.t. gradient update \#.}
+% \label{fig:eps2k}
+% \end{figure}
+% \end{minipage}
+% \;
+% \begin{minipage}{0.64\textwidth}
+% \begin{figure}[H]
+% \centering
+%     \includegraphics[width=\textwidth]{fig/histogram_2.pdf}
+% \caption{The histogram of the absolute value of gradients (on a log scale) during the training of Transformers on the De-En IWSLT' 14 dataset. }
+% \label{fig:histogram_2}
+% \end{figure}
+% \end{minipage}
+
+% % \begin{figure}[t]
+% % \centering
+% %     \includegraphics[width=\textwidth]{fig/histogram_2.pdf}
+% % \caption{The histogram of the absolute value of gradients (on a log scale) during the training of Transformers on the De-En IWSLT' 14 dataset. }
+% % \label{fig:histogram_2}
+% % \end{figure}
+
+% % \begin{figure}[t]
+% % \centering
+% % \begin{subfigure}[b]{0.4\textwidth}
+% %     \centering
+% %     \includegraphics[width=\textwidth]{fig/ppl.pdf}
+% %     % \caption{\,}
+% %     % \label{subfig:eps2k_ppl}
+% % \end{subfigure}%
+% % \begin{subfigure}[b]{0.4\textwidth}
+% %     \centering
+% %     \includegraphics[width=\textwidth]{fig/loss.pdf}
+% %     % \caption{\,}
+% %     % \label{subfig:eps2k_loss}
+% % \end{subfigure}
+% % \caption{Training of Transformers on the De-En IWSLT'14 dataset. Left: Training perplexity in the first 50k gradient updates; Right: Training loss in the first 50k gradient updates.}
+% %     \label{fig:eps2k}
+% % \end{figure}
+
+
+
+
+
+
+
+% % \begin{figure}[t]
+% % \centering
+% %     \includegraphics[width=\textwidth]{fig/histogram_2.pdf}
+% % \caption{The histogram of the absolute value of gradients during the training of Transformers on the De-En IWSLT' 14 dataset. }
+% % \label{fig:histogram_2}
+% % \end{figure}
+
+% % \begin{table}[t]
+% % \begin{center}
+% % \caption{The choices of $\phi(.)$ and $\psi(.)$ of popular optimization algorithms.}
+% % \label{tab:adaptive}
+% % \begin{tabularx}{\columnwidth}{r *{2}{Y}}
+% % \toprule
+% %         & $\phi(g_1, \cdots, g_t)$ & $\psi(g_1, \cdots, g_t)$ \\\midrule
+% % Vanilla SGD & $g_t$ & $1$ \\ \midrule
+
+% % Adagrad & $g_t$ & $\sqrt{\frac{1}{\sum_{i = 1}^t g_i^2}}$\\\midrule
+
+% % Adam & $\frac{(1 - \beta_1)\sum_{i = 1}^t \beta_1^{t-i}g_t}{1 - \beta_1^t}$ & $\sqrt{\frac{1-\beta_2^t}{(1 - \beta_2)\sum_{i = 1}^t \beta_2^{t-i}g_i^2}}$\\\midrule
+
+% % RMSprop & $g_t$ & $\sqrt{\frac{1}{(1 - \beta_2)\sum_{i = 1}^t \beta_2^{t-i}g_i^2}}$\\
+% % \bottomrule
+% % \end{tabularx}
+% % \end{center}
+% % \end{table}

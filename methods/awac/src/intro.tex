@@ -1,0 +1,107 @@
+% Reinforcement learning (RL) has made significant strides in the past few years, with recent algorithms being applied to complex and challenging domains such as video games and even [weird applications]. While these results are quite impressive, the same sort of success has been hard to replicate in domains like robotics where it is challenging to let these algorithms explore for extremely long periods 
+
+% What is the problem?
+
+Current machine learning methods have been able to demonstrate impressive results on a range of supervised learning tasks, from image recognition~\citep{krizhevsky2012imagenet} to natural language processing~\citep{vaswani2017transformers}. 
+Across all of these domains, a common formula has been to build large, high-capacity models that can use large amounts of data to generalize effectively to the diversity of real-world data. 
+However, when it comes to automatic learning of control policies, this recipe has proven difficult to apply. 
+Standard on-policy reinforcement learning (RL) requires active online data collection, and can require a large amount of experience to learn effective policies~\cite{}.
+% TODO: citation above
+% This is at odds with the need for large and diverse datasets, since data is difficult to reuse between experiments and tasks.
+This results in two major challenges: first, such methods have difficulty benefitting from potentially useful prior sources of prior data, such as demonstrations, and second, they cannot utilize large and diverse datasets, since such datasets would need to be recollected for every policy, which can be impractical in the real world.
+%%SL.1.27: Rewrote the sentences below (see above), though I'm still not completely happy with it.
+%When training in the real world, where repeated large-scale data collection for each policy can be prohibitive this makes it difficult to reuse previously collected datasets, even when such datasets might be highly beneficial for the task at hand.
+%As a result, practical utilization of RL requires large, time-consuming experiments, or else the use of simulators and simulated data. 
+%Particularly in real-world robotics settings, online data collection for each task we want to learn can be prohibitively expensive.
+% Instead, for robust and general policy learning across a wide family of tasks, we require RL methods that can leverage large and diverse datasets.
+%If reinforcement learning could instead effectively leverage prior data and then further fine-tune on a given task with relatively little online data collection, RL methods would be far easier and more practical to use in the real world. 
+% Such data could not only help overcome exploration challenges, but also improve generalization and robustness by enabling more effective learning of invariant feature representations.
+
+Off-policy reinforcement learning algorithms in principle provide us with a mechanism to utilize prior datasets, including both demonstrations~\cite{} and prior experience from different tasks~\cite{}. However, the most efficient current methods based on off-policy approximate dynamic programming~\cite{} are surprisingly difficult to use in this regime. As we will show in Section ??, pre-training with off-policy ADP methods, such as actor-critic or Q-learning algorithms, often results in policies that do not fine-tune effectively on the task at hand, even when using the latest methods for stabilizing off-policy learning~\cite{}. Put another way, the development of effective algorithms that \emph{both} can be pre-trained on prior data \emph{and} fine-tuned on a given task is a challenging open problem. Addressing this problem would make it possible to pre-train on prior data, which might include either demonstrations or previous experience on other tasks, and fine-tune on the task at hand for maximal performance.
+
+% Reinforcement learning (RL) has made significant strides in the past few years \citep{mnih2013atari},
+% %%SL.1.20: seems a bit weird to cite a paper from seven years that is unrelated to robotics as evidence that RL has made strides in past few years...
+% with significant improvements in the behaviors and complexity of tasks being learned. The majority of these impressive results are in domains where the cost of running RL is low, such as simulated robotics or video games. But how about running RL on robots in the real world? The paradigm of real world robotic learning is still significantly further behind in terms of the complexity and variety of tasks that can be solved.
+% %%SL.1.20: I don't think this motivation is entirely forthright -- putting it this way suggests we are about to show some tasks that are more complex than previously demonstrated robotics tasks, but that is not actually the case. It seems reasonable to appeal to sample efficiency, reward engineering burden, or something, but saying that the tasks are not *complex* enough feels disingenuous unless you actually have results to show more complex tasks than the state of the art.
+% Among many factors, this can be attributed to the challenge of large scale online data collection. The number of samples required to effectively explore the environment and solve complex tasks can be prohibitively
+% %%SL.1.20: I don't think that is true, and numerous previous works have shown that it is not prohibitive if done right.
+% large. Collecting large amounts of online data in the real world can be quite cumbersome: a human must be present to reset the robot, perhaps to provide a reward function, and the risk of robot damage increases with an increase in the number of samples required.
+% %%SL.1.20: Again, I think this is a hard sell. If these are the real issues, why are we not proposing a way to address them?
+% What if we could reduce the cost of reinforcement learning in the real world by bootstrapping the learning process with expert demonstrations or large scale pre-collected interaction datasets?
+% %%SL.1.20: This is going to cause trouble. There are numerous prior papers on doing exactly this, going back to the work of Ijspeert and Schaal in the late 1990s. So proposing "demonstrations + RL" as the contribution is going to come off as silly to anyone who has familiarity with the literature.
+
+% % Why is it interesting and important?
+% If we are able to leverage large scale demonstration or off-policy interaction datasets to drastically bring down the amount of online reinforcement learning that our robots would need to do, this would significantly impact the paradigm of robotic learning since it would allow us to learn significantly more tasks, and with much less human effort.
+% %%SL.1.20: this seems much closer to me to the "right" motivation.
+% Existing datasets such as RoboNet \citep{dasari2019robonet} and the BAIR dataset could be used to make robotic learning much more practical for new tasks,
+% %%SL.1.20: maybe cite more broadly, including some driving datasets or something?
+% as opposed to the paradigm of learning from scratch. This would also allow us to solve more challenging tasks than previously possible, since off-policy demonstration or interaction datasets would help address exploration challenges that bottleneck current learning algorithms. 
+
+% % Why is it hard? (E.g., why do naive approaches fail?)
+% This problem setting has been studied in prior work before~\cite{rajeswaran2018dextrous, hester17dqfd, vecerik17ddpgfd, zhu2019hands}, and some of these algorithms have been applied to real robotic systems with some success [cite]. However, the paradigm of bootstrapping online robotic learning systems with off-policy demonstration or interaction datasets has not seen widespread adoption because these algorithms are often impractical to apply to new problems.
+% %%SL.1.20: Try to avoid sweeping and unsupported statements like this -- instead of saying "it's impractical, everyone panic," try to explain what the problem actually is
+% Prior algorithms for bootstrapping from demonstrations for robotic learning either use expensive on-policy learning algorithms,
+% %%SL.1.20: not all of them
+% or can be somewhat unstable and difficult to tune
+% %%SL.1.20: says who?
+% for new tasks when off-policy algorithms are used. 
+% %%SL.1.20: The above paragraph does not read well -- it seems to cite a bunch of prior work that does *exactly* what you are proposing, and then asserts without evidence or intuition that this prior work simply doesn't work. That's not going to be convincing to people. See my email for a suggestion about a better way to phrase this message.
+
+In this work, we systematically study what makes the problem of bootstrapping reinforcement learning from prior data or demonstrations
+%%SL.1.20: more generally, prior data, e.g. "bootstrapping reinforcement learning from prior data or demonstrations"
+challenging through a series of controlled didactic experiments,
+%%SL.4.9: are we actually doing this?
+and propose a novel off-policy algorithm to address these challenges through careful choices in the design of the policy evaluation and policy improvement stages. The resulting algorithm is simple, provides good stability and sample efficiency, and affords continuous improvement with more trials. We show how this algorithm can effectively be used to bootstrap the learning of high-dimensional dexterous manipulation tasks and a real-world drawer opening task, significantly improving sample efficiency and stability over prior methods.
+
+% The contributions of this work are - (1) understand which elements of standard off-policy RL algorithms make bootstrapping from demonstrations challenging through a series of systematic experiments (2) propose a simple algorithm that addresses these challenges in an actor critic framework and (3) show how the proposed algorithm can effectively be used to bootstrap vision based reinforcement learning in the real world, providing significant sample efficiency and asymptotic performance benefits. 
+%%SL.1.20: More is not better, this should be very focused. Example rephrasing:
+The main contributions of this paper consist of a detailed analysis
+%%SL.4.9: do we do this?
+of the behavior of current reinforcement learning methods with bootstrapping from prior data or demonstrations, as well as a new algorithm that is especially effective in this setting. We demonstrate that our approach can effectively incorporate prior data in both simulated and real-world robotic experiments, and show that we can learn [whatever] using just [whatever] minutes of experience, along with [whatever] demonstrations.
+%%SL.4.9: can you complete the above paragraph?
+
+%%SL.4.9: It would be good to add a teaser figure to the introduction that explains the problem setup and hopefully the main idea of our approach, with some appealing visuals and maybe an illustration of some of our more complex tasks.
+
+% This problem has been known in RL as off-policy learning or batch RL. But prior work has found that batch RL is difficult and generally underperforms online algorithms with the same amount of data \citep{fujimoto19bcq}. Existing algorithms applied naively to this problem often fail, and for intuitive reasons. Model-based RL algorithms that build a model of environment dynamics and plan with that model are natural candidates for this purpose. But the off-policy/batch setting exacerbates the biggest issue with model-based methods: the model is wrong in some areas, and the planning component exploits where the model is wrong. In online settings, the algorithm collects new data and updates the model; in the off-policy setting, the lack of this new data makes learning very unstable. Value-based algorithms such as Q-learning are also naturally off-policy but also suffer from a similar problem.
+
+% Why hasn't it been solved before? (Or, what's wrong with previous proposed solutions? How does mine differ?)
+% A solution to this problem needs to be conservative in its policy updates in order to avoid falling into areas of the state space where it does not have data. Thus, we propose using advantage-weighted regression to update the policy in an actor-critic framework, constraining the policy to output actions close to what exists in the replay buffer.
+
+% What are the key components of my approach and results? Also include any specific limitations.
+% We demonstrate that our algorithm can learn quickly on a wide set of tasks when given demonstrations, including a suite of dexterous manipulation tasks that have thus far been difficult to solve with off-policy methods and a difficult real-world drawer opening task.
+
+
+
+
+
+
+
+% Just as learning from data proved necessary for successful computer vision in diverse, real-world scenarios, autonomous learning from data will be necessary to allow the next generation of robotics. 
+Current machine learning methods have been able to demonstrate impressive results on a range of supervised learning tasks, from image recognition~\citep{krizhevsky2012imagenet} to natural language processing~\citep{vaswani2017transformers}. 
+Across all of these domains, a common formula has been to build large, high-capacity models that can use large amounts of data to generalize effectively to the diversity of real-world data.
+However, this recipe has proven difficult to apply to control for robotics, due to the difficulty of collecting high-quality data.
+While the high-data regime is where deep learning methods shine, prior methods that automatically learn control policies from data have not been successful.
+
+Robotic skill learning from data has been dominated by two paradigms: learning from demonstration (LfD) and reinforcement learning (RL). 
+In LfD, the robot attempts to learn a policy given data from an expert, usually through supervised learning on expert data. 
+LfD can be a fast way to teach robots new skills, but suffers from accumulating errors outside the expert data distribution. 
+On difficult tasks, especially those that require precise policies and are sensitive to control mistakes such as manipulation tasks involving contacts, LfD is very challenging to apply.
+RL methods on the other hand directly optimize the task reward, and therefore learn robust, self-correcting policies even on dynamically complicated, contact-rich tasks.
+The downside of RL is that it requires much more data - often by orders of magnitude more than demonstrations. 
+For these methods to be widely applicable to robotics applications, we must somehow obtain the best of both worlds: methods that can robustly learn control policies for a task with reasonable sample complexity.
+
+Several prior methods have attempted to achieve this by combining the two learning signals of LfD and RL. 
+Common methods to incorporate demonstrations as policy initialization for RL~\citep{peters2010reps, rajeswaran2018dextrous} and auxiliary losses~\citep{hester17dqfd, vecerik17ddpgfd, nair2018demonstrations}.
+But these often ad-hoc ways of incorporating demonstrations does not fully utilize the information that can be gleaned from that data, as we will show in our experiments. 
+In particular, demonstration data is extremely valuable for value estimation, but naively training on demonstration data with policy iteration fails due to function approximation error. 
+Instead, we show that incorporating demonstrations in an off-policy RL framework along with careful design choices result in an elegant and effective algorithm for learning control policies from data.
+
+Our approach, Mimic-Critic, builds off of methods for continuous control via bootstrapped temporal difference learning~\citep{fujimoto2018td3, haarnoja2018sac}. 
+When the critic, which predicts expected future returns of the policy, is uninformative, the algorithm reduces to behavior cloning. 
+But when an informative critic is trained using off-policy policy iteration, Mimic-Critic is able to quickly learn successful policies on difficult dexterous manipulation tasks with high action dimension (28) and binary sparse rewards which no other algorithm we evaluated was able to solve. 
+Compared to existing RL methods that focus on conservatively learning from off-policy data~\citep{peng2019awr, kumar19bear, fujimoto19bcq}, we show that our algorithm is conceptually simpler yet significantly more sample efficient at learning on complex tasks.
+
+We extensively evaluate our algorithm and existing methods on a wide range of tasks. 
+First, we compare the methods on a suite of 3 difficult dexterous manipulations tasks and 3 standard MuJoCo tasks, where we find that our algorithm outperforms the others significantly. 
+To understand the behavior of Mimic-Critic for offline training, we evaluate the algorithm on the D4RL dataset~\citep{fu2020d4rl}, reporting both offline learning performance and fine-tuning performance after a small amount of online experience on a wide variety of tasks.
+We also present a series of didactic experiments on simple grid-world and pointmass environments to examine the difficulty of off-policy training and ablate design choices compared to prior methods.

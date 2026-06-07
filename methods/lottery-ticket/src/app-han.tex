@@ -1,0 +1,52 @@
+\section{Iterative Pruning Strategies}
+
+In this Appendix, we examine two different ways of structuring the iterative pruning strategy that we use
+throughout the main body of the paper to find winning tickets.
+
+\paragraph{Strategy 1: Iterative pruning with resetting.}
+
+\begin{enumerate}
+\item Randomly initialize a neural network $f(x; m \odot \theta)$ where $\theta = \theta_0$ and $m = 1^{|\theta|}$ is a mask.
+\item Train the network for $j$ iterations, reaching parameters $m \odot \theta_j$.
+\item Prune $s\%$ of the parameters, creating an updated mask $m'$ where $P_{m'} = (P_m - s)\%$.
+\item Reset the weights of the remaining portion of the network to their values in $\theta_0$. That is, let $\theta = \theta_0$.
+\item Let $m = m'$ and repeat steps 2 through 4 until a sufficiently pruned network has been obtained.
+\end{enumerate}
+
+\paragraph{Strategy 2: Iterative pruning with continued training.}
+
+\begin{enumerate}
+\item Randomly initialize a neural network $f(x; m \odot \theta)$ where $\theta = \theta_0$ and $m = 1^{|\theta|}$ is a mask.
+\item Train the network for $j$ iterations.
+\item Prune $s\%$ of the parameters, creating an updated mask $m'$ where $P_{m'} = (P_m - s)\%$.
+\item Let $m=m'$ and repeat steps 2 and 3 until a sufficiently pruned network has been obtained.
+\item Reset the weights of the remaining portion of the network to their values in $\theta_0$. That is, let $\theta = \theta_0$.
+\end{enumerate}
+
+The difference between these two strategies is that, after each round of pruning, Strategy 2 retrains using the already-trained weights, whereas Strategy 1
+resets the network weights back to their initial values before retraining. In both cases, after the network has been sufficiently pruned, its weights 
+are reset back to the original initializations.
+
+\begin{figure}
+\centering
+\includegraphics[width=.3\textwidth]{graphs/mnist/lenet/mnist-han/legend}
+\includegraphics[width=.5\textwidth]{graphs/mnist/lenet/mnist-han/iteration}%
+\includegraphics[width=.5\textwidth]{graphs/mnist/lenet/mnist-han/accuracy}
+\caption{The early-stopping iteration and accuracy at early-stopping of the iterative lottery ticket experiment on the Lenet architecture when iteratively
+pruned using the resetting and continued training strategies.}
+\label{fig:mnist-han}
+\end{figure}
+
+\begin{figure}
+\centering
+\includegraphics[width=.8\textwidth]{graphs/mnist/lenet/conv-han/legend}
+\includegraphics[width=.5\textwidth]{graphs/mnist/lenet/conv-han/iteration}%
+\includegraphics[width=.5\textwidth]{graphs/mnist/lenet/conv-han/accuracy}
+\caption{The early-stopping iteration and accuracy at early-stopping of the iterative lottery ticket experiment on the Conv-2, Conv-4, and Conv-6 architectures when iteratively
+pruned using the resetting and continued training strategies.}
+\label{fig:conv-han}
+\end{figure}
+
+Figures \ref{fig:mnist-han}  and \ref{fig:conv-han} compare the two strategies on the Lenet and Conv-2/4/6 architectures on the hyperparameters we select in
+Appendices \ref{app:mnist} and \ref{app:conv}. In all cases, the Strategy 1 maintains higher validation accuracy and faster early-stopping times to smaller network
+sizes.

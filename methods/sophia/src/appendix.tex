@@ -1,0 +1,408 @@
+
+\newpage
+\section{Additional Experiment Results}\label{sec:add_result}
+
+
+\textbf{Dynamics of \ours~in training.} We measure the $\ell_2$ norm of the EMA of the diagonal Hessian $h_t$, and the proportion of parameters where clipping happens (that is, $|m_t[i]/\max\{\gamma h_t[i], \epsilon\}|$ is larger than 1) during pre-training in Figure~\ref{fig:dynamics}. After the initial stage, the norm of the Hessian steadily grows. The proportion of parameters where clipping happens approaches 60$\%$, which corroborates the importance of per-coordinate clipping in the algorithm. We also note that the clipping proportion generally should be between 50\% and 90\% for Sophia to be effective, and the users are recommended to tune $\gamma$ to achieve some a clipping proportion (See Section~\ref{sec:exp_setup} for details). 
+
+\begin{figure}[h]
+\begin{center}
+\includegraphics[width=0.325\textwidth]{figures/large_100k_clip.pdf}
+\includegraphics[width=0.33\textwidth]{figures/large_100k_norm.pdf}
+%\vspace{-10pt}
+\caption{Visualization of training statistics. (a) The proportion of parameters whose update is clipped. (b) $\ell_2$ norm of the EMA of Hessian $h_t$. \label{fig:dynamics} 
+}
+%\vspace{-20pt}
+\end{center}
+\end{figure}
+
+\textbf{Results with different number of steps.} Runs with different number of steps and their comparison are provided in Figure~\ref{fig:add_res}. Across different choices of the total number of steps, Sophia outperforms AdamW and Lion with a large margin as the main experiments we presented in Section~\ref{sec:results}.
+
+\begin{figure}[h]
+\begin{center}
+\includegraphics[width=0.452\textwidth]{figures/small_2x_200k_full.pdf}
+\includegraphics[width=0.33\textwidth]{figures/medium_2x_100k_new_new.pdf}
+%\vspace{-10pt}
+\caption{Results of training for different steps. \label{fig:add_res} 
+}
+%\vspace{-20pt}
+\end{center}
+\end{figure}
+
+\section{Additional Experiment Details}\label{sec:add_detail}
+\subsection{Hyperparamter Tuning}\label{sec:hyper_param}
+The hyperparameters we consider for baselines are as follows: peak learning rate, $\beta_1$, $\beta_2$ and weight decay. All hyperparameters except the peak learning rate are tuned with grid search on a 30M GPT-2 trained for 50K steps. The peak learning rate is tuned on models of different sizes with grid search separately. We search $\beta_1$ in $[0.8,0.9, 0.95, 0.96, 0.99]$ and $\beta_2$ in $[0.9,0.95,0.98,0.99,0.995]$. Weight decay is chosen from $0.05, 0.1,0.2,0.5$. For Lion, we also include $\beta_1 = 0.95, \beta_2=0.98$ as suggested by~\citet{chen2023symbolic}. On 30M models, we found AdamW is sensitive to the choice of $\beta_1$ but not $\beta_2$. $\beta_1=0.9$ works the best for AdamW while $\beta_1=0.95$ works the best for Lion. We use $\beta_2=0.95$ for AdamW since this is the dominantly used configuration in the LLM pre-training literature, and $\beta_2=0.98$ for Lion as it is recommended by~\citet{chen2023symbolic}. We found that weight decay 0.1 works the best for AdamW, while 0.2 works the best for Lion and Sophia. 
+
+For peak learning rate on 125M and 355M, we perform a grid search. For larger models, we search for the largest possible learning rate with which training does not blow up for each model in the following list: [6e-4, 4e-4, 3e-4, 2e-4, 1.5e-4, 1.2e-4, 1e-4, 8e-5, 6e-5, 4e-5]. For example, a 6.6B GPT NeoX model work with 1.2e-4 peak learning rate, but the loss will blow up if we increase the learning rate to 1.5e-4 as shown in Figure~\ref{fig:66b}. The result of grid search of peak learning rate is provided in Table~\ref{table3}. We provide additional fine-grained tuning of peak learning rate of the 355M GPT-2 and 1.5B GPT Neo-X in Figure~\ref{fig:66b}. Concretely, we tried 3.6e-4, 4.2e-4, 4.5e-4 and 4.8e-4 for the 355M model, 1.8e-4 for the 1.5B GPT Neo-X. Results indicate that the learning rate choices in Table~\ref{table3} is indeed the optimal for all the values we have tried.
+
+We use $\beta_1=0.96$, $\beta_2=0.99$, $\epsilon =$1e-12 and $k=10$ for Sophia. We adopt the following procedure to obtain these hyper parameters. We first fix $\gamma = 0.01$, $k=10$, and tune $\beta_1$ and $\beta_2$ with grid search on a 30M model, and directly use $\beta_1$ and $\beta_2$ from the 30M model on models of larger sizes. Similar to AdamW, we find that Sophia is not sensitive to $\beta_2$. We then fix $\beta_1=0.96$, $\beta_2=0.99$ and tuning $k=10$. As shown in in Figure \ref{fig:ablation} (a), $k=10$ is better than $k=1$ or $k=100$ in terms of the balance between convergence speed and the computation overhead.
+
+After finding out $\beta_1=0.96$, $\beta_2=0.99$, $\epsilon =1e-12$ and $k=10$ with the method above, we tune $\gamma$ and peak learning rate jointly. We first tune $\gamma$ to make the proportion of coordinates where the update is not clipped (i.e., $|m_t / \max\{\gamma \cdot h_t,\epsilon\}| < 1$) in the range of $10\%-50\%$. We search for $\gamma$ in the list of [0.005,0.01,0.02,0.05,0.1,0.2]. As a result we find out $\gamma = 0.01$ works the best for Sophia-H while $\gamma = 0.05$ works the best for Sophia-G. We then fix $\beta_1, \beta_2=0.99, \epsilon, \gamma, k$ for all larger models. 
+
+To tune the peak learning rate, we adopt the same procedure as we use for baseline methods. The result of grid search of peak learning rate is also provided in Table~\ref{table3}. 
+\begin{table}
+\vspace{-20pt}
+	\centering
+	%\vspace{-18pt}
+	\caption{\small Model Configurations and Peak Learning Rate.}
+	\label{table3}
+	\begin{small}
+ \addtolength{\tabcolsep}{-3pt} 
+	\begin{tabular}{l|c|c|c|c|c|c|c|c}
+	\toprule
+	Acronym & Size & d$\_$model & n$\_$head & depth & AdamW lr & Lion lr & Sophia-H lr & Sophia-G lr\\
+	\midrule
+-- & 30M & 384 & 6 & 6 & 1.2e-3 & 4e-4 & 1e-3 & 1e-3 \\
+Small & 125M & 768 & 12 & 12 & 6e-4 & 1.5e-4 & 6e-4 & 6e-4\\
+Medium & 355M & 1024 & 16 & 24 & 3e-4 & 6e-5 & 4e-4 & 4e-4\\
+-- & 540M & 1152 & 18 & 30 & 3e-4 & -- & 4e-4 & 4e-4\\
+Large & 770M & 1280 & 20 & 36 & 2e-4 & -- & 3e-4 & 3e-4\\
+NeoX 1.5B & 1.5B & 1536 & 24 & 48 & 1.5e-4 & -- & -- & 1.2e-4\\
+NeoX 6.6B & 6.6B & 4096 & 32 & 32 & 1.2e-4 & -- & -- & 6e-5\\
+ \bottomrule
+	\end{tabular}
+	\end{small}
+	\vspace{-5pt}
+\end{table}
+
+\subsection{Model and Implementation Details}\label{sec:imp_detail}
+We consider three sizes of GPT-2 corresponding to small, medium, and large in~\citet{radford2019language}. We also introduce a 30M model for efficient hyperparameter grid search and a 540M model for scaling law visualization. We provide the model specifications in Table~\ref{table3}. We use the nanoGPT (\url{https://github.com/karpathy/nanoGPT/}) code base. Following nanoGPT, we use GELU activations and disable bias and Dropout~\cite{srivastava2014dropout} during pre-training.  
+
+GPT-2 models are trained on OpenWebText~\citep{Gokaslan2019OpenWeb}. The text is tokenized with the GPT-2 tokenizer~\citep{radford2019language}. We use the train and validation split from nanoGPT. The training set contains 9B tokens, and the validation set contains 4.4M tokens.
+
+We use distributed data parallel with gradient accumulation to enable a batch size of 480. All models are trained with bfloat16. The 125M and 355M models are trained on machines with 10 A5000 GPUs, while the 770M models are trained on an AWS p4d.24xlarge instance with 8 A100 GPUs. 
+
+We consider 1.5B and 6.6B GPT NeoX~\citep{black2022gpt} models trained on the Pile~\citep{gao2022pile}. The models use GPT NeoX tokenizers. We use levanter (\url{https://github.com/stanford-crfm/levanter/tree/main}) for GPT NeoX. We use fully sharded data parallel with gradient accumulation to enable a batch size of 512 for the 1.5B model and 1024 for the 6.6B model. These models are trained on a TPU v3-128 slice.
+
+We observed AdamW and Lion does not perform well on standard transformers which are larger than 355M. The iterates become unstable when the learning rate is close to the choice of~\citet{radford2019language}. We introduce scaling attention by the inverse of layer index to address this issue following~\citet{mistral,wolf-etal-2020-transformers}. Note that Sophia does not need this trick as mentioned in Section~\ref{sec:analysis}.
+
+
+
+\subsection{Downtream Evaluation}\label{sec:eval}
+We perform few-shot evaluation of the models on 4 subtasks of SuperGLUE. We use 2-shot prompting and greedy decoding. The prompt consists of an instruction followed by two examples. The examples are sampled from the train split while we report the accuracy on validation split averaged over 5 selection of exemplars. Prompts for each subtask are illustrated in Figure~\ref{fig:prompts}.
+
+\begin{figure}[t]
+\begin{center}
+\includegraphics[width=1.0\textwidth]{figures/prompts_superglue.pdf}
+\caption{\small{Prompts for SuperGLUE downstream evaluation. \label{fig:prompts}}
+}
+\vspace{-20pt}
+\end{center}
+\end{figure}
+
+\begin{figure}[h]
+\begin{center}
+\includegraphics[width=0.252\textwidth]{figures/medium_100k_2024_tune.pdf}
+\includegraphics[width=0.252\textwidth]{figures/1.5B_200k_2024_tune.pdf}
+\includegraphics[width=0.302\textwidth]{figures/7B_200k_0923_bl.pdf}
+%\vspace{-10pt}
+\caption{Results peak learning rate tuning. \label{fig:66b} 
+}
+%\vspace{-20pt}
+\end{center}
+\end{figure}
+
+\newpage
+
+
+\section{Limitations}
+\textbf{Scaling up to larger models and datasets.} Although \ours~demonstrates scalability up to 6.6B-parameter models, and there is no essential constraints from further scaling up, we do not compare with AdamW and Lion on larger models due to limited resources. We believe \ours~is faster than AdamW and Lion on larger models given the improvement in scaling laws and better pre-training stability.
+
+
+
+\textbf{Holistic downstream evaluation.} We evaluate pre-trained checkpoints on the pre-training validation losses and only four SuperGLUE subtasks.
+The limited evaluation in downstream evaluation is partly due to the limited model size, because language models at this scale do not have enough capabilities such as in-context learning, and mathematical reasoning.
+
+\textbf{Evaluation on other domains.} While this paper focuses on optimizers for large language modeling, a more general optimizer should also be evaluated in other domains such as computer vision,  reinforcement learning, and multimodal tasks. Due to the limitation of computation resources, we leave the application to other domains and models to future works. 
+
+\section{Theoretical Analyses: Details of Section~\ref{sec:theoretical_analysis}\label{sec:proofs}}
+
+
+
+
+\Cref{thm:convex_main} is  a direct combination of the \Cref{lem:descent_lemma} (Descent Lemma), \Cref{lem:small_decrement_imply_small_loss} and \Cref{lem:2nd_phase_convex}. In the analysis, there will be two phases. In the first phase decrease loss to $\frac{\mu\rho^2}{8}$ in $8\frac{ L(\theta(0))-\min L}{\eta\mu\rho^2}$ steps. In the second phase, there will be an exponential decay of error. 
+
+
+
+\begin{lemma}\label{lem:strictly_convex_loss}
+	Under \Cref{assum:existence_local_minimizer_w_hessian_pd}, we have that  $L(\theta)\to \infty$ whenever $\|\theta\|_2\to\infty$.
+\end{lemma}
+\begin{proof}[Proof of \Cref{lem:strictly_convex_loss}]
+By convexity of $L$, we have $\forall \theta\in\R^d$ with $\norm{\theta-\theta^*}_2\ge 1$,
+\begin{align}
+	\frac{1}{\norm{\theta-\theta^*}_2}L(\theta) + \frac{\norm{\theta-\theta^*}_2 - 1}{\norm{\theta-\theta^*}_2}L(\theta^*) \ge L(\theta^* + \frac{\theta - \theta^*}{\norm{\theta - \theta^*}_2}) \ge \min_{\norm{\bar\theta}_2 =1  } L(\theta^* +\bar\theta).
+\end{align} 
+
+Since $L$ is strictly convex, $\Delta \triangleq \min_{\norm{\bar\theta}_2 =1  } L(\theta^* +\bar\theta) - L(\theta^*)>0$. Thus we conclude that 
+\begin{align}
+	L(\theta) \ge \norm{\theta-\theta^*}_2\Delta + L(\theta^*)\ge 	(\norm{\theta}_2 - \norm{\theta^*}_2) \Delta + L(\theta^*).
+\end{align}
+Therefore when $\norm{\theta}_2\to \infty$, $L(\theta)\to\infty$ as well.
+\end{proof}
+
+Note that we don't assume the Hessian of loss is Lipschitz. \Cref{assum:hessian_multiplicative_lipschitz} only assumes the Hessian in a neighborhood of constant radius only differs by a constant in the multiplicative sense. 
+\begin{lemma}\label{lem:small_loss_imply_small_distance}
+For any $\theta\in\R^d$ satisfying $L(\theta)-\min L\le \frac{\mu R^2}{4}$, it holds that $\norm{\theta-\theta^*}_2\le 2\sqrt{\frac{L(\theta) - \min L}{\mu}}\le R$.
+\end{lemma}
+
+\begin{proof}[Proof of \Cref{lem:small_loss_imply_small_distance}]
+	We will prove by contradiction. Suppose there exists such $\theta$ with $L(\theta)\le \frac{\mu R^2}{4}$ but $\norm{\theta-\theta^*}_2> 2\sqrt{\frac{L(\theta)-\min L}{\mu}}$. We consider $\theta'\triangleq \theta^* + \sqrt{\frac{2L(\theta)}{\mu}}\cdot \frac{\theta-\theta^*}{\norm{\theta-\theta^*}_2}$. Since $\theta'$ is between $\theta$ and $\theta^*$ and that $L$ is strictly convex, we know that $L(\theta')<L(\theta)$. However, by Taylor expansion on function $f(t)\triangleq L(\theta^* + t(\theta'-\theta^*))$, we have that 
+	\begin{align}
+	f(1) = f(0)+f'(0)+ \frac{f''(t) 	}{2}, \quad \text{for some $t\in[0,1]$.}
+	\end{align}
+Note that $\norm{\theta' - \theta^*}_2\le \norm{\theta - \theta^*}_2 \le R$, by  \Cref{assum:hessian_multiplicative_lipschitz} and \Cref{assum:existence_local_minimizer_w_hessian_pd},
+ we have $f''(t)  = (\theta'-\theta^*)^\top \nabla^2 L(t\theta' +(1-t) \theta^*)(\theta'-\theta^*) \ge \frac{1}{2}(\theta'-\theta^*)^\top \nabla^2 L(\theta^*)(\theta'-\theta^*) \ge \frac{\mu}{2} \norm{\theta'-\theta^*}_2^2 =  2(L(\theta)-\min L))$.
+  Also note that $f(1) = L(\theta'), f(0)=L(\theta^*)$ and $ f'(0)=0$, we conclude that $L(\theta')-L(\theta^*) \ge L(\theta) - L(\theta^*)$, namely $(\theta')\ge L(\theta)$. Contradiction! 
+\end{proof}
+
+\begin{lemma}\label{lem:small_gradient_imply_small_loss}
+	For any $\theta\in\R^d$ satisfying that $\norm{\nabla L(\theta)}_2\le \frac{R\mu}{2}$, it holds that $\norm{\theta-\theta^*}_2\le \frac{2\norm{\nabla L(\theta)}}{\mu}\le R$.
+\end{lemma}
+
+\begin{proof}[Proof of \Cref{lem:small_gradient_imply_small_loss}]
+	We will prove by contradiction. We consider function $f(t)\triangleq \inner{\frac{\theta-\theta^*}{\norm{\theta-\theta^*}_2}}{\nabla L(\theta^*+ t\cdot \frac{\theta-\theta^*}{\norm{\theta-\theta^*}_2})}$. Because of the strict convexity of $L$, $f$ is a strict monotone increasing function. If $\norm{\theta-\theta^*}> \frac{2\norm{\nabla L(\theta)}}{\mu}$ but $\norm{\nabla L(\theta)}_2\le \frac{R\mu}{2}$, then we have $f(R)<f(\norm{\theta-\theta^*}_2)\le \norm{\nabla L(\theta)}_2 $. On the other hand, by \Cref{assum:hessian_multiplicative_lipschitz} and \Cref{assum:existence_local_minimizer_w_hessian_pd}, $f'(t)\ge \frac{\mu}{2}$ for $t\in[0,R]$. Thus $f(R)\ge f(0) + \int_{t=0}^{ \frac{2\norm{\nabla L(\theta)}}{\mu}} f'(t)\diff t =  \norm{\nabla L(\theta)} $. Contradiction! 
+\end{proof}
+
+
+\begin{lemma}\label{lem:soln_existence_mirror_ode}
+	For any $\theta\in\R^d$, the following differential equation has at least one solution on interval $[0,1]$:
+	\begin{align}\label{eq:mirror_ode}
+		\frac{\diff \theta(t)}{\diff t} = - (\nabla^2 L(\theta(t)))^{-1} \nabla L(\theta), \quad \theta(0)=\theta,
+	\end{align}
+	and the solution satisfies that $\nabla L(\theta(t)) = (1-t)\nabla L(\theta)$ for all $t\in[0,1]$ and $\theta(0)=\theta^*$.
+\end{lemma}
+\begin{proof}[Proof of \Cref{lem:soln_existence_mirror_ode}]
+	Since $\nabla^2 L$ is continuous and positive definite by \Cref{assum:existence_local_minimizer_w_hessian_pd} , $(\nabla^2 L)^{-1}$ is continuous and thus the above ODE~\eqref{eq:mirror_ode} has a solution over interval $[0,T)$ for some positive $T$ and we let $T_{\max}$ be the largest positive number such that the solution exists (or $T_{\max}=\infty$). Now we claim $T_{\max}\ge 1$, otherwise $\norm{\theta(t)-\theta^*}_2$ must diverge to infinity when $t\to T_{\max}$. However, for any $t\le 1$, we have 
+	\begin{align}
+	\frac{\diff \nabla L(\theta(t))}{\diff t} = -  \nabla L(\theta),
+	\end{align}
+	which implies that $\nabla L(\theta(t)) = (1-t)\nabla L(\theta)$ for all $t\in[0,1]$. Therefore,
+	\begin{align}
+	\frac{\diff L(\theta(t))}{\diff t} = - 	(\nabla L(\theta(t)))^\top (\nabla^2 L(\theta(t)))^{-1} \nabla L(\theta) =(1-t)	(\nabla L(\theta))^\top (\nabla^2 L(\theta(t)))^{-1} \nabla L(\theta)\le 0.
+	\end{align}
+	Thus $L(\theta(t))\le L(\theta(0))$. By \Cref{lem:strictly_convex_loss}, we know that $\|\theta(t)\|$ remains bounded for all $t\in[0,T_{\max}]$, thus $T_{\max}\ge 1$. Note that  $\theta(1)$ has zero gradient, $\theta(1)$ must be $\theta^*$. This completes the proof. 
+\end{proof}
+
+
+\begin{lemma}\label{lem:small_loss_or_gradient_imply_loss_approx}
+For any $\theta\in\R^d$ satisfying (1) $L(\theta)-\min L\le \frac{\mu R^2}{16}$ or (2) $\norm{\nabla L (\theta)}_2 \le \frac{R\mu}{4}$, it holds that \begin{align}
+L(\theta) - \min L	\le \nabla L(\theta)^\top (\nabla^2 L(\theta))^{-1}\nabla L(\theta) \le  4(L(\theta) - \min L).
+ \end{align}
+\end{lemma}
+
+
+\begin{proof}[Proof of \Cref{lem:small_loss_or_gradient_imply_loss_approx}]
+
+Let $\{\theta(t)\}_{t=0}^1$ be the solution of \Cref{eq:mirror_ode}.
+We know that $\nabla L(\theta(t)) = (1-t)\nabla L(\theta)$ for all $t\in[0,1]$  and that $\theta(1) = \theta^*$  by \Cref{lem:soln_existence_mirror_ode}.
+ For case (1), by \Cref{lem:small_loss_imply_small_distance}, we know that for any $t\in[0,1]$, $\norm{\theta(t)-\theta^*}_2\le R/2$. 
+ For case (2), by \Cref{lem:small_gradient_imply_small_loss}, we know that for any $t\in[0,1]$, $\norm{\theta(t)-\theta^*}_2\le R/2$. Thus in both two cases, $\norm{\theta(t)-\theta}_2=\norm{\theta(t)-\theta(0)}_2=\le \norm{\theta(t)-\theta^*} + \norm{\theta(0)-\theta^*}\le R$. By~\Cref{assum:hessian_multiplicative_lipschitz}, it holds that 
+\begin{align}\label{eq:small_loss_hessian_sanwidch}
+	2(\nabla^2 L(\theta))^{-1} \succeq (\nabla^2 L(\theta(t)))^{-1}\succeq \frac{1}{2}(\nabla^2 L(\theta))^{-1}.
+\end{align}
+for all $t\in[0,1]$. Therefore, we have that 
+\begin{align}\label{eq:small_loss_loss_integral}
+L(\theta) - \min L = L(\theta(0))-L(\theta(1)) 
+=&\int_{t=0}^1  	(\nabla L(\theta(t)))^\top (\nabla^2 L(\theta(t)))^{-1} \nabla L(\theta)\notag\\
+=&\int_{t=0}^1 	(1-t)	(\nabla L(\theta))^\top (\nabla^2 L(\theta(t)))^{-1} \nabla L(\theta).
+\end{align}
+The proof is completed by plugging \Cref{eq:small_loss_hessian_sanwidch} into \Cref{eq:small_loss_loss_integral} and noting that $\int_{t=0}^1(1-t) = 1/2$.
+\end{proof}
+
+\begin{lemma}\label{lem:small_loss_or_gradient_imply_PL}
+For any $\theta\in\R^d$ satisfying (1) $L(\theta)-\min L\le \frac{\mu R^2}{4}$ or (2) $\norm{\nabla L (\theta)}_2 \le \frac{R\mu}{2}$, it holds that \begin{align}
+L(\theta) - \min L	\le \mu^{-1}\norm{\nabla L(\theta)}_2^2  \end{align}
+\end{lemma}
+\begin{proof}[Proof of \Cref{lem:small_loss_or_gradient_imply_PL}]
+	The proof of \Cref{lem:small_loss_or_gradient_imply_PL} is almost the same as that of \Cref{lem:small_loss_or_gradient_imply_loss_approx} and thus omitted.
+\end{proof}
+
+
+\begin{lemma}\label{lem:small_loss_imply_no_clipping}
+	For any $\theta\in\R^d$ satisfying $L(\theta)-\min L\le \frac{\mu R^2}{16}$, it holds that \begin{align}
+ \norm{(\nabla^2 L(\theta))^{-1}\nabla L(\theta)}_2 \le \sqrt{\frac{8(L(\theta) - \min L)}{\mu}}.
+ \end{align}
+
+\end{lemma}
+\begin{proof}[Proof of \Cref{lem:small_loss_imply_no_clipping}]
+	By \Cref{lem:small_loss_imply_small_distance}, we have that $\norm{\theta-\theta^*}_2\le R$. By \Cref{assum:hessian_multiplicative_lipschitz}, we have $\nabla^2 L(\theta)\succeq \frac{1}{2}\nabla^2 L(\theta^*) \succeq \frac{\mu}{2} I_d$. 
+	By \Cref{lem:small_loss_or_gradient_imply_loss_approx}, we have that 
+	\begin{align}
+	4(L(\theta) - \min L) \ge &	\nabla L(\theta)^\top (\nabla^2 L(\theta))^{-1}\nabla L(\theta)\\
+	\ge &\nabla L(\theta)^\top (\nabla^2 L(\theta))^{-1} \nabla^2 L(\theta)(\nabla^2 L(\theta))^{-1}\nabla L(\theta)\\
+	\ge & \frac{\mu}{2}\norm{\nabla L(\theta)^\top (\nabla^2 L(\theta))^{-1}}_2^2.
+		\end{align}
+This completes the proof.
+\end{proof}
+
+
+\begin{lemma}\label{lem:no_clipping_imply_loss_approximation}
+	For any $\theta\in\R^d$ satisfying that $\norm{((\nabla^2 L(\theta))^{-1}\nabla L(\theta)}_2\le \frac{R}{2}$, it holds that 
+	\begin{align}
+L(\theta) - \min L	\le \nabla L(\theta)^\top (\nabla^2 L(\theta))^{-1}\nabla L(\theta) \le  4(L(\theta) - \min L).
+ \end{align}
+\end{lemma}
+\begin{proof}[Proof of \Cref{lem:no_clipping_imply_loss_approximation}]
+	Let $\{\theta(t)\}_{t=0}^1$ be the solution of \Cref{eq:mirror_ode} and we claim that for all $t\in[0,1]$, $\norm{\theta(t) -\theta}_2\le R$. Otherwise, let $T$ be the smallest positive number such that $\norm{\theta(T) -\theta}_2=R$. Such $T$ exists because $\norm{\theta(t) -\theta}_2$ is continuous in $t$ and $\norm{\theta(0) -\theta}_2=0$. We have that 
+	\begin{align}
+	R=&\norm{\theta(T)-\theta(0)}_2 \le \int_{t=0}^T \norm{\frac{\diff \theta(t)}{\diff t}}_2\diff t \\
+	=&\int_{t=0}^T \norm{((\nabla^2 L(\theta(t)))^{-1}\nabla L(\theta)}_2\diff t 	\\
+	\le &  \int_{t=0}^T \norm{(\nabla^2 L(\theta(t)))^{-1} \nabla^2 L(\theta)}_2\norm{((\nabla^2 L(\theta))^{-1}\nabla L(\theta)}_2\diff t 	 \\
+	\le & 2 \int_{t=0}^T \norm{((\nabla^2 L(\theta))^{-1}\nabla L(\theta)}_2\diff t 	\label{eq:local_1} \\
+	\le &2 T\frac{R}{2} =RT,
+	\end{align}
+which implies $T=1$. Here in \Cref{eq:local_1}, we use \Cref{assum:hessian_multiplicative_lipschitz}. Thus we conclude that for all $t\in[0,1]$, $\norm{\theta(t) -\theta}_2\le R$.  By~\Cref{assum:hessian_multiplicative_lipschitz}, it holds that 
+\begin{align}\label{eq:no_clipping_hessian_sanwidch}
+	2(\nabla^2 L(\theta))^{-1} \succeq (\nabla^2 L(\theta(t)))^{-1}\succeq \frac{1}{2}(\nabla^2 L(\theta))^{-1}.
+\end{align}
+
+ Therefore, we have that 
+\begin{align}\label{eq:no_clipping_loss_integral}
+L(\theta) - \min L = L(\theta(0))-L(\theta(1)) 
+=&\int_{t=0}^1  	(\nabla L(\theta(t)))^\top (\nabla^2 L(\theta(t)))^{-1} \nabla L(\theta)\notag\\
+=&\int_{t=0}^1 	(1-t)	(\nabla L(\theta))^\top (\nabla^2 L(\theta(t)))^{-1} \nabla L(\theta).
+\end{align}
+The proof is completed by plugging \Cref{eq:no_clipping_hessian_sanwidch} into \Cref{eq:no_clipping_loss_integral} and noting that $\int_{t=0}^1(1-t) = 1/2$.
+\end{proof}
+
+
+
+
+\begin{lemma}\label{lem:small_decrement_imply_small_loss}
+	If $\rho \le \frac{R}{2\sqrt{d}}$, then for any $\Delta\le \frac{R\rho\mu}{10}$  and any $\theta\in\R^d$ satisfying
+	 \begin{align}
+\sum_{i=1}^d \min\{ \rho \abs{v_i^\top \nabla L(\theta)}, \sigma_i^{-1}\abs{v_i^\top \nabla L(\theta)}^2\} \le  \Delta,
+	 \end{align}
+ where $\nabla^2  L(\theta) = V^\top \Sigma V$	  is the eigendecomposition of $\nabla ^2 L(\theta)$, $v_i$ is the $i$th row of $V$ and $\Sigma = \diag(\sigma_1,\ldots,\sigma_d)$, it holds that 
+ \begin{align}
+     L(\theta) -\min L\le \Delta+ \frac{25\Delta^2}{\rho^2\mu}
+ \end{align}
+ 
+ In particular, if we set $\Delta\triangleq \frac{\mu\rho^2}{20}$, we have $L(\theta) -\min L\le \frac{\mu\rho^2}{8}$.
+\end{lemma}
+
+\begin{proof}[Proof of \Cref{lem:small_decrement_imply_small_loss}]
+	Let $I_\theta\triangleq \{i\in[d]\mid \abs{v_i^\top \nabla L(\theta)}\sigma_i^{-1} \le \rho \}$ be the set of indices where clipping does not happen. Then we have that 
+	\begin{align}
+		\sum_{i\in I_\theta}  \sigma_i^{-1}\abs{v_i^\top \nabla L(\theta)}^2\le \Delta\\
+		\sum_{i\notin I_\theta}  \rho \abs{v_i^\top \nabla L(\theta)}\le \Delta
+	\end{align}
+Now we consider a new strictly convex loss function in $R^{|I_\theta|}$, which is $L$ restricted on the space of $\{\theta + \sum_{i\in I_\theta} w_{[i]}v_i\mid w\in\R^{|I_\theta|}\}$, that is, $ L_\theta(w) = L(\theta+ \sum_{i\in I_\theta}w_{[i]}v_i)$. This new loss function ${L_\theta}$ clearly satisfy \Cref{assum:hessian_multiplicative_lipschitz} since it is a restriction of $L$ into some subspace of $\R^d$. By  \Cref{lem:strictly_convex_loss}, we know that $\inf_w L_\theta(w)$ can be attained and we denote it by $w^*$. By \Cref{assum:existence_local_minimizer_w_hessian_pd}, we know that $L_\theta$ is strictly convex and thus $\nabla^2 L_\theta(w)\succ 0$, which means \Cref{assum:existence_local_minimizer_w_hessian_pd} also holds for $L_\theta$. 
+
+Next we will apply \Cref{lem:no_clipping_imply_loss_approximation} on $L_\theta$ at $w=0$. We  use $V_{I_\theta}\in\R^{|I|\times d}$ to denote the submatrix of $V$ containing rows in $I$ for any $I\subset [d]$. One can verify by chain rule that $\nabla L_\theta(w) = V_{I_\theta} \nabla L(\theta + V_{I_\theta}^\top w)$ and that $\nabla^2 L_\theta(w) = V_{I_\theta} \nabla^2 L(\theta + V_{I_\theta}^\top w) V_{I_\theta}^\top$. Thus we have that 
+\begin{align}
+(\nabla^2 L_\theta(0)	)^{-1}\nabla L_\theta(0) = V_{I_\theta}(\nabla^2L(\theta))^{-1}\nabla L(\theta).
+\end{align}
+By the definition of $I_\theta$, we know that $\norm{V_{I_\theta}(\nabla^2L(\theta))^{-1}\nabla L(\theta)}\infty\le \rho$.  Thus $\norm{(\nabla^2 L_\theta(0)	)^{-1}\nabla L_\theta(0)}_2 \le \sqrt{d} \norm{V_{I_\theta}(\nabla^2L(\theta))^{-1}\nabla L(\theta)}_\infty = \sqrt{d}\cdot \rho \le \frac{R}{2}$. Thus we can apply \Cref{lem:no_clipping_imply_loss_approximation} on $L_\theta$ at $w=0$ and conclude that 
+\begin{align}\label{eq:intermediate_loss_approx}
+%	L(\theta+ V_{I_\theta}^\top w^*) -L(\theta) = 
+	L_\theta(0)-  L_\theta(w^*) 
+	\le \nabla L_\theta(0)^\top (\nabla^2 L_\theta(0))^{-1}\nabla L_\theta(0)
+	=  \sum_{i\in I_\theta}  \sigma_i^{-1}\abs{v_i^\top \nabla L(\theta)}^2
+	\le  \Delta 
+\end{align}
+Thus $L(\theta) - L(\theta+ V_{I_\theta}^\top w^*)   = L_\theta(0)- L_\theta(w^*)\le \Delta $.
+
+It remains to show that $L(\theta+ V_{I_\theta}^\top w^*)-L(\theta^*)\le \frac{25\Delta^2}{\rho^2\mu}$. To do so, our strategy is to first show that $\norm{\nabla L(\theta+V_{I_\theta}^\top w^*)}_2$ is small and then to use \Cref{lem:small_loss_or_gradient_imply_PL}. We will use $I_\theta^c$ to denote the complement of $I_\theta$ in $[d]$ and $V_{I_\theta^c}\in\R^{(d-|I_\theta|)\times d}$ to denote the submatrix of $V$ which contains all the rows that do not belong to $I_\theta$. Note that $w^*$ is the minimizer of $L_\theta$, we know that $V_{I_\theta} \nabla L(\theta+V_{I_\theta}^\top w^*) = 0$ and that $\norm{\nabla L(\theta+V_{I_\theta}^\top w^*)}_2 = \norm{V_{I_\theta^c}\nabla L(\theta+V_{I_\theta}^\top w^*)}_2$. 
+
+Now we consider the following ODE 
+	\begin{align}\label{eq:mirror_ode}
+		\frac{\diff w(t)}{\diff t} = - (\nabla^2 L_\theta(w(t)))^{-1} \nabla L_\theta(0), \quad w(0)=0.
+	\end{align}
+By \Cref{lem:soln_existence_mirror_ode}, we know this ODE has solution $w(t)$ over interval $[0,1]$ with $w(1) = w^*$. With the same argument in the proof of \Cref{lem:no_clipping_imply_loss_approximation}, we know that $\norm{w(t)}_2\le R$ for all $t\in[0,1]$. Thus we have for any $t\in[0,1]$,
+\begin{align}\label{eq:gradient_increasing_speed}
+	&\norm{V_{I_\theta^c}\frac{\diff \nabla L(\theta+ V_{I_\theta} w(t))}{\diff t}}_2 \\\
+	= &\norm{V_{I_\theta^c}  \nabla^2 L(\theta+ V_{I_\theta} w(t))V_{I_\theta}(\nabla^2 L_\theta(w(t)))^{-1} \nabla L_\theta(0)}_2 \\
+	= &  \norm{V_{I_\theta^c}  \nabla^2 L(\theta+ V_{I_\theta} w(t))V_{I_\theta}V_{I_\theta}^\top(\nabla^2 L(\theta+ V_{I_\theta} w(t)))^{-1} \nabla L(\theta)}_2\\
+	\le & \norm{V_{I_\theta^c}  \sqrt{\nabla^2 L(\theta+ V_{I_\theta} w(t))}}_F \label{eq:term1}\\
+	\cdot & \norm{\sqrt{\nabla^2 L(\theta+ V_{I_\theta} w(t))}V_{I_\theta}V_{I_\theta}^\top(\nabla^2 L(\theta+ V_{I_\theta} w(t)))^{-1} \nabla L(\theta) }_2\label{eq:term2}
+	\end{align}
+	
+For the first term (\Cref{eq:term1}), by \Cref{assum:hessian_multiplicative_lipschitz}, we have that 
+\begin{align}
+\norm{V_{I_\theta^c}  \sqrt{\nabla^2 L(\theta+ V_{I_\theta} w(t))}}_F ^2 \le 2V_{I_\theta^c} \nabla^2 L(\theta) V_{I_\theta^c} = 2\sum_{i\notin I_\theta} \sigma_i \le 2\sum_{i\notin I_\theta} \frac{v_i^\top\nabla L(\theta)}{\rho}\le \frac{2\Delta}{\rho^2}.
+\end{align}
+
+For the second term (\Cref{eq:term2}), by \Cref{assum:hessian_multiplicative_lipschitz}, we have that 
+\begin{align}
+&\norm{\sqrt{\nabla^2 L(\theta+ V_{I_\theta} w(t))}V_{I_\theta}V_{I_\theta}^\top(\nabla^2 L(\theta+ V_{I_\theta} w(t)))^{-1} \nabla L(\theta) }_2^2 \\
+\le &8 \norm{\sqrt{\nabla^2 L(\theta)}V_{I_\theta}V_{I_\theta}^\top(\nabla^2 L(\theta))^{-1} \nabla L(\theta) }_2^2\\
+= &8 \nabla L(\theta) ^\top V_{I_\theta}V_{I_\theta}^\top(\nabla^2 L(\theta))^{-1} V_{I_\theta}V_{I_\theta}^\top\nabla L(\theta) \\
+= & 8\sum_{i\in I_\theta}  \sigma_i^{-1}\abs{v_i^\top \nabla L(\theta)}^2 \le 8\Delta.
+\end{align}
+Thus we conclude that $\norm{V_{I_\theta^c}\frac{\diff \nabla L(\theta+ V_{I_\theta} w(t))}{\diff t}}_2\le  \frac{4\Delta}{\rho}$, which implies that 
+\begin{align}
+&\norm{\nabla L(\theta+V_{I_\theta}^\top w^*)}_2 = \norm{V_{I_\theta^c}\nabla L(\theta+V_{I_\theta}^\top w^*)}_2\\
+ = &\norm{V_{I_\theta^c}\nabla L(\theta)+\int_{t=0}^1 V_{I_\theta^c}\frac{\diff \nabla L(\theta+ V_{I_\theta} w(t))}{\diff t}\diff t}_2\\
+ \le & \norm{V_{I_\theta^c}\nabla L(\theta)}_2 +\int_{t=0}^1\norm{ V_{I_\theta^c}\frac{\diff \nabla L(\theta+ V_{I_\theta} w(t))}{\diff t}}_2\diff t \\
+ \le & \frac{\Delta}{\rho} + \frac{4\Delta}{\rho} = \frac{5\Delta}{\rho}. 	
+\end{align}
+
+Applying \Cref{lem:small_loss_or_gradient_imply_PL}, we have that 
+\begin{align}
+	L(\theta+V_{I_\theta}^\top w^*) -\min L\le \mu^{-1} \norm{\nabla L(\theta+V_{I_\theta}^\top w^*)}_2^2 = \frac{25\Delta^2}{\rho^2\mu}.
+\end{align}
+This completes the proof.
+\end{proof}
+
+
+\begin{lemma}[Descent Lemma]\label{lem:descent_lemma}
+	For any $\eta,\rho>0$ with $\eta\rho\le R/\sqrt{d}$, $\theta\in\R^d$ and any eigendecomposition of 
+$\nabla^2 L(\theta)$, where $V_tV_t^\top=I_d$, $\sigma_t$ is diagonal $\nabla^2 L(\theta) = V^\top \Sigma V$, define 
+	\begin{align}
+	\theta_+ \triangleq 	 \theta - \eta V^\top\clip(V(\nabla^2L(\theta))^{-1}\nabla L(\theta),\rho),
+	\end{align}
+it holds that 
+	\begin{align}
+			L(\theta_+) - L(\theta)\le -(\eta-\eta^2)\sum_{i=1}^d \min\{ \rho \abs{v_i^\top \nabla L(\theta)}, \sigma_i^{-1}\abs{v_i^\top \nabla L(\theta)}^2\},
+	\end{align}
+where $v_i$ is the $i$th row of matrix $V$.
+\end{lemma}
+
+\begin{proof}[Proof of \Cref{lem:descent_lemma}]
+	Let $ u \triangleq \clip(V(\nabla^2L(\theta))^{-1}\nabla L(\theta),\rho)$. By the definition of $\clip$ operation, we know that $\norm{V^\top u}_2 = \norm{u}_2 \le \sqrt{d} \rho$. Thus  we have $\norm{\theta_+ - \theta}  = \eta \norm{V^\top u}_2 \le \eta\rho\sqrt{d}$. Define $f(t) = L(t\theta_+ + (1-t)\theta)$. By Assumption~\ref{assum:hessian_multiplicative_lipschitz}, we know that $f''(t)\le 2f''(0)$ for all $t\in[0,1]$ and thus 
+	\begin{align}
+	f(1) = f(0) + f'(0) + \int_{s=0}^1\int_{t=0}^s f''(s)\diff s\diff t	\le f(0)+f'(0)+f''(0).
+	\end{align}
+	It remains to show that 
+	\begin{enumerate}
+		\item $f'(0) = -\eta \sum_{i=1}^d \min\{ \rho \abs{v_i^\top \nabla L(\theta)}, \sigma_i^{-1}\abs{v_i^\top \nabla L(\theta)}^2\}$;
+		\item $f''(0) \le  \eta^2 \sum_{i=1}^d \min\{ \rho \abs{v_i^\top \nabla L(\theta)}, \sigma_i^{-1}\abs{v_i^\top \nabla L(\theta)}^2\}$;
+	\end{enumerate}
+	First, by chain rule, we have $f'(0) = \inner{\nabla L(\theta)}{-\eta V^\top u}=\inner{V\nabla L(\theta)}{-\eta u} = -\eta \inner{V\nabla L(\theta)}{ \clip(\Sigma^{-1}V\nabla L(\theta),\rho)}=-\eta \sum_{i=1}^d \min\{ \rho \abs{v_i^\top \nabla L(\theta)}, \sigma_i^{-1}\abs{v_i^\top \nabla L(\theta)}^2\}$.\\
+	Second, again by chain rule, we have $f''(0) = \eta^2 \inner{V^\top u}{\nabla^2L(\theta) V^\top u} = \eta^2 \inner{u}{\Sigma u} = \sum_{i=1}^d \abs{u_i}^2\sigma_i$. Note that by definition $\abs{u_i}=\min\{\abs{v_i^\top \nabla L(\theta)}/\sigma_i,\rho\}$, we have $\abs{u_i}^2\sigma_i\le \min\{\abs{v_i^\top \nabla L(\theta)}/\sigma_i,\rho\}\cdot \abs{v_i^\top \nabla L(\theta)}/\sigma_i \cdot \sigma_i = \min\{\abs{v_i^\top \nabla L(\theta)}^2/\sigma_i,\rho\abs{v_i^\top \nabla L(\theta)}\}$, which completes the proof.
+\end{proof}
+
+\begin{lemma}\label{lem:2nd_phase_convex}
+	If $\eta\rho\le R/\sqrt{d}$ and for some $T\in\mathbb{N}$, $L(\theta_T)-\min L\le \frac{\mu\rho^2}{8}$, then if holds that for all $t\ge T$, 
+	\begin{enumerate}
+		\item $\theta_{t+1} = \theta_t - \eta (\nabla^2 L(\theta_t))^{-1}\nabla L(\theta_t)$;
+		\item $L(\theta_t)-\min L \le (1-\eta(1-\eta))^{t-T}(L(\theta_T)-\min L)$.
+	\end{enumerate}
+\end{lemma}
+\begin{proof}[Proof of \Cref{lem:2nd_phase_convex}]
+	First by \Cref{lem:descent_lemma}, we have for all $t\ge T$, $\L(\theta_t) - \min L\le L(\theta_T)-\min L\le \frac{\mu\rho^2}{8}$, therefore by \Cref{lem:small_loss_imply_no_clipping}, we have $ \norm{(\nabla^2 L(\theta_t))^{-1}\nabla L(\theta_t)}_2 \le \rho$ for all $t\ge T$, which implies clipping will not happen. This completes the proof of the first claim.
+	
+	For the second claim, by \Cref{lem:descent_lemma,lem:small_loss_or_gradient_imply_loss_approx}, we have that 
+	\begin{align}
+		L(\theta_{t+1}) - L(\theta_t)
+		\le& -(\eta-\eta^2)\sum_{i=1}^d \sigma_i^{-1}\abs{v_i^\top \nabla L(\theta_t)}^2 \\
+		= &-(\eta-\eta^2)\nabla L(\theta_t) (\nabla^2 L(\theta_t))^{-1}\nabla L(\theta_t)\\
+		\le & - \eta(1-\eta)( L(\theta_t)-\min L),
+	\end{align}
+which completes the proof.
+\end{proof}
+
+\newcommand{\nL}{L_{\mu,\beta}}
+\subsection{Lower bound for SignGD on 2-dimensional quadratic loss} \label{sec:proofs:lowbound}
+
+Define $L_{\mu,\beta}:\R^2\to\R$ as a quadratic function with parameter $\mu,\beta$ as $L_{\mu,\beta}(\theta)\triangleq \frac{\mu}{2}\theta_{[1]}^2 + \frac{\beta}{2}\theta_{[2]}^2$.  We have the following lower bound, which shows signGD's convergence rate has to depend on the condition number $\beta/\mu$. 
+\begin{theorem}\label{thm:signgd_lower_bound}
+    For any $\mu,\beta,\Delta,\eps>0$, suppose there exist a learning rate $\eta$ and a time $T$ such that for all $\theta_0$ satisfying that $L_{\mu,\beta}(\theta_0)\le \Delta$, signGD reaches loss at most $\eps$ at step $T-1$ and $T$ (in the sense that $\nL(\theta_{T})\le \eps$ and $\nL(\theta_{T-1})\le \eps$). Then, $T$ must satisfy $T\ge \frac{1}{2}(\sqrt{\frac{\Delta}{\epsilon}}-\sqrt{2})\sqrt{\frac{\beta}{\mu}}$.
+\end{theorem}
+
+\begin{proof}[Proof of \Cref{thm:signgd_lower_bound}]
+    We consider two initialization: $\theta_0 = (0,\sqrt{\frac{2\Delta}{\beta}})$ and $\theta'_0 = (\sqrt{\frac{2\Delta}{\mu}},0)$, and let $\theta_t$ and $\theta_t'$ be the iterates under the two initializations. For each coordinate $i\in\{1,2\}$, because $|(\theta_t)_{[i]}- (\theta_{t+1})_{[i]}|=\eta$, we have that $|(\theta_t)_{[i]}| + |(\theta_{t+1})_{[i]}|\ge \eta$. Thus $2\eps\ge \nL(\theta_T)+ \nL(\theta_{T-1}) \ge \frac{\beta}{2}((\theta_T)_{[2]}^2 + (\theta_{T-1})_{[2]}^2)\ge \frac{\beta\eta^2}{4}$, which implies $\eta \le \sqrt{\frac{8\eps}{\beta}}$.
+
+    The fact that $\nL(\theta_T')+ \nL(\theta_{T-1}')\le 2\eps$ implies $(\theta_{T}')_{[1]}\le \sqrt{\frac{4\eps}{\mu}}$. Because SignGD can only move each coordinate by $\eta$ at most, we have $(T-1)\eta\ge \sqrt{2\Delta/\mu} - \sqrt{\frac{4\eps}{\mu}}$. Using the fact that $\eta \le \sqrt{\frac{8\eps}{\beta}}$, we have that $2(T-1)\ge (\sqrt{\frac{\Delta}{\epsilon}}-\sqrt{2})\sqrt{\frac{\beta}{\mu}}$, which completes the proof.
+\end{proof}

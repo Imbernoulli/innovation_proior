@@ -1,0 +1,88 @@
+\section{Experiments}
+\subsection{Setups}
+\myparagraph{Baselines.}
+\input{fig_text/tab_settings}
+We compare with four baselines in the INT8 post-training quantization setting, i.e., without re-training of the model parameters: W8A8 naive quantization, ZeroQuant~\cite{zeroquant},  \texttt{LLM.int8()}~\cite{dettmers2022llmint8}, and Outlier Suppression~\cite{outlier_suppression}. Since \method is orthogonal to the quantization schemes, we provide gradually aggressive and efficient quantization levels from O1 to O3. The detailed quantization schemes of the baselines and \method are shown in \tbl{tab:settings}.
+\input{fig_text/tab_175b_acc}
+\input{fig_text/tab_different_models}
+\myparagraph{Models and datasets.}
+We choose three families of LLMs to evaluate \method: OPT~\cite{opt}, BLOOM~\cite{scao2022bloom}, and GLM-130B~\cite{zeng2022glm}.
+We use seven zero-shot evaluation tasks: LAMBADA~\cite{paperno-etal-2016-lambada}, HellaSwag~\cite{hellaswag}, PIQA~\cite{Bisk2020piqa}, WinoGrande~\cite{sakaguchi2019winogrande}, OpenBookQA~\cite{OpenBookQA2018}, RTE~\cite{glue}, COPA~\cite{copa}, and one language modeling dataset WikiText~\cite{merity2016pointer} to evaluate the OPT and BLOOM models. We use MMLU~\cite{mmlu}, MNLI~\cite{mnli}, QNLI~\cite{glue} and LAMBADA to evaluate the GLM-130B model because some of the aforementioned benchmarks appear in the training set of GLM-130B.
+We use {\texttt{lm-eval-harness}}\footnote{\url{https://github.com/EleutherAI/lm-evaluation-harness}} to evaluate OPT and BLOOM models, and GLM-130B's official repo\footnote{\url{https://github.com/THUDM/GLM-130B}} for its own evaluation. Finally, we scale up our method to MT-NLG 530B~\cite{smith2022using} and for the first time enabling the serving of a >500B model within a single node.
+Note that we focus on the \emph{relative} performance change before and after quantization but not the absolute value.
+
+\myparagraph{Activation smoothing.} The migration strength $\alpha=0.5$ is a general sweet spot for all the OPT and BLOOM models, and $\alpha=0.75$ for GLM-130B since its activations are more difficult to quantize~\cite{zeng2022glm}.
+We get a suitable $\alpha$ by running a quick grid search on a subset of the Pile~\cite{gao2020pile} validation set.
+To get the statistics of activations, we calibrate the smoothing factors and the static quantization step sizes \emph{once} with 512 random sentences from the pre-training dataset Pile, and apply the same smoothed and quantized model for all downstream tasks. In this way, we can benchmark the generality and zero-shot performance of the quantized LLMs.
+
+\myparagraph{Implementation.}
+We implement \method with two backends: (1) PyTorch Huggingface\footnote{\url{https://github.com/huggingface/transformers}} for the proof of concept, and (2) FasterTransformer\footnote{\url{https://github.com/NVIDIA/FasterTransformer}}, as an example of a high-performance framework used in production environments. In both PyTorch Huggingface and FasterTransformer frameworks, we implement INT8 linear modules and the batched matrix multiplication (BMM) function with CUTLASS INT8 \texttt{GEMM} kernels. We simply replace the original floating point (FP16) linear modules and the \texttt{bmm} function with our INT8 kernels as the INT8 model.
+
+\subsection{Accurate Quantization}
+\label{sec:accurate-quantization}
+\myparagraph{Results of OPT-175B.}
+\method can handle the quantization of very large LLMs, whose activations are more difficult to quantize.
+We study quantization on OPT-175B.
+As shown in \tbl{tab:175b_acc}, \method can match the FP16 accuracy on all evaluation datasets with all quantization schemes. \texttt{LLM.int8()} can match the floating point accuracy because they use floating-point values to represent outliers, which leads to a large latency overhead (Table~\ref{tab:quant_schemes_latency}). The W8A8, ZeroQuant, and Outlier Suppression baselines produce nearly random results, indicating that naively quantizing the activation of LLMs will destroy the performance.
+\myparagraph{Results of different LLMs.}
+\method can be applied to various LLM designs.
+In \tbl{tab:different_models}, we show \method can quantize all existing open LLMs beyond 100B parameters.
+Compared with the OPT-175B model, the BLOOM-176B model is easier to quantize: none of the baselines completely destroys the model; even the naive W8A8 per-tensor dynamic quantization only degrades the accuracy by 4\%. The O1 and O2 levels of \method successfully maintain the floating point accuracy, while the O3 level (per-tensor static) degrades the average accuracy by 0.8\%, which we attribute to the discrepancy between the statically collected statistics and the real evaluation samples' activation statistics.
+On the contrary, the GLM-130B model is more difficult to quantize (which echos~\citeauthor{zeng2022glm}). Nonetheless, \method-O1 can match the FP16 accuracy, while \method-O3 only degrades the accuracy by 1\%, which significantly outperforms the baselines. Note that we clip the top 2\% tokens when calibrating the static quantization step sizes for GLM-130B following~\citet{outlier_suppression}.
+Note that different model/training designs have different quantization difficulties, which we hope will inspire future research.
+\input{fig_text/fig_model_size}
+\myparagraph{Results on LLMs of different sizes.} \method works not only for the very large LLMs beyond 100B parameters, but it also works consistently for smaller LLMs.
+In \fig{fig:model_size}, we show that \method can work on all scales of OPT models, matching the FP16 accuracy with INT8 quantization.
+
+\myparagraph{Results on Instruction-Tuned LLM}
+\input{fig_text/tab_opt_iml}
+Shown in Table~\ref{tab:opt-iml}, SmoothQuant also works on instruction-tuned LLMs. We test SmoothQuant on the OPT-IML-30B model using the WikiText-2 and LAMBADA datasets. Our results show that SmoothQuant successfully preserves model accuracy with W8A8 quantization, whereas the baselines fail to do so. SmoothQuant is a general method designed to balance the quantization difficulty for Transformer models. As the architecture of instruction-tuned LLMs is not fundamentally different from vanilla LLMs, and their pre-training processes are very similar, SmoothQuant is applicable to instruction-tuned LLMs as well.
+
+\myparagraph{Results on LLaMA models.}
+\input{fig_text/tab_llama_wiki}
+LLaMA models are new open languange models with superior performance~\cite{touvron2023llama}. Through initial experiments, we find LLaMA models generally have less severe activation outlier issues compared to models like OPT and BLOOM. Nonetheless, SmoothQuant still works quite well for LLaMA models. We provide some initial results of LLaMA W8A8 quantization in Table~\ref{tab:llama}. SmoothQuant enables W8A8 quantization at a negligible performance degradation. 
+
+\myparagraph{Results on Llama-2, Falcon, Mistral, and Mixtral models.}
+\input{fig_text/tab_more_models}
+We apply \method on several more recent LLMs using diverse architectures, such as Llama-2~\cite{touvron2023llama2}, Falcon~\cite{almazrouei2023falcon}, Mistral~\cite{jiang2023mistral}, and Mixtral~\cite{jiang2024mixtral}—notably, the Mixtral model is a Mixture of Experts (MoE) model. The results, detailed in Table~\ref{tab:more_models}, demonstrate that SmoothQuant enables W8A8 quantization while maintaining performance with minimal loss across these varied architectures.
+
+\subsection{Speedup and Memory Saving}
+In this section, we show the measured speedup and memory saving of \method-O3 integrated into PyTorch and FasterTransformer.
+\myparagraph{Context-stage: PyTorch Implementation.}
+We measure the end-to-end latency of generating all hidden states for a batch of 4 sentences in one pass, \ie, the context stage latency. We record the (aggregated) peak GPU memory usage in this process. We only compare \method with \texttt{LLM.int8()} because it is the only existing quantization method that can preserve LLM accuracy at all scales.
+Due to the lack of support for model parallelism in Huggingface, we only measure \method's performance on a single GPU for the PyTorch implementation, so we choose OPT-6.7B, OPT-13B, and OPT-30B for evaluation. In the FasterTransformer library, \method can seamlessly work with Tensor Parallelism~\cite{megatron_lm} algorithm, so we test \method on OPT-13B, OPT-30B, OPT-66B, and OPT-175B for both single and multi-GPU benchmarks. All our experiments are conducted on NVIDIA A100 80GB GPU servers.
+
+\input{fig_text/fig_pytorch}
+In \fig{fig:pytorch-results}, we show the inference latency and peak memory usage based on the PyTorch implementation. \method is consistently faster than the FP16 baseline, getting a 1.51x speedup on OPT-30B when the sequence length is 256. We also see a trend that the larger the model, the more significant the acceleration. On the other hand, \texttt{LLM.int8()} is almost always slower than the FP16 baseline, which is due to the large overhead of the mixed-precision activation representation. In terms of memory, \method and \texttt{LLM.int8()} can all nearly halve the memory usage of the FP16 model, while \method saves slightly more memory because it uses fully INT8 \texttt{GEMM}s.
+
+\input{fig_text/fig_fastertransformer}
+\myparagraph{Context-stage: FasterTransformer Implementation.}
+As shown in \fig{fig:ft-results}~(top), compared to FasterTransformer's FP16 implementation of OPT, \method-O3 can further reduce the execution latency of OPT-13B and OPT-30B by up to 1.56$\times$ when using a single GPU.
+This is challenging since FasterTransformer is already more than 3$\times$ faster compared to the PyTorch implementation for OPT-30B.
+Remarkably, for bigger models that have to be distributed across multiple GPUs, \method achieves similar or even better latency using only \emph{half} the number of GPUs (1 GPU instead of 2 for OPT-66B, 4 GPUs instead of 8 for OPT-175B). This could greatly lower the cost of serving LLMs. The amount of memory needed when using \method-O3 in FasterTransformer is reduced by a factor of almost 2$\times$, as shown on \fig{fig:ft-results}~(bottom).
+
+\myparagraph{Decoding-stage.}
+In Table~\ref{tab:generation-stage}, we show \method can significantly accelerate the autoregressive decoding stage of LLMs. \method constantly reduces the per-token decoding latency compared to FP16 (up to 1.42x speedup). Additionally, \method halves the memory footprints for LLM inference, enabling the deployment of LLMs at a significantly lower cost.
+\input{fig_text/tab_generation_stage}
+\input{fig_text/tab_530b_acc.tex}
+\input{fig_text/tab_530b_latency.tex}
+
+\subsection{Scaling Up: 530B Model Within a Single Node}
+We can further scale up \method beyond 500B-level models, enabling efficient and accurate W8A8 quantization of MT-NLG 530B~\cite{smith2022using}. As shown in Table~\ref{tab:530b_acc} and~\ref{tab:530b_latency}, \method enables W8A8 quantization of the 530B model at a negligible accuracy loss. The reduced model size allows us to serve the model using half number of the GPUs (16 to 8) at a similar latency, enabling the serving of a >500B model within a single node (8$\times$A100 80GB GPUs). 
+
+\input{fig_text/tab_quant_schemes_latency}
+\subsection{Ablation Study}
+\myparagraph{Quantization schemes.}
+\tbl{tab:quant_schemes_latency} shows the inference latency of different quantization schemes based on our PyTorch implementation. We can see that the coarser the quantization granularity (from O1 to O3), the lower the latency. And static quantization can significantly accelerate inference compared with dynamic quantization because we no longer need to calculate the quantization step sizes at runtime.
+\method is faster than FP16 baseline under all settings, while \texttt{LLM.int8()} is usually slower. We recommend using a coarser scheme if the accuracy permits.
+
+\myparagraph{Migration strength.}
+We need to find a suitable migration strength $\alpha$ (see Equation~\ref{eq:s_sqrt}) to balance the quantization difficulty of weights and activations. We ablate the effect of different $\alpha$'s on OPT-175B with LAMBADA in Figure~\ref{fig:alpha}. When $\alpha$ is too small (<0.4), the activations are hard to quantize; when $\alpha$ is too large (>0.6), the weights will be hard to quantize. Only when we choose $\alpha$ from the sweet spot region (0.4-0.6) can we get small quantization errors for both weights and activations, and maintain the model performance after quantization.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\linewidth]{figures/alpha.pdf}
+    \caption{A suitable migration strength $\alpha$ (sweet spot) makes both activations and weights easy to quantize. If the $\alpha$ is too large, weights will be hard to quantize; if too small, activations will be hard to quantize.}
+    \vspace{-10pt}
+    \label{fig:alpha}
+\end{figure}

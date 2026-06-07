@@ -1,0 +1,496 @@
+\documentclass[../hippo.tex]{subfiles}
+\begin{document}
+
+\section{Experiment Details and Additional Results}
+\label{sec:experiment-details}
+
+
+\subsection{Model Architecture Details}
+\label{subsec:model_architectures}
+
+Given inputs $x_t$ or features thereof $f(x_t)$ in any model, the HiPPO framework can be used to memorize the history of features $f_t$ through time.
+As the discretized HiPPO dynamics form a linear recurrent update similar in style to RNNs (e.g., \cref{thm:legs}),
+we focus on these models in our experiments.
+
+Thus, given any RNN update function $h_{t} = \tau(h_{t-1}, x_t)$, we simply replace the previous hidden state with a projected version of its entire history.
+\begin{figure}[!ht]
+  \begin{minipage}{.5\linewidth}%
+    \centering
+    \includegraphics[width=\linewidth]{figures/rnncell2.pdf}
+  \end{minipage}
+  \begin{minipage}{.5\linewidth}
+    \begin{equation}%
+      \label{eq:architecture}
+      \begin{aligned}
+        h_t \in \R^d &= \tau(h_{t-1}, [c_{t-1}, x_t]) \\
+        f_t \in \R^1 &= \mathcal{L}_f(h_{t}) \\
+        c_t \in \R^N &= \hippo_t(f) \\
+        &= A_t c_{t-1} + B_t f_t
+      \end{aligned}
+    \end{equation}
+  \end{minipage}
+  \caption{The simple RNN model we use HiPPO with, and associated update equations. $\mathcal{L}_\square$ is a parametrized linear function, $\tau$ is any RNN update function, and $[\cdot]$ denotes concatenation.
+    $\textcolor{magenta}{\hippo}$ is the HiPPO memory operator which orthogonalizes the history of the $f_t$ features up to time $t$. $A_t, B_t$ are fixed matrices depending on the chosen measure .
+    $N$ and $d$ represent the approximation order and hidden state size, respectively.
+  }
+  \label{fig:cell-equation}
+\end{figure}
+Equations~\eqref{eq:architecture} lists the explicit update equations and Figure~\ref{fig:cell-equation} illustrates the model.
+In our experiments, we choose a basic gated RNN update
+\begin{align*}
+  \tau(h, x) = (1-g(h, x)) \circ h + g(h, x) \circ \tanh(\mathcal{L}_\tau(h, x)), \qquad g(h, x) = \sigma(\mathcal{L}_g(h, x)).
+\end{align*}
+
+\paragraph{Methods and Baselines}
+
+We consider the following instantiations of our framework HiPPO.
+
+\textbf{HiPPO-}\textbf{LegT}, \textbf{LagT}, and \textbf{LegS}, use the translated Legendre, and tilted Laguerre, and scaled Legendre measure families with update dynamics \eqref{eq:translated-legendre-dynamics}, \eqref{eq:laguerre-dynamics}, and \eqref{eq:scaled-legendre-dynamics}.
+As mentioned, LegT has an additional hyperparameter $\theta$, which should be set to the timescale of the data if known a priori.
+We attempt to set it equal to its ideal value (the length of the sequences) in every task,
+and also consider $\theta$ values that are too large and small
+to illustrate the effect of this hyperparameter.
+
+Our derivations in \cref{sec:derivation-legt,sec:derivation-lagt,sec:derivation-legs,sec:derivation-fourier,sec:derivation-chebyshev} show that there is a large variety of update equations that can arise from the HiPPO framework---for example, the tilted generalized Laguerre polynomials lead to an entire family governed by two free parameters (\cref{sec:derivation-lagt})---many of which lead to linear dynamics of the form $\ddt c(t) = -A c(t) + B f(t)$ for various $A, B$.
+Given that many different update dynamics lead to such dynamical systems that give sensible results,
+we additionally consider the \textbf{HiPPO-Rand} baseline that uses random $A$ and $B$ matrices (normalized appropriately) in its dynamics.
+
+We additionally compare against the following standard RNN baselines.
+The \textbf{RNN} is a vanilla RNN.
+The \textbf{MGU} is a minimal gated architecture, equivalent to a \textbf{GRU} without the reset gate. The HiPPO architecture we use is simply the MGU with an additional $\hippo$ intermediate layer.
+The \textbf{LSTM} is the most well-known and popular RNN architecture, which is a more sophisticated gated RNN.
+The \textbf{expRNN}~\citep{lezcano2019cheap} is the state-of-the-art representative of the \emph{orthogonal RNN} family of models designed for long-term dependencies~\citep{arjovsky2016unitary}.
+The \textbf{LMU} is the exact same model as in \citet{voelker2019legendre}; it is equivalent to HiPPO-LegT with a different RNN architecture.
+
+All methods have the same hidden size in our experiments.
+In particular, for simplicity and to reduce hyperparameters, HiPPO variants tie the memory size $N$ to the hidden state dimension $d$.
+The hyperparameter $N$ and $d$ is also referred to as the number of hidden units.
+
+\paragraph{Model and Architecture Comparisons}
+The model~\eqref{eq:architecture} we use is a simple RNN that bears similarity to the classical LSTM and the original LMU cell.
+In comparison to the LSTM, HiPPO can be seen as a variant where the memory $m_t$ plays the role of the LSTM's hidden state and $h_t$ plays the role of the LSTM's gated cell state, with equal dimensionalities.
+HiPPO updates $m_t$ using the fixed $A$ transition matrix instead of a learned matrix, and also lacks ``input'' and ``output'' gates, so for a given hidden size, it requires about half the parameters.
+
+The LMU is a version of the HiPPO-LegT cell with an additional hidden-to-hidden transition matrix and memory-to-memory transition vector instead of the gate $g$, leaving it with approximately the same number of trainable parameters.
+
+\paragraph{Training Details}
+Unless stated otherwise, all methods use the Adam optimizer~\citep{kingma2014adam} with learning rate frozen to $0.001$, which has been a robust default for RNN based models~\citep{voelker2019legendre, gu2020improving}.
+
+All experiments use PyTorch 1.5 and are run on a Nvidia P100 GPU.
+
+
+
+
+
+
+
+
+
+\subsection{Permuted MNIST}
+\label{sec:pmnist-details}
+
+\paragraph{Task}
+The input to the sequential MNIST (sMNIST) task \cite{le2015simple} is an MNIST source image,
+flattened in row-major order into a single sequence of length 784.
+The goal of the model is to process the entire image sequentially before
+outputting a classification label, requiring learning long-term dependencies.
+A variant of this, the permuted MNIST (pMNIST) task, applies a fixed permutation
+to every image, breaking locality and further straining a model's capacity for
+long-term dependencies.
+
+Models are trained using the cross-entropy loss.
+We use the standard train-test split (60,000 examples for training and 10,000
+for testing), and further split the training set with
+10\% to be used as validation set.
+
+\paragraph{Baselines and Ablations}
+
+\cref{tab:pmnist} is duplicated here in \cref{tab:pmnist-val,tab:pmnist-test}, with more complete baselines and hyperparameter ablations.
+
+\cref{tab:pmnist-val} consists of our implementations of various baselines related to our method, described in \cref{subsec:model_architectures}.
+Each method was ran for 3 seeds, and the maximum average validation accuracy is reported.
+
+All methods used the same hidden size of $512$; we found that this gave better performance than $256$, and further increasing it did not improve more.
+All methods were trained for 50 epochs with a batch size of 100.
+
+\paragraph{State of the Art}
+\cref{tab:pmnist-test} directly shows the reported test accuracy of various methods on this data (Middle and Bottom).
+\cref{tab:pmnist-test} (Top) reports the test accuracy of various instantations of our methods.
+We additionally include our reproduction of the LMU,
+which achieved better results than reported in~\citet{voelker2019legendre} (possibly due to a larger hidden size).
+We note that \emph{all} of our HiPPO methods are competitive; each of them (HiPPO-LegT, HiPPO-LagT, HiPPO-LegS) achieves state-of-the-art among previous recurrent sequence models.
+Note that differences between our HiPPO-LegT and LMU numbers in \cref{tab:pmnist-test} (Top) stem primarily from the architecture difference (\cref{subsec:model_architectures}).
+
+\paragraph{Timescale Hyperparameters}
+\cref{tab:pmnist-val} also shows ablations for the HiPPO-LegT and HiPPO-LagT timescale hyperparameters.
+HiPPO-LagT sweeps the discretization step size $\Delta t$ (\cref{sec:discretization,sec:discretization-full}).
+For LegT, we set $\Delta t = 1.0$ without loss of generality, as only the ratio of $\theta$ to $\Delta t$ matters.
+These timescale hyperparameters are important for these methods.
+Previous works have shown that the equivalent of $\Delta t$ in standard RNNs, i.e.\ the gates of LSTMs and GRUs (\cref{sec:discretization}), can also drastically affect their performance \cite{tallec2018can,gu2020improving}.
+For example, the only difference between the URLSTM and LSTM in \cref{tab:pmnist-test} is a reparametrization of the gates.
+
+
+
+
+
+
+
+\begin{table}[ht]%
+  \caption{
+    \textbf{Our methods and related baselines}. Permuted MNIST (pMNIST) validation scores. (Top): Our methods. (Bottom): Recurrent baselines.
+  }
+    \centering
+    \begin{tabular}{@{}ll@{}}
+      \toprule
+      Method                     & Validation accuracy (\%) \\
+      \midrule
+      \textbf{HiPPO-LegS}        & \textbf{98.34}           \\
+      HiPPO-LagT $\Delta t = 1.0$           & 98.15                    \\
+      HiPPO-LegT $\theta = 200$  & 98.00                     \\
+      HiPPO-LegT $\theta = 2000$ & 97.90                     \\
+      HiPPO-LagT $\Delta t = 0.1$           & 96.44                    \\
+      HiPPO-LegT $\theta = 20$   & 91.75                    \\
+      HiPPO-LagT $\Delta t = 0.01$           & 90.71                    \\
+      HiPPO-Rand                 & 69.93 \\
+      \midrule
+      LMU                        & 97.08                    \\
+      ExpRNN                     & 94.67                    \\
+      GRU                        & 93.04                    \\
+      LSTM                       & 92.54                    \\
+      MGU                        & 89.37                    \\
+      RNN                        & 52.98                    \\
+      \bottomrule
+    \end{tabular}
+    \label{tab:pmnist-val}
+  \end{table}
+\begin{table}[ht]
+  \caption{ \textbf{Comparison to prior methods for pixel-by-pixel image classification.} Reported test accuracies from previous works on pixel-by-pixel image classification benchmarks. Top: Our methods. Middle: Recurrent baselines and variants. Bottom: Non-recurrent sequence models with global receptive field.
+  }
+    \centering
+    \begin{tabular}{@{}lll@{}}
+      \toprule
+      Model                                     & Test accuracy (\%) \\
+      \midrule
+      \textbf{HiPPO-LegS}                       & \textbf{98.3}      \\
+      HiPPO-Laguerre                            & 98.24              \\
+      HiPPO-LegT                                & 98.03              \\
+      LMU (ours)                                & 97.29              \\
+      \midrule
+      URLSTM + Zoneout \citep{krueger2016zoneout}          & 97.58              \\
+      LMU~\citep{voelker2019legendre}           & 97.15              \\
+      URLSTM~\citep{gu2020improving}            & 96.96              \\
+      IndRNN~\citep{indrnn}                     & 96.0               \\
+      Dilated RNN~\citep{chang2017dilated}      & 96.1               \\
+      r-LSTM ~\citep{trinh2018learning}         & 95.2               \\
+      LSTM~\citep{gu2020improving}              & 95.11              \\
+      \midrule
+      TrellisNet~\citep{trellisnet}             & 98.13              \\
+      Temporal ConvNet~\citep{bai2018empirical} & 97.2               \\
+      Transformer~\citep{trinh2018learning}     & 97.9               \\
+      \bottomrule
+    \end{tabular}
+    \label{tab:pmnist-test}
+\end{table}
+
+
+\subsection{Copying}
+\label{sec:copying-details}
+
+\paragraph{Task}
+In the Copying task~\citep{arjovsky2016unitary},
+the input is a sequence of $L+20$ digits where the first 10 tokens $\left(a_0, a_1, \dots, a_9\right)$ are randomly chosen from $\left\{1,\dots,8 \right\}$, the middle N tokens are set to $0$, and the last ten tokens are $9$.
+The goal of the recurrent model is to output $\left(a_0, \dots, a_9\right)$ in order on the last 10 time steps, whenever the cue token $9$ is presented.
+Models are trained using the cross-entropy loss; the random guessing baseline has loss $\log(8) \approx 2.08$.
+We use length $L=200$.
+The training and testing examples are generated in the same way.
+
+Our motivation of studying the Copying task is that standard models such as the LSTM struggle to solve it.
+We note that the Copying task is much harder than other memory benchmarks such as the Adding task~\cite{arjovsky2016unitary}, and we do not consider those.
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=.7\linewidth]{figures/copying200.png}
+  \caption{Loss on the Copying task.
+    HiPPO methods are the only to fully solve the task.
+    The hyperparameter-free LegS update is best, while methods with timescale parameters (e.g.\ LegT) do not solve the task if mis-specified.
+  }
+  \label{fig:copy200}
+\end{figure}
+
+\paragraph{Results}
+The HiPPO-LegS method solves this task the fastest.
+The LegT method also solves this task quickly, only if the parameter $\theta$ is initialized to the correct value of $200$.
+Mis-specifying this timescale hyperparameter to $\theta=20$ or $\theta=2000$ drastically slows down the convergence of HiPPO-LegT.
+The LMU (at optimal parameter $\theta=200$) solves this task at comparable speed;
+like in \cref{sec:pmnist-details}, differences between HiPPO-LegT $(\theta=200)$ and LMU here arise from the minor architecture difference in \cref{subsec:model_architectures}.
+
+The HiPPO-Rand baseline (denoted ``random LTI'' system here)
+does much worse than the updates with the dynamics derived from our framework,
+highlighting the importance of the precise dynamics (in contrast to just the architecture).
+
+Standard methods such as the RNN and LSTM are also nearly stuck at baseline.
+
+
+\subsection{Trajectory Classification}
+\label{sec:trajectory-details}
+
+\paragraph{Dataset}
+The Character Trajectories dataset~\citep{bagnall2018uea} from the UCI machine learning repository~\citep{Dua:2019} consists of pen tip trajectories recorded from writing individual characters.
+The trajectories were captured at 200Hz and data was normalized and smoothed.
+Input is 3-dimensional ($x$ and $y$ positions, and pen tip force),
+and there are 20 possible outputs (number of classes).
+Models are trained using the cross-entropy loss.
+The dataset contains 2858 time series.
+The length of the sequences is variable, ranging up to $182$.
+We use a train-val-test split of 70\%-15\%-15\%.
+
+\paragraph{Methods}
+
+RNN baselines include the LSTM~\citep{lstm}, GRU~\citep{chung2014empirical}, and LMU~\citep{voelker2019legendre}.
+Our implementations of these used 256 hidden units each.
+
+The GRU-D~\citep{che2018recurrent} is a method for handling missing values in time series that computes a decay between observations.
+The ODE-RNN~\citep{rubanova2019latent} and Neural CDE (NCDE)~\citep{kidger2020neural} baselines are state-of-the-art neural ODE methods, also designed to handle irregularly-sampled time series.
+Our GRU-D, ODE-RNN, and Neural CDE baselines used code from~\citet{kidger2020neural}, inheriting the hyperparameters for those methods.
+
+
+All methods trained for 100 epochs.
+
+\paragraph{Timescale mis-specification}
+
+The goal of this experiment is to investigate the performance of models when the timescale is mis-specified between train and evaluation time, leading to distribution shift.
+We considered the following two standard types of time series:
+\begin{enumerate}%
+    \item Sequences sampled at a fixed rate
+    \item Irregularly-sampled time series (i.e., missing values) with timestamps
+\end{enumerate}
+
+Timescale shift is emulated in the corresponding ways, which can be interpreted as different sampling rates or trajectory speeds.
+\begin{enumerate}%
+    \item Either the train or evaluation sequences are downsampled by a factor of 2
+    \item The train or evaluation timestamps are halved.\footnote{Instead of the train timestamps being halved, equivalently the evaluation timestamps can be doubled.}
+\end{enumerate}
+The first scenario in each corresponds to the original sequence being sampled at 100Hz instead of 200Hz; alternatively, it is equivalent to the writer drawing twice as fast.
+Thus, these scenarios correspond to a train $\to$ evaluation timescale shift of 100Hz $\to$ 200Hz and 200Hz $\to$ 100Hz respectively.
+
+Note that models are unable to obviously tell that there is timescale shift.
+For example, in the first scenario, shorter or longer sequences can be attributed to the variability of sequence lengths in the original dataset.
+In the second scenario, the timestamps have different distributions, but this can correspond to different rates of missing data, which the baselines for irregularly-sampled data are able to address.
+
+
+
+
+
+
+\subsection{Online Function Approximation and Speed Benchmark}
+\label{subsec:function_approx}
+
+\paragraph{Task} The task is to reconstruct an input function (as a discrete
+sequence) based on some hidden state produced after the model has traversed the
+input function.
+This is the same problem setup as in Section~\ref{subsec:hippo-setup};
+the online approximation and reconstruction details are in \cref{sec:hippo-framework-details}.
+The input function is randomly sampled from a continuous-time band-limited white
+noise process, with length $10^6$.
+The sampling step size is $\Delta t = 10^{-4}$, and the signal band limit is 1Hz.
+
+\paragraph{Models} We compare HiPPO-LegS, LMU, and LSTM.
+The HiPPO-LegS and LMU model only consists of the memory update and not the
+additional RNN architecture.
+The function is reconstructed from the coefficients using the formula in
+\cref{sec:derivations}, so no training is required.
+For LSTM, we use a linear decoder to reconstruct the function from the LSTM
+hidden states and cell states, trained on a collection of 100 sequences.
+All models use $N = 256$ hidden units.
+The LSTM uses the $L2$ loss.
+The HiPPO methods including LMU follow the fixed dynamics of \cref{thm:legt-lagt} and \cref{thm:legs}.
+
+\paragraph{Speed benchmark}
+We measure the inference time of HiPPO-LegS, LMU, and LSTM, in
+single-threaded mode on a server Intel Xeon CPU E5-2690 v4 at 2.60GHz.
+
+
+\subsection{Sentiment Classification on the IMDB Movie Review Dataset}
+\label{sec:imdb}
+
+\paragraph{Dataset} The IMDB movie review
+dataset~\citep{maas-EtAl:2011:ACL-HLT2011} is a standard binary sentiment
+classification task containing 25000 train and test sequences, with sequence
+lengths ranging from hundreds to thousands of steps.
+The task is to classify the sentiment of each movie review into either positive
+or negative.
+We use 10\% of the standard training set as validation set.
+
+\paragraph{Methods}
+RNN baselines include the LSTM~\citep{lstm}, vanilla RNN,
+LMU~\citep{voelker2019legendre}, and expRNN~\citep{lezcano2019cheap}.
+Our implementations of these used 256 hidden units each.
+
+\paragraph{Result}
+As shown in Table~\ref{tab:imdb_test_acc}, our HiPPO-RNNs have similar and consistent performance,
+on par or better than LSTM.
+Other long-range memory RNN approaches that constrains the expressivity of the
+network (e.g.\ expRNN) performs worse on this more generic task.
+
+
+\begin{table}
+    \centering
+    \begin{tabular}{@{}ll@{}}
+      \toprule
+      Model                  & Test accuracy (\%) \\
+      \midrule
+      HiPPO-LegS             & 87.8 $\pm$ 0.2 \\
+      HiPPO-LagT         & \textbf{88.0} $\pm$ 0.2 \\
+      HiPPO-LegT $\theta = 100$   & 87.4 $\pm$ 0.3 \\
+      HiPPO-LegT $\theta = 1000$  & 87.7 $\pm$ 0.2 \\
+      HiPPO-LegT $\theta = 10000$ & 87.9 $\pm$ 0.3 \\
+      HiPPO-Rand             & 82.9 $\pm$ 0.3 \\ \midrule
+      LMU $\theta = 1000$         & 87.7 $\pm$ 0.1 \\
+      LSTM                   & 87.3 $\pm$ 0.4 \\
+      expRNN                 & 84.3 $\pm$ 0.3 \\
+      RNN                    & 67.4 $\pm$ 7.7 \\
+      \bottomrule
+    \end{tabular}
+    \caption{IMDB test accuracy, averaged over 3 seeds. Top: Our methods.
+      Bottom: Recurrent baselines.}
+    \label{tab:imdb_test_acc}
+\end{table}
+
+\subsection{Mackey Glass prediction}
+\label{sec:mackey}
+
+
+The Mackey-Glass data~\citep{mackey1977oscillation}
+is a time series prediction task for modeling chaotic dynamical systems.
+We build on the implementation of~\citet{voelker2019legendre}.
+The data is a sequence of one-dimensional observations,
+and models are tasked with predicting 15 time steps into the future.
+The models are 4-layer stacked recurrent neural networks, trained with the mean squared error (MSE) loss.
+\citet{voelker2019legendre} additionally consider a hybrid model with alternating LSTM and LMU layers,
+which improved on either by itself.
+We did not try this approach with our method HiPPO-LegS such as combining it with the LSTM or other HiPPO methods,
+but such ideas could further improve our performance.
+As a baseline method, the identity function does not simulate the dynamics,
+and simply guesses that the future time step is equal to the current input.
+
+
+\cref{fig:mackey} plots the training and validation mean squared errors (MSE) of these methods.
+The table reports final normalized root mean squared errors (NRMSE) $\sqrt{\frac{\mathbb{E}\left[ (Y-\hat{Y})^2 \right]}{\mathbb{E}[Y^2]}}$ between the targets $Y$ and predictions $\hat{Y}$.
+HiPPO-LegS outperforms the LSTM, LMU, and the best hybrid LSTM+LMU
+model from [68], reducing normalized MSE by over 30\%.
+
+
+\begin{figure}[!ht]
+  \begin{minipage}{.5\linewidth}%
+    \centering
+    \includegraphics[width=\linewidth]{figures/mackey.pdf}
+  \end{minipage}
+  \begin{minipage}{.5\linewidth}%
+    \begin{tabular}{@{}lll@{}}
+      \toprule
+      Model    & Test MSE              & Test NRMSE \\
+      \midrule
+      Baseline & 0.1229                & 1.62274    \\
+      LSTM     & 4.784e-4              & 0.10123    \\
+      LMU      & 4.414e-4              & 0.09722    \\
+      Hybrid LSTM+LMU  & 2.198e-4      & 0.06862    \\
+      LegS     & 1.054e-4              & 0.04752    \\
+      \bottomrule
+    \end{tabular}
+  \end{minipage}
+  \caption{Mackey-Glass predictions}
+  \label{fig:mackey}
+\end{figure}
+
+
+\subsection{Additional Analysis and Ablations of HiPPO}
+\label{sec:exp-hippo-ablations}
+
+To further analyze the tradeoffs of the memory updates derived from our framework,
+in \cref{fig:function_approx_full} we plot a simple input function
+$f(x) = 1/4 \sin x + 1/2 \sin (x/3) + \sin(x/7)$ to be approximated.
+The function is subsampled on the range $x \in [0, 100]$, creating a sequence of length $1000$.
+This function is simpler than the functions sampled from white noise
+signals described in \cref{subsec:function_approx}.
+Given this function, we use the same methodology as in \cref{subsec:function_approx} for processing the function online and then reconstructing it at the end.
+
+In Figure~\ref{fig:function_approx_full}(a, b), we plot the true function $f$, and
+its absolute approximation error based on LegT, LagT, and LegS.
+LegS has the lowest approximation error, while LegT and LagT are similar and slightly worse than LegS.
+Next, we analyze some qualitative behaviors.
+
+\paragraph{LegT Window Length}
+
+In Figure~\ref{fig:function_approx_full}(c), shows that the approximation error of
+LegT is sensitive to the hyperparameter $\theta$, the length of the window.
+Specifying $\theta$ to be even slightly too small (by $0.5\%$ relative to the total sequence length)
+causes huge errors in approximation.
+This is expected by the HiPPO framework, as the final measure $\mu^{(t)}$ is not supported everywhere, so the projection problem does not care that the reconstructed function is highly inaccurate near $x=0$.
+
+\paragraph{Generalized LagT Family}
+Our LagT method actually comprises a family of related transforms,
+governed by two parameters $\alpha, \beta$ specifying the original measure and the tilting (\cref{sec:derivation-lagt}).
+\cref{fig:function-approx-lagt} shows the error as these parameters change.
+\cref{fig:function-approx-lagt}(a) shows that small $\alpha$ generally performs better.
+\cref{fig:function-approx-lagt}(b, c) show that the reconstruction is unstable for larger $\beta$, but small values of $\beta$ work well.
+More detailed theoretical analysis explaining these tradeoffs would be an interesting question to analyze.
+
+\paragraph{LegS vs. LegT}
+
+In comparison to LegT, LegS does not need any hyperparameters governing the timescale.
+However, suppose that the LegT $\theta$ window size was chosen perfectly to match the length of the sequence;
+that is, $\theta = T$ where $T$ is the final time range.
+Note that at the end of consuming the input function (time $t = T$),
+the measures $\mu^{(t)}$ for LegS and LegT are \emph{both} equal to $\frac{1}{T}\mathbb{I}_{[0,T]}$ (\cref{subsec:high_order_projection,sec:theory_legs}).
+Therefore, the approximation $\proj_T(f)$ is specifying the same function for both LegS and LegT at time $t=T$.
+The sole difference is that LegT has an additional approximation term for $f(t-\theta)$ while calculating the update at every time $t$ (see \cref{sec:derivation-legt}), due to the nature of the sliding rather than scaling window.
+
+
+\begin{figure}[ht]
+  \centering
+  \begin{subfigure}[t]{0.33\linewidth}
+    \centering
+    \includegraphics[width=\textwidth]{figures/function_approx_true_f}
+    \caption{True function $f(x)$}
+  \end{subfigure}%
+  \begin{subfigure}[t]{0.33\linewidth}
+    \centering
+    \includegraphics[width=\textwidth]{figures/function_approx_error_bilinear}
+    \caption{Absolute approx.\ error}
+  \end{subfigure}%
+  \begin{subfigure}[t]{0.33\linewidth}
+    \centering
+    \includegraphics[width=\textwidth]{figures/function_approx_error_theta}
+    \caption{Error for different $\theta$'s in LegT}
+  \end{subfigure}%
+  \caption{Function approximation comparison between LegT, LagT, and LegS. LegS
+  has the lowest approximation error. LegT error is sensitive to the choice of
+  window length $\theta$, especially if $\theta$ is smaller than the length of the true function.}
+  \label{fig:function_approx_full}
+\end{figure}
+
+\begin{figure}[ht]
+  \centering
+  \begin{subfigure}[t]{0.33\linewidth}
+    \centering
+    \includegraphics[width=\textwidth]{figures/laguerre_alpha.pdf}
+    \caption{Generalized Laguerre family,\\ fixed $\beta=0.01$ and varying $\alpha$}
+  \end{subfigure}
+  \begin{subfigure}[t]{0.33\linewidth}
+    \centering
+    \includegraphics[width=\textwidth]{figures/laguerre_small_beta.pdf}
+    \caption{Generalized Laguerre family,\\ fixed $\alpha=0$ and small $\beta$}
+  \end{subfigure}%
+  \begin{subfigure}[t]{0.33\linewidth}
+    \centering
+    \includegraphics[width=\textwidth]{figures/laguerre_large_beta.pdf}
+    \caption{Generalized Laguerre family,\\ fixed $\alpha=0$ and large $\beta$}
+  \end{subfigure}%
+  \caption{
+    Function approximation comparison between different instantiations of the generalized tilted Laguerre family (\cref{sec:derivation-lagt}).
+  }
+  \label{fig:function-approx-lagt}
+\end{figure}
+
+\end{document}
+

@@ -1,0 +1,122 @@
+\section{Related work}
+
+%We briefly review previous works in three aspects in order to highlight our contributions.
+
+\textbf{Classical methods.}\quad
+Essentially, early works in network pruning can be categorized into two groups~(\cite{reed1993pruning}): 1) those that utilize sparsity enforcing penalties; and 2) methods that prune the network based on some saliency criterion. 
+The methods from the former category~(\cite{chauvin1989back, weigend1991generalization, ishikawa1996structural}) augment the loss function with some sparsity enforcing penalty terms (\eg, $L_0$ or $L_1$ norm), so that back-propagation effectively penalizes the magnitude of the weights during training. 
+Then weights below a certain threshold may be removed.
+On the other hand, classical saliency criteria include the sensitivity of the loss with respect to the neurons~(\cite{NIPS1988_119}) or the weights~(\cite{karnin1990simple}) and Hessian of the loss with respect to the weights~(\cite{lecun1990optimal, hassibi1993optimal}).
+Since these criteria are heavily dependent on the scale of the weights and are designed to be incorporated within the learning process, these methods are prohibitively slow requiring many iterations of pruning and learning steps.
+%While our approach falls under the latter category, it identifies redundant weights from an architectural point of view allowing us to perform single pruning at the beginning even before any training.
+Our approach identifies redundant weights from an architectural point of view and prunes them once at the beginning before training.
+
+\textbf{Modern advances.}\quad
+In recent years, the increased space and time complexities as well as the risk of overfitting in deep neural networks prompted a surge of further investigation in network pruning.
+%While Hessian based approaches suffer from the burden of the Hessian computation for large models, impressive results (\ie, extreme sparsity without loss in accuracy) are achieved using magnitude of the weights as the criterion~(\cite{han2015learning}). 
+%While Hessian based approaches could suffer from the iterative burden of the diagonal approximation, impressive results (\ie, extreme sparsity without loss in accuracy) are achieved using magnitude of the weights as the criterion~(\cite{han2015learning}). 
+While Hessian based approaches employ the diagonal approximation due to its computational simplicity, impressive results (\ie, extreme sparsity without loss in accuracy) are achieved using magnitude of the weights as the criterion~(\cite{han2015learning}).
+This made them the de facto standard method for network pruning and led to various implementations~(\cite{guo2016dynamic, Carreira-Perpiñán_2018_CVPR}).
+The magnitude criterion is also extended to recurrent neural networks~(\cite{narang2017exploring}), yet with heavily tuned hyperparameter setting.
+Unlike our approach, the main drawbacks of magnitude based approaches are the reliance on pretraining and the expensive prune -- retrain cycles.
+Furthermore, since pruning and learning steps are intertwined, they often require highly heuristic design choices which make them non-trivial to be extended to new architectures and different tasks.
+Meanwhile, Bayesian methods are also applied to network pruning~(\cite{ullrich2017soft, molchanov2017variational}) where the former extends the soft weight sharing in \cite{nowlan1992simplifying} to obtain a sparse and compressed network, and the latter uses variational inference to learn the dropout rate which can then be used to prune the network.
+Unlike the above methods, our approach is simple and easily adaptable to any given architecture or task without modifying the pruning procedure.
+%Unlike the aforementioned methods, our approach is simple and easily adaptable to any given architecture and/or task to obtain the desired level of sparsity with minimal loss in accuracy. 
+
+\textbf{Network compression in general.}\quad
+Apart from weight pruning, there are approaches focused on structured simplification such as pruning filters~(\cite{li2016pruning, molchanov2016pruning}), structured sparsity with regularizers~(\cite{wen2016learning}), low-rank approximation~(\cite{jaderberg2014speeding}), matrix and tensor factorization~(\cite{novikov2015tensorizing}), and sparsification using expander graphs~(\cite{prabhu2017deep}) or Erd\H{o}s-R\'{e}nyi random graph~(\cite{mocanu2018scalable}).
+%Apart from weight pruning, there are approaches on subset regression~(\cite{breiman1995better}) and structured simplification such as pruning filters~(\cite{li2016pruning}), structured sparsity with regularizers~(\cite{wen2016learning}), low-rank approximation~(\cite{jaderberg2014speeding}), matrix and tensor factorization~(\cite{novikov2015tensorizing}), and sparsification using expander graphs~(\cite{prabhu2017deep}).
+In addition, there is a large body of work on compressing the representation of weights.
+A non-exhaustive list includes quantization (\cite{gong2014compressing}), reduced precision~(\cite{gupta2015deep}) and binary weights~(\cite{Hubara2016binarized}).
+%Moreover, there is a recent interest in learning networks that satisfy some architectural constraints~(\cite{prabhu2017deep}). 
+%In this work, we focus on weight pruning that requires no prior knowledge about the architecture, and it is amenable to any further structural constraints or compression schemes.
+In this work, we focus on weight pruning that is free from structural constraints and amenable to further compression schemes.
+
+
+
+%Pruning connections; magnitude-based
+%\begin{tight_itemize}
+%\item LWC (\cite{han2015learning})
+%\item Dynamic network surgery for efficient dnns
+%\item Learning-compression algorithms for neural net pruning
+%\end{tight_itemize}
+
+%Pruning connections; Hessian-based
+%\begin{tight_itemize}
+%\item Optimal brain damage
+%    \begin{tight_itemize}
+%    \item OBD uses the criterion of minimal increase in training error for weight elimination.
+%    \item OBD assumes that the Hessian matrix is diagonal; in fact, however, Hessians for every problems we have considered are strongly non-diagonal, and this leads OBD to eliminate the wrong weights.
+%    \end{tight_itemize}
+%\item Optimal Brain Surgeon and general network pruning
+%    \begin{tight_itemize}
+%    \item OBS accepts the criterion used by Le Cun et al., but makes no restrictive assumptions about the form of the network's Hessian. OBS thereby eliminates the correct weights.
+%    \item Moreover, unlike other methods, OBS does not demand (typically slow) retraining after ther pruning of a weight.
+%    \end{tight_itemize}
+%\item Learning to prune deep neural networks via layer-wise optimal brain surgeon
+%\end{tight_itemize}
+
+%Pruning connections; Bayesian
+%\begin{tight_itemize}
+%\item Soft weight-sharing for neural network compression
+%\item Variational dropout sparsifies deep neural networks
+%    \begin{tight_itemize}
+%    \item Sparse variational dropout
+%    \item $\alpha$ are parameters of the approximate posterior distribution rather than parameters of the prior distribution
+%    \item we tune $\alpha$ to obtain a more accurate approximation of the posterior distribution $p(w|D)$
+%    \item optimize the stochasitc gradient variational lower bou8nd with our approximation of the KL-divergence.
+%    \item additive noise reparametrization, approximation of the KL divergence
+%    \item when $\alpha \rightarrow \inf$ corresponds to a Binary Dropout rate $p \rightarrow 1$ so its value does not influence the model during the training phase and it put to zero during the testing phase.
+%    \item remove existing dropout layers and replace all dense and convolutional layers with their sparse variational dropout counterparts, use $L^{SGVB}$ as the objective function.
+%    \item training of Sparse Bayesian DNNs using Sparse Variational Dropout.
+%    \item ``As it is impossible for the weights to converge exactly to zero in a stochastic setting, we explicitly put weights with high corresponding droptout rates to 0 during testing.''
+%    \item $log \alpha = 3$ as a threshold. This corresponds to a Binary Dropout rate $p>0.95$ .
+%    \item Unlike most other methods this trick usually does not hurt the performance of our model. Sparse VD does not require finetuning after thresholding.
+%    \item Training our model from a random initialization is troublesome, as a lot of weights become pruned away early during training, before they could possibly learn a useful representation of the data.
+%    \item ideas: start from a pretrained network or use warm-up (rescale the KL-divergence term).
+%    \item We use the final value of the variational lower bound to choose the initialiation strategy (difference is significant in more complex models like VGG)
+%    \item We train all networks using Adam!!!
+%    \end{tight_itemize}
+%\item Overpruning in Variational Bayesian Neural Networks
+%\end{tight_itemize}
+
+%Sparsifying RNNs
+%\begin{tight_itemize}
+%\item Pruning recurrent neural networks for improved generalization performance (train a large network and apply pruning which is based on the quantization of outputs of the state neurons: lots of heuristics and others..)
+%\item Exploring sparsity in recurrent neural networks
+%\item Compressing recurrent neural network with tensor train
+%\item Bayesian Sparsification of Recurrent Neural Networks
+%\item pruning LSTM for neural machine translation (\cite{see2016compression})
+%\end{tight_itemize}
+
+%Structured pruning (short)
+%\begin{tight_itemize}
+%\item channel pruning
+%\item layer-wise pruning
+%\item pruning neurons rather than parameters via sparsity-inducing regularizers (Murray and Chiang, 2015) or wiring together paris of neurons with similar input weights (Srinivas and Badu, 2015): more constrained than weight-pruning schemes; they necessitate finding entire zero rows of weight matrices, or near-identical pairs of rows, in order to prune a single neuron. By contrast weight-pruning approaches allow weights to be pruned freely and independently of each other.
+%\item structured sparsity learning (SSL) to regularize filter, channel, filter shape and depth structures (\cite{wen2016learning})
+%\item check the unpublished paper on structured pruning which I forgot..
+%\end{tight_itemize}
+
+%Matrix/tensor factorization, low-rank approximation (short)
+%\begin{tight_itemize}
+%\item low-rank approximations for weight matrices (\cite{jaderberg2014speeding, courbariaux2014training})
+%\item matrix/tensor factorization; tensorizing neural networks (\cite{novikov2015tensorizing}), tensor/matrix decomposition (\cite{liu2015sparse})
+%\end{tight_itemize}
+
+%Quantization, low-precision network, compression (short)
+%\begin{tight_itemize}
+%\item compression using vector quantization; reduce the number of bits required to represent each weight (\cite{gong2014compressing})
+%\item quantized cnn; apply k-means scalar quantization to the parameter values (\cite{wu2016quantized})
+%\item reduce the precision of the weights or activations (\cite{courbariaux2014training})
+%\item 16-bit fixed-point representation in stochastic rounding based CNN training, which reduces memory usage and float point operations with little loss in classification accuracy, in conjuction with specialized hardware (\cite{gupta2015deep})
+%\item binary weights (\cite{lin2015neural}), binary cnn (\cite{rastegari2016xnor})
+%\end{tight_itemize}
+
+%others; compression (short)
+%\begin{tight_itemize}
+%\item weight sharing via hash functions (\cite{chen2015compressing})
+%\item knowledge distillation technique involving training a small student network on the soft outputs of a large teacher network (\cite{hinton2015distilling})
+%\item compression (quantization, Huffman coding, etc.) (\cite{han2015deep, iandola2016squeezenet}) probably the best compression method
+%\end{tight_itemize}

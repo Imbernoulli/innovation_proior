@@ -1,0 +1,121 @@
+% \begin{itemize}
+%     \item Tile quantization effect under sparse MoE regime
+%     \item Figure: number of wasted tiles w.r.t. sparsity
+%     \item TC-EC spectrum. Train-test discrepancy \& system efficiency
+%     \item Token rounding as a close solution to TC \& satisfies perfect tile divisibility.
+% \end{itemize}
+
+In this section, we analyze the hardware efficiency under sparse MoE training regime and identify that as MoEs become sparser, the wasted compute on padded GEMM tiles accumulates to a nontrivial amount, known as ``tile quantization" effects. In response, we propose a novel routing method ``token rounding'' to eliminate tile quantization effects.
+
+
+\subsection{Training efficiency of sparse MoE}\label{sec:sparse_moe}
+
+
+\begin{figure}[!ht]
+  \centering
+  % ------- LEFT: algorithm ----------
+  \begin{minipage}[t]{0.47\textwidth}
+    \vspace{0pt} % top-align this minipage
+    \input{algorithm/token_rounding} 
+  \end{minipage}
+  \hfill
+  \begin{minipage}[t]{0.52\textwidth}
+    \vspace{0pt} % top-align this minipage
+    \centering
+    
+    \includegraphics[width=0.37\linewidth]{figures/wasted-flops.pdf}
+    \vspace{-1em}     
+    \captionof{figure}{\small Wasted FLOPs by padding during MoE forward \& backward pass with $T=16k$, $d=4k$, $n=1k$, $K=4$ as illustrated in the bottom right 2 subfigures of Figure~\ref{fig:token_rounding_speed}. \label{fig:wasted_flops}}
+
+    \includegraphics[width=0.7\linewidth]{figures/tile_quant_fig.pdf}
+    \captionof{figure}{\small A demonstration of tile quantization effect for sparse MoE. The rounding subroutine in TR makes a binary decision for discarding or padding tokens to guarantee that each expert receives an $\tileM$-multiple number of tokens.}  \label{fig:tile-quant}
+
+    % \vspace{1em}
+    % \includegraphics[width=0.8\linewidth]{figures/qualitative-assessment.pdf}
+    % \captionof{figure}{\small Qualitative assessment of routing deviation on inference quality (Table~\ref{tab:exp-sparse}) and training efficiency (Figure~\ref{fig:token_rounding_speed}).}
+
+    % \vspace{1em}
+    % \includegraphics[width=\linewidth]{figures/tile_quant_fig.pdf}
+    % \captionof{figure}{\small A demonstration of tile quantization effect for sparse MoE.\label{fig:tile-quant}}
+  \end{minipage}
+\end{figure}
+
+
+
+
+Besides granularity, the arithmetic intensity of MoE also depends on the MoE activation ratio $\rho$ as shown in Equation~\ref{eqn:arithmetic_intensity}. When we scale down $\rho$, the expected number of received tokens per expert $\mathbb{E}_{e\in[E]} T_e = \bar{T}_e =  T \rho$ will also decrease linearly and the GEMM computation shifts towards a memory-bound regime.
+
+
+
+\paragraph{Tile quantization effect.} GEMM on modern GPUs is often computed in tiles \citep{nvidia2022_h100} and we always need to pad to the next tile-sized multiples if any dimensions of $\mathbf{M},\mathbf{N},\mathbf{K}$ are not fully divisible by tile sizes. Once the size of input (e.g. token dimension per expert) is small, the wasted TFLOPS by padding can be nontrivial. 
+
+
+% In particular, we can show that the wasted FLOPs are \textit{linear w.r.t. tile size $\tileM$} and \textit{inversely linear w.r.t. activation ratio $\rho$} (Figure~\ref{fig:wasted_flops}), shown by Theorem~\ref{thm:wasted-flops}.
+
+
+
+% \vspace{1em}
+% \begin{remarks}\label{remarks:token_rounding}
+%     If we assume the tile quantization residue $R_e := T_e \bmod \tileM \in [0, \tileM)$ follows a uniform distribution in $[0, \tileM)$ and $R_e$ is independent of $T_e$\footnote{This assumption usually hold when $T_e \gg \tileM$ i.e. tile quantization residue is small compared to $T_e$. When $T_e\sim \tileM$, we need to assume the exact distribution of $T_e$ to derive a bound. Nevertheless, we empirically observe a similar linear trend of wasted model TFLOPS w.r.t. $\rho$. See Figure~\ref{fig:wasted_flops}.}, with other mild assumptions, we can show the expected fraction of wasted FLOPs by tile quantization is $O\left(\dfrac{\tileM}{T\rho}\right)$ where $\tileM$ is the tile size for $\mathbf{M}$ of GEMM and $\rho$ is the MoE activation ratio.
+% \end{remarks}
+
+
+% For the case of MoE with token-choice routing, we often have variable number of tokens per expert and during the forward and activation gradient backward, we waste 
+% \begin{equation}
+%     \dfrac{\lceil \frac{T_e}{\tileM} \rceil * \tileM - T_e}{T_e} \cdot E \cdot (6dn)
+% \end{equation}
+% FLOPs per forward pass by padding. 
+
+Therefore, we propose to use token rounding to avoid launching such extra tiles, thereby leading to more efficient training. We also empirically show that our token rounding method does not affect model quality while achieving much higher training throughput.
+
+% \begin{wrapfigure}{r}{0.42\textwidth}
+% \begin{minipage}{0.42\textwidth}
+%     % \vspace{em}
+%     \centering
+%     \includegraphics[width=\linewidth]{figures/tile_quant_fig.pdf}
+%     \caption{\small A demonstration of tile quantization effect for sparse MoE. The rounding subroutine in TR will make a binary decision of discarding or padding tokens to guarantee each expert receives $\tileM$-multiple number of tokens.}  \label{fig:tile-quant}
+%     \vspace{-1em}
+% \end{minipage}
+% \end{wrapfigure}
+
+% Training sparse MoE models introduces unique system level challenges during training. For instance, the token dimension of the GEMM computation in dense models per training step is typically quite large. However, for MoE models this decreases with increasing sparsity. Assuming all experts get uniformly activated during training, the amount of tokens received by each expert is given as $T_e = \frac{kT}{E}$. For example, a model training with $T = 16,384$ tokens per training step, we have $16,384$ tokens as the GEMM's $M$ dimension for dense models, however for MoEs, its only $512$ for the GPT-OSS model ($K = 4, E = 128$). This leads to more memory bound GEMMs for the highly sparse MoE models. Also, during MoE training some experts may receive tokens that are not a multiple of the GEMM kernel's $M$ tile size which leads to launching of $\lceil \frac{T_e}{\tileM} \rceil$ tiles. When $T_e$ is not divisible by $tile_M$, we have extra tiles being launched. The extra launched tile in this case has to padded to $\tileM$ to be able to use tensorcores. 
+
+
+
+
+
+% \paragraph{Tile quantization effect}\label{sec:tile_quantization}
+
+
+
+\subsection{Token rounding routing}\label{sec:tr}
+
+As such, we propose to use the token rounding (TR) method as a 2-step sorting algorithm as shown in Algorithm~\ref{alg:token_rounding}. The token rounding algorithm first computes the vanilla token-choice (TC) routing results and applies a sorting of the router score over each expert's tokens, similar to the EC sorting step. We then choose to either discard tokens selected in the first step of TC top-$K$ routing or pad additional tokens in the second step of sorting. Between these 2 steps, we process the routing weight matrix such that the TC tokens are always preferred over EC tokens. This is done so that both discarding or padding only affects the last input tile for each expert.
+
+% , but we acknowledge that $\tileM$ is GPU-dependent and in some cases $(d,n)$-dependent e.g., when we have small $d$, $n$ on $\mathbf{N}$, $\mathbf{K}$ dimension, we might prefer to have larger $\tileM$ to saturate the tensor pipes. Here we focus on varlen-$\mathbf{M}$ Grouped GEMM as it consists 12/18 FLOP fraction during MoE training. The other 6/18 FLOP are consumed by varlen-$\mathbf{K}$ Grouped GEMM in weight gradient kernel, and in this case padding occurs on $\tileK$ instead of $\tileM$ ($\tileK$ is often smaller than $\tileM$ so we do not focus on this in this paper).
+
+Token rounding requires a $\mathrm{round\_and\_sparsify}$ subroutine for making a binary decision about discarding or padding. Our default choice for such a subroutine is to round expert frequency to the nearest $\tileM$ multiples: we choose to pad EC selected tokens if $\roundup{f_e} - f_e$ is smaller than $f_e - \rounddown{f_e}$. \footnote{For simplicity, we always use $\tileM$ as 128 in Table~\ref{tab:exp-sparse} and Figure~\ref{fig:token_rounding_speed}.} We further conduct an ablation in Table~\ref{tab:exp-ablation} and find that (1) our TR algorithm is quite robust w.r.t. the underlying rounding subroutine (2) this simple strategy of nearest rounding on expert frequency is often sufficient to yield excellent task performance. More detailed discussion on different rounding subroutines is included in Appendix~\ref{sec:appendix:ablation}.
+
+
+\paragraph{MoE training \& inference quality.}
+
+This simple algorithm guarantees that for each expert, the maximum deviation from token-choice routing is at most 1 tile. We find that this property has a surprisingly robust performance even under sparse MoE training regime and can serve as a substitute for token-choice under sparse MoE training settings, which is shown in Table~\ref{tab:exp-sparse}. We also conduct an ablation study on the effect of microbatch size $T$ and tile size $\tileM$ on the quality of trained MoE model with TR in Table~\ref{tab:exp-T-ablation} and~\ref{tab:exp-tileM-ablation}, and we find token rounding routing is generally robust when $\bar{T}_e/\tileM \geq 2$.
+
+
+% \mayank{Not able to understand the following paragraph clearly}
+
+
+
+
+
+
+
+% \mayank{The table is way too far in Appendix, maybe move it to main paper}
+% \wentao{todo: add a bound between TC and TR in this section}
+
+
+\paragraph{MoE training throughput.}
+
+TR guarantees no tile quantization effects and in Section~\ref{sec:exp:token_round_throughput}, we show that TR training throughput over vanilla TC top-$K$ is consistently higher when in the highly sparse MoE training regime and can achieve 16\% higher TFLOPS for the kernel runtime as we scale up $E$ while keeping $K$ constant. 
+
+% This trend empirically validates the Remark~\ref{remarks:token_rounding}.

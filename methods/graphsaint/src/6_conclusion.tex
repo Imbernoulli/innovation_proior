@@ -1,0 +1,13 @@
+\section{Conclusion}
+
+We have presented {\graphsaint}, a graph sampling based training method for deep GCNs on large graphs. 
+We have analyzed bias and variance of the minibatches defined on subgraphs, and proposed normalization techniques and sampling algorithms to improve training quality. We have conducted extensive experiments to demonstrate the advantage of {\graphsaint} in accuracy and training time. 
+
+An interesting future direction is to develop distributed training algorithms using graph sampling based minibatches. 
+After partitioning the training graph in distributed memory, sampling can be performed independently on each processor. 
+Afterwards, training on the self-supportive subgraphs can significantly reduce the system-level communication cost. 
+To ensure the overall convergence quality, data shuffling strategy for the graph nodes and edges can be developed together with each specific graph sampler. 
+Another direction is to perform algorithm-system co-optimization to accelerate the training of {\graphsaint} on heterogeneous computing platforms \citep{ipdps_arxiv,graphact}. 
+The resolution of ``neighbor explosion'' by {\graphsaint} not only reduces the training computation complexity, but also improves hardware utilization by significantly less data traffic to the slow memory. In addition, task-level parallelization is easy since the light-weight graph sampling is completely decoupled from the GCN layer propagation. 
+
+%Especially, since the graph data may reside on geographically dispersed computation nodes, the property that graph sampling is decoupled from the training helps parallelization, and fits very well the distributed computing environments. 

@@ -1,0 +1,43 @@
+% maybe rewrite as Lookahead converges for any alpha \in (0,1) whenever the inner optimizer converges.
+
+We can get further insight into Lookahead by analyzing the minimization of smooth, strongly convex functions, as in \citet{o2015adaptive}. % add more details about assumptions
+
+If we use an inner loop optimizer of SGD with momentum, we get 
+\begin{align}
+    f(x^{(j,  k)}) - f(x^*) 
+    &\leq \frac{4L}{k^2} \|x^{(j,  0)} - x^*\|  \label{eq:inner optimizer bound} \\
+    &\leq \frac{8L}{\mu k^2} (f(x^{(j,  0)}) - f(x^*)) \label{eq:strong convexity} \\
+    &= \beta (f(x^{(j,  0)}) - f(x^*)) 
+\end{align}
+where we use the convergence guarantee of the inner optimizer in equation \eqref{eq:inner optimizer bound} and strong convexity in equation \eqref{eq:strong convexity}. Our argument is agnostic to the choice of optimizer. We define $\beta_k = \frac{8L}{\mu k^2}$ for convenience: this represents the bound in functional value change for momentum on a strongly convex function.
+
+\begin{align}
+    & f(x^{(j + 1, 0)}) - f(x^*) \\
+    &= f((1 - \alpha) x^{(j,  0)} + \alpha x^{(j, k)}) - f(x^*) \\
+    &\leq (1 - \alpha) (f(x^{(j,  0)}) - f(x^*)) + \alpha (f(x^{(j,  k)}) - f(x^*)) \\
+    &\leq (1 - \alpha) (f(x^{(j,  0)}) - f(x^*)) +  \alpha \beta (f(x^{(j,  0)}) - f(x^*)) \\ 
+    &= [(1 - \alpha) +  \alpha \beta] (f(x^{(j,  0)}) - f(x^*))  
+\end{align}
+
+
+\begin{align}
+    & f(x^{(j + 1, 0)}) - f(x^*) \\
+    =& f((1 - \alpha) x^{(j,  0)} + \alpha x^{(j, k)}) - f(x^*) \\
+    \leq& (1 - \alpha) (f(x^{(j,  0)}) - f(x^*)) + \alpha (f(x^{(j,  k)}) - f(x^*)) \nonumber \\
+    & - \frac{\alpha(1 - \alpha)\mu}{2}\|x^{(j,  0)} - x^{(j, k)} \| \text{ [strongly convex]} \\
+    \leq& (1 - \alpha) (f(x^{(j,  0)}) - f(x^*)) + \alpha \frac{4L}{k^2}\|x^{(j,  0)} - x^* \|^2  \nonumber \\
+    & - \frac{\alpha(1 - \alpha)\mu}{2}\|x^{(j,  0)} - x^{(j, k)} \|^2 \\
+    &{\color{red} \text{  if the following is true: } \nonumber }\\
+    &{\color{red} \text{Lemma:} \|x^{(j,  0)} - x^{(j, k)} \| \ge c\|x^{(j,  0)} - x^* \| \text{. Then,}} \nonumber \\
+    \leq & {\color{red} (1 - \alpha) (f(x^{(j,  0)}) - f(x^*)) } \nonumber \\
+    & {\color{red} + \left(\alpha\frac{4L}{k^2} - c\frac{\alpha(1 - \alpha)\mu}{2} \right) \|x^{(j,  0)} - x^* \|} \\
+    \leq & {\color{red} \left((1 - \alpha) + \alpha \beta - c\alpha(1 - \alpha) \right) (f(x^{(j,  0)}) - f(x^*)) } \\
+    \leq & {\color{red} \left((1 - \alpha)(1 - c\alpha) + \alpha \beta \right) (f(x^{(j,  0)}) - f(x^*)) } \\
+    &{\color{red} \text{One way to obtain c is to use Lipschitz gradient.}} \nonumber \\
+    &{\color{red} \text{Im sure there has to be tigher bounds. } } \nonumber
+\end{align}
+
+This gives us insight into choosing $\alpha$. Lookahead achieves faster convergence when 
+\begin{align}
+  \beta \leq (\alpha + (1 - \alpha) \beta) 
+\end{align}

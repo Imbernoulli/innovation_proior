@@ -1,0 +1,280 @@
+\ifarxiv
+	\newcommand{\refsecin}{Section~\ref{sec:in}}
+	\newcommand{\reffigarch}{Figure~\ref{fig:arch}}
+	\newcommand{\reffigGDarch}{Figure~\ref{fig:GDarch}}
+	\newcommand{\refeqmodulation}{Equation~\ref{eq:modulation}}
+	\newcommand{\refeqdemodulation}{Equation~\ref{eq:demodulation}}
+	\newcommand{\refeqmodem}{Equations \ref{eq:modulation} and \ref{eq:demodulation}}
+	\newcommand{\refseclazyreg}{Section~\ref{sec:lazyreg}}
+	\newcommand{\refsecpathreg}{Section~\ref{sec:pathreg}}
+	\newcommand{\refsecaltarch}{Section~\ref{sec:altarch}}
+	\newcommand{\reftabmain}{Table~\ref{tab:main}}
+	\newcommand{\reftabmains}{Tables \ref{tab:main} and \ref{tab:lsun}}
+\else
+	\newcommand{\refsecin}{Section~2 of the paper}
+	\newcommand{\reffigarch}{Figure~1 of the paper}
+	\newcommand{\reffigGDarch}{Figure~7 of the paper}
+	\newcommand{\refeqmodulation}{Equation~1 of the paper}
+	\newcommand{\refeqdemodulation}{Equation~3 of the paper}
+	\newcommand{\refeqmodem}{Equations 1 and 3 of the paper}
+	\newcommand{\refseclazyreg}{Section~3.1 of the paper}
+	\newcommand{\refsecpathreg}{Section~3.2 of the paper}
+	\newcommand{\refsecaltarch}{Section~4.1 of the paper}
+	\newcommand{\reftabmain}{Table~1 of the paper}
+	\newcommand{\reftabmains}{Tables~1 and~3 of the paper}
+	\newcommand{\reftablsun}{Table~3 of the paper}
+\fi
+
+\section{Image quality} %
+\label{app:imagequality}
+
+\figffhqcherrypick %
+\figuncurated %
+\figcatscomparison %
+\figcarscomparison %
+\figartifactsapp
+\figfrequencies
+
+We include several large images that illustrate various aspects related to image quality.
+Figure~\ref{fig:ffhqcherrypick} shows hand-picked examples illustrating the quality and diversity achievable using our method in \textsc{FFHQ}, while
+Figure~\ref{fig:uncurated} shows uncurated results for all datasets mentioned in the paper.
+
+Figures~\ref{fig:catscomparison} and~\ref{fig:carscomparison} demonstrate cases where FID and P\&R give non-intuitive results, but PPL seems to be more in line with human judgement.
+
+We also include images relating to StyleGAN artifacts.
+Figure~\ref{fig:artifactsapp} shows a rare case where the blob artifact fails to appear in StyleGAN activations, leading to a seriously broken image.
+Figure~\ref{fig:frequencies} visualizes the activations inside \reftabmain{} configurations~\arch{a} and~\arch{f}. It is evident that progressive growing leads to higher-frequency content in the intermediate layers, compromising shift invariance of the network. We hypothesize that this causes the observed uneven location preference for details when progressive growing is used.
+
+\section{Implementation details} %
+\label{app:implementation}
+
+We implemented our techniques on top of the official TensorFlow implementation of StyleGAN\footnote{\texttt{https://github.com/NVlabs/stylegan}} corresponding to configuration \arch{a} in \reftabmain{}.
+We kept most of the details unchanged, including
+	the dimensionality of $\ZZ$ and $\WW$ (512),
+	mapping network architecture (8 fully connected layers, 100$\times$ lower learning rate),
+	equalized learning rate for all trainable parameters \cite{Karras2017},
+	leaky ReLU activation with $\alpha=0.2$,
+	bilinear filtering \cite{zhang2019} in all up/downsampling layers \cite{Karras2018},
+	minibatch standard deviation layer at the end of the discriminator \cite{Karras2017},
+	exponential moving average of generator weights \cite{Karras2017},
+	style mixing regularization \cite{Karras2018},
+	non-saturating logistic loss \cite{Goodfellow2014} with $R_1$ regularization \cite{Mescheder2018},
+	Adam optimizer \cite{adam} with the same hyperparameters ($\beta_1=0, \beta_2=0.99, \epsilon=10^{-8}, \mathrm{minibatch}=32$),
+	and training datasets \cite{Karras2018,LSUN}.
+We performed all training runs on NVIDIA DGX-1 with 8 Tesla V100 GPUs using TensorFlow 1.14.0 and cuDNN 7.4.2.
+
+\paragraph{Generator redesign}
+In configurations \arch{b}--\arch{f} we replace the original StyleGAN generator with our revised architecture.
+In addition to the changes highlighted in \refsecin{}, we initialize components of the constant input $c_1$ using $\mathcal{N}(0,1)$ and simplify the noise broadcast operations to use a single shared scaling factor for all feature maps.
+\FINAL{Similar to Karras~et~al.~\cite{Karras2018}, we initialize all weights using $\mathcal{N}(0,1)$ and all biases and noise scaling factors to zero, except for the biases of the affine transformation layers, which we initialize to one.}
+We employ weight modulation and demodulation in all convolution layers, except for the output layers (tRGB in \reffigGDarch{}) where we leave out the demodulation.
+With $1024^2$ output resolution, the generator contains a total of 18 affine transformation layers where the first one corresponds to $4^2$ resolution, the next two correspond to $8^2$, and so forth.
+
+\paragraph{Weight demodulation}
+Considering the practical implementation of \refeqmodem{}, it is important to note that the resulting set of weights will be different for each sample in a minibatch, which rules out direct implementation using standard convolution primitives.
+Instead, we choose to employ \emph{grouped convolutions} \cite{krizhevsky2012} that were originally proposed as a way to reduce computational costs by dividing the input feature maps into multiple independent groups, each with their own dedicated set of weights.
+We implement \refeqmodem{} by temporarily reshaping the weights and activations so that each convolution sees one sample with $N$ groups\,---\,instead of $N$ samples with one group.
+This approach is highly efficient because the reshaping operations do not actually modify the contents of the weight and activation tensors.
+
+\paragraph{Lazy regularization}
+In configurations \arch{c}--\arch{f} we employ lazy regularization (\refseclazyreg{}) by evaluating the regularization terms ($R_1$ and path length) in a separate regularization pass that we execute once every $k$ training iterations.
+We share the internal state of the Adam optimizer between the main loss and the regularization terms, so that the optimizer first sees gradients from the main loss for $k$ iterations, followed by gradients from the regularization terms for one iteration.
+To compensate for the fact that we now perform $k+1$ training iterations instead of $k$, we adjust the optimizer hyperparameters $\lambda' = c\cdot\lambda$, $\beta_1' = (\beta_1)^c$, and $\beta_2' = (\beta_2)^c$, where $c = k/(k+1)$.
+We also multiply the regularization term by $k$ to balance the overall magnitude of its gradients.
+We use $k=16$ for the discriminator and $k=8$ for the generator.
+
+\paragraph{Path length regularization}
+Configurations \arch{d}--\arch{f} include our new path length regularizer (\refsecpathreg{}).
+We initialize the target scale $a$ to zero and track it on a per-GPU basis as the exponential moving average of $\left\lVert \mathbf{J}_{\ww}^T \yy\right\rVert_2$ using decay coefficient $\beta_\mathrm{pl} = 0.99$.
+We weight our regularization term by
+\begin{equation}
+\gamma_\textrm{pl} = \frac{\ln 2}{r^2 (\ln r - \ln 2)}
+\textrm{,}
+\end{equation}
+where $r$ specifies the output resolution (e.g. $r=1024$).
+We have found these parameter choices to work reliably across all configurations and datasets.
+To ensure that our regularizer interacts correctly with style mixing regularization, we compute it as an average of all individual layers of the synthesis network. %
+Appendix~\ref{app:regularization} provides detailed analysis of the effects of our regularizer on the mapping between $\WW$ and image space.
+
+\paragraph{Progressive growing}
+In configurations \arch{a}--\arch{d} we use progressive growing with the same parameters as Karras~et~al.~\cite{Karras2018} (start at $8^2$ resolution and learning rate $\lambda = 10^{-3}$, train for 600k images per resolution, fade in next resolution for 600k images, increase learning rate gradually by $3\times$).
+In configurations \arch{e}--\arch{f} we disable progressive growing and set the learning rate to a fixed value $\lambda = 2 \cdot 10^{-3}$, which we found to provide the best results.
+In addition, we use output skips in the generator and residual connections in the discriminator as detailed in \refsecaltarch{}.
+
+\paragraph{Dataset-specific tuning}
+Similar to Karras~et~al.~\cite{Karras2018}, we augment the \textsc{FFHQ} dataset with horizontal flips to effectively increase the number of training images from 70k to 140k, and we do not perform any augmentation for the \textsc{LSUN} datasets.
+We have found that the optimal choices for the training length and $R_1$ regularization weight $\gamma$ tend to vary considerably between datasets and configurations.
+We use $\gamma = 10$ for all training runs except for configuration \arch{e} in \reftabmain{}, as well as \textsc{LSUN Church} and \textsc{LSUN Horse} in \reftablsun{}, where we use $\gamma = 100$.
+It is possible that further tuning of $\gamma$ could provide additional benefits.
+
+\paragraph{Performance optimizations}
+We profiled our training runs extensively and found that\,---\,in our case\,---\,the default primitives for image filtering, up/downsampling, bias addition, and leaky ReLU had surprisingly high overheads in terms of training time and GPU memory footprint.
+This motivated us to optimize these operations using hand-written CUDA kernels.
+We implemented filtered up/downsampling as a single fused operation, and bias and activation as another one.
+In configuration \arch{e} at $1024^2$ resolution, our optimizations improved the overall training time by about 30\% and memory footprint by about 20\%. %
+
+\section{Effects of path length regularization}  %
+\label{app:regularization}
+
+The path length regularizer described in \refsecpathreg{} is of the form:
+
+\begin{equation}
+	\mathcal{L}_{\mathrm{pl}} = \expectation_\ww \expectation_\yy \left(\left\lVert \mathbf{J}_{\ww}^T \yy\right\rVert_2 - a\right)^2,
+	\label{eq:appxppl}
+\end{equation}
+where $\yy \in \real^{M}$ is a unit normal distributed random variable in the space of generated images (of dimension $M = 3wh$, namely the RGB image dimensions), $\JJ_\ww \in \real^{M \times L}$ is the Jacobian matrix of the generator function $g: \real^{L} \mapsto \real^{M}$ at a latent space point $\ww \in \real^L$, and $a \in \mathbb{R}$ is a global value that expresses the desired scale of the gradients.
+
+\subsection{Effect on pointwise Jacobians}
+The value of this prior is minimized when the inner expectation over $\yy$ is minimized at every latent space point $\ww$ separately. In this subsection, we show that the inner expectation is (approximately) minimized when the Jacobian matrix $\JJ_\ww$ is orthogonal, up to a global scaling factor. The general strategy is to use the well-known fact that, in high dimensions $L$, the density of a unit normal distribution is concentrated on a spherical shell of radius $\sqrt{L}$. The inner expectation is then minimized when the matrix $\JJT_\ww$ scales the function under expectation to have its minima at this radius. This is achieved by any orthogonal matrix (with suitable global scale that is the same at every $\ww$).
+
+We begin by considering the inner expectation
+\begin{equation*}
+	\mathcal{L}_{\ww} := \expectation_\yy \left(\left\lVert \JJT_\ww \yy\right\rVert_2 - a\right)^2.
+\end{equation*}
+We first note that the radial symmetry of the distribution of $\yy$, as well as of the $l_2$ norm, allows us to focus on diagonal matrices only. This is seen using the Singular Value Decomposition $\JJT_\ww = \mathbf{U}\tilde\SSigma\mathbf{V}^T$, where $\mathbf{U} \in \real^{L \times L}$ and $\mathbf{V} \in \real^{M \times M}$ are orthogonal matrices, and $\tilde \SSigma = [\SSigma ~ \mathbf{0}]$ is a horizontal concatenation of a diagonal matrix $\SSigma \in \real^{L \times L}$ and a zero matrix $\mathbf{0} \in \real^{L \times (M-L)}$ \cite{Golub2013}. Because rotating a unit normal random variable by an orthogonal matrix leaves the distribution unchanged, and rotating a vector leaves its norm unchanged, the expression simplifies to
+\begin{eqnarray*}
+	\mathcal{L}_{\ww} &=& \expectation_\yy \left(\left\lVert \mathbf{U}\tilde\SSigma\mathbf{V}^T \yy\right\rVert_2 - a\right)^2 
+	\\
+	&=& \expectation_\yy \left(\left\lVert \tilde\SSigma \yy\right\rVert_2 - a\right)^2.
+\end{eqnarray*}
+Furthermore, the zero matrix in $\tilde \SSigma$ %
+drops the dimensions of $\yy$ beyond $L$, effectively marginalizing its distribution over those dimensions. The marginalized distribution is again a unit normal distribution over the remaining $L$ dimensions. We are then left to consider the minimization of the expression
+\begin{equation*}
+	\mathcal{L}_{\ww} = \expectation_{\tyy} \left(\left\lVert \SSigma \tyy\right\rVert_2 - a\right)^2,
+\end{equation*}
+over diagonal square matrices $\SSigma \in \real^{L \times L}$, where $\tyy$ is unit normal distributed in dimension $L$. To summarize, all matrices $\JJT_\ww$ that share the same singular values with $\SSigma$ produce the same value for the original loss.
+
+Next, we show that this expression is minimized when the diagonal matrix $\SSigma$ has a specific identical value at every diagonal entry, i.e., it is a constant multiple of an identity matrix. We first write the expectation as an integral over the probability density of $\tyy$:
+\begin{eqnarray*}
+	\mathcal{L}_{\ww} &=& \int \left(\left\lVert \SSigma \tyy\right\rVert_2 - a\right)^2 p_{\tyy}(\tyy) ~ \mathrm{d}\tyy \\
+	&=& (2 \pi)^{-\frac{L}{2}} \int \left(\left\lVert \SSigma \tyy\right\rVert_2 - a\right)^2 \mathrm{exp}\left(-\frac{\tyy^T \tyy}{2}\right) ~ \mathrm{d}\tyy 
+\end{eqnarray*}
+Observing the radially symmetric form of the density, we change into a polar coordinates $\tyy = r \phi$, where $r \in \real_+$ is the distance from origin, and $\phi \in \mathbb{S}^{L-1}$ is a unit vector, i.e., a point on the $L-1$-dimensional unit sphere. This change of variables introduces a Jacobian factor $r^{L-1}$:
+\begin{multline*}
+	%
+	%
+	\tilde{\mathcal{L}}_{\ww} =
+	(2 \pi)^{-\frac{L}{2}} \int_{\mathbb{S}}\int_0^\infty \left(r\left\lVert \SSigma \phi \right\rVert_2 - a\right)^2 r^{L-1} \\
+	\mathrm{exp}\left(-\frac{r^2}{2}\right) ~ \mathrm{d}r ~ \mathrm{d}\phi
+\end{multline*}
+
+The probability density $(2\pi)^{-L/2} r^{L-1} \mathrm{exp}\left(-\frac{r^2}{2}\right)$ is then an $L$-dimensional unit normal density expressed in polar coordinates, dependent only on the radius and not on the angle. A standard argument by Taylor approximation shows that when $L$ is high, for any $\phi$ the density is well approximated by density $(2\pi e / L)^{-L/2} \mathrm{exp}\left(-\frac{1}{2} (r-\mu)^2 / \sigma^2\right)$, which is a (unnormalized) one-dimensional normal density in $r$, centered at $\mu=\sqrt{L}$ of standard deviation $\sigma = 1/\sqrt{2}$ \cite{Bishop2006}. In other words, the density of the $L$-dimensional unit normal distribution is concentrated on a shell of radius $\sqrt{L}$. Substituting this density into the integral, the loss becomes approximately
+\begin{multline}
+	\mathcal{L}_{\ww} \approx (2\pi e / L)^{-L/2} \int_{\mathbb{S}}\int_0^\infty  \left(r\left\lVert \SSigma \phi \right\rVert_2 - a\right)^2 \\
+	 \mathrm{exp}\left(-\frac{\left(r-\sqrt{L}\right)^2}{2 \sigma^2}\right) ~ \mathrm{d}r ~ \mathrm{d}\phi,
+	\label{eq:gaussshell}
+\end{multline}
+where the approximation becomes exact in the limit of infinite dimension $L$.
+
+To minimize this loss, we set $\SSigma$ such that the function $\left(r\left\lVert \SSigma \phi \right\rVert_2 - a\right)^2$ obtains minimal values on the spherical shell of radius $\sqrt{L}$. This is achieved by $\SSigma = \frac{a}{\sqrt{L}} \mathbf{I}$, whereby the function becomes constant in $\phi$ and the expression reduces to
+\begin{multline*}
+	\mathcal{L}_{\ww} \approx (2\pi e/L)^{-L/2} \mathcal{A}(\mathbb{S}) a^2 L^{-1} \int_0^\infty \left(r - \sqrt{L}\right)^2 \\ 
+	\mathrm{exp}\left(-\frac{\left(r-\sqrt{L}\right)^2}{2 \sigma^2}\right) ~ \mathrm{d}r,
+\end{multline*}
+where $\mathcal{A}(\mathbb{S})$ is the surface area of the unit sphere (and like the other constant factors, irrelevant for minimization). Note that the zero of the parabola $(r-\sqrt{L})^2$ coincides with the maximum of the probability density, and therefore this choice of $\Sigma$ minimizes the inner integral in Eq.~\ref{eq:gaussshell} separately for every $\phi$.
+
+In summary, we have shown that\,---\,assuming a high dimensionality $L$ of the latent space\,---\,the value of the path length prior (Eq.~\ref{eq:appxppl}) is minimized when all singular values of the Jacobian matrix of the generator are equal to a global constant, at every latent space point $\ww$, i.e., they are orthogonal up to a globally constant scale.
+
+While in theory $a$ merely scales the values of the mapping without changing its properties and could be set to a fixed value (e.g., $1$), in practice it does affect the dynamics of the training. If the imposed scale does not match the scale induced by the random initialization of the network, the training spends its critical early steps in pushing the weights towards the required overall magnitudes, rather than enforcing the actual objective of interest. This may degrade the internal state of the network weights and lead to sub-optimal performance in later training. Empirically we find that setting a fixed scale reduces the consistency of the training results across training runs and datasets. Instead, we set $a$ dynamically based on a running average of the existing scale of the Jacobians, namely $a \approx \expectation_{\ww,\yy} \left(\left\lVert \JJT_w \yy\right\rVert_2\right)$. With this choice the prior targets the scale of the local Jacobians towards whatever global average already exists, rather than forcing a specific global average. This also eliminates the need to measure the appropriate scale of the Jacobians explicitly, as is done by Odena et al.~\cite{Odena2018} who consider a related conditioning prior.
+
+\figeigenvalues
+
+Figure \ref{fig:eigenvalues} shows empirically measured magnitudes of singular values of the Jacobian matrix for networks trained with and without path length regularization. While orthogonality is not reached, the eigenvalues of the regularized network are closer to one another, implying better conditioning, with the strength of the effect correlated with the PPL metric (\reftabmain{}).
+
+\subsection{Effect on global properties of generator mapping}
+In the previous subsection, we found that the prior encourages the Jacobians of the generator mapping to be everywhere orthogonal. While Figure~\ref{fig:eigenvalues} shows that the mapping does not satisfy this constraint exactly in practice, it is instructive to consider what global properties the constraint implies for mappings that do.  Without loss of generality, we assume unit global scale for the matrices to simplify the presentation.
+
+The key property is that that a mapping $g: \real^L \mapsto \real^M$ with everywhere orthogonal Jacobians preserves the lengths of curves. To see this, let $u: [t_0, t_1] \mapsto \real^L$ parametrize a curve in the latent space. Mapping the curve through the generator $g$, we obtain a curve $\tilde u = g \circ u$ in the space of images. Its arc length is
+\begin{equation}
+	L = \int_{t_0}^{t_1} \lvert \tilde u'(t) \rvert ~\mathrm{d}t,
+\end{equation}
+where prime denotes derivative with respect to $t$. By chain rule, this equals
+\begin{equation}
+	L = \int_{t_0}^{t_1} \lvert J_g(u(t)) u'(t) \rvert ~\mathrm{d}t,
+\end{equation}
+where $J_g \in \real^{L \times M}$ is the Jacobian matrix of $g$ evaluated at $u(t)$. By our assumption, the Jacobian is orthogonal, and consequently it leaves the 2-norm of the vector $u'(t)$ unaffected:
+\begin{equation}
+	L = \int_{t_0}^{t_1} \lvert u'(t) \rvert ~\mathrm{d}t.
+\end{equation}
+This is the length of the curve $u$ in the latent space, prior to mapping with $g$. Hence, the lengths of $u$ and $\tilde u$ are equal, and so $g$ preserves the length of any curve.
+
+In the language of differential geometry, $g$ isometrically embeds the Euclidean latent space $\real^L$ into a submanifold $\mathcal{M}$ in $\real^M$\,---\,e.g., the manifold of images representing faces, embedded within the space of all possible RGB images. A consequence of isometry is that straight line segments in the latent space are mapped to geodesics, or shortest paths, on the image manifold: a straight line $v$ that connects two latent space points cannot be made any shorter, so neither can there be a shorter on-manifold image-space path between the corresponding images than $g \circ v$. For example, a geodesic on the manifold of face images is a continuous morph between two faces that incurs the minimum total amount of change (as measured by $l_2$ difference in RGB space) when one sums up the image difference in each step of the morph.
+
+Isometry is not achieved in practice, as demonstrated in empirical experiments in the previous subsection. The full loss function of the training is a combination of potentially conflicting criteria, and it is not clear if a genuinely isometric mapping would be capable of expressing the image manifold of interest. Nevertheless, a pressure to make the mapping as isometric as possible has desirable consequences. In particular, it discourages unnecessary ``detours'': in a non-constrained generator mapping, a latent space interpolation between two similar images may pass through any number of distant images in RGB space. With regularization, the mapping is encouraged to place distant images in different regions of the latent space, so as to obtain short image paths between any two endpoints.
+
+\section{Projection method details} %
+\label{app:projectiondetails}
+
+\fignoiseregcars{} %
+
+\newcommand{\imgsym}{\boldsymbol{x}}
+\newcommand{\noisesym}{\boldsymbol{n}}
+Given a target image $\imgsym$, we seek to find the corresponding $\ww \in \WW$ and per-layer noise maps denoted $\noisesym_i \in \real^{r_i \times r_i}$ where $i$ is the layer index and $r_i$ denotes the resolution of the $i$th noise map.
+The baseline StyleGAN generator in 1024$\times$1024 resolution has 18 noise inputs, i.e., two for each resolution from 4$\times$4 to 1024$\times$1024 pixels.
+Our improved architecture has one fewer noise input because we do not add noise to the learned 4$\times$4 constant (\reffigarch{}).
+
+Before optimization, we compute $\MU_\ww = \expectation_\zz\,f(\zz)$ by running 10\,000 random latent codes $\zz$ through the mapping network $f$.
+We also approximate the scale of $\WW$ by computing $\sigma^2_\ww = \expectation_\zz\,\lVert f(\zz)-\MU_\ww\rVert^2_2$, i.e., the average square Euclidean distance to the center.
+
+At the beginning of optimization, we initialize $\ww = \MU_\ww$ and $\noisesym_i = \mathcal{N}(\boldsymbol{0}, \II)$ for all $i$. 
+The trainable parameters are the components of $\ww$ as well as all components in all noise maps $\noisesym_i$.
+The optimization is run for 1000 iterations using Adam optimizer~\cite{adam} with default parameters.
+Maximum learning rate is $\lambda_\mathit{max}=0.1$, and it is ramped up from zero linearly during the first 50 iterations and ramped down to zero using a cosine schedule during the last 250 iterations.
+In the first three quarters of the optimization we add Gaussian noise to $\ww$ when evaluating the loss function 
+as $\tildeww = \ww + \mathcal{N}(0, 0.05\,\sigma_\ww t^2)$, where $t$ goes from one to zero during the first 750 iterations.
+This adds stochasticity to the optimization and stabilizes finding of the global optimum.
+
+Given that we are explicitly optimizing the noise maps, we must be careful to avoid the optimization from sneaking actual signal into them.
+Thus we include several noise map regularization terms in our loss function, in addition to an image quality term. 
+The image quality term is the LPIPS~\cite{Zhang2018metric} distance between target image $\imgsym$ and the synthesized image:
+$L_\mathit{image}=D_\mathrm{LPIPS}[\imgsym, g(\tildeww, \noisesym_0, \noisesym_1, \ldots)]$.
+For increased performance and stability, we downsample both images to 256$\times$256 resolution before computing the LPIPS distance.
+Regularization of the noise maps is performed on multiple resolution scales.
+For this purpose, we form for each noise map greater than 8$\times$8 in size a pyramid down to 8$\times$8 resolution by averaging 2$\times$2 pixel neighborhoods and multiplying by 2 at each step to retain the expected unit variance. 
+These downsampled noise maps are used for regularization only and have no part in synthesis.
+
+Let us denote the original noise maps by $\noisesym_{i,0} = \noisesym_{i}$ and the downsampled versions by $\noisesym_{i,j>0}$.
+Similarly, let $r_{i,j}$ be the resolution of an original ($j=0$) or downsampled ($j>0$) noise map so that $r_{i,j+1} = r_{i,j}/2$.
+The regularization term for noise map $\noisesym_{i,j}$ is then
+\begin{eqnarray*}
+L_{i,j} &=& \left( \frac{1}{r_{i,j}^2} \cdot \sum_{x,y}\noisesym_{i,j}(x,y)\cdot\noisesym_{i,j}(x-1,y) \right)^2 \\
+        &+& \left( \frac{1}{r_{i,j}^2} \cdot \sum_{x,y}\noisesym_{i,j}(x,y)\cdot\noisesym_{i,j}(x,y-1) \right)^2
+\textrm{,}
+\end{eqnarray*}
+where the noise map is considered to wrap at the edges.
+The regularization term is thus sum of squares of the resolution-normalized autocorrelation coefficients at one pixel shifts horizontally and vertically, which should be zero for a normally distributed signal.
+The overall loss term is then $L_\mathit{total}=L_\mathit{image}+\alpha\sum_{i,j}L_{i,j}$. In all our tests, we have used noise regularization weight $\alpha=10^5$.
+In addition, we renormalize all noise maps to zero mean and unit variance after each optimization step. %
+Figure~\ref{fig:noiseregcars} illustrates the effect of noise regularization on the resulting noise maps.
+
+\section{\FINAL{Results with spectral normalization}}
+\label{app:spectralnorm}
+
+\tabspectralnorm
+
+\FINAL{%
+Since spectral normalization (SN) is widely used in GANs \cite{Miyato2018B}, we investigated its effect on StyleGAN2.
+Table~\ref{tab:spectralnorm} gives the results for a variety of configurations where spectral normalization is enabled in addition to our techniques (weight demodulation, path length regularization) or instead of them.
+
+Interestingly, adding spectral normalization to our generator is almost a no-op. On an implementation level, SN scales the weight tensor of each layer with a scalar value $1/\sigma(w)$. The effect of such scaling, however, is overridden by \refeqdemodulation{} for the main convolutional layers as well as the affine transformation layers. Thus, the only thing that SN adds on top of weight demodulation is through its effect on the \texttt{tRGB} layers.
+
+When we enable spectral normalization in the discriminator, FID is slightly compromised. Enabling it in the generator as well leads to significantly worse results, even though its effect is isolated to the \texttt{tRGB} layers. Leaving SN enabled, but disabling a subset of our contributions does not improve the situation. 
+Thus we conclude that StyleGAN2 gives better results without spectral normalization.
+}
+
+\section{\FINAL{Energy consumption}}
+\label{app:power}
+
+\tabpower
+
+\FINAL{
+Computation is a core resource in any machine learning project: its availability and cost, as well as the associated energy consumption, are key factors in both choosing research directions and practical adoption. We provide a detailed breakdown for our entire project in Table~\ref{tab:power} in terms of both GPU time and electricity consumption.
+
+We report expended computational effort as single-GPU years (Volta class GPU). We used a varying number of NVIDIA DGX-1s for different stages of the project, and converted each run to single-GPU equivalents by simply scaling by the number of GPUs used.
+
+The entire project consumed approximately 131.61 megawatt hours (MWh) of electricity. We followed the Green500 power measurements guidelines \cite{Ge2020} as follows. 
+For each job, we logged the exact duration, number of GPUs used, and which of our two separate compute clusters the job was executed on. We then measured the actual power draw of an 8-GPU DGX-1 when it was training \textsc{FFHQ} config~\arch{f}. A separate estimate was obtained for the two clusters because they use different DGX-1 SKUs. The vast majority of our training runs used 8 GPUs, and for the rest we approximated the power draw by scaling linearly with $n/8$, where $n$ is the number of GPUs. 
+
+Approximately half of the total energy was spent on early exploration and forming ideas. Then subsequently a quarter was spent on refining those ideas in more targeted experiments, and finally a quarter on producing this paper and preparing the public release of code, trained models, and large sets of images. Training a single \textsc{FFHQ} network (config~\arch{f}) took approximately 0.68~MWh (0.5\% of the total project expenditure). This is the cost that one would pay when training the network from scratch, possibly using a different dataset. In short, vast majority of the electricity used went into shaping the ideas, testing hypotheses, and hyperparameter tuning. We did not use automated tools for finding hyperparameters or optimizing network architectures.
+}
+

@@ -1,0 +1,42 @@
+# Synthesis — GN model of nonlinear propagation (uncompensated coherent fiber)
+
+## Sources (three-source bottom line)
+1. PRIMARY: Poggiolini, Bosco, Carena, Curri, Jiang, Forghieri, "A Detailed Analytical Derivation of the GN Model of Non-Linear Interference in Coherent Optical Transmission Systems," arXiv:1209.0394 (companion to JLT 30(24) 2012 "The GN Model of Non-Linear Propagation in Uncompensated Coherent Optical Systems"). Read in full pages 1-23 (derivation + Appendices A,B). This is THE derivation.
+2. BACKGROUND concepts: NLSE/Manakov, Kerr effect, FWM, ASE/OSNR, coherent detection + DSP dispersion compensation. Captured from primary §IV and Carena/Johannisson.
+3. THIRD-PARTY EXPLAINER: Johannisson & Agrell, "Modeling of Nonlinear Signal Distortion in Fiber-Optical Networks," arXiv:1309.4000 — clean re-derivation of GN integral (their Eq.3), SCI/XCI rectangular closed-form, dilog/asinh form, incoherent N-span accumulation. Plus mapyourtech HTML explainer for η/optimum-power framing.
+CANONICAL CODE: GNPy (Telecom Infra Project) gnpy/core/science_utils.py NliSolver._gn_analytic (eq.120) + _psi (eq.124 asinh). SPM_WEIGHT=16/27, XPM_WEIGHT=2·16/27.
+
+## The pain point (research question)
+Modern coherent links: dispersion compensated in DSP, so fiber is OPTICALLY uncompensated. Want a fast performance-prediction tool (SNR/BER) without running the full split-step NLSE for every WDM config. Need a model that takes Tx PSD + link params → NLI power → SNR → feeds power/MCS/spectrum allocation.
+
+## The derivation chain (re-derive ALL of this)
+1. BER = Ψ(SNR), SNR = Ā²/(σ²_ASE + σ²_NLI), σ²_NLI = ∫ G_NLI(f)|H_Rx|² df. (Eq 1,11,12) Need G_NLI(f).
+2. Signal model: WDM Tx = filtered periodic complex white Gaussian noise (PWGN), period T0=W·Ts, → spectral lines at n·f0 (f0=1/T0), line powers shaped by G_Tx(f). E(t)=√(f0 G_Tx(nf0)) Σ ξn e^{j2πnf0 t}, ξn iid unit-variance complex Gaussian. (Eq 13-25). f0→0 recovers continuous spectrum.
+3. NLSE (freq domain), single pol: ∂E/∂z = [−jβ(f) −α]E + Q_NLI, Q_NLI = −jγ E*E**E (Kerr). (Eq 26-29) Note α=field loss, power loss 2α.
+4. At z=0 substitute signal model → Q_NLI(0,f) = −jγ f0^{3/2} ΣΣΣ ξm ξn* ξk √(G G G) δ(f−[m−n+k]f0). FWM among triplets: beat at index i=m−n+k. (Eq 31-32). Triplet set A_i = {m−n+k=i}.
+5. Split A_i: subset X_i where [m=n or k=n] gives terms ∝ total power (SPM-like deterministic phase, → constant×E, handled as −j2γP_Tx z_eff phase, Eq 41-44, IRRELEVANT to |·|²). Remaining Ã_i = A_i−X_i is the genuine NLI source. (Eq 33-45)
+6. Perturbative (undepleted-pump) assumption: treat Q_NLI,Ã as independent source term; E ≈ E_LIN + E_NLI; E_NLI(z,f)=e^Γ ∫ e^{−Γ} Q dz'. (Eq 46-51). Justified by low-NLI operating regime (NLI < ASE at optimum).
+7. Integrate the source over one span → FWM-efficiency integral ∫ e^{−2αz'} e^{jΔβ z'} dz' = (1−e^{−2αz}e^{jΔβz})/(2α−jΔβ), with phase-mismatch Δβ = β([m−n+k]f0)−β(mf0)+β(nf0)−β(kf0). (Eq 58-59). E_NLI = Σ μ_i δ(f−if0).
+8. PSD = E{|μ_i|²} (periodic-signal PSD, Eq 60-62). DOUBLE SUM over triplet pairs (Eq 63). CENTRAL-LIMIT / averaging argument (Appendix A): ξ's zero-mean iid; E{ξmξn*ξk ξm'*ξn'ξk'*} nonzero only when indices pair up: (m=m',n=n',k=k') or (m=k',n=n',k=m'), value=1. ND-FWM (all indices different) gives ~3M² nonzero averages each =1; D-FWM (m=k) grows only ~M, negligible as M→∞ (f0→0); SPM (m=n=k) single, vanishes; XPM (m=n or n=k) deterministic, folded into the power term of step 5. So the surviving NLI is a sum of M²-scale uncorrelated FWM beat contributions → by CLT it's a zero-mean complex Gaussian → ADDITIVE GAUSSIAN NOISE. Double sum over triplets collapses to a double sum over two free indices (Eq 67). (Eq 63-68)
+9. Single-pol single-span PSD: G_E_NLI(f) = 2γ² f0³ e^{−2αz} Σ_i δ Σm Σk G_Tx(mf0)G_Tx(kf0)G_Tx([m+k−i]f0) |(1−e^{−2αz}e^{jΔβz})/(2α−jΔβ)|². (Eq 68)
+10. Dual-pol (Manakov): Kerr factor 8/9, two beat products (same-pol + cross-pol), 2^{−1/2} from G_Tx/2 split → leading constant becomes 16/27. Same-pol = 2/3 of NLI, cross-pol = 1/3; both same PSD. G_E_NLI = (16/27) γ² f0³ ... (Eq 69-86).
+11. Multi identical spans: each span's NLI adds with a phase → phased-array factor sin²(NsΦ/2)/sin²(Φ/2) (geometric series), Φ=Δβ·Ls. (Eq 89-96) → continuous-spectrum limit f0→0:
+   GNRF: G_NLI(f) = (16/27)γ² ∫∫ G_Tx(f1)G_Tx(f2)G_Tx(f1+f2−f) · |(1−e^{−2αLs}e^{j4π²(f1−f)(f2−f)[β2+πβ3(f1+f2)]Ls})/(2α−j4π²(f1−f)(f2−f)[β2+πβ3(f1+f2)])|² · sin²(2Nsπ²(f1−f)(f2−f)β2 Ls)/sin²(2π²(f1−f)(f2−f)β2 Ls) df1 df2. (Eq G.4 = GN reference formula). β3=0 → β2-only.
+   Phase-mismatch identity (G.2): β(f1+f2−f)−β(f1)+β(f)−β(f2) = 4π²(f1−f)(f2−f)[β2+πβ3(f1+f2)] using β(f)=2π²β2 f² + (4/3)π³β3 f³.
+12. CUBIC RESULT: G_Tx appears to 3rd power ⇒ G_NLI ∝ P³ ⇒ P_NLI = η P³, η = link constant indep of P. (read off directly from GNRF.)
+13. ENGINEERING: SNR = P/(P_ASE + η P³). d/dP=0 ⇒ P_ASE = 2η P³ = 2 P_NLI ⇒ P_opt = (P_ASE/2η)^{1/3}; at optimum NLI = P_ASE/2, MaxSNR = P/(1.5 P_ASE). Per-channel GSNR from GNRF → feeds power/MCS/spectrum allocation. Incoherent N-span: P_NLI ∝ N (set χ→1, sum spans).
+14. CLOSED FORM (Eq 120/124, GNPy): assume rectangular channels, keep only SCI (n=i) + XCI (n≠i), drop MCI. ψ_n,i ≈ Ns[asinh(π²(2α)⁻¹|β2|[f_n−f_i+B/2]B) − asinh(...−B/2...)]/(4π(2α)⁻¹|β2|); SCI ψ_i,i ≈ Ns asinh((π²/2)|β2|(2α)⁻¹B²)/(2π|β2|(2α)⁻¹). η = (16/27)γ²L_eff² Σ ψ. GNPy _gn_analytic: eta = γ²·weight·ψ/(R_cut R_pump²), nli = P_cut·P_pump²·eta (cubic), weight = (16/27) on diagonal (SCI), 2·(16/27) off-diagonal (XCI). The asinh = analytic value of the 2D FWM-efficiency integral over a rectangular channel for the SCI/XCI islands.
+
+## Design-decision → why table
+- Signal = filtered PWGN (Gaussian RP, periodic, spectral lines): Gaussian b/c after enough dispersion the field "Gaussianizes" (CLT over many dispersed symbols); spectral lines b/c they reduce the NL propagation to discrete FWM beats solvable with delta algebra; periodic only as a device, lift via f0→0. Alt: deterministic data sequence → no closed form.
+- Perturbative/undepleted-pump (first-order regular perturbation): the optimum operating point has NLI < ASE, so the field is only mildly perturbed; gives the only tractable closed form. Alt: full NLSE = the thing we're trying to avoid.
+- Treat Q_NLI,Ã as source independent of E: approximation; justified a posteriori by validations and because the double convolution scrambles frequencies so dependence at a single f washes out.
+- Split off X_i (XPM/SPM ∝ total power): those produce a pure phase shift e^{−j2γP z_eff}, irrelevant under |·|² → can be dropped from NLI; their inclusion would otherwise double-count. (EGN later corrects XPM modulation-dependence; out of frame.)
+- Central-limit / variance-only (ASE+NLI add in variance): the surviving FWM beats are many, uncorrelated, zero-mean → CLT → Gaussian, so NLI behaves as AWGN statistically independent of ASE. This is the namesake "Gaussian noise" assumption and the whole point — lets BER=Ψ(SNR) reuse linear-channel formulas. Why valid only uncompensated: dispersion decorrelates the beats span-to-span (and within a span) so CLT applies; in DM links beats stay correlated → not Gaussian, model fails (stated explicitly: "should not be used with periodic DM").
+- 16/27 constant: dual-pol Manakov 8/9 Kerr factor, squared and combined with the 2^{−1/2} from splitting G_Tx over two pols → (8/9)²·... = 16/27 leading; same-pol 2/3 + cross-pol 1/3.
+- Phased-array sin²(NsΦ/2)/sin²(Φ/2): coherent span-to-span NLI addition; high dispersion ⇒ Φ large/fast ⇒ averages so χ→Ns (incoherent, NLI∝N). Incoherent assumption needed for network closed form (channels add/drop break coherence anyway).
+- Rectangular-channel SCI+XCI, drop MCI: Nyquist-WDM PSDs ≈ rectangular (minimal guard band); weight w_m decays fast off-center so MCI (all-three-different-channel) negligible; SCI+XCI → double sum ∝ Nch not Nch³ → cheap. asinh closed form from analytic 2D integral over rectangle. 4/3 polygon over-approximation conservative.
+- η independent of P: because P factors out as P³ from the GNRF (G_Tx=P·g, g normalized). Lets you precompute η once per link, then optimize power/MCS analytically.
+
+## In-frame discipline
+context.md: NLSE/Manakov/Kerr/FWM/ASE/OSNR/coherent-DSP as pre-method facts; the "uncompensated link Gaussianizes NLI" as observed phenomenon (Background). No measured SNR/capacity numbers. No naming GN model in context. reasoning.md: re-derive, recall phenomena, never measure. No target-paper reference.

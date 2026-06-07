@@ -1,0 +1,26 @@
+\section{Random Features: A Case Study}
+\label{sec:rff}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{rff_fmnist.png} \\
+    %\includegraphics[width=0.3\textwidth]{tmp_figures/rff_fmnist_slice_sam.png}
+    %\includegraphics[width=0.3\textwidth]{tmp_figures/rff_fmnist_slice_emb.png}
+    \caption{\textbf{Random Fourier Features} on the Fashion MNIST dataset. The setting is equivalent to two-layer neural network with $e^{-ix}$ activation, with randomly-initialized first layer that is fixed throughout training. The second layer is trained using gradient flow.}
+    \label{fig:rff}
+\end{figure}
+
+
+In this section, for completeness sake, we show that both the model- and sample-wise double descent phenomena are not unique to deep neural networks---they exist even in the setting of Random Fourier Features of \cite{rahimi2008random}. This setting is equivalent to a two-layer neural network with $e^{-ix}$ activation. The first layer is initialized with a $\mathcal{N}(0, \frac{1}{d})$ Gaussian distribution  and then fixed throughout training. The width (or embedding dimension) $d$ of the first layer parameterizes the model size. The second layer is initialized with $0$s and trained with MSE loss.
+
+Figure \ref{fig:rff} shows the grid of Test Error as a function of
+both number of samples $n$ and model size $d$.
+Note that in this setting $\EMC = d$ (the embedding dimension). As a result, as demonstrated in the figure, the peak follows the path of $n=d$. Both model-wise and sample-wise (see figure~\ref{fig:rff-samples})  double descent phenomena are captured, by horizontally and vertically crossing the grid, respectively. 
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.6\textwidth]{figures/rff_fmnist_samples.png} \\
+    %\includegraphics[width=0.3\textwidth]{tmp_figures/rff_fmnist_slice_sam.png}
+    %\includegraphics[width=0.3\textwidth]{tmp_figures/rff_fmnist_slice_emb.png}
+    \caption{Sample-wise double-descent slice for Random Fourier Features on the Fashion MNIST dataset. In this figure the embedding dimension (number of random features) is 1000.}
+    \label{fig:rff-samples}
+\end{figure}

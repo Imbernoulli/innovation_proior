@@ -1,0 +1,16 @@
+\setlength\tabcolsep{2 pt} % to reduce the margin of the table
+\begin{table*}[h]
+\centering
+\small
+\begin{tabular}{|l|c|c|c|c|c|c|c|}
+\toprule
+  Experiments $\downarrow$                               & Temp. & Top\_P & Freq. Penalty & Presence Penalty & Beam Size & Max Length & Stop Sequences                                                             \\ \midrule
+Generating instructions          & 0.7        & 0.5    & 0                 & 2                & 1         & 1024                  & "\textbackslash{}n\textbackslash{}n", "\textbackslash{}n16", "16.", "16 ." \\
+Identifying clf. tasks & 0           & 0      & 0                 & 0                & 1         & 3                     & "\textbackslash{}n", "Task:"                                               \\
+Generating instances             & 0           & 0      & 0                 & 1.5              & 1         & 300                   & "Task:"                                                                    \\
+Evaluating models    & 0           & 0      & 0                 & 0                & 0         & 1024                  & None (default) \\
+\bottomrule
+\end{tabular}
+    \caption{Hyper-parameters for querying OpenAI API in different experiments.}
+    \label{tab:query-gpt3-parameters}
+\end{table*}

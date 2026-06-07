@@ -1,0 +1,543 @@
+
+===== page 1 [pdftotext] =====
+                                                                                                                                                                                    1
+
+
+
+
+                                                                  Modeling of Nonlinear Signal Distortion
+                                                                        in Fiber-Optical Networks
+                                                                                             Pontus Johannisson and Erik Agrell
+
+
+
+                                                    Abstract—A low-complexity model for signal quality pre-          load. Hence, the traditional wavelength-division multiplex-
+                                                 diction in a nonlinear fiber-optical network is developed. The      ing (WDM) paradigm, in which the available spectrum is
+                                                 model, which builds on the Gaussian noise model, takes into
+                                                                                                                     divided into a fixed grid of equal-bandwidth channels, is
+                                                 account the signal degradation caused by a combination of
+                                                 chromatic dispersion, nonlinear signal distortion, and ampli-       being replaced by the concept of flexible-grid WDM [4].
+
+
+
+
+arXiv:1309.4000v1 [physics.optics] 16 Sep 2013
+                                                 fier noise. The center frequencies, bandwidths, and transmit           The scheduling algorithm requires a nonlinear model of
+                                                 powers can be chosen independently for each channel, which          the physical layer. While the problem of linear routing and
+                                                 makes the model suitable for analysis and optimization of           wavelength assignment is well investigated, see, e.g., [5],
+                                                 resource allocation, routing, and scheduling in large-scale
+                                                 optical networks applying flexible-grid wavelength-division         no nonlinear model that combines reasonable accuracy and
+                                                 multiplexing.                                                       low computational complexity seems to have been published.
+                                                                                                                     Both these properties are necessary in order to be able to
+                                                   Index Terms—Optical fiber communication, Optical fiber
+                                                 networks, Fiber nonlinear optics, Wavelength division mul-          find a close-to-optimal solution in real time. This excludes
+                                                 tiplexing.                                                          simulations of the nonlinear Schrödinger equation as an
+                                                                                                                     alternative, but the recently suggested Gaussian noise (GN)
+                                                                                                                     model [6], [7], [8] provides a tool to approach this question.
+                                                                       I. I NTRODUCTION                              Unfortunately, also the general formulation of the GN model
+                                                        PTICAL long-haul communication research has during           is computationally complex and further simplification is
+                                                 O      the latest decade become completely focused on coher-
+                                                 ent transmission. The data throughput has been increased
+                                                                                                                     necessary. In this paper, we start from a description of how
+                                                                                                                     a model suitable for network optimization can be formulated
+                                                 by better utilization of the available bandwidth and receiver       and derive such a model from the GN model.
+                                                 digital signal processing (DSP) has allowed many signal                The organization of this paper is as follows. In Sec. II, the
+                                                 impairments to be compensated for. Further significant in-          considered problem is stated and the approach is outlined.
+                                                 crease of the data rate is expected through the use of              The main assumptions and approximations are given in
+                                                 multicore/multimode fibers [1], but while this development is       Sec. III. The model for a multichannel fiber span is derived
+                                                 exciting, there are also significant challenges. For example,       in Sec. IV, and it is expanded into a network model in
+                                                 these approaches call for the deployment of new fibers.             Sec. V. After a brief discussion about the validity of the model
+                                                    It is also important to use available resources to the           assumptions, the paper is concluded in Sec. VI.
+                                                 greatest possible extent. The increase in spectral efficiency
+                                                 enabled by coherent communication is actually an example                             II. P ROBLEM S TATEMENT
+                                                 of this. For example, using a channel spacing of 50 GHz, it         A. Network Topology and Terminology
+                                                 is now possible to transmit 100 Gbit/s using polarization-
+                                                                                                                       A network consists of a number of nodes, i.e., transceivers
+                                                 multiplexed quadrature phase-shift keying. Comparing this
+                                                                                                                     or routing hardware components, connected by optical com-
+                                                 with the traditional 10 Gbit/s using on–off keying, the data
+                                                                                                                     munication links. Each link consists of N concatenated fiber
+                                                 throughput is increased by a factor of ten. In this work, the
+                                                                                                                     spans, which each consists of an optical fiber followed by an
+                                                 focus is on optical networking. By developing routing algo-
+                                                                                                                     erbium-doped fiber amplifier (EDFA). Each link can transmit
+                                                 rithms with awareness of the nonlinear physical properties
+                                                                                                                     M simultaneous channels using WDM.
+                                                 of the channel, it would be possible to operate optical links         In such a network, a large number of connections between
+                                                 closer to the optimum performance, and this would further           transceiver nodes are established. For each connection there
+                                                 increase the throughput in optical communication networks.          is a route, i.e., a set of fiber links that connect the trans-
+                                                    Optical networks are not as flexible as their electronic         mitting and receiving nodes via a number of intermediate
+                                                 counterparts, but there are several efforts that aim at im-         nodes. We consider an all-optical network, implying that the
+                                                 proving the situation by investigating, e.g., cognitive [2] and     signal is in the optical domain throughout the path. The in-
+                                                 elastic [3] optical networks. An increased flexibility requires,    termediate nodes typically consist of reconfigurable add/drop
+                                                 e.g., hardware routing of channels in the optical domain and        multiplexers and may also include wavelength conversion.
+                                                 a monitoring system responsible for the scheduling of the
+                                                 data streams. It is also desirable that the coherent transmis-
+                                                 sion and detection can be done using a number of different          B. Signal Degrading Mechanisms
+                                                 modulation formats and symbol rates, chosen dynamically               For any connection through the network, there will be sig-
+                                                 in response to time-varying traffic demands and network             nal degradation caused by a number of mechanisms. The two
+                                                                                                                     most fundamental ones are amplifier noise and nonlinear
+                                                   Pontus Johannisson is with the Photonics Laboratory, Department   signal distortion due to the Kerr nonlinearity. While the am-
+                                                 of Microtechnology and Nanoscience, Chalmers University of Tech-    plified spontaneous emission from optical amplifiers is easy
+                                                 nology, SE-412 96 Gothenburg, Sweden.
+                                                   Erik Agrell is with the Communication Systems Group, Depart-
+                                                                                                                     to model, the latter presents a big challenge. Additional de-
+                                                 ment of Signals and Systems, Chalmers University of Technology,     grading effects include the finite signal-to-noise ratio (SNR)
+                                                 SE-412 96 Gothenburg, Sweden.                                       already at the transmitter, which may be important for large
+
+===== page 2 [pdftotext] =====
+                                                                                                                                     2
+
+
+
+quadrature amplitude modulation constellations, and the           the only approach that can be simplified to a sufficiently low-
+crosstalk between different WDM channels in routing compo-        complexity model. While there are still open questions [11]
+nents and in the receiver. However, the efforts to increase the   about the range of validity of the signal model used in the
+spectral efficiency have led to sophisticated shaping of the      GN model [6, Eq. (3)], the agreement with simulations of the
+optical spectrum. Techniques such as orthogonal frequency-        full model equations has been shown to be very good [7]. We
+division multiplexing and Nyquist WDM have demonstrated           discuss some known facts about the validity of the GN model
+optical signal spectra that are very close to rectangular [9].    in Section VI. Starting from the GN model, assumptions
+Using a DSP filter, the channel crosstalk can then be very        and approximations needed to obtain a network model are
+small in the receiver. Optical routing components, such           introduced in the following.
+as reconfigurable optical add-drop multiplexers, are more
+difficult to realize as the filter function is implemented in                  III. N ETWORK M ODEL D ERIVATION
+optical hardware, but the lack of WDM channel spectral            A. General NLI Expression
+overlap reduces the crosstalk also here. Signal degradation
+due to, e.g., polarization-mode dispersion is neglected as it       The derivation is started from the GN model as stated
+is compensated for by the receiver equalizer. Thus, we here       in [12]. As coherent systems typically transmit and receive
+choose to focus on the nonlinear effects generated as the         the two polarization-multiplexed channels simultaneously,
+interplay between the Kerr nonlinearity and the chromatic         these are viewed as a unit. Assuming that the signal power
+dispersion, known as the nonlinear interference (NLI) within      spectral density (PSD) is equal in both polarizations, i.e.,
+the GN model [8].                                                 Gx (f ) = Gy (f ) ≡ G(f ), we use [12, Eqs. (26) and (27)] to
+                                                                  obtain the NLI PSD
+                                                                                        ZZ
+C. Modeling Aim                                                            Gx1 (f ) = 3    |C(ν, ν 0 , ν + ν 0 − f )|2
+   The aim of the modeling effort is to find an approximate
+                                                                                        × G(ν)G(ν 0 )G(ν + ν 0 − f ) dνdν 0 ,      (1)
+quantitative model for the NLI for a large number of con-
+nections between network transceivers. For each connection        where
+there is a route, i.e., a set of fiber links that connect the
+                                                                              C(ν, ν 0 , ν + ν 0 − f ) =
+transmitting and the receiving nodes via a number of inter-                     Z L
+mediate nodes. Each link can transmit M WDM channels                                                   2    0
+                                                                                      γ(z)p(z)e−i4π (ν−f )(ν −f )B2 (z) dz.        (2)
+and for each channel m = 1, . . . , M , the center frequency                      0
+fm , the bandwidth ∆fm , and the power Pm are chosen.             Here, Gx1 is the NLI PSD1 in the x polarization but Gx (f ) =
+This is summarized as the set of channel parameters Cm =          Gy (f ) implies that Gx1 (f ) = Gy1 (f ) ≡ GNLI (f ). The definitions
+{fm , ∆fm , Pm }. For a given link, the WDM channels can          for the normalized power evolution function, p(z), and the
+then be written as the set W = {C1 , . . . , CM }. The physical   accumulated dispersion, B2 (z), are given in [12, Section II-
+parameters of a link are the power attenuation α(z), the          B]. Notice that the channel parameter Pm is the power
+group-velocity dispersion β2 (z), and the nonlinearity γ(z).      corresponding to Gx , i.e., the power per polarization. The
+Here z ∈ [0, L] denotes the distance from the beginning           third-order dispersion has been neglected as it has very
+of the first fiber, where L is the total length of the link       small impact on the NLI [12]. Finding the NLI PSD at a
+(possibly including several fiber spans). The link parameters     given frequency involves evaluating three nested integrals.
+are summarized in the set L(z) = {α(z), β2 (z), γ(z), L}.         The numerical complexity of this is high, which motivates
+   Assume that there are a number of planned connections.         our search for analytical simplifications of this expression.
+To make sure that each transmission can succeed, the corre-
+sponding connection must satisfy the SNR requirement for
+the selected modulation format at the receiving node. The         B. NLI Accumulation
+purpose of the proposed model is to calculate the SNR for a         The GN model was originally derived for a single link
+number of simultaneous connections in a network, given the        where all WDM channels propagate together from the trans-
+network topology and the parameter sets W and L for every         mitter to the receiver, but in the network model we need
+link in the network. To the best of our knowledge, no such        the capability of WDM channel switching/routing. The GN
+model exits in the literature.                                    model builds on a certain signal model [6, Eq. (3)], where
+   The total noise variance is the sum of all noise sources. We   a fundamental assumption is that the launched signal can
+view amplifier noise as being added after the power gain in       be written on (or, at least, quickly approaches) this form.
+each optical amplifier with a variance related to the power       Then, during propagation, the changes of the launched signal
+gain and the amplifier noise figure [10]. The NLI is generated    are accounted for by a linearized propagation equation. As
+during the propagation through the fibers, but within the         the signal leaves one fiber span and enters the next, the
+GN model, we view it as being added after the gain in the         phase relation between different frequency components is
+amplifier, i.e., at the same location and at the same power       conserved and this leads to a coherent accumulation of the
+level as the amplifier noise.                                     complex amplitude of the signal perturbation corresponding
+                                                                  to the NLI. In a network, channels can be added or dropped,
+D. Modeling Approach: The GN Model                                which is incompatible with the original GN model.
+                                                                    Poggiolini et al. have investigated the consequences from
+   We assume there is no periodic (hardware) compensation
+                                                                  assuming that the NLI generated in different fiber spans can
+for chromatic dispersion, which seems to be a likely scenario
+                                                                  be added incoherently, i.e., that the NLI PSDs are summed
+for the future, and that no DSP compensation of nonlinear ef-
+fects is carried out. Under these assumptions, the GN model         1 The subscript “1” in the NLI PSD indicates that the result comes
+is the current state of the art and in fact also seems to be      from a first-order perturbation analysis.
+
+===== page 3 [pdftotext] =====
+                                                                                                                                                 3
+
+
+
+instead of the corresponding complex amplitudes [8]. This as-              From (1) and (2), the NLI is
+sumption results in a significant analytical (and numerical)
+                                                                                            3γ 2 G(ν)G(ν 0 )G(ν + ν 0 − f )
+                                                                                        ZZ
+simplification, and numerical simulations have shown that                   GNLI (f ) =                                         dνdν 0 ,        (3)
+                                                                                           α2 + 16π 4 β22 (ν − f )2 (ν 0 − f )2
+the difference compared with the exact result is small. From
+                                                                                                   2             0
+the discussion above it is clear that in a network, the situa-           where 1 − e−(α+i4π β2 (ν−f )(ν −f ))L ≈ 1 was used. This ap-
+tion is neither fully coherent nor fully incoherent, but we will         proximation is accurate for a fiber loss of 7 dB or more [8,
+use the assumption that the NLI accumulates incoherently.                Section XI-A]. The NLI is frequency-dependent and the
+It is then possible to calculate the NLI PSD generated in                channel Cm is affected by the amount of NLI that passes the
+each channel in each fiber span separately and then sum                  corresponding receiver filter. Due to the assumption about
+these contributions along the entire route. Unfortunately,               the signal PSD shape, the matched filter has a rectangular
+this assumption seems to slightly underestimate the NLI [8,              frequency response. As it is difficult to analytically account
+Section IX].                                                             for the variation of GNLI (f ) within a channel, we assume
+   For a given link, the NLI PSD GNLI (f ) is a function                 that the NLI variance for channel Cm can be approximated
+of L and W. The dependence on the link is static since                   as GNLI (fm ) ∆fm , i.e., that it can be based on the value at the
+the hardware does not change, but GNLI must be easy to                   center frequency. This is a good approximation, as the NLI
+evaluate as a function of W. The assumption of incoherent                varies slowly within a given channel see, e.g., [8, Fig. 5] and
+NLI accumulation implies that we can split each link L into              [12, Fig. 1]. Furthermore, this assumption is conservative in
+N spans Ln , n = 1, . . . , N , calculate the NLI independently          the sense that it typically leads to a slight overestimation of
+for each span, and obtain the total NLI for a link from the              the NLI.
+NLI contributions from each span. In the special case that all
+spans are identical, it is obtained that GNLI = N GNLI (f ) [8,
+                                                                         A. Approximate Integration
+Eq. (18)].
+   We assume that the loss of each fiber span is exactly                   The next step is to find an approximate value for GNLI (fm )
+compensated for by an EDFA placed at the end of the span.2               for channel m. This is done by generalizing the approach
+The received power is thus equal to the transmitted power                previously used for the center channel [8], [13]. As seen in
+P . Furthermore, since the link parameters Ln are assumed                (3), the integration is over the entire ν×ν 0 plane, but the inte-
+to be constant within a fiber span, the z dependence is                  grand is nonzero only within distinct regions determined by
+dropped from now on. Without loss of generality, we will                 the product of the PSDs. To exemplify, we consider channel
+therefore calculate the NLI generated in a single fiber span             m = 2 in the set of WDM channels in Fig. 1. The PSD product
+in Section IV and then in Section V extend these results to              in (3) is a piecewise constant function that is illustrated in
+the network layer.                                                       the ν × ν 0 plane in Fig. 2 by the dark gray regions. The
+                                                                         vertical, horizontal, and diagonal regions illustrate G(ν),
+                                                                         G(ν 0 ), and G(ν + ν 0 − fm ), respectively. The product of the
+             IV. NLI FOR A S INGLE F IBER S PAN                          PSDs is nonzero only where three regions overlap. It is seen
+                                                                         that this corresponds to polygons of different shapes, making
+  In this section, the NLI is derived for all channels in a
+                                                                         exact integration difficult. The integrand weight function
+single fiber span. The inputs are the channel parameters
+W, and the link parameters Ln . The output is the NLI PSD                                                               3γ 2
+                                                                                  wm (ν, ν 0 ) =                                                (4)
+GNLI (fm ) for m = 1, . . . , M . Although this case has been                                          α2 + 16π 4 β22 (ν − fm )2 (ν 0 − fm )2
+discussed in the literature, we study it in detail for two               is illustrated by the colored contours and in order to discuss
+reasons. First, no expression seems to be published that                 its properties we introduce
+gives the result for all channels in a flexible-grid WDM
+system, which is necessary for a complete network model.                                    w(fm + ∆fm /2, fm + ∆fm /2)
+                                                                                       ηm =
+For example, Poggiolini et al. mainly present results for the                                         w(fm , fm )
+                                                                                                            −1
+center WDM channel, see, e.g., [8, Eqs. (13)–(15)]. The second                                  π 4 β22 ∆fm
+                                                                                                          4
+                                                                                            
+                                                                                           = 1+                   .                             (5)
+reason is that we find it useful to summarize all calculations                                       α2
+to make this document self-contained.
+                                                                         In this way, ηm is the fraction of the weight function eval-
+  As seen from (1), the signal PSD for each individual WDM
+                                                                         uated at the edge of the mth channel spectrum relative to
+channel must be known. The exact shape depends on the
+                                                                         its channel center frequency. Using a dispersion parameter
+transmitter, but as mentioned, much effort is currently spent
+                                                                         D = 16 ps/(nm km) and attenuation α = 0.2 dB/km, we
+on making the optical signal spectra close to rectangular [9].
+                                                                         find ηm ≈ 0.84 for a 10 GHz channel and ηm ≈ 0.078 for
+Since this shape can be used with very small guard bands
+                                                                         a 28 GHz channel. When the values of |ν − fm | and |ν 0 − fm |
+and also leads to minimal channel crosstalk, it is likely that
+                                                                         are increased, wm decreases rapidly.
+signals in future systems will approximate this shape. Thus,
+                                                                            We proceed by assuming that (i) only the polygons con-
+we assume that each channel spectrum is rectangular, which
+                                                                         taining ν = fm or ν 0 = fm need to be included and
+implies that the channel PSD is completely specified by Cm
+                                                                         (ii) each polygon can be approximated by a rectangle of
+as G(fm ) = Pm /∆fm . The channel PSDs may have different
+                                                                         minimal area that contains the polygon. The first of these
+center frequencies, bandwidths, and powers, as exemplified
+                                                                         assumptions is equivalent to including self-channel interfer-
+in Fig. 1.
+                                                                         ence (SCI), represented by the single polygon that surrounds
+  2 While Raman amplification can be described within the GN
+                                                                         (ν, ν 0 ) = (fm , fm ), and cross-channel interference (XCI). A
+model, it leads to the introduction of new system parameters and
+                                                                         similar approximation was discussed and illustrated in [8,
+complicates the analytical expressions. It is outside the scope of the   Fig. 3] for the center channel when the channels have equal
+work presented here.                                                     bandwidths and spacing. This approximation typically leads
+
+===== page 4 [pdftotext] =====
+                                                                                                                                                                                          4
+
+
+
+
+                                                                                                                          f5
+
+
+
+
+power spectral density G(f )
+                                                                                                                          f4
+
+
+                                                                                                                     ν0
+                                                                                                                          f3
+
+
+                                                                                                                          f2
+
+
+
+                                   f1                f2        f3         f4                             f5
+                                                                frequency f                                               f1
+Fig. 1. The PSD of a flexible-grid example WDM system, repre-
+senting a set of M = 5 channels with different center frequencies,
+bandwidths, and powers.
+                                                                                                                                  f1             f2        f3       f4            f5
+                                                                                                                                                                ν
+
+                                                                                                                     Fig. 2. In this visual representation of (3), the vertical, horizontal,
+                                                                                                                     and diagonal shaded regions correspond to G(ν), G(ν 0 ), and G(ν +
+to a very small error, since wm is negligible elsewhere. The
+                                                                                                                     ν 0 − f ), respectively, where we choose f = f2 . This illustrates the
+second assumption leads to an overestimation of the NLI.                                                             qualitative behavior of the numerator in (3) for the example WDM
+For example, in the SCI case, the polygon area is extended                                                           channels in Fig. 1. Only the intersections of these regions contribute
+by a factor 4/3, but the effect from this is reduced since wm is                                                     to the integral. The contours show the weight function from (4),
+highest in the center. As shown above, this has some impact                                                          supporting the notion of considering only the regions containing ν =
+                                                                                                                     fm or ν 0 = fm .
+on the result for narrow-band channels. Improvements of
+this approximation are possible, for example following [13],
+but here the simple and conservative assumption above is
+used.                                                                                                                it follows that
+  Inspection of (3) shows that the result is unchanged if                                                                                     3γ 2 2
+ν and ν 0 are substituted for each other, which in Fig. 2                                                                      GNLI (fm ) =       Fmm G3 (fm )
+                                                                                                                                               α2
+corresponds to mirroring the entire integration domain in                                                                                         M
+                                                                                                                                                 X 6γ 2 2
+the line ν = ν 0 . Thus, evaluating the NLI for channel m, the                                                                                +          F 0 G(fm )G2 (fm0 ).          (11)
+                                                                                                                                                     α2 mm
+total NLI can be written as                                                                                                                       0
+                                                                                                                                                  m =1
+                                                                                                                                                  m0 6=m
+
+                                                                            M                                                                                  2
+                                                                            X                                          Unfortunately, the exact result for Fmm    0 has to be ex-
+                                          GNLI (fm ) = GSCI
+                                                        m +                       GXCI
+                                                                                   mm0 ,                       (6)   pressed in terms of the dilog function, which
+                                                                         m0 =1
+                                                                                                                                                                 P∞ is    n
+                                                                                                                                                                             defined
+                                                                                                                                                                              2
+                                                                         m0 6=m                                      in terms of a power series as Li2 (z) =        n=1 z   /n  . For
+                                                                                                                     notational convenience, we introduce
+where
+                                                                                                                                                                
+                                                                                                                                       ∆fm                  ∆fm0
+                                                                                                                                  x1 =         f m − f m0 +        ξ,             (12)
+                                          ZZ                                                                                             2                   2
+                                  GSCI                    wm (ν, ν 0 )G3 (fm ) dνdν 0 ,
+                                                                                                                                                                
+                                   m =                                                                         (7)                     ∆fm                  ∆fm0
+                                                Ωmm
+                                                                                                                                  x2 =         f m0 − f m +        ξ              (13)
+                                               ZZ                                                                                        2                   2
+                                 GXCI
+                                  mm0 = 2                   wm (ν, ν 0 )G(fm )G2 (fm0 ) dνdν 0 ,               (8)   to write (10) as
+                                                    Ωmm0
+                                                                                                                                        2        i
+                                                                                                                                       Fmm 0 =     [Li2 (−ix1 ) − Li2 (ix1 )
+and the integration domain Ωmm0 is the rectangle ν ∈ [fm −                                                                                       ξ
+∆fm /2, fm + ∆fm /2], ν 0 ∈ [fm0 − ∆fm0 /2, fm0 + ∆fm0 /2]. By                                                                                     + Li2 (−ix2 ) − Li2 (ix2 )].        (14)
+introducing                                                                                                                                                        2
+                                                                                                                     From this expression, it is not obvious that Fmm 0  is a real
+                                                                                                                     quantity. This can be made clear by rewriting it in terms of
+                                                                  4π 2 |β2 |
+                                                            ξ=                                                 (9)   another special function as
+                                                                     α
+                                                                                                                            2        1 
+                                                                                                                                         x1 Φ(−x21 , 2, 1/2) + x2 Φ(−x22 , 2, 1/2) .
+                                                                                                                                                                                  
+                                                                                                                           Fmm 0 =                                                     (15)
+and                                                                                                                                  2ξ
+                                         ZZ                                                                          where Φ isPthe Lerch transcendent with the definition
+                                                                        1
+                                2
+                               Fmm 0 =                                                             dνdν 0 ,   (10)   Φ(z, s, a) = ∞     n        s
+                                                                                                                                   n=0 z /(n + a) , [14, Section 9.55]. Using (15)
+                                              Ωmm0   1 + ξ 2 (ν − f    m    )2 (ν 0 − f   m   )2                     together with (11), the model is complete.
+
+===== page 5 [pdftotext] =====
+                                                                                                                                         5
+
+
+
+B. Further Simplification                                                   • The route of the connection, represented as K link
+  The result above has been presented in terms of the special                 assignments l = l1 , . . . , lK and channel assignments
+function Φ. In order to obtain a more intuitive expression,                   m = m1 , . . . , mK .
+                                                                            • The link and channel SNRs SNR lm obtained from the
+avoiding any special functions, we can approximate one step
+further. This can be done with an asymptotic expansion of                     first stage above.
+the dilog function. Using the result from Appendix A, (11)                Based on this input, the SNR of the connection under con-
+can be written as                                                         sideration is finally obtained as
+                                                                                                      K
+                                                                                                                    !−1
+                     3γ 2 G(fm )             π 2 β2 (∆fm )2                                                   1
+      GNLI (fm ) =               G2 (fm ) ln
+                                                                                                     X
+                                                                                             SNR =                      .        (18)
+                      2πα|β2 |                       α                                                    SNR lk mk
+                                                                                                     k=1
+                          M
+                                                               !
+                          X                   f 0 + ∆fm0 /2
+                     +            G (fm0 ) ln mm
+                                   2
+                                                               ,   (16)               VI. D ISCUSSION AND C ONCLUSIONS
+                                              fmm0 − ∆fm0 /2
+                         m0 =1
+                         m0 6=m                                              The described model is simple enough to allow optimiza-
+                                                                          tion studies of optical networks operating in the nonlinear
+where we introduced fmm0 ≡ |fm − fm0 |.
+                                                                          regime. As has been made clear in the derivation, a number
+                                                                          of assumptions and approximations have been introduced.
+            V. S UMMARY OF THE N ETWORK M ODEL                            It is not possible to quantify the impact of these with-
+  We are now ready to summarize the model and extend it                   out performing a detailed numerical or experimental study,
+to a network of multiple spans and links. The description                 which is outside the scope of this work and we will instead
+in this section is intended to be self-contained and can be               qualitatively discuss the model accuracy.
+implemented without studying the details of the derivation                   First, the model obviously relies on the GN model and al-
+in previous sections. It is evaluated in two stages; first to             ready (1) and (2) are approximate expressions. A fundamen-
+evaluate the channel quality of every link in the network,                tal assumption is that the dispersive effects are strong. This
+and second, to evaluate the quality of every connection.                  is difficult to formulate strictly but the GN model should not
+  The first stage utilizes the following inputs for a given link,         be used in systems with periodic dispersion compensation.
+denoted by l, in the network:                                             Furthermore, the signal bandwidth should be sufficiently
+                                                                          large and this means that single-channel transmission is less
+  • The link parameters Ln of every fiber span n = 1, . . . , N .
+                                                                          accurately modeled. While these assumptions are likely to
+    These are assumed to be the same for all channels.
+                            ASE                                           be compatible with future optical networks, there are some
+  • The (constant) PSD G        of the amplifier noise. It is
+                                                                          further questions about the model validity. For example, it
+    equal to the sum of the noise PSDs added by the ampli-
+                                                                          is a surprising fact that the model has no dependence on
+    fier in each span, which are given by the amplifier gains
+                                                                          the choice of modulation format. The discussion about the
+    and noise figures [10].
+                                                                          validity of the GN model is ongoing and we expect that these
+  • The channel parameters Cm for m = 1, . . . , M . These
+                                                                          questions will eventually be resolved.
+    are assumed to be constant through all fiber spans.
+                                                                             The impact of the assumption about incoherent noise
+Given these quantities, the model is evaluated as follows:                accumulation is difficult to quantify. It is known that this
+  1) Calculate G(fm ) = Pm /∆fm for m = 1, . . . , M .                    does introduce errors and the special case expression from
+  2) For n = 1, . . . , N and m = 1, . . . , M , use Ln to evaluate       Section III-B is more accurately written as GNLI (f, L, W) =
+     (11), where Fmm    2
+                          0 is given by (15). Denote the PSD              N 1+ GNLI (f, L1 , W), where  ∈ [0, 1] depends on both the
+     G (fm ) returned by (11) by GNLI
+       NLI
+                                           mn .                           signal and the system [8, Section IX]. There seems to be no
+  3) For m = 1, . . . , M , calculate the SNR as SNR lm =                 exact analytical expression for  available and this approach
+           2
+     Pm /σm  , where                                                      would also require all spans in the links to be identical.
+                                             N
+                                                      !                   We see no obvious way to improve this approximation but
+                       2           ASE
+                                             X    NLI                     it should be remembered that the WDM channel switching
+                    σm = ∆fm G          +        Gmn           (17)
+                                                n=1
+                                                                          will reduce the error from this assumption.
+                                                                             Finally, approximations were introduced in the integration
+        represents the total linear and nonlinear noise contri-           of (3). As seen, the value of wm is quickly reduced as
+        butions.                                                          the frequency separation is increased. Thus we expect the
+This is repeated for every link l in the network. Alternatively,          choice to include only SCI and XCI to lead to very small
+(11) and (15) may be replaced by (16), which is simpler but               error, as long as not too narrow channel bandwidths are
+less accurate.                                                            considered, but this is, as discussed, an inherent assumption
+   In the second stage, the SNR of an arbitrary connection                of the GN model. For the same reason, the error introduced
+in the network is calculated. The network is all-optical and              by approximating the integration polygons by rectangles is
+assuming no format conversion, the bandwidth ∆fm is con-                  small.
+stant for all links in the connection. The center frequency fm               We do not expect the proposed model to be the last word
+may change in nodes due to (ideal) wavelength conversion.                 in the development of nonlinear fiber-optic network models,
+The power Pm is constant, as we have assumed the gains                    but rather a starting point. It is, to our knowledge, the first
+to balance the losses. However, our model holds also if Pm                model that can predict the signal quality independently for
+changes between the links in a route, if the noise added in               a number of heterogeneous channels in a flexible-grid WDM
+this process is negligible compared to the total GASE .                   system. Such a model is essential for efficient, if not optimal,
+   The input to the second stage can be represented as                    resource management in elastic optical networks, which is
+follows.                                                                  an interesting and emerging area for future research.
+
+===== page 6 [pdftotext] =====
+                                                                                                                                             6
+
+
+
+                         A PPENDIX A                                      [11] R. Dar, M. Feder, A. Mecozzi, and M. Shtaif, “Properties of
+                    A SYMPTOTIC E XPANSION                                     nonlinear noise in long, dispersion-uncompensated fiber links,”
+                                                                               2013, preprint. [Online]. Available: http://arxiv.org/abs/1307.
+  For |z|  1, the dilog function has the asymptotic expan-                    7401
+sion                                                                      [12] P. Johannisson and M. Karlsson, “Perturbation analysis of
+            ∞                                                                  nonlinear propagation in a strongly dispersive optical commu-
+            X                           B2k [ln(−z)]2−2k                       nication system,” J. Lightw. Technol., vol. 31, no. 8, pp. 1273–
+  Li2 (z) =   (−1)k (1 − 21−2k )(2π)2k                   , (19)                1282, Apr. 2013.
+                                       (2k)! Γ(3 − 2k)
+            k=0                                                           [13] S. J. Savory, “Approximations for the nonlinear self-channel in-
+where B2k are the Bernoulli numbers. As the Γ(z) function                      terference of channels with rectangular spectra,” IEEE Photon.
+                                                                               Technol. Lett., vol. 25, no. 10, pp. 961–964, May 2013.
+is not defined for negative integers, there are only two terms            [14] I. S. Gradshteyn and I. M. Ryzhik, Table of Integrals, Series,
+in the expansion, giving asymptotically                                        and Products, 4th ed. Academic Press, 1980.
+                         π2   1
+                            − ln2 (−z).
+                    Li2 (z) = −                                   (20)
+                          6   2
+However, assuming x ∈ R, we have
+                                                      π
+          ln(ix) = ln |x| + i arg(ix) = ln |x| + sx i ,           (21)
+                                                      2
+                                                        π
+        ln(−ix) = ln |x| + i arg(−ix) = ln |x| − sx i ,           (22)
+                                                        2
+where sx is the sign of x. We get
+                        π2     1                π 2                     Pontus Johannisson received his Ph.D. degree from Chalmers
+           Li2 (ix) = −     −      ln |x| − sx i
+                         6     2                 2                        University of Technology, Gothenburg, Sweden, in 2006. His thesis
+                        1 2              π           π2                   was focused on nonlinear intrachannel signal impairments in optical
+                    = − ln |x| + sx i ln |x| −                    (23)    fiber communications systems.
+                        2                2           24
+                                                                             In 2006, he joined the research institute IMEGO in Gothenburg,
+and                                                                       Sweden, where he worked with digital signal processing for inertial
+                                                                          navigation with MEMS-based accelerometers and gyroscopes. In
+                        1                π            π2
+          Li2 (−ix) = − ln2 |x| − sx i ln |x| −          ,        (24)    2009, he joined the Photonics Laboratory, Chalmers University
+                        2                2            24                  of Technology, where he currently holds a position as Assistant
+which gives                                                               Professor. A significant part of his time is spent working on cross-
+                                                                          disciplinary topics within the Fiber-Optic Communications Research
+                2     π                                                   Center (FORCE) at Chalmers. His research interests include, e.g.,
+              Fmm 0 =   (sx1 ln |x1 | + sx2 ln |x2 |).            (25)
+                      ξ                                                   nonlinear effects in optical fibers and digital signal processing in
+                                                                          coherent optical receivers.
+                           R EFERENCES
+ [1] R.-J. Essiambre and R. W. Tkach, “Capacity trends and limits
+     of optical communication networks,” Proc. IEEE, vol. 100, no. 5,
+     pp. 1035–1055, May 2012.
+ [2] I. de Miguel, R. J. Durán, R. M. Lorenzo, A. Caballero, I. T.
+     Monroy, Y. Ye, A. Tymecki, I. Tomkos, M. Angelou, D. Kloni-
+     dis, A. Francescon, D. Siracusa, and E. Salvadori, “Cognitive
+     dynamic optical networks,” in Optical Fiber Communication
+     Conference (OFC), 2013, p. OW1H.1.
+ [3] O. Rival and A. Morea, “Cost-efficiency of mixed 10-40-100Gb/s
+     networks and elastic optical networks,” in Optical Fiber Com-        Erik Agrell (M99–SM02) received the Ph.D. degree in information
+     munication Conference (OFC), 2011, p. OTuI4.                         theory in 1997 from Chalmers University of Technology, Sweden.
+ [4] O. Gerstel, M. Jinno, A. Lord, and S. J. Ben Yoo, “Elastic optical      From 1997 to 1999, he was a Postdoctoral Researcher with the
+     networking: A new dawn for the optical layer?” IEEE Comm.            University of California, San Diego and the University of Illinois
+     Mag., vol. 50, no. 2, pp. S12–S20, Feb. 2012.                        at Urbana-Champaign. In 1999, he joined the faculty of Chalmers
+ [5] R. Ramaswami and K. N. Sivarajan, “Routing and wavelength            University of Technology, first as an Associate Professor and since
+     assignment in all-optical networks,” IEEE/ACM Transactions           2009 as a Professor in Communication Systems. In 2010, he co-
+     on Networking, vol. 3, no. 5, pp. 489–500, Oct. 1995.                founded the Fiber-Optic Communications Research Center (FORCE)
+ [6] P. Poggiolini, A. Carena, V. Curri, G. Bosco, and F. Forghieri,      at Chalmers, where he leads the signals and systems research
+     “Analytical modeling of nonlinear propagation in uncompen-           area. His research interests belong to the fields of information
+     sated optical transmission links,” IEEE Photon. Technol. Lett.,      theory, coding theory, and digital communications, and his favorite
+     vol. 23, no. 11, pp. 742–744, June 2011.                             applications are found in optical communications.
+ [7] A. Carena, V. Curri, G. Bosco, P. Poggiolini, and F. Forghieri,         Prof. Agrell served as Publications Editor for the IEEE Transac-
+     “Modeling of the impact of nonlinear propagation effects in          tions on Information Theory from 1999 to 2002 and is an Associate
+     uncompensated optical coherent transmission links,” J. Lightw.       Editor for the IEEE Transactions on Communications since 2012.
+     Technol., vol. 30, no. 10, pp. 1524–1539, May 2012.                  He is a recipient of the 1990 John Ericsson Medal, the 2009 ITW
+ [8] P. Poggiolini, “The GN model of non-linear propagation in            Best Poster Award, the 2011 GlobeCom Best Paper Award, the 2013
+     uncompensated coherent optical systems,” J. Lightw. Technol.,        CTW Best Poster Award, and the 2013 Chalmers Supervisor of the
+     vol. 30, no. 24, pp. 3857–3879, Dec. 2012.                           Year Award.
+ [9] R. Schmogrow, M. Winter, M. Meyer, D. Hillerkuss, S. Wolf,
+     B. Baeuerle, A. Ludwig, B. Nebendahl, S. Ben-Ezra, J. Meyer,
+     M. Dreschmann, M. Huebner, J. Becker, C. Koos, W. Freude,
+     and J. Leuthold, “Real-time Nyquist pulse generation beyond
+     100 Gbit/s and its relation to OFDM,” Opt. Express, vol. 20,
+     no. 1, pp. 317–337, Jan. 2011.
+[10] G. P. Agrawal, Fiber-Optic Communication Systems, 4th ed.
+     John Wiley & Sons, 2010.

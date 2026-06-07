@@ -1,0 +1,163 @@
+
+===== page 1 [pdftotext] =====
+    CSA E0 235: Cryptography                                                  (05 Apr 2015)
+
+    Chalk & Talk : Davies-Meyer Construction and Collision Resistance
+    Instructor: Arpita Patra                                           Submitted by: Sudhir
+
+
+
+
+1     Overview
+In the Class we have seen Merkel-Damgard Construction which uses a fixed length compres-
+sion function in a clever manner to form an arbitrary length compression function. Also
+we have seen that if fixed length compression function is collision resistant then Merkel-
+Damgard construction is also collision resistant. In this lecture, we will study a specific
+construction of fixed length compression function, called Davies-Meyer construction and
+analyse its collision resistance property.
+
+
+2     The Davies-Meyer Construction
+The schematic representation of Davies-Meyer construction using a block cipher (ideal ran-
+dom strong permuation) F is illustrated below.
+
+
+
+
+                               Fig 2.1: Davies-Meyer Construction
+
+    The Davies-Meyer construction of compression function as illustrated in Fig 2.1 uses a
+block cipher with n bit keylength and l bit block length. We can then define the compres-
+                                                 def
+sion function h : {0, 1}n+l → {0, 1}l by h(k, x) = Fk (x) ⊕ x.
+
+    To prove the collision resistance of the resulting compression function we model F as an
+ideal cipher (ideal random strong permutation). Any block cipher being used to instantiate
+an ideal cipher must be evaluated with respect to the following more stringent requirements
+posited by ideal cipher.
+
+
+    1. All parties have access to an oracle for a random keyed permutation F : {0, 1}n ×
+       {0, 1}l → {0, 1}l as well as its inverse F −1 (i.e., such that F −1 (k, F (k, x)) = x for
+       all k, x). Another way to think of this is that each key k ∈ {0, 1}n specifies an
+       independent, uniform permutation F (k, ·) on l bit strings. The only way to compute
+       F (or F −1 ) is to explicitly query the oracle with (k, x) and receive back F (k, x) (or
+       F −1 (k, x)).
+
+
+                                              1-1
+
+===== page 2 [pdftotext] =====
+    2. The ideal-cipher model implies the absence of related key attacks. i.e the permutations
+       F (k, ·) and F (k 0 , ·) must behave independently even if, for example, k and k 0 differ in
+       only a single bit.
+
+    3. There can be no weak keys k (say, the all-0 key) for which F (k, ·) is easily distinguish-
+       able from random.
+
+    4. F (k, ·) should behave randomly even when k is known.
+
+
+3     Theorem
+THEOREM 3.1 If F is modeled as an ideal cipher, then the Davies-Meyer construction
+yields a collision-resistant compression function. Concretely, any attacker making q < 2n/2
+queries to its ideal-cipher oracle finds a collision with probability at most q 2 /2l .
+
+    Proof:-
+
+    1. Experiment: We consider here the probabilistic experiment in which F is sampled at
+       random (more precisely, for each k ∈ {0, 1}n the function F (k, ·) : {0, 1}l → {0, 1}l is
+       chosen uniformly from the set P erml of permutations on l bit strings) and then the
+       attacker is given oracle access to F and F −1 . The attacker then tries to find a colliding
+       pair (k, x), (k 0 , x0 ), i.e., for which F (k, x) ⊕ x = F (k 0 , x0 ) ⊕ x0 . No computational
+       bounds are placed on the attacker other than bounding the number of oracle queries
+       it makes. We assume that if the attacker outputs a colliding pair (k, x), (k 0 , x0 ) then
+       it has previously made the oracle queries necessary to compute the values F (k, x) and
+       F (k 0 , x0 ). We also assume the attacker never makes the same query more than once,
+       and never queries F −1 (k, y) once it has learned that y = F (k, x) (and vice versa). All
+       these assumptions are without loss of generality.
+
+    2. Consider the ith query the attacker makes to its oracles. A query (ki , xi ) to F reveals
+                                  def
+       only the hash value hi = h(ki , xi ) = F (ki , xi ) ⊕ xi ; similarly, a query to F −1 giving
+                                                                       def
+       the result xi = F −1 (ki , yi ) yields only the hash value hi = h(ki , xi ) = yi ⊕ F −1 (ki , yi ).
+       The attacker does not obtain a collision unless hi = hj for some i 6= j.
+
+    3. In proving the theorem, we Fix i, j with i > j and consider the probability that
+       hi = hj . At the time of the ith query, the value of hj is fixed. let Cij denote the
+       event of collision between hi and hj on the ith query, i.e hi = hj . Event Cij can occur
+       if any one of the following two mutually exclusive and exhaustive events occur.
+       (a) The attacker queries (ki , xi ) to F and obtains the result F (ki , xi ) = hj ⊕ xi . let
+                      F
+       this event be Cij
+       (b) The attacker queries (ki , yi ) to F −1 and obtains the result F −1 (ki , yi ) = hj ⊕ yi .
+                          F −1
+       let this event be Cij
+       Now we compute the probability of CijF . We note that F (k , x ) is uniform over{0, 1}l
+                                                                    i i
+       except that it cannot be equal to any value F (ki , x) already defined by the attackers
+       (at most) i − 1 previous oracle queries using key ki . Similar argument applies to
+
+                                                   1-2
+
+===== page 3 [pdftotext] =====
+                              F    −1
+computing the probability of Cij        . Therefore the required probabilities are as given
+below.
+
+                                          F      −1              1
+                         P r[Cij ] = P r[Cij          ]=                                (1)
+                                                           (2l − (i − 1))
+
+from equation (1), we obtain the probability of Cij to be as below.
+
+                                    F           F        −1                2
+                   P r[Cij ] = P r[Cij ] + P r[Cij              ]=                      (2)
+                                                                     (2l − (i − 1))
+
+We now obtain an upper bound on the above probability. Since i ≤ q < 2l/2 , i can be
+          l                                           l
+at most 2 2 . For sufficiently large l we have 2l  2 2 . Therefore we have:
+
+                                                           2
+                                         P r[Cij ] ≤                                    (3)
+                                                           2l
+let Cq denote the event of collision in q number of queries. Then it is easy to see that
+Cq can happen if any one of Cij happens, where j < i ≤ q. i.e Cq can be expressed as
+given below.
+                                                 [
+                                        Cq =             Cij
+                                               j<i≤q
+
+therefore we have, the required probability by taking union bound as given below.
+
+                                                        [
+                                P r[Cq ] = P r[                 Cij ]
+                                                       j<i≤q
+                                                 X
+                                           ≤             P r[Cij ]
+                                               j<i≤q
+
+
+Now all remains is to count the number of distinct i, j pairs such that j < i ≤ q.
+                                      2
+Which is exactly 2q upper bounded by q2 . Therefore we have
+                   
+
+
+                                                 X
+                                P r[Cq ] ≤               P r[Cij ]
+                                               j<i≤q
+                                               q2
+                                           ≤          P r[Cij ]
+                                             2
+                                            q2
+                                           = l
+                                            2
+
+This proves our Theorem 3.1.
+
+
+
+                                           1-3

@@ -1,0 +1,20 @@
+\setlength\tabcolsep{3.8pt}
+\hspace{-0.1cm}
+\begin{tabular}{l c c c c c c c c c c c c}
+\cmidrule[\heavyrulewidth]{1-13}
+{ Method} & { Food101} & { CIFAR10} & { CIFAR100} & { Birdsnap} & { SUN397}  & { Cars} & { Aircraft} & { VOC2007} & { DTD} & { Pets} & { Caltech-101} & { Flowers} \\
+\midrule
+\multicolumn{13}{l}{\emph{Linear evaluation:}}\\
+\midrule
+\algo (ours)&\cellcolor{pearDark!20}$\bf{75.3}$&\cellcolor{pearDark!20}$91.3$&\cellcolor{pearDark!20}$\bf{78.4}$&\cellcolor{pearDark!20}$\bf{57.2}$&\cellcolor{pearDark!20}$\bf{62.2}$&\cellcolor{pearDark!20}$\bf{67.8}$&\cellcolor{pearDark!20}$60.6$&\cellcolor{pearDark!20}$82.5$&\cellcolor{pearDark!20}$75.5$&\cellcolor{pearDark!20}$90.4$&\cellcolor{pearDark!20}$94.2$&\cellcolor{pearDark!20} $\bf{96.1}$\\
+\simclr (repro)&$72.8$&$90.5$&$74.4$&$42.4$&$60.6$&$49.3$& $49.8$ & $81.4$&$\bf{75.7}$&$84.6$&$89.3$&$92.6$\\\simclr\cite{SimCLR}&$68.4$&$90.6$&$71.6$&$37.4$&$58.8$&$50.3$ &$50.3$&$80.5$&$74.5$&$83.6$&$90.3$&$91.2$\\\supervisedbaseline~\cite{SimCLR}&$72.3$&$\bf{93.6}$&$78.3$&$53.7$&$61.9$& $66.7$&$\bf{61.0}$&$\bf{82.8}$&$74.9$&$\bf{91.5}$&$\bf{94.5}$&$94.7$\\
+\midrule
+\multicolumn{13}{l}{\emph{Fine-tuned:}}\\
+\midrule
+\algo (ours) &\cellcolor{pearDark!20}$\bf{88.5}$&\cellcolor{pearDark!20}$\bf{97.8}$&\cellcolor{pearDark!20}$86.1$&\cellcolor{pearDark!20}$\bf{76.3}$&\cellcolor{pearDark!20}$63.7$&\cellcolor{pearDark!20}$91.6$&\cellcolor{pearDark!20}$\bf{88.1}$&\cellcolor{pearDark!20} $\bf{85.4}$ &\cellcolor{pearDark!20}$\bf{76.2}$&\cellcolor{pearDark!20}$91.7$&\cellcolor{pearDark!20}$\bf{93.8}$&\cellcolor{pearDark!20}$97.0$\\
+\simclr (repro) & $87.5$ & $97.4$ & $85.3$ & $75.0$ & $63.9$ & $91.4$ & $87.6$ & $84.5$ & $75.4$ & $89.4$ & $91.7$ & $96.6$  \\
+\simclr \cite{SimCLR}  & $88.2$ & $97.7$ & $85.9$ & $75.9$ & $63.5$ & $91.3$ & $88.1$ & $84.1$ & $73.2$ & $89.2$ & $92.1$ & $97.0$  \\
+\supervisedbaseline~\cite{SimCLR} & $88.3$ & $97.5$ & $\bf{86.4}$ & $75.8$ & $\bf{64.3}$ & $\bf{92.1}$ & $86.0$ & $85.0$ & $74.6$ & $\bf{92.1}$ & $93.3$ & $\bf{97.6}$ \\
+Random init \cite{SimCLR} & $86.9$ & $95.9$ & $80.2$ & $76.1$  & $53.6$ & $91.4$ & $85.9$ & $67.3$ & $64.8$ & $81.5$ & $72.6$ & $92.0$  \\
+\bottomrule
+\end{tabular}

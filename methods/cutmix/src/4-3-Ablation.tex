@@ -1,0 +1,33 @@
+
+
+
+\subsubsection{Ablation Studies}
+\label{sec:ablation}
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\linewidth]{ablation3.pdf}
+    \caption{Impact of $\alpha$ and CutMix layer depth on CIFAR-100 top-1 error.
+    }
+    \label{fig:ablation}
+\end{figure}
+
+We conducted ablation study in CIFAR-100 dataset using the same experimental settings in Section \ref{sec:CIFAR-100-classification}.
+We evaluated CutMix with $\alpha\in\{0.1,0.25,0.5,1.0,2.0,4.0\}$; the results are given in Figure~\ref{fig:ablation}, left plot.
+For all $\alpha$ values considered, CutMix improves upon the baseline ($16.45\%$). The best performance is achieved when $\alpha=1.0$.
+
+The performance of feature-level CutMix is given in Figure~\ref{fig:ablation}, right plot.
+We changed the layer on which CutMix is applied, from image layer itself to higher feature levels. 
+We denote the index as (0=image level, 1=after first \texttt{conv-bn}, 2=after \texttt{layer1}, 3=after \texttt{layer2}, 4=after \texttt{layer3}).
+CutMix achieves the best performance when it is applied on the input images. 
+Again, feature-level CutMix except the \texttt{layer3} case improves the accuracy over the baseline ($16.45\%$).
+
+\input{tables/Cifar100-ablation.tex}
+
+We explore different design choices for CutMix.
+Table~\ref{table:ablation} shows the performance of CutMix variations.
+`Center Gaussian CutMix' samples the box coordinates $r_x,r_y$ of Equation~(\ref{eq:sampling}) according to the Gaussian distribution with mean at the image center, instead of the original uniform distribution.
+`Fixed-size CutMix' fixes the size of cropping region $(r_w,r_h)$ at $16 \times 16$ (i.e. $\lambda=0.75$).
+`Scheduled CutMix' linearly increases the probability to apply CutMix as training progresses, as done by \cite{ghiasi2018dropblock,stochasticdepth}, from $0$ to $1$.
+`One-hot CutMix' decides the mixed target label by committing to the label of greater patch portion (single one-hot label), rather than using the combination strategy in Equation~(\ref{eq:cutmix}).
+`Complete-label CutMix' assigns the mixed target label as $\Tilde{y} =  0.5y_A + 0.5y_B$ regardless of the combination ratio $\lambda$.
+The results show that above variations lead to performance degradation compared to the original CutMix.

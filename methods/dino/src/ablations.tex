@@ -1,0 +1,235 @@
+%!TEX root = main.tex
+\section{Ablation Study of \OURS}
+In this section, we empirically study \OURS applied to ViT.
+The model considered for this entire study is ViT-S.
+We also refer the reader to Appendix for additional studies.
+
+\subsection{Importance of the Different Components}
+\label{sec:comp}
+We show the impact of adding different components from self-supervised learning on ViT trained with our framework. 
+%All models are trained for $300$ epochs and evaluated with linear probing.
+
+\begin{table}[t]
+  \centering
+	\caption{
+    \textbf{Important component for self-supervised ViT pretraining.} 
+Models are trained for 300 epochs with ViT-S/16.
+We study the different components that matter for the $k$-NN and linear (``Lin.'') evaluations. 
+For the different variants, we \colorbox{Light}{highlight} the differences from the default \OURS setting.
+The best combination is the momentum encoder with the multicrop augmentation and the cross-entropy loss.
+We also report results with BYOL~\cite{grill2020bootstrap}, MoCo-v2~\cite{chen2020improved} and SwAV~\cite{caron2020unsupervised}.
+  }
+\small
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular}{@{}p{.8em}@{}l ccccccc@{}}
+    \toprule
+	  & Method & Mom. & SK & MC & Loss & Pred. & $k$-NN & Lin. \\
+    \midrule
+	  \rownumber{1}&	  \OURS & \checkmark & \xmark & \checkmark & \texttt{CE} & \xmark & 72.8 & 76.1 \\
+	  \rownumber{2}&	   & \colorbox{Light}{\xmark} & \xmark & \checkmark & \texttt{CE} & \xmark & 0.1 & 0.1 \\
+	  \rownumber{3}&	   & \checkmark & \colorbox{Light}{\checkmark} & \checkmark & \texttt{CE} & \xmark & 72.2 & 76.0\\
+	  \rownumber{4}&	   & \checkmark & \xmark & \colorbox{Light}{\xmark} & \texttt{CE} & \xmark & 67.9 & 72.5\\
+	  \rownumber{5}&	   & \checkmark & \xmark &  \checkmark & \colorbox{Light}{\texttt{MSE}} &\xmark & 52.6 & 62.4\\
+	  \rownumber{6}&	   & \checkmark & \xmark &  \checkmark & \texttt{CE} & \colorbox{Light}{\checkmark} & 71.8 & 75.6 \\
+    \midrule
+	  \rownumber{7}&	   BYOL & \checkmark & \xmark &  \xmark & \texttt{MSE} & \checkmark & 66.6 & 71.4\\
+	  \rownumber{8}&	   MoCov2 & \checkmark & \xmark &  \xmark & \texttt{INCE} & \xmark & 62.0 & 71.6 \\
+	  \rownumber{9}&	   SwAV & \xmark & \checkmark &  \checkmark & \texttt{CE} & \xmark & 64.7 & 71.8 \\
+    \bottomrule
+\multicolumn{9}{c}{SK: Sinkhorn-Knopp, MC: Multi-Crop, Pred.: Predictor}\\
+\multicolumn{9}{c}{CE: Cross-Entropy, MSE: Mean Square Error, INCE: InfoNCE}\\
+ %\texttt{INCE} = \textttt{InfoNCE}}\\
+  \end{tabular}
+\label{tab:components}
+\end{table}
+
+In Table~\ref{tab:components}, we report different model variants as we add or remove components.
+First, we observe that in the absence of momentum, our framework does not work (row \rownumber{2}) and more advanced operations, SK for example, are required to avoid collapse (row \rownumber{9}).
+However, with momentum, using SK has little impact (row \rownumber{3}).
+In addtition, comparing rows \rownumber{3} and \rownumber{9} highlights the importance of the momentum encoder for performance.
+Second, in rows \rownumber{4} and \rownumber{5}, we observe that multi-crop training and the cross-entropy loss in \OURS are important components to obtain good features.
+We also observe that adding a predictor to the student network has little impact (row \rownumber{6}) while it is critical in BYOL to prevent collapse~\cite{chen2020exploring,grill2020bootstrap}.
+For completeness, we propose in Appendix~\ref{ap:comp} an extended version of this ablation study.
+%For completeness, we also propose in Appendix~\ref{ap:comp} an extended comparison of \OURS, BYOL, MoCo-v2 and SwAV.
+
+\paragraph{Importance of the patch size.}
+In Fig.~\ref{fig:patch-size}, we compare the $k$-NN classification performance of ViT-S models trained with different patch sizes, $16\times 16$, $8\times 8$ and $5\times 5$.
+We also compare to ViT-B with $16 \times 16$ and $8\times 8$ patches.
+All the models are trained for 300 epochs.
+We observe that the performance greatly improves as we decrease the size of the patch.
+It is interesting to see that performance can be greatly improved without adding additional parameters.
+However, the performance gain from using smaller patches comes at the expense of throughput: when using 5$\times$5 patches, the throughput falls to 44 im/s, \emph{vs} 180 im/s for 8$\times$8 patches.
+
+\begin{figure}[t]
+  \begin{minipage}{0.6\linewidth}
+	\centering
+  \includegraphics[width=\linewidth]{figure_throughput_knn_our.pdf}
+\end{minipage}
+  \begin{minipage}{0.35\linewidth}
+	\caption{
+    \textbf{Effect of Patch Size.}
+     $k$-NN evaluation as a function of the throughputs for different input patch sizes with ViT-B and ViT-S. Models are trained for 300 epochs.
+}
+  \label{fig:patch-size}
+\end{minipage}
+\end{figure}
+
+
+\subsection{Impact of the choice of Teacher Network}
+\label{sec:teacher}
+In this ablation, we experiment with different teacher network to understand its role in \OURS. 
+We compare models trained for $300$ epochs using the $k$-NN protocol.
+
+\paragraph{Building different teachers from the student.}
+In Fig.~\ref{fig:mom}(right), we compare different strategies to build the teacher from previous instances of the student besides the momentum teacher.
+First we consider using the student network from a previous epoch as a teacher.
+This strategy has been used in a memory bank~\cite{wu2018unsupervised} or as a form of clustering hard-distillation~\cite{caron2018deep,asano2019self,chen2020unsupervised}.
+Second, we consider using the student network from the previous iteration, as well as a copy of the student for the teacher.
+In our setting, using a teacher based on a recent version of the student does not converge.
+This setting requires more normalizations to work.
+%(see Appendix~\ref{ap:comp}), and we should expect a drop in the performance as observed in~\cite{chen2020simple}.
+Interestingly, we observe that using a teacher from the previous epoch does not collapse, providing performance in the $k$-NN evaluation competitive with existing frameworks such as MoCo-v2 or BYOL. 
+While using a momentum encoder clearly provides superior performance to this naive teacher, this finding suggests that there is a space to investigate alternatives for the teacher.
+
+
+\paragraph{Analyzing the training dynamic.}
+To further understand the reasons why a momentum teacher works well in our framework, we study its dynamic during the training of a ViT in the left panel of Fig.~\ref{fig:mom}.
+A key observation is that this teacher constantly outperforms the student during the training, and we observe the same behavior when training with a ResNet-50 (Appendix~\ref{ap:ablations}).
+This behavior has not been observed by other frameworks also using momentum~\cite{he2020momentum,grill2020bootstrap}, nor when the teacher is built from the previous epoch.
+We propose to interpret the momentum teacher in \OURS as a form of Polyak-Ruppert averaging~\cite{polyak1992acceleration, ruppert1988efficient} with an exponentially decay.
+Polyak-Ruppert averaging is often used to simulate model ensembling to improve the performance of a network at the end of the training~\cite{jean2014using}. 
+Our method can be interpreted as applying Polyak-Ruppert averaging during the training to constantly build a model ensembling that has superior performances.
+This model ensembling then guides the training of the student network~\cite{tarvainen2017mean}. 
+
+\begin{figure}[t]
+  \begin{minipage}{0.55\linewidth}
+	\centering
+    \includegraphics[width=\linewidth]{figure_mom.pdf}
+  \end{minipage}
+\hspace{.5em}
+  \begin{minipage}[t]{0.4\linewidth}
+    \centering
+\small
+  \begin{tabular}{@{}l c@{}}
+    \toprule
+    Teacher & Top-1 \\
+    \midrule
+    Student copy & 0.1 \\
+    Previous iter & 0.1\\
+    Previous epoch & 66.6 \\
+    Momentum & 72.8 \\
+  \bottomrule
+\phantom{latex!}
+  \end{tabular}
+  \end{minipage}
+	\caption{
+Top-1 accuracy on ImageNet validation with $k$-NN classifier.
+\textbf{(left)} Comparison between the performance of the momentum teacher and the student during training.
+\textbf{(right)} Comparison between different types of teacher network.
+The momentum encoder leads to the best performance but is not the only viable option.
+	}
+	\label{fig:mom}
+\end{figure}
+
+
+\subsection{Avoiding collapse}
+\label{sec:collapse}
+
+\begin{figure}[t]
+	\centering
+  \includegraphics[width=\linewidth]{figure_collapse.pdf}
+	\caption{
+\textbf{Collapse study.}
+    \textbf{(left)}: evolution of the teacher's target entropy along training epochs;
+    \textbf{(right)}: evolution of KL divergence between teacher and student outputs.
+	}
+	\label{fig:collapse}
+\end{figure}
+
+We study the complementarity role of centering and target sharpening to avoid collapse.
+There are two forms of collapse: regardless of the input, the model output is uniform along all the dimensions or dominated by one dimension. 
+The centering avoids the collapse induced by a dominant dimension, but encourages an uniform output.
+Sharpening induces the opposite effect.
+We show this complementarity by decomposing the cross-entropy $H$ into an entropy $h$ and the Kullback-Leibler divergence (``KL'') $D_{KL}$:
+\begin{equation}
+  H(P_t, P_s) = h(P_t) + D_{KL}(P_t | P_s).
+\end{equation}
+A KL equal to zero indicates a constant output, and hence a collapse.
+In Fig.~\ref{fig:collapse}, we plot the entropy and KL during training with and without centering and sharpening.
+If one operation is missing, the KL converges to zero, indicating a collapse.
+However, the entropy $h$ converges to different values: $0$ with no centering and $-\log(1/K)$ with no sharpening, indicating that both operations induce different form of collapse.
+Applying both operations balances these effects (see study of the sharpening parameter $\tau_t$ in Appendix~\ref{ap:ablations}).
+
+\subsection{Compute requirements}
+\begin{table}[t]
+\centering
+  \caption{
+    \textbf{Time and memory requirements.}
+We show total running time and peak memory per GPU (``mem.'') when running ViT-S/16 \OURS models on two 8-GPU machines.
+We report top-1 ImageNet val acc with linear evaluation for several variants of multi-crop, each having a different level of compute requirement.
+  }
+  \label{tab:compute}
+  \setlength{\tabcolsep}{3pt}
+\begin{tabular}{ll g r c g r r}
+	\toprule
+	&& \multicolumn{2}{c}{100 epochs} && \multicolumn{2}{c}{300 epochs} &   \\
+    \cmidrule{3-4}
+    \cmidrule{6-7}
+	multi-crop && top-1 & time && top-1 & time & mem. \\
+%    \midrule
+%	MoCo-v2 $2 \times 224^2$ & - & - && 62.0 & xx & xx \\
+    \midrule
+	%\textit{\OURS} &&&&&& \\
+	$2\!\times\!224^2$ && 67.8 & 15.3h && 72.5 & 45.9h & 9.3G \\
+	$2\!\times\!224^2 + \phantom{0}2\!\times\!96^2$ && 71.5 & 17.0h && 74.5 & 51.0h & 10.5G \\
+	$2\!\times\!224^2 + \phantom{0}6\!\times\!96^2$ && 73.8 & 20.3h && 75.9 & 60.9h & 12.9G \\
+	$2\!\times\!224^2 + 10\!\times\!96^2$ && 74.6 & 24.2h && 76.1 & 72.6h & 15.4G \\
+\bottomrule
+  \end{tabular}
+\end{table}
+In Tab.~\ref{tab:compute}, we detail the time and GPU memory requirements when running ViT-S/16 \OURS models on two $8$-GPU machines.
+We report results with several variants of multi-crop training, each having a different level of compute requirement.
+We observe in Tab.~\ref{tab:compute} that using multi-crop improves the accuracy / running-time tradeoff for \OURS runs.
+For example, the performance is $72.5\%$ after $46$ hours of training without multi-crop (i.e. $2\!\times\!224^2$) while \OURS in $2\!\times\!224^2 + 10\!\times\!96^2$ crop setting reaches $74.6\%$ in $24$ hours only.
+This is an improvement of $+2\%$ while requiring $2\!\times$ less time, though the memory usage is higher ($15.4G$ versus $9.3G$).
+We observe that the performance boost brought with multi-crop cannot be caught up by more training in the $2\!\times\!224^2$ setting, which shows the value of the ``local-to-global'' augmentation.
+Finally, the gain from adding more views diminishes (+.2\% form $6\!\times$ to $10\!\times$ $96^2$ crops) for longer trainings.
+
+Overall, training \OURS with Vision Transformers achieves $76.1$ top-1 accuracy using two 8-GPU servers for 3 days.
+This result outperforms state-of-the-art self-supervised systems based on convolutional networks of comparable sizes with a significant reduction of computational requirements~\cite{grill2020bootstrap,caron2020unsupervised}.
+Our code is available to train self-supervised ViT on a limited number of GPUs.
+
+\subsection{Training with small batches}
+\label{sec:smallbs}
+\begin{table}[h]
+  \centering
+%\scalebox{0.9}{
+\begin{minipage}{.5\linewidth}
+\small
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular}{@{}l c c c c@{}}
+    \toprule
+	  bs & 128 & 256 & 512 & 1024 \\
+    \midrule
+	  top-1 & 57.9 & 59.1 & 59.6 & 59.9  \\
+    \bottomrule
+\phantom{latex!}
+  \end{tabular}
+\end{minipage}
+\hspace{1em}
+\begin{minipage}{.4\linewidth}
+%}
+  \caption{
+	  \textbf{Effect of batch sizes.} Top-1 with $k$-NN for models trained for 100 epochs without multi-crop.
+  }
+  \label{tab:bs}
+\end{minipage}
+\vspace{-1em}
+\end{table}
+In Tab.~\ref{tab:bs}, we study the impact of the batch size on the features obtained with \OURS.
+We also study the impact of the smooth parameter $m$ used in the centering update rule of Eq.~\ref{eq:center_update} in Appendix~\ref{ap:ablations}.
+We scale the learning rate linearly with the batch size~\cite{goyal2017accurate}: $lr = 0.0005 * \text{batchsize} / 256 $.
+Tab.~\ref{tab:bs} confirms that we can train models to high performance with small batches.
+Results with the smaller batch sizes ($bs=128$) are slightly below our default training setup of $bs=1024$, and would certainly require to re-tune hyperparameters like the momentum rates for example.
+Note that the experiment with batch size of $128$ runs on only $1$ GPU.
+We have explored training a model with a batch size of $8$, reaching $35.2\%$ after $50$ epochs, showing the potential for training large models that barely fit an image per GPU.

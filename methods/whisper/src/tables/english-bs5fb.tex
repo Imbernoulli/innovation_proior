@@ -1,0 +1,55 @@
+\begin{table}[H]\centering
+\scriptsize
+\begin{tabular}{l|rrrrrrrrrrrrrr}
+\toprule
+\setlength{\tabcolsep}{2pt}\renewcommand{\arraystretch}{1.2}
+Model
+& \multicolumn{1}{c}{\rotatebox[origin=rc]{270}{LibriSpeech.test-clean}}
+& \multicolumn{1}{c}{\rotatebox[origin=rc]{270}{LibriSpeech.test-other}}
+& \multicolumn{1}{c}{\rotatebox[origin=rc]{270}{TED-LIUM3}}
+& \multicolumn{1}{c}{\rotatebox[origin=rc]{270}{WSJ}}
+& \multicolumn{1}{c}{\rotatebox[origin=rc]{270}{CallHome}}
+& \multicolumn{1}{c}{\rotatebox[origin=rc]{270}{Switchboard}}
+& \multicolumn{1}{c}{\rotatebox[origin=rc]{270}{CommonVoice5.1}}
+& \multicolumn{1}{c}{\rotatebox[origin=rc]{270}{Artie}}
+& \multicolumn{1}{c}{\rotatebox[origin=rc]{270}{CORAAL}}
+& \multicolumn{1}{c}{\rotatebox[origin=rc]{270}{CHiME6}}
+& \multicolumn{1}{c}{\rotatebox[origin=rc]{270}{AMI-IHM}}
+& \multicolumn{1}{c}{\rotatebox[origin=rc]{270}{AMI-SDM1}}
+& \multicolumn{1}{c}{\rotatebox[origin=rc]{270}{VoxPopuli.en}}
+& \multicolumn{1}{c}{\rotatebox[origin=rc]{270}{Fleurs.en\_us}}
+\\ \midrule
+Whisper tiny.en 
+& 5.4 & 12.8 & 5.4 & 4.6 & 21.4 & 16.0 & 23.5 & 18.4 & 21.4 & 42.0 & 22.7 & 54.2 & 10.9 & 10.0 
+\\
+Whisper tiny 
+& 6.7 & 15.0 & 6.3 & 5.9 & 24.8 & 18.3 & 26.1 & 20.8 & 25.1 & 48.0 & 25.6 & 57.3 & 11.6 & 12.4 
+\\
+Whisper base.en 
+& 4.1 & 9.6 & 4.6 & 4.0 & 18.3 & 14.2 & 17.5 & 13.2 & 18.5 & 35.2 & 21.1 & 49.0 & 9.3 & 7.1 
+\\
+Whisper base 
+& 4.9 & 11.0 & 5.0 & 4.4 & 20.5 & 15.6 & 19.4 & 15.3 & 20.5 & 40.0 & 21.5 & 50.0 & 9.5 & 8.9 
+\\
+Whisper small.en 
+& 3.2 & 6.7 & 4.3 & 3.0 & 17.2 & 13.4 & 12.6 & 9.2 & 17.5 & 29.5 & 17.9 & 42.5 & 8.1 & 5.3 
+\\
+Whisper small 
+& 3.3 & 7.2 & 4.3 & 3.9 & 17.1 & 13.3 & 12.8 & 9.3 & 16.4 & 30.9 & 19.2 & 43.5 & 8.2 & 6.1 
+\\
+Whisper medium.en 
+& 3.0 & 5.7 & 4.3 & 2.8 & 14.7 & 12.4 & 10.3 & 7.4 & 15.3 & 27.0 & 17.1 & 39.4 & 7.8 & 4.5 
+\\
+Whisper medium 
+& 2.7 & 5.6 & 4.0 & 2.7 & 15.3 & 13.2 & 9.7 & 6.7 & 14.9 & 27.6 & 17.6 & 43.0 & 7.6 & 4.4 
+\\
+Whisper large 
+& 2.8 & 5.7 & 4.3 & 3.5 & 16.2 & 14.2 & 8.9 & 6.4 & 15.1 & 25.2 & 17.6 & 37.1 & 7.2 & 4.5 
+\\
+Whisper large-v2
+& 2.5 & 4.9 & 3.7 & 2.6 & 16.4 & 13.6 & 8.2 & 5.7 & 14.2 & 24.9 & 17.4 & 39.9 & 7.0 & 4.2
+\\
+\bottomrule
+\end{tabular}
+\caption{English transcription WER (\%) with beam search and temperature fallback}\label{tab:english-asr-bs5fb}
+\end{table}

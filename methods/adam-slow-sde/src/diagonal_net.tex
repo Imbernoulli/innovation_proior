@@ -1,0 +1,192 @@
+% \vspace{-0.1in}
+\section{Adam's Provable Generalization Benefit with Label Noise}\label{sec:diag}
+% \vspace{-0.1in}
+% We have shown that Adam does minimize some `sharpness' which takes a rather complex form. But what are the benefits of minimizing this, instead of the trace of Hessian minimized by SGD?
+In this section, we prove that with the label noise condition, the implicit regularizer of Adam reduces to a simpler form that aligns better with sparsity regularizations, and then verify experimentally.
+% After that, we run experiments on a small setting that asks the model to fit a sparse ground-truth vector in a regression task, and verify Adam's improvement to the efficiency of ground-truth recovery.
+% \vspace{-0.1in}
+\subsection{Implicit Regularizer of Adam under Label Noise} \label{subsec:adam-label-noise}
+% On an $\ell_2$-regression task on dataset $\left\{\vz_i, y_i\right\}_{i=1}^{n}$, adding \textit{label noise} means adding a noise sampled i.i.d. from $\left\{ \pm \delta\right\}$ to any true label $y$ before feeding forward to the network. A crucial property of the label noise setting is that when $\vtheta \in \Gamma$, $\mSigma \equiv \alpha\nabla^2\cL$ for some constant $\alpha$ \citep{blanc2020implicit}, which simplifies the setting and has been largely used \citep{blanc2020implicit,damian2021label,li2021happens,gu2023and} to analyze the implicit bias of SGD and other optimizers.   
+
+\paragraph{Label Noise.} By \emph{label noise} we refer to the condition that for all  $\vtheta \in \Gamma$, 
+the covariance matrix $\mSigma$ is a constant multiple of the Hessian:
+$\mSigma(\vtheta)=\alpha\,\nabla^2\cL(\vtheta)$ for some constant $\alpha$ \citep{blanc2020implicit}. 
+This condition typically arises when training a model that is overparameterized enough to fit the training data perfectly,
+%(i.e., $\cL(\vtheta) = 0$ can be attained), 
+while fresh noise is added to the target label at each step of training.
+
+%of an overparameterized regression problem, where the overparameterization is 
+%This condition was initially derived from the setting of adding an i.i.d. perturbation to the true label in each training step in an overparameterized regression problem using $\ell_2$ loss.
+
+To see how this label noise condition holds, imagine a simple regression problem with training data $\{(\vx^{(i)}, y^{(i)})\}_{i=1}^{n}$ and model $h(\vtheta; \vx)$. The loss function for a single data sample is defined as $\ell(\vtheta; \vx, y) = \frac{1}{2}(h(\vtheta; \vx) - y)^2$. With label noise, at each step $t$ of training, we randomly take a random data sample $(\vx_t, y_t)$ as well as an independent noise perturbation $\zeta_t$ from a distribution with zero mean and constant variance $\delta >0$. Then we take one gradient step on $\ell(\vtheta; \vx_t, y_t + \zeta_t)$ with the noisy label $y_t + \zeta_t$.
+
+The expected training loss becomes $\cL(\vtheta) = \E[\ell(\vtheta; \vx_t, y_t + \zeta_t)]$. When the model is sufficiently overparameterized so that $h(\vtheta; \vx) = \vy$ can be simultaneously attained for all training data points in its parameter space, the minimizer manifold is just $\Gamma = \left\{\vtheta: \cL(\vtheta) = \frac{1}{2}\delta^2 \right\}$, where $\frac{1}{2}\delta^2$ is entirely due to the presence of label noise. On this manifold, we can see how the label noise condition $\mSigma(\vtheta)=\alpha\,\nabla^2\cL(\vtheta)$ holds for $\alpha = \delta^2$:
+\begin{align*}
+    \mSigma(\vtheta) := \E\left[\nabla\ell(\vtheta; \vx_t, y_t + \zeta_t) \nabla\ell(\vtheta; \vx_t, y_t + \zeta_t)^\top\right] = \E\left[ \zeta_t^2 \nabla h(\vtheta; \vx) \nabla h(\vtheta; \vx)^\top \right] = \delta^2 \nabla \cL(\vtheta).
+\end{align*}
+%Here the model is overparameterized, i.e., the dimension $d$ of $\vtheta$ satisfies $d \gg n$. With mild regularity conditions, the minimizer manifold $\left\{\cL(\vtheta) = 0 \right\}$ provably exists (Section 3.1, \citet{li2021happens}).%With label noise and full batch size, the noisy training objective can be expressed as 
+%\begin{align*}
+%    \ell(\vtheta) := \sum_{i=1}^n (h(\vx_i, \vtheta) - y_i - \zeta_i)^2,
+%\end{align*}
+%where each $\zeta_i$ is i.i.d. chosen, has zero mean and constant variance $\delta > 0$. It is straightforward to verify that 
+%\begin{align*}
+%    \mSigma(\vtheta) := \E\left[\nabla\ell(\vtheta) \nabla\ell(\vtheta)^\top\right] = \frac{2\delta^2}{n} \cdot \nabla^2 \cL(\vtheta)
+%\end{align*}
+%whenever $\cL(\vtheta) = 0$.
+%It is also not hard to verify the label noise condition for other batch sizes, except for a different coefficient $\alpha$.
+%the term \emph{label noise} can refer to any setting satisfying the condition of 
+Beyond this simple setting, a similar analysis can be applied to establish the label noise condition
+$\mSigma(\vtheta)=\alpha\,\nabla^2\cL(\vtheta)$
+for mini-batch training and other common losses such as cross-entropy loss. This proportional relationship between Hessian and noise covariance greatly simplifies the analysis of training dynamics and
+%solely simplifies the analysis of implicit bias greatly and 
+has been widely used to study 
+the implicit bias of SGD and related optimizers \citep{blanc2020implicit,damian2021label,li2021happens,gu2023and}.
+
+Under the label noise condition, \citet{li2021happens} proved that slow SDE for SGD reduces to an ODE. In the following theorem, we show that the slow SDE for AGM also reduces to an ODE, but the resulting ODE takes a different form:
+%the same thing for AGMs:
+% Consider an $\ell_2$-regression problem with dataset $\{(\vz_i, y_i)\}_{i=1}^{n}$. 
+% By  we mean adding, before the forward pass, an i.i.d. perturbation 
+% $\varepsilon_i \in \{\pm \delta\}$ to each true label $y_i$. 
+% A key property of this label-noise regime is that, whenever $\vtheta \in \Gamma$, 
+% the matrix $\mSigma$ is a constant multiple of the Hessian:
+% $\mSigma(\vtheta)=\alpha\,\nabla^2\cL(\vtheta)$ for some constant $\alpha$ \citep{blanc2020implicit}. 
+
+
+\begin{theorem}[Slow ODE for AGMs with Label Noise]
+Under the label noise condition, the Slow SDE for AGMs in \Cref{equ:AGMs-SDE} becomes the following ODE: 
+    \begin{align}
+        \left\{\begin{array}{l}
+             \dd \vzeta(t) =  - \frac{\alpha}{2} \mS_t  \partial\Phi_{\mS_t}(\vzeta) \mS_t \nabla^3 \cL(\vzeta) [\mS_t]\dd t, \\
+             \dd \vv(t) = c \left(V(\mSigma(\vzeta)) - \vv\right) \dd t,
+        \end{array}\right.
+        \label{equ:AGMs-ODE}
+    \end{align}
+    where $\mS_t:=\mS(\vv(t))$.
+    \label{thm:agm-slow-ode}
+\end{theorem}
+
+See \Aref{proof:diag} for the proof. We then derive the implicit bias of Adam with label noise.
+
+\begin{lemma}[Adam's Implicit Bias under Label Noise]
+        %Let $\lambda \in [0, 1)$.
+        Under the label noise condition, every fixed point of \Cref{equ:AGMs-ODE} for Adam satisfies $\nabla_{\Gamma} \tr\left(\mathrm{Diag}(\mH)^{1/2}\right) = 0$.
+    \label{thm:adam-implicit-bias-label-noise}
+\end{lemma}
+    
+    % Adam implicitly regularizes $\tr(\Diag(\mH)^{1/2})$. 
+    % point on manifold where \begin{align*}
+    % \mathrm{tr}(\mathrm{diag}(\nabla^2 \cL(\vzeta)^{1/2})        
+    % \end{align*}
+
+% \begin{theorem}
+%     Under the label noise setting, for any $\vzeta \in \Gamma$, we have $\partial\Phi_{S(\vv)}(\vzeta)S(\vv) \mSigma^{1/2}(\vzeta) \equiv \bf{0}.$
+% \end{theorem}
+% \paragraph{Proof Sketch.} 
+% Intuitively, think of any vector $\vx \in \R^d$. With label noise, $\mSigma \equiv c \nabla^2 \cL$ for any $\vzeta \in \Gamma$, so $\mSigma^{1/2}(\zeta)\vx$ lies within the normal space of $\Gamma$ at $\vzeta$. Denote $\mSigma^{1/2}(\zeta)\vx$ as $\vx_1$, using the center manifold theorem with parametrization, we conclude that there exists some incoming pre-conditioned gradient flow trajectory $\gamma$ that hits $\Gamma$ at $\vzeta$ with final direction $S(\vv)\vx_1$. Thus perturbing $\vzeta$ with direction $-S(\vv)\vx_1$ will not change its projection onto $\Gamma$, since the perturbed point still stays on $\gamma$, hence $\partial\Phi_{S(\vv)}(\vzeta)\left[-S(\vv) \vx_1\right] = \bf{0}$ for any $\vx \in \R^d$.
+
+\paragraph{Proof Sketch.}
+At the fixed point of \Cref{equ:AGMs-ODE}, we have
+$$\vv = V(\mSigma(\vzeta)), \quad S(\vv)  \partial\Phi_{S(\vv)}(\vzeta) S(\vv) \nabla^3 \cL(\vzeta) [S(\vv)]=0.$$
+With label noise, $\mH\overset{\mathrm{def}}{=}\nabla^2\cL(\vzeta)=\mSigma(\vzeta)/\alpha$. In the Adam case, $\vv = \diag(\mSigma) = \alpha\diag(\mH)$, and $S(\vv) =\mathrm{Diag}(1/\sqrt{\vv})$ with $\epsilon = 0$. 
+% Using integration by parts, we obtain $$\nabla^3 \cL(\vzeta)\left[S(\vv)\right] = \nabla\left[\langle\mH,S(\vv)\rangle\right] - \nabla \left(S(\vv)\right)\left[\mH\right].$$ 
+Then $S(\vv) = \Diag(\frac{1}{(\alpha\diag(\mH))^{1/2}})$, and we can simplify the regularizer term into 
+% $\nabla\left[\langle\mH,S(\vv)\rangle\right]$ and $\nabla \left(S(\vv)\right)\left[\mH\right]$ give
+% $$\nabla^3 \cL(\vzeta)\left[S(\vv)\right] = \frac{1}{\sqrt{\alpha}} \nabla \tr\left(\mathrm{Diag}(\mH)^{1/2}\right),$$
+\begin{align*}
+    \nabla^3 \cL (\vzeta)[S(\vv)] = \sum_{j=1}^{d} \frac{1}{(\alpha H_{jj})^{1/2}} \nabla(H_{jj}) = \frac{2}{\sqrt{\alpha}} \sum_{j=1}^{d} \nabla ((H_{jj})^{1/2}) = \frac{2}{\sqrt{\alpha}} \nabla \tr\left(\Diag(\mH)^{1/2}\right).
+\end{align*}
+which implies that the stationary point of Adam satisfies 
+\begin{align*}
+    S(\vv)  \partial\Phi_{S(\vv)}(\vzeta) S(\vv) \nabla \tr\left(\mathrm{Diag}(\mH)^{1/2}\right)=0.
+\end{align*}
+The preceding matrices have some clean properties. From \cref{lmm:tangent-space-product}, $\partial\Phi_{S(\vv)}(\vzeta) S(\vv)$ acts as an invertible linear map on the tangent space of the manifold $\Gamma$, and vanishes on its normal space. Together with the invertibility of $S(\vv)$, this gives
+$$\nabla_{\Gamma} \tr\left(\mathrm{Diag}(\mH)^{1/2}\right) = 0 $$
+for any fixed point of Adam's slow ODE. See \Aref{proof:diag} for more details. 
+\qed
+
+The above proof can be generalized to the case of $\epsilon >0$.
+When $\epsilon >0$, the implicit bias of Adam changes to
+\begin{align*}
+    \nabla_{\Gamma} \tr\left( \Diag(\mH^*)^{1/2}
+        - \frac{\epsilon}{\sqrt{\alpha}}\ln\left( \frac{\sqrt{\alpha}}{\epsilon}\Diag(\mH^*)^{1/2}+\mI\right) \right)
+        =\vzero.
+\end{align*}
+See \Cref{lemma:adam-implicit-bias-label-noise-eps-not-0} for more details.
+Note that this trace term is always non-negative, since $x - \frac{\epsilon}{\sqrt{\alpha}}\ln(\frac{\sqrt{\alpha}}{\epsilon} x+1) \ge x - \frac{\epsilon}{\sqrt{\alpha}} \cdot \frac{\sqrt{\alpha}}{\epsilon} x = 0$ for any $x \ge 0$.
+% Specifically, we have    
+% $$\nabla \left(S(\vv)\right)\left[\nabla^2\cL\right] = \sum_{j,k}\nabla\left(S(\vv)_{jk}\right)\cdot\mH_{jk},$$
+% and then plug in the expression of $S(\vv) = \Diag(\mH)^{-1/2} + O(\epsilon)$ into this equation gives
+% $$\nabla \left(S(\vv)\right)\left[\nabla^2\cL\right] = \sum_{j}\mH_{jj}^{-1/2}\mH_{jj} + O(\epsilon \text{tr}(\mH)),$$
+% and take $\epsilon \to 0$ gives the final results. The more detailed calculation can be found in \Cref{proof:diag}. \qed
+
+\paragraph{A Simple Way to Tune Adam's Implicit Bias: AdamE.} The proof of \cref{thm:adam-implicit-bias-label-noise} inspires the following simple variant of Adam: We define \emph{AdamE} as an optimizer class that, is identical to Adam except that $S(\vv) = \mathrm{Diag}(1/(\vv^{\odot \lambda}+\epsilon))$ for a tunable parameter $\lambda\in[0,1)$. For any $\lambda_0 \in [0, 1)$ we also use the term \emph{AdamE with $\lambda=\lambda_0$}, or simply \emph{AdamE-$\lambda_0$}. Note that AdamE with $\lambda=\frac{1}{2}$ coincides with Adam, and that all AdamE optimizers lie within the AGM framework. Applying the same method as in \cref{thm:adam-implicit-bias-label-noise} yields the implicit bias of AdamE under label noise.
+%; the result is stated below.
+\begin{lemma}[AdamE's Implicit Bias with Label Noise]
+    Under the label noise condition, the fixed point of \Cref{equ:AGMs-ODE} for AdamE-$\lambda$ with $\lambda \in [0, 1)$ and $\epsilon = 0$ satisfies $\nabla_{\Gamma} \tr\left(\mathrm{Diag}(\mH)^{1-\lambda}\right) = 0$.
+    \label{thm:adame-implicit-bias-label-noise}
+    % \vspace{-0.1in}
+\end{lemma}
+\cref{thm:adame-implicit-bias-label-noise} indicates that tuning the exponent of the second-order moment in Adam exactly results in tuning the exponent of $\mathrm{diag}(\nabla^2 \cL(\vzeta))$ in the implicit bias. When $\lambda=0$, the implicit bias reduces to that of SGD, and AdamE also gets rid of the effect of second-order moments and reduces to SGD with momentum, which coincides perfectly. Next, we relate the implicit bias to sparsity and compare the performance of Adam, AdamE, and SGD in a simple experimental setup.
+% \vspace{-0.1in}
+\subsection{Example: Sparse Linear Regression with Diagonal Net}
+% \vspace{-0.1in}
+In this section, we adopt the \textit{diagonal linear network} (diagonal net) setting proposed by \citet{woodworth2020kernel} as an experimental setting, which is also used by \citet{li2021happens} to study the implicit bias of SGD. 
+
+\textbf{Setting (Diagonal Net with Label Noise):} Let $\vw^* \in \R^d$ be an unknown $\kappa$-sparse ground truth vector. Let $\left\{(\vz_i, y_i)\right\}_{i \in [n]}$ be the training dataset where each $\vz_i \overset{\text{i.i.d.}}{\sim} \text{Unif}\left\{\pm 1\right\}^d$, and each $y_i$ is generated by $\left\langle \vz_i, \vw^* \right\rangle$. Our parameter is defined as $\vtheta = \tbinom{\vu}{\vv} \in \R^{2d}$. For any function $g$ defined on $\R^{2d}$, we write $g(\vtheta)$ and $g(\vu, \vv)$ interchangeably. The loss function is defined as:
+% \vspace{-5pt}
+$$
+    \cL(\vtheta) = \frac{1}{n}\sum_{i=1}^{n}\cL_i(\vtheta), \quad \text{where }\cL_i(\vtheta) = \frac{1}{2}\left(\left\langle \vz_i, \vu^{\odot 2} - \vv^{\odot 2} \right\rangle - y_i\right)^2
+$$
+% % \vspace{-2pt}
+where a label noise is added to the true label $y$ during training. This setting can be viewed as using estimation $\widehat{\vw} = \vu^{\odot 2} - \vv^{\odot 2}$ to approximate the ground truth vector $\vw^*$ of a linear regression task. Note that $d \gg n$ here so the model is highly overparameterized: Theoretically, \citet{li2021happens} proved that $n = \O(\kappa \ln d)$ is enough for SGD to recover ground truth, and we will later show experimentally that less than $1000$ training pairs is required for both Adam and SGD to achieve a low test loss when $d = 10000$. The manifold is defined as wherever zero train loss is achieved, i.e. $\Gamma = \left\{\vtheta | \langle \vz_i, \vu^{\odot 2} - \vv^{\odot 2}\rangle = y_i, \forall i \in [n]\right\}$.
+
+This setting allows us to relate the implicit bias directly to the sparsity of the estimated ground truth.
+
+% It's straightforward to verify that $$\nabla^2 \cL(\vtheta) = \frac{4}{n} \sum_{i=1}^{n} \tbinom{\vz_i \odot \vu}{-\vz_i \odot \vv}\tbinom{\vz_i \odot \vu}{-\vz_i \odot \vv}^\top$$ when $$\vtheta \in \Gamma$$, so $$\diag(\nabla^2 \cL(\vtheta)) = 4\vtheta^{\odot 2}.$$ Then note the following property:
+
+\begin{lemma}\label{lmm:diagonal-net}
+Let $\vtheta^*$ be an optimal parameter minimizing the loss function $\cL$, i.e. $\vtheta^* \in \Gamma$. For each $\vtheta = \tbinom{\vu}{\vv} \in \Gamma$, denote $\widehat{\vw} := \vu^{\odot 2} - \vv^{\odot 2}$ and $\mH := \nabla^2 \cL(\vtheta)$. We have the following: 
+\begin{itemize}
+% \vspace{-5pt}
+    \item If $\vtheta^* \in \arg\min_{\vtheta \in \Gamma} \tr(\Diag(\mH)^{0.5})$, then we also have $\vtheta^* \in \arg\min_{\vtheta \in \Gamma} \left\| \widehat{\vw} \right\|_{0.5}$.
+% \vspace{-5pt}
+    \item Furthermore, for any $e_0 \in (0, 1]$, if $\vtheta^* \in \arg\min_{\vtheta \in \Gamma} \tr(\Diag(\mH)^{e_0})$, then we also have $\vtheta^* \in \arg\min_{\vtheta \in \Gamma} \left\|\widehat{\vw} \right\|_{e_0}$.
+\end{itemize} 
+% \vspace{-10pt}
+\end{lemma}
+
+The main idea of the proof is that the training loss depends only on the combined quantity $\widehat{\vw} = \vu^{\odot 2} - \vv^{\odot 2}$. Hence, if for some index $i$ both $u_i$ and $v_i$ are nonzero, we can reduce the magnitudes of $u_i$ and $v_i$ while keeping $u_i^2-v_i^2$ fixed, obtaining another minimizer with strictly smaller $\tr(\Diag(\mH)^{e_0})$. Therefore, at any optimum we must have \(u_i=0\) or \(v_i=0\) for every \(i\). Under this condition, $\tr(\Diag(\mH)^{e_0})$ can be  identified with $\left\|\widehat{\vw} \right\|_{e_0}$. We provide the detailed derivation in \Aref{proof:diag}. %\qed
+
+
+\cref{lmm:diagonal-net} gives the following insights: Implicitly regularizing $\tr(\Diag(\mH)^{e_0})$ is equivalent to regularizing the \(\ell_{e_0}\)-norm of the estimated ground truth $\widehat{\vw} = \vu^{\odot 2} - \vv^{\odot 2}$: Adam corresponds to \(\ell_{0.5}\), SGD to \(\ell_1\), and AdamE-\(\lambda\) to \(\ell_{1-\lambda}\). Just as lasso (\(\ell_1\)) is preferable to ridge (\(\ell_2\)) for sparse ground-truth recovery, we therefore expect Adam and AdamE (with $\lambda > 0$) to recover sparse ground truth more efficiently than SGD. We verify this prediction below.
+% \vspace{-0.05in}
+\subsubsection{Result: Adam's Implicit Regularizer Facilitates Sparse Ground-truth Recovery}
+% \vspace{-0.05in}
+\Cref{fig:diagnet} shows the results of the experiment.  We gradually increase the number of training points and train Adam, SGD, and AdamE under several configurations until convergence. We consider a configuration to have \emph{recovered the ground truth} if the test loss falls below \(1\).  As illustrated in \Cref{fig:diagnet-a}, Adam's test loss plunges towards zero at approximately \(n_{\mathrm{train}}=420\), whereas SGD's test loss decreases more gradually as the training set grows.  To interpolate between different implicit biases, we evaluate AdamE for several values of \(\lambda\).  \Cref{fig:diagnet-b} indicates that AdamE, even with a small positive value of \(\lambda\), exhibits the same sudden recovery behavior as Adam. This suggests that Adam’s influence on the implicit bias upon SGD arises from its preconditioning mechanism.
+
+
+\begin{figure}[h]
+  % \vspace{-0.1in}
+  \centering
+  \begin{subfigure}[b]{0.49\textwidth}
+    \includegraphics[width=\textwidth]{fig/loss_vs_n_train_compare.pdf}
+    \caption{}\label{fig:diagnet-a}
+  \end{subfigure}
+  \begin{subfigure}[b]{0.473\textwidth}
+    \includegraphics[width=\textwidth]{fig/loss_vs_n_train_adame.pdf}
+    \caption{}\label{fig:diagnet-b}
+  \end{subfigure}
+  \caption{ 
+  Final test loss as a function of the training data size with \(d=10000\), \(\kappa=50\). Each plotted point is the final test loss after both the training and test losses have converged; its x-coordinate is the training data size and the curve denotes the optimizer and configuration. \textbf{(a)} Loss comparison between SGD with different learning rates, and Adam with different learning rates and \(\beta_2\) values. \textbf{(b)} Loss comparison between AdamE with \(\lambda=0.01, 0.1,0.25,0.75,0.9\), Adam, and SGD.}
+  \label{fig:diagnet}
+  % \vspace{-0.15in}
+\end{figure}
+
+\paragraph{Takeaway.} Adam's unique implicit bias may help to recover a sparse ground truth.
+
+%compared to SGD in certain cases.
+% Adam's unique implicit bias aligns better with the fundamental target of reducing the sparsity of the model's output, which facilitates the recovery of the sparse ground truth compared to SGD, and this improvement mainly arises from taking the second order moment into consideration. 
+% Starting from SGD, even if we introduce the second-order moment in the preconditioner for a little bit, it could result in significant assistance in sparse ground truth recovery.
+
+
+However, we should also keep in mind that a clear interpretation of Adam's unique implicit bias, $\tr(\Diag(\mH)^{1/2})$ relies heavily on the condition that $\mH$ is diagonal. Only with this condition can we claim Adam as minimizing $\|\vh\|_{0.5}$ instead of SGD's $\normone{\vh}$ where $\vh$ is the vector consisting of all eigenvalues of $\mH$. In other words, Adam's optimization on the implicit bias upon SGD only makes sense when $\mH$ is diagonal. In the diagonal net setting this is indeed the case in expectation, but we will see in the next chapter that Adam's unique implicit bias may even lead to worse generalization when $\mH$ is no longer diagonal.

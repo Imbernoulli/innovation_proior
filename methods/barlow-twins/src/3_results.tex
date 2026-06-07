@@ -1,0 +1,90 @@
+\section{Results}
+
+We follow standard practice~\cite{goyal2019scaling} and evaluate our representations by transfer learning to different datasets and tasks in computer vision.
+Our network is pretrained using self-supervised learning on the training set of the ImageNet ILSVRC-2012 dataset \cite{deng2009imagenet} (without labels). We evaluate our model on a variety of tasks such as image classification and object detection, and using fixed representations from the network or finetuning it. We provide the hyperparameters for all the transfer learning experiments in the Appendix.
+
+
+\subsection{Linear and Semi-Supervised Evaluations on ImageNet}
+
+\paragraph{Linear evaluation on ImageNet}
+
+We train a linear classifier on ImageNet on top of fixed representations of a ResNet-50 pretrained with our method. The top-1 and top-5 accuracies obtained on the ImageNet validation set are reported in Table~\ref{tab:abl-imagenet}. Our method obtains a top-1 accuracy of $73.2\%$ which is comparable to the state-of-the-art methods.
+
+
+\begin{table}[ht]
+\caption{\textbf{Top-1 and top-5 accuracies (in \%) under linear evaluation on ImageNet}. All models use a ResNet-50 encoder. Top-3 best self-supervised methods are \underline{underlined}.} %\LJ{Add more top-5 from other papers? They didn't report it in their papers but we should be able to find it somewhere else.}\SD{go ahead if you have time.}
+\label{tab:abl-imagenet}
+\vskip 0.15in
+\begin{center}
+\begin{tabular}{lcc}
+\toprule
+Method  &  Top-1 & Top-5 \\
+\midrule
+Supervised & 76.5 & \\
+\midrule
+\textsc{MoCo}    & 60.6 & \\
+\textsc{PIRL} & 63.6 & - \\
+\textsc{SimCLR} & 69.3  & 89.0 \\
+% PIRL v2 & 70.0 & - \\
+\textsc{MoCo v2} & 71.1 & 90.1 \\
+\textsc{SimSiam} & 71.3 & - \\
+\textsc{SwAV} (w/o multi-crop) & 71.8 & - \\
+\textsc{BYOL} & \underline{74.3} & 91.6  \\
+\textsc{SwAV} & \underline{75.3} & - \\
+\AlgoName{} (ours) & \underline{73.2} & 91.0 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\vskip -0.1in
+\end{table}
+
+\paragraph{Semi-supervised training on ImageNet}
+We fine-tune a ResNet-50 pretrained with our method on a subset of ImageNet. We use subsets of size $1\%$ and $10\%$ using the same split as \textsc{SimCLR}. The semi-supervised results obtained on the ImageNet validation set are reported in Table~\ref{tab:abl-semisupervised}. Our method is either on par (when using $10\%$ of the data) or slightly better (when using $1\%$ of the data) than competing methods.
+
+\begin{table}[ht]
+\caption{\textbf{Semi-supervised learning on ImageNet} using 1\% and 10\% training examples. Results for the supervised method are from~\cite{zhai2019s4l}. Best results are in \textbf{bold}.}
+\label{tab:abl-semisupervised}
+\vskip 0.15in
+\begin{center}
+\begin{tabular}{lcccc}
+\toprule
+Method     & \multicolumn{2}{c}{Top-$1$} & \multicolumn{2}{c}{Top-$5$} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+          &  1\% & 10\%            & 1\% & 10\% \\
+\midrule
+% ~\cite{zhai2019s4l}
+Supervised         & 25.4 & 56.4 & 48.4 & 80.4 \\
+\midrule
+\textsc{PIRL}               & - & -           & 57.2 & 83.8\\
+\textsc{SimCLR}    & 48.3 & 65.6 & 75.5 & 87.8\\
+\textsc{BYOL}      & 53.2 & 68.8 & 78.4 & 89.0\\
+\textsc{SwAV}               & 53.9 & \bf{70.2} & 78.5 & \bf{89.9}\\
+\AlgoName{} (ours) & \bf{55.0} & 69.7 & \bf{79.2} & 89.3\\
+\bottomrule
+\end{tabular}
+\end{center}
+\vskip -0.1in
+\end{table}
+
+\subsection{Transfer to other datasets and tasks}
+
+
+
+\input{tables/linear_probe_transfer}
+
+\par \noindent \textbf{Image classification with fixed features} We follow the setup from~\cite{misra2019self} and train a linear classifier on fixed image representations, \ie, the parameters of the ConvNet remain unchanged. We use a diverse set of datasets for this evaluation - Places-205~\cite{zhou2014learning} for scene classification, VOC07~\cite{everingham2010pascal} for multi-label image classification, and iNaturalist2018~\cite{van2018inaturalist} for fine-grained image classification. We report our results in Table~\ref{tab:linear_transfer}. \AlgoName{} performs competitively against prior work, and outperforms SimCLR and MoCo-v2 on most datasets.
+
+
+\par \noindent \textbf{Object Detection and Instance Segmentation} We evaluate our representations for the localization based tasks of object detection and instance segmentation. We use the VOC07+12~\cite{everingham2010pascal} and COCO~\cite{lin2014microsoft} datasets following the setup in~\cite{he2019momentum} which finetunes the ConvNet parameters. Our results in Table~\ref{tab:detection} indicate that \AlgoName{} performs comparably or better than state-of-the-art representation learning methods for these localization tasks.
+
+\input{tables/detection}
+
+% @COPIED FROM \textsc{BYOL}@
+% We evaluate our representation on different tasks relevant to computer vision practitioners, namely semantic segmentation, object detection and depth estimation. With this evaluation, we assess whether \textsc{BYOL}’s representation generalizes beyond classification tasks.
+% We first evaluate \textsc{BYOL} on the VOC2012 semantic segmentation task as detailed in Appendix D.4, where the goal is to classify each pixel in the image [7]. We report the results in Table 4a. \textsc{BYOL} outperforms both the Supervised-IN baseline (+1.9 mIoU) and \textsc{SimCLR} (+1.1 mIoU).
+% Similarly, we evaluate on object detection by reproducing the setup in [9] using a Faster R-CNN architecture [82], as detailed in Appendix D.5. We fine-tune on trainval2007 and report results on test2007 using the standard AP50 metric; \textsc{BYOL} is significantly better than the Supervised-IN baseline (+3.1 AP50) and \textsc{SimCLR} (+2.3 AP50).
+% Finally, we evaluate on depth estimation on the NYU v2 dataset, where the depth map of a scene is estimated given a single RGB image. Depth prediction measures how well a network represents geometry, and how well that information can be localized to pixel accuracy [40]. The setup is based on [83] and detailed in Appendix D.6. We evaluate on the commonly used test subset of 654 images and report results using several common metrics in Table 4b: relative (rel) error, root mean squared (rms) error, and the percent of pixels (pct) where the error, max(dgt/dp,dp/dgt), is below 1.25n thresholds where dp is the predicted depth and dgt is the ground truth depth [40]. \textsc{BYOL} is better or on par with other methods for each metric. For instance, the challenging pct.<1.25 measure is respectively improved by +3.5 points and +1.3 points compared to supervised and \textsc{SimCLR} baselines.
+
+
+
+

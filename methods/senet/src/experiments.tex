@@ -1,0 +1,76 @@
+\section{Experiments}\label{sec:exp-results}
+
+In this section, we conduct experiments to investigate the effectiveness of SE blocks across a range of tasks, datasets and model architectures.
+
+%------------------table---------------------------------------------
+\input{expe/table_effectnet}
+%-------------------------------------------------------------------
+\begin{figure*}
+\begin{center}
+\includegraphics[width=\textwidth]{figures/train_curves.pdf}
+\end{center}
+\vspace{-1.5em}
+\caption[Training curves]{Training baseline architectures and their SENet counterparts on ImageNet. SENets exhibit improved optimisation characteristics and produce consistent gains in performance which are sustained throughout the training process. 
+}
+\label{fig:curves}
+\end{figure*}
+
+\subsection{Image Classification}\label{subsec:imagenet}
+
+To evaluate the influence of SE blocks, we first perform experiments on the ImageNet $2012$ dataset \cite{russakovsky_ijcv2015imagenet} which comprises $1.28$ million training images and $50$K validation images from $1000$ different classes. We train networks on the training set and report the top-$1$ and top-$5$ error on the validation set.
+
+Each baseline network architecture and its corresponding SE counterpart are trained with identical optimisation schemes.  We follow standard practices and perform data augmentation with random cropping using scale and aspect ratio \cite{szegedy_cvpr2015googlenet} to a size of $224\times 224$ pixels (or $299\times 299$ for Inception-ResNet-v2 \cite{szegedy_iclrw2016inceptionv4} and SE-Inception-ResNet-v2) and perform random horizontal flipping. Each input image is normalised through mean RGB-channel subtraction. All models are trained on our distributed learning system \textit{ROCS} which is designed to handle efficient parallel training of large networks. Optimisation is performed using synchronous SGD with momentum $0.9$ and a minibatch size of $1024$. The initial learning rate is set to $0.6$ and decreased by a factor of $10$ every $30$ epochs. Models are trained for $100$ epochs from scratch, using the weight initialisation strategy described in \cite{he_iccv2015prelu}. The reduction ratio $r$ (in Section~\ref{subsec:adaptive-recal}) is set to $16$ by default (except where stated otherwise). 
+
+When evaluating the models we apply centre-cropping so that $224\times 224$ pixels are cropped from each image, after its shorter edge is first resized to $256$ ($299\times 299$ from each image whose shorter edge is first resized to $352$ for Inception-ResNet-v2 and SE-Inception-ResNet-v2).
+
+\vspace{5pt}
+\noindent\textbf{Network depth.}
+We begin by comparing SE-ResNet against ResNet architectures with different depths and report the results in Table~\ref{tab:imagenet-results}. We observe that SE blocks consistently improve performance across different depths with an extremely small increase in computational complexity.  Remarkably, SE-ResNet-50 achieves a single-crop \mbox{top-5} validation error of $6.62\%$, exceeding ResNet-50 (7.48\%) by 0.86\% and approaching the performance achieved by the much deeper ResNet-101 network (6.52\% top-5 error) with only half of the total computational burden ($3.87$ GFLOPs vs. $7.58$ GFLOPs). This pattern is repeated at greater depth, where SE-ResNet-101 ($6.07\%$ top-$5$ error) not only matches, but outperforms the deeper ResNet-152 network ($6.34\%$ top-5 error) by $0.27\%$. While it should be noted that the SE blocks themselves add depth, they do so in an extremely computationally efficient manner and yield good returns even at the point at which extending the depth of the base architecture achieves diminishing returns. Moreover, we see that the gains are consistent across a range of different network depths, suggesting that the improvements induced by SE blocks may be complementary to those obtained by simply increasing the depth of the base architecture.
+
+
+\vspace{5pt}
+\noindent\textbf{Integration with modern architectures.}
+We next study the effect of integrating SE blocks with two further state-of-the-art architectures, Inception-ResNet-v2 \cite{szegedy_iclrw2016inceptionv4} and ResNeXt (using the setting of $32\times 4$d) \cite{xie_cvpr2017resnext}, both of which introduce additional computational building blocks into the base network.  We construct SENet equivalents of these networks, SE-Inception-ResNet-v2 and SE-ResNeXt (the configuration of SE-ResNeXt-50 is given in Table~\ref{model_structure}) and report results in  Table~\ref{tab:imagenet-results}.  As with the previous experiments, we observe significant performance improvements induced by the introduction of SE blocks into both architectures. In particular, \mbox{SE-ResNeXt-50} has a top-5 error of $5.49$\% which is superior to both its direct counterpart ResNeXt-50 ($5.90\%$ top-5 error) as well as the deeper ResNeXt-101 ($5.57\%$ top-5 error), a model which has almost twice the total number of parameters and computational overhead. We note a slight difference in performance between our re-implementation of {\mbox Inception-ResNet-v2} and the result reported in \cite{szegedy_iclrw2016inceptionv4}. However, we observe a similar trend with regard to the effect of SE blocks, finding that SE counterpart ($4.79\%$ \mbox{top-5} error) outperforms our reimplemented \mbox{Inception-ResNet-v2} baseline ($5.21\%$ top-5 error) by $0.42\%$ as well as the reported result in \cite{szegedy_iclrw2016inceptionv4}.  
+
+We also assess the effect of SE blocks when operating on \textit{non-residual} networks by conducting experiments with the VGG-16 \cite{simonyan_iclr2015vgg} and BN-Inception architecture \cite{ioffe_icml2015bn}.  To facilitate the training of VGG-16 from scratch, we add Batch Normalization layers after each convolution. We use identical training schemes for both VGG-16 and SE-VGG-16. The results of the comparison are shown in Table \ref{tab:imagenet-results}. Similarly to the results reported for the residual baseline architectures, we observe that SE blocks bring improvements in performance on the non-residual settings.
+
+To provide some insight into influence of SE blocks on the optimisation of these models, example training curves for runs of the baseline architectures 
+and their respective SE counterparts are depicted in Fig.~\ref{fig:curves}.
+We observe that SE blocks yield a steady improvement throughout the optimisation procedure.  Moreover, this trend is fairly consistent across a range of network architectures considered as baselines.
+
+\vspace{5pt}
+\noindent\textbf{Mobile setting.} Finally, we consider two representative architectures from the class of mobile-optimised networks, MobileNet~\cite{howard_2017mobilenets} and ShuffleNet~\cite{zhang_cvpr2018shufflenet}. For these experiments, we used a minibatch size of 256 and slightly less aggressive data augmentation and regularisation as in~\cite{zhang_cvpr2018shufflenet}. We trained the models across 8 GPUs using SGD with momentum (set to 0.9) and an initial learning rate of 0.1 which was reduced by a factor of 10 each time the validation loss plateaued. The total training process required \mbox{$\sim400$} epochs (enabling us to reproduce the baseline performance of~\cite{zhang_cvpr2018shufflenet}). The results reported in Table~\ref{tab:smallnet-results} show that SE blocks consistently improve the accuracy by a large margin at a minimal increase in computational cost.
+
+
+\vspace{5pt}
+\noindent\textbf{Additional datasets.} We next investigate whether the benefits of SE blocks generalise to datasets beyond ImageNet. We perform experiments with several popular baseline architectures and techniques (\mbox{ResNet-110} \cite{he_eccv2016preact}, \mbox{ResNet-164} \cite{he_eccv2016preact}, \mbox{WideResNet-16-8} \cite{zagoruyko_bmvc2016wrn}, \mbox{Shake-Shake} \cite{xavier_2017shake} and \mbox{Cutout} \cite{terrance_2017cutout}) on the CIFAR-$10$ and CIFAR-$100$ datasets \cite{krizhevsky2009learning}.  These comprise a collection of 50k training and 10k test $32 \times 32$ pixel RGB images, labelled with 10 and 100 classes respectively.  The integration of SE blocks into these networks follows the same approach that was described in Section~\ref{se_inception_resnet}.  Each baseline and its SENet counterpart are trained with standard data augmentation strategies~\cite{lin_iclr2014nin,huang_eccv2016sdepth}. During training, images are randomly horizontally flipped and zero-padded on each side with four pixels before taking a  random $32 \times 32$ crop. Mean and standard deviation normalisation is also applied. The setting of the training hyperparameters (e.g. minibatch size, initial learning rate, weight decay) match those suggested by the original papers. We report the performance  of each baseline and its SENet counterpart on CIFAR-$10$ in Table~\ref{tab:cifar10} and performance on CIFAR-$100$ in Table~\ref{tab:cifar100}.  We observe that in every comparison SENets outperform the baseline architectures, suggesting that the benefits of SE blocks are not confined to the ImageNet dataset.
+
+%--------------------table------------------------------------------
+\input{expe/table_cifar10.tex}
+\input{expe/table_cifar100.tex}
+\input{expe/table_places.tex}
+%-------------------------------------------------------------------
+
+\subsection{Scene Classification}
+
+We also conduct experiments on the Places365-Challenge dataset \cite{zhou_pami2017places} for scene classification. This dataset comprises $8$ million training images and $36,500$ validation images across $365$ categories. Relative to classification, the task of scene understanding offers an alternative assessment of a model's ability to generalise well and handle abstraction.  This is because it often requires the model to handle more complex data associations and to be robust to a greater level of appearance variation.
+
+We opted to use ResNet-152 as a strong baseline to assess the effectiveness of SE blocks and follow the training and evaluation protocols described in \cite{shen_places365, shen_eccv2016}. In these experiments, models are trained from scratch. We report the results in Table~\ref{tab:places-results}, comparing also with prior work. We observe that SE-ResNet-152 ($11.01\%$ {\mbox top-5} error) achieves a lower validation error than ResNet-152 ($11.61\%$ top-5 error), providing evidence that SE blocks can also yield improvements for scene classification. This SENet surpasses the previous state-of-the-art model Places-365-CNN \cite{shen_places365} which has a top-5 error of $11.48\%$ on this task.
+
+\input{expe/table_coco.tex}	
+
+\subsection{Object Detection on COCO}
+\label{coco_det}
+
+We further assess the generalisation of SE blocks on the task of object detection using the COCO dataset \cite{lin_eccv2014coco}. As in previous work \cite{xie_cvpr2017resnext}, we use the {\it minival} protocol, i.e., training the models on the union of the $80$k training set and a $35$k val subset and evaluating on the remaining $5$k val subset.  Weights are initialised by the parameters of the model trained on the ImageNet dataset. We use the Faster \mbox{R-CNN} \cite{ren_nips2015fasterrcnn} detection framework as the basis for evaluating our models and follow the hyperparameter setting described in \cite{Detectron2018} (i.e., end-to-end training with the '2x' learning schedule). Our goal is to evaluate the effect of replacing the trunk architecture (ResNet) in the object detector with \mbox{SE-ResNet}, so that any changes in performance can be attributed to better representations.
+Table~\ref{tab:coco-results} reports the validation set performance of the object detector using \mbox{ResNet-50}, \mbox{ResNet-101} and their SE counterparts as trunk architectures. \mbox{SE-ResNet-50} outperforms \mbox {ResNet-50} by $2.4\%$ (a relative $6.3\%$ improvement) on COCO's standard AP metric and by $3.1\%$ on AP@IoU=$0.5$. SE blocks also benefit the deeper \mbox{ResNet-101} architecture achieving a $2.0\%$ improvement ($5.0\%$ relative improvement) on the AP metric.
+In summary, this set of experiments demonstrate the generalisability of SE blocks. The induced improvements can be realised across a broad range of architectures, tasks and datasets.
+
+\vspace{5pt}
+\subsection{ILSVRC 2017 Classification Competition} \label{sec:ilsvrc}
+\input{expe/table_challenge.tex}
+
+SENets formed the foundation of our submission to the ILSVRC competition where we achieved first place. Our winning entry comprised a small ensemble of SENets that employed a standard multi-scale and multi-crop fusion strategy to obtain a top-5 error of $2.251\%$ on the test set.  As part of this submission, we constructed an additional model, {\mbox {\it SENet-154}}, by integrating SE blocks with a modified ResNeXt \cite{xie_cvpr2017resnext} (the details of the architecture are provided in Appendix).  We compare this model with prior work on the ImageNet validation set in Table \ref{tab:challenge-results} using standard crop sizes ($224 \times 224$ and $320 \times 320$).  We observe that SENet-$154$ achieves a top-1 error of $18.68\%$  and a top-5 error of $4.47\%$ using a $224 \times 224$ centre crop evaluation, which represents the strongest reported result.
+
+Following the challenge there has been a great deal of further progress on the ImageNet benchmark. For comparison, we include the strongest results that we are currently aware of %among the both published and unpublished literature 
+in Table~\ref{tab:modern-results}.  The best performance using only ImageNet data was recently reported by \cite{cubuk_2018autoaugment}.  This method uses reinforcement learning to develop new policies for data augmentation during training to improve the performance of the architecture searched by \cite{real_2018a}.  The best overall performance was reported by \cite{mahajan_eccv2018exploring} using a ResNeXt-$101$ $32 \times 48d$ architecture. This was achieved by pretraining their model on approximately one billion weakly labelled images and finetuning on ImageNet.  The improvements yielded by more sophisticated data augmentation \cite{cubuk_2018autoaugment} and extensive pretraining \cite{mahajan_eccv2018exploring} may be complementary to our proposed changes to the network architecture.

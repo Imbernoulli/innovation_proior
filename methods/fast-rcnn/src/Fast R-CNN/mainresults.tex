@@ -1,0 +1,228 @@
+\section{Main results}
+
+\input{voc07}
+\input{voc10}
+\input{voc12}
+
+Three main results support this paper's contributions:
+\begin{enumerate}
+  \itemsep0em
+  \item State-of-the-art mAP on VOC07, 2010, and 2012
+  \item Fast training and testing compared to R-CNN, SPPnet
+  \item Fine-tuning conv layers in \vggsixteen improves mAP
+\end{enumerate}
+
+\subsection{Experimental setup}
+\seclabel{setup}
+Our experiments use three pre-trained ImageNet models that are available online.\footnote{\url{https://github.com/BVLC/caffe/wiki/Model-Zoo}}
+The first is the CaffeNet (essentially AlexNet \cite{krizhevsky2012imagenet}) from R-CNN \cite{girshick2014rcnn}.
+We alternatively refer to this CaffeNet as model \Sm, for ``small.''
+The second network is VGG\_CNN\_M\_1024 from \cite{Chatfield14}, which has the same depth as \Sm, but is wider.
+We call this network model \Med, for ``medium.''
+The final network is the very deep \vggsixteen model from \cite{simonyan2015verydeep}.
+Since this model is the largest, we call it model \Lg.
+In this section, all experiments use \emph{single-scale} training and testing ($s = 600$; see \secref{scale} for details).
+
+\subsection{VOC 2010 and 2012 results}
+On these datasets, we compare Fast R-CNN (\emph{FRCN}, for short) against the top methods on the \texttt{comp4} (outside data) track from the public leaderboard (\tableref{voc2010}, \tableref{voc2012}).\footnote{\url{http://host.robots.ox.ac.uk:8080/leaderboard} (accessed April 18, 2015)}
+For the NUS\_NIN\_c2000 and BabyLearning methods, there are no associated publications at this time and we could not find exact information on the ConvNet architectures used; they are variants of the Network-in-Network design \cite{Lin2014NiN}.
+All other methods are initialized from the same pre-trained \vggsixteen network.
+%We show results when training on the VOC12 trainval image set as well as an augmented dataset that includes all annotated images in VOC07.
+
+Fast R-CNN achieves the top result on VOC12 with a mAP of 65.7\% (and 68.4\% with extra data).
+It is also two orders of magnitude faster than the other methods, which are all based on the ``slow'' R-CNN pipeline.
+On VOC10, SegDeepM \cite{Zhu2015segDeepM} achieves a higher mAP than Fast R-CNN (67.2\% vs. 66.1\%).
+SegDeepM is trained on VOC12 trainval plus segmentation annotations; it is designed to boost R-CNN accuracy by using a Markov random field to reason over R-CNN detections and segmentations from the O$_2$P \cite{o2p} semantic-segmentation method.
+Fast R-CNN can be swapped into SegDeepM in place of R-CNN, which may lead to better results.
+When using the enlarged 07++12 training set (see \tableref{voc2010} caption), Fast R-CNN's mAP increases to 68.8\%, surpassing SegDeepM.
+
+\subsection{VOC 2007 results}
+On VOC07, we compare Fast R-CNN to R-CNN and SPPnet.
+All methods start from the same pre-trained \vggsixteen network and use bounding-box regression.
+The \vggsixteen SPPnet results were computed by the authors of \cite{he2014spp}.
+SPPnet uses five scales during both training and testing.
+The improvement of Fast R-CNN over SPPnet illustrates that even though Fast R-CNN uses single-scale training and testing, fine-tuning the conv layers provides a large improvement in mAP (from 63.1\% to 66.9\%).
+%Moreover, single-scale testing significantly speeds up detection.
+R-CNN achieves a mAP of 66.0\%.
+%Fast R-CNN surpasses R-CNN, at 66.9\%.
+%These results are pragmatically valuable given how much faster and easier Fast R-CNN is to train and test, which we discuss next.
+As a minor point, SPPnet was trained \emph{without} examples marked as ``difficult'' in PASCAL.
+Removing these examples improves Fast R-CNN mAP to 68.1\%.
+All other experiments use ``difficult'' examples.
+
+\subsection{Training and testing time}
+% Show how long R-CNN and SPP-net take to train and test on VOC07.
+Fast training and testing times are our second main result.
+\tableref{timing} compares training time (hours), testing rate (seconds per image), and mAP on VOC07 between Fast R-CNN, R-CNN, and SPPnet.
+For \vggsixteen, Fast R-CNN processes images 146\X faster than R-CNN without truncated SVD and 213\X faster with it.
+Training time is reduced by 9\X, from 84 hours to 9.5.
+Compared to SPPnet, Fast R-CNN trains \vggsixteen 2.7\X faster (in 9.5 vs. 25.5 hours) and tests 7\X faster without truncated SVD or 10\X faster with it.
+Fast R-CNN also eliminates hundreds of gigabytes of disk storage, because it does not cache features.
+
+\begin{table}[h!]
+\begin{center}
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.2}
+\resizebox{\linewidth}{!}{
+\small
+\begin{tabular}{l|rrr|rrr|r}
+  & \multicolumn{3}{c|}{Fast R-CNN} & \multicolumn{3}{c|}{R-CNN} & \multicolumn{1}{c}{SPPnet} \\
+  & \Sm & \Med & \Lg & \Sm & \Med & \Lg & $^\dagger$\Lg \\
+%  & \multicolumn{3}{c|}{\Sm} & \multicolumn{3}{c|}{\Med} & \multicolumn{3}{c}{\Lg}  \\
+\hline
+train time (h) & \bf{1.2} & 2.0 & 9.5 &
+22 & 28 & 84 & 25 \\
+train speedup & \bf{18.3\X} & 14.0\X & 8.8\X &
+1\X & 1\X & 1\X & 3.4\X \\
+\hline
+test rate (s/im) & 0.10 & 0.15 & 0.32 &
+9.8 & 12.1 & 47.0 & 2.3 \\
+~$\rhd$ with SVD & \bf{0.06} & 0.08 & 0.22 &
+- & - & - & - \\
+\hline
+test speedup & 98\X & 80\X & 146\X &
+1\X & 1\X & 1\X & 20\X \\
+~$\rhd$ with SVD & 169\X & 150\X & \bf{213\X} &
+- & - & - & - \\
+\hline
+VOC07 mAP & 57.1 & 59.2 & \bf{66.9} &
+58.5 & 60.2 & 66.0 & 63.1 \\
+~$\rhd$ with SVD & 56.5 & 58.7 & 66.6 &
+- & - & - & - \\
+\end{tabular}
+}
+\end{center}
+\caption{Runtime comparison between the same models in Fast R-CNN, R-CNN, and SPPnet.
+Fast R-CNN uses single-scale mode.
+SPPnet uses the five scales specified in \cite{he2014spp}.
+$^\dagger$Timing provided by the authors of \cite{he2014spp}.
+Times were measured on an Nvidia K40 GPU.
+}
+\tablelabel{timing}
+\vspace{-1em}
+\end{table}
+% R-CNN VGG16 training time: 18 hrs (fine-tuning) + 63 hrs (feature extraction) + 3 hrs (SVM and bbox reg) = 84 hrs
+% R-CNN CNN_M training time: 10.5 hrs (fine-tuning) + 14.3 hrs (feature extraction) + 3 hrs (SVM and bbox reg) = 28 hrs
+% R-CNN CaffeNet training time: 8 hrs (fine-tuning) + 11.1 hrs (feature extraction) + 3 hours (SVM and bbox reg) = 22 hrs
+
+% Runtime results from Kaiming:
+%1. Yes, it is 5 scales as those scales in the original SPP paper. We do not have single-scale result, but we can run the experiment if you feel it is useful.
+%2. The conv feature extraction is 2s for 5 scales without flipping (as for test) and 4s for 5 scales with flipping (as for training). The fine-tuning depends on the quality of hard disk, because the fc training time is small and reading features from disks can be overhead. In our local machine with good hard disks, the fine-tuning time is about 16 hours. SVM takes 2 hours, and bbox takes 2hours.
+%3. Inference is about 2.3s, for 2s on conv features of all 5 scales, and 0.3 s for spp/fc layers.
+
+% Training time: (feature extraction) 4s/image * 5011 images = 5.6 hours
+% + (fine-tuning) 16 hours + (SVM) 2 hours + (bbox reg) 2 hours \approx 25.5 hours
+
+% Test time: 2.3s / image
+
+
+
+%\begin{table}[h!]
+%\begin{center}
+%\setlength{\tabcolsep}{5pt}
+%\renewcommand{\arraystretch}{1.1}
+%\resizebox{\linewidth}{!}{
+%\small
+%\begin{tabular}{l|rr|rr|rr}
+%  & \multicolumn{2}{c|}{Fast R-CNN} & \multicolumn{2}{c|}{R-CNN} & \multicolumn{2}{c}{SPPnet ZF} \\
+%  & \Med & \Lg & \Med & \Lg & 1 scale & 5 scal. \\
+%%  & \multicolumn{3}{c|}{\Sm} & \multicolumn{3}{c|}{\Med} & \multicolumn{3}{c}{\Lg}  \\
+%\hline
+%train time (h) & 2.0 & 9.5 & 27 & 84 & $\approx$3.5$^\dagger$ & $\approx$6$^\dagger$ \\
+%train speedup & 13.5x & 8.8x & 1x & 1x & - & - \\
+%\hline
+%test rate (s/im) & 0.15 & 0.32 & 12.1 & 47.0 & 0.14 & 0.38 \\
+%~$\rhd$ with SVD & 0.08 & 0.22 & - & - & - & - \\
+%test speedup & 80x & 146x & 1x & 1x & - & - \\
+%~$\rhd$ with SVD & 150x & 213x & - & - & - & - \\
+%\hline
+%VOC07 mAP & 59.2 & 66.9 & 60.2 & 66.0 & 58.0 & 59.2  \\
+%~$\rhd$ with SVD & 58.7 & 66.6 & - & - & - & - \\
+%\end{tabular}
+%}
+%\end{center}
+%\caption{Runtime comparisons between the same models in Fast R-CNN and R-CNN.
+%SPPnet results for models \Med and \Lg are not available; SPPnet uses model ZF, which is similar to model \Sm.
+%%Test rate is measured in seconds per image.
+%Single-scale training and testing is used for Fast R-CNN.
+%$^\dagger$Exact times are not available; we estimated values based on the description in \cite{he2014spp}.
+%}
+%\tablelabel{timing}
+%\end{table}
+% R-CNN VGG16 training time: 18 hrs (fine-tuning) + 63 hrs (feature extraction) + 3 hrs (SVM and bbox reg) = 84 hrs
+% R-CNN CNN_M training time: 10.5 hrs (fine-tuning) + 14.3 hrs (feature extraction) + 3 hrs (SVM and bbox reg) = 28 hrs
+
+\paragraph{Truncated SVD.}
+%\tableref{timing} includes results with and without truncated SVD acceleration.
+%For image classification, truncated SVD is primarily useful as a model compression technique to reduce storage space.
+%But for detection, it also provides a significant speed-up.
+Truncated SVD can reduce detection time by more than 30\% with only a small (0.3 percentage point) drop in mAP and without needing to perform additional fine-tuning after model compression.
+\figref{timing} illustrates how using the top $1024$ singular values from the $25088 \times 4096$ matrix in {\vggsixteen}'s fc6 layer and the top $256$ singular values from the $4096 \times 4096$ fc7 layer reduces runtime with little loss in mAP.
+Further speed-ups are possible with smaller drops in mAP if one fine-tunes again after compression.
+%Here we focus on keeping training as simple as possible.
+
+\begin{figure}[h!]
+\centering
+\includegraphics[width=0.49\linewidth,trim=3em 2em 0 0, clip]{figs/layer_timing.pdf}
+\includegraphics[width=0.49\linewidth,trim=3em 2em 0 0, clip]{figs/layer_timing_svd.pdf}
+%\vspace{-1em}
+\caption{Timing for \vggsixteen before and after truncated SVD.
+Before SVD, fully connected layers fc6 and fc7 take 45\% of the time.}
+\figlabel{timing}
+\end{figure}
+
+%\begin{table}[h!]
+%\begin{center}
+%\setlength{\tabcolsep}{6pt}
+%\renewcommand{\arraystretch}{1.1}
+%\small
+%\begin{tabular}{l|rr|rr|rr}
+%  & \multicolumn{2}{c|}{\Sm} & \multicolumn{2}{c|}{\Med} & \multicolumn{2}{c}{\Lg} \\
+%\hline
+%Trunc. SVD? &  & \checkmark &  & \checkmark & & \checkmark \\
+%s / image & 0.10 & 0.06 & 0.15 & 0.08 & 0.32 & 0.22 \\
+%VOC07 mAP & 57.1 & 56.5 & 59.2 & 58.7 & 66.9 & 66.6
+%\end{tabular}
+%\end{center}
+%\caption{Effects of truncated SVD on test speed and mAP.}
+%\tablelabel{svd}
+%\end{table}
+%
+%\tableref{svd} shows results for all three models using the top 1024 and 256 singular values for layers fc6 and fc7, respectively.
+%Even though the compression factor increases from \Sm to \Lg, the loss in mAP decreases.
+
+\subsection{Which layers to fine-tune?}
+For the less deep networks considered in the SPPnet paper \cite{he2014spp}, fine-tuning only the fully connected layers appeared to be sufficient for good accuracy.
+We hypothesized that this result would not hold for very deep networks.
+To validate that fine-tuning the conv layers is important for \vggsixteen, we use Fast R-CNN to fine-tune, but \emph{freeze} the thirteen conv layers so that only the fully connected layers learn.
+This ablation emulates single-scale SPPnet training and \emph{decreases mAP from 66.9\% to 61.4\%} (\tableref{whichlayers}).
+This experiment verifies our hypothesis: training through the \roi pooling layer is important for very deep nets.
+
+\begin{table}[h!]
+\begin{center}
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.1}
+\small
+\begin{tabular}{l|rrr|r}
+  & \multicolumn{3}{c|}{layers that are fine-tuned in model \Lg} & SPPnet \Lg \\
+  & $\ge$ fc6 & $\ge$ conv3\_1 & $\ge$ conv2\_1 & $\ge$ fc6 \\
+\hline
+VOC07 mAP & 61.4 & 66.9 & \bf{67.2} & 63.1 \\
+test rate (s/im) & \bf{0.32} & \bf{0.32} & \bf{0.32} & 2.3 \\
+\end{tabular}
+\end{center}
+\caption{Effect of restricting which layers are fine-tuned for \vggsixteen.
+Fine-tuning $\ge$ fc6 emulates the SPPnet training algorithm \cite{he2014spp}, but using a single scale.
+SPPnet \Lg results were obtained using five scales, at a significant (7\X) speed cost.}
+\tablelabel{whichlayers}
+\vspace{-0.5em}
+\end{table}
+
+Does this mean that \emph{all} conv layers should be fine-tuned? In short, \emph{no}.
+In the smaller networks (\Sm and \Med) we find that conv1 is generic and task independent (a well-known fact \cite{krizhevsky2012imagenet}).
+Allowing conv1 to learn, or not, has no meaningful effect on mAP.
+For \vggsixteen, we found it only necessary to update layers from conv3\_1 and up (9 of the 13 conv layers).
+This observation is pragmatic: (1) updating from conv2\_1 slows training by 1.3\X (12.5 vs. 9.5 hours) compared to learning from conv3\_1;
+and (2) updating from conv1\_1 over-runs GPU memory.
+The difference in mAP when learning from conv2\_1 up was only $+0.3$ points (\tableref{whichlayers}, last column).
+All Fast R-CNN results in this paper using \vggsixteen fine-tune layers conv3\_1 and up; all experiments with models \Sm and \Med fine-tune layers conv2 and up.

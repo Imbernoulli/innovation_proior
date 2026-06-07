@@ -1,0 +1,9 @@
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.37\textwidth]{figures/quant_scheme.pdf}
+    \caption{
+       Definition of per-tensor, per-token, and per-channel quantization. Per-tensor quantization is the most efficient to implement. For vector-wise quantization to efficiently utilize the INT8 \texttt{GEMM} kernels, we can only use scaling factors from the outer dimensions (\ie, token dimension $T$ and out channel dimension $C_o$) but not inner dimension (\ie, in channel dimension $C_i$). 
+    }
+    \label{fig:quantize_notation}
+    \vspace{-10pt}
+   \end{figure}

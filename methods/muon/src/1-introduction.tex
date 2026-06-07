@@ -1,0 +1,38 @@
+
+
+\begin{figure}[h]
+    \centering
+    \subfloat[]{
+        \includegraphics[width=0.446\textwidth]{figures/chinlaw_8k_flops_ratio.pdf}
+        \label{fig:scaling_lm_loss}
+        \vspace{-0.125cm} % Added this line to move the first plot down a little bit
+    }
+    \subfloat[]{
+        \includegraphics[width=0.53\textwidth]{figures/fig_MMLU_performance.pdf}
+        \label{fig:mmlu}
+    }
+    \caption{Scaling up with Muon. \textbf{(a)} Scaling law experiments comparing Muon and Adam. Muon is $\sim2\times$ more computational efficient than Adam with compute optimal training. \textbf{(b)} The MMLU performance of our Moonlight model optimized with Muon and other comparable models. Moonlight advances the Pareto frontier of performance vs training FLOPs.} 
+    \label{fig:teaser} 
+\end{figure}
+
+\section{Introduction}
+
+
+The rapid advancement of large language models (LLMs)~\citep{openai2024gpt4technicalreport,deepseekai2024deepseekv3technicalreport,grattafiori2024llama3herdmodels,geminiteam2024geminifamilyhighlycapable} has significantly pushed forward the progress in artificial general intelligence. However, training capable LLMs remains a computationally intensive and resource-demanding process due to scaling laws~\citep{kaplan2020scalinglawsneurallanguage,hoffmann2022trainingcomputeoptimallargelanguage}. Optimizers play a crucial role in efficiently and effectively training of LLMs, with Adam~\citep{adam2015kingma} and its variant AdamW~\citep{loshchilov2018decoupled} being the standard choice for most large-scale training.
+
+Recent developments in optimization algorithms have shown potential to improve training efficiency beyond AdamW~\citep{liu2024sophia,jordan2024muon,yuan2024mars,vyas2025soap,Li_2018,li2018preconditionermatrixliegroup,pooladzandi2024curvatureinformedsgdgeneralpurpose,li2022blackboxliegroup,li2024stochastichessianfittingslie,pethick2025trainingdeeplearningmodels}. Among these, \cite{jordan2024muon} proposed Muon, which updates matrix parameters with orthogonalized gradient momentum using Newton-Schulz iteration. Initial experiments with Muon have demonstrated promising results in small-scale language model training. However, as discussed in this blog \citep{jordan2024muon}, several critical challenges remain unaddressed: (1) how to effectively scale optimizers based on matrix orthogonalization to larger models with billions of parameters trained with trillions of tokens, (2) how to compute approximate orthogonalization in a distributed setting, and (3) whether such optimizers can generalize across different training stages including pre-training and supervised finetuning (SFT).
+
+In this technical report, we present a comprehensive study addressing these challenges. Our work builds upon Muon while systematically identifying and resolving its limitations in large-scale training scenarios. Our technical contributions include:
+
+\begin{itemize}
+    \item \textbf{Analysis for Effective Scaling of Muon}: Through extensive analysis, we identify that weight decay plays a crucial role in Muon's scalability. Besides, we propose scale adjustments to Muon's parameter-wise update rule. Such adjustments allow Muon to work out-of-the-box without hyper-parameter tuning, and also significantly improve training stability.
+    
+    \item \textbf{Efficient Distributed Implementation}: We develop a distributed version of Muon with ZeRO-1~\citep{Rajbhandari_2020} style optimization, achieving optimal memory efficiency and reduced communication overhead while preserving the mathematical properties of the algorithm.
+    
+    \item \textbf{Scaling Law Validation}: We performed scaling law research that compares Muon with strong AdamW baselines, and showed the superior performance of Muon (\ref{fig:scaling_lm_loss}). Based on the scaling law results, Muon achieves comparable performance to AdamW trained counterparts while requiring only approximately 52\% of the training FLOPs.
+    
+    
+\end{itemize}
+
+
+Our comprehensive experiments demonstrate that Muon can effectively replace AdamW as the de facto optimizer for large-scale LLM training, offering significant improvements in both training efficiency and model performance. As a result of this work, we release \ours, a 16B-parameter MoE model trained using Muon, along with our implementation and intermediate training checkpoints to facilitate further research in scalable optimization techniques for LLMs. 

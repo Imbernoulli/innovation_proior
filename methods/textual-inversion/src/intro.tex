@@ -1,0 +1,41 @@
+\vspace{-5pt}
+\input{resources/figures/teaser}
+
+\section{Introduction}
+
+In a famous scene from the motion picture ``Titanic'', Rose makes a request of Jack: ``...draw me like one of your French girls".
+Albeit simple, this request contains a wealth of information. It indicates that Jack should produce a drawing; It suggests that its style and composition should match those of a subset of Jack's prior work; Finally, through a single word, ``me'', Rose indicates that this drawing should portray a specific, unique subject: Rose herself.
+In making her request, Rose relies on Jack's ability to reason over these concepts --- both broad and specific --- and bring them to life in a new creation.
+
+Recently, large-scale text-to-image models~\citep{rombach2021highresolution,ramesh2021zero,ramesh2022hierarchical,nichol2021glide,yu2022scaling,saharia2022photorealistic} have demonstrated an unprecedented capability to reason over natural language descriptions. They allow users to synthesize novel scenes with unseen compositions and produce vivid pictures in a myriad of styles. These tools have been used for artistic creation, as sources of inspiration, and even to design new, physical products~\citep{yacoubian2022avocadobag}. Their use, however, is constrained by the user's ability to describe the desired target through text. Turning back to Rose, one could then ask: How might she frame her request if she were to approach one of these models? How could we, as users, ask text-to-image models to craft a novel scene containing a cherished childhood toy? Or to pull our child's drawing from its place on the fridge, and turn it into an artistic showpiece? 
+
+Introducing new concepts into large scale models is often difficult. Re-training a model with an expanded dataset for each new concept is prohibitively expensive, and fine-tuning on few examples typically leads to catastrophic forgetting~\citep{ding2022don,Li2022}. More measured approaches freeze the model and train transformation modules to adapt its output when faced with new concepts~\citep{zhou2021learning,gao2021clip,skantze2022collie}. However, these approaches are still prone to forgetting prior knowledge, or face difficulties in accessing it concurrently with newly learned concepts~\citep{kumar2022fine,cohen2022my}.
+
+
+
+
+
+
+
+We propose to overcome these challenges by \textit{finding} new words in the textual embedding space of pre-trained text-to-image models. We consider the first stage of the text encoding process (\Cref{fig:embedding}). Here, an input string is first converted to a set of tokens. Each token is then replaced with its own embedding vector, and these vectors are fed through the downstream model. Our goal is to find new embedding vectors that represent new, specific concepts.
+
+We represent a new embedding vector with a new \textit{pseudo-word}~\citep{rathvon2004early} 
+which we denote by $S_*$. This pseudo-word is then treated like any other word, and can be used to compose novel textual queries for the generative models. One can therefore ask for ``a photograph of $S_*$ on the beach", ``an oil painting of a $S_*$ hanging on the wall", or even compose two concepts, such as ``a drawing of $S^1_*$ in the style of $S^2_*$". Importantly, this process leaves the generative model untouched. In doing so, we retain the rich textual understanding and generalization capabilities that are typically lost when fine-tuning vision and language models on new tasks.
+
+To find these pseudo-words, we frame the task as one of inversion. We are given a fixed, pre-trained text-to-image model and a small (3-5) image set depicting the concept. We aim to find a single word embedding, such that sentences of the form ``A photo of $S_*$" will lead to the reconstruction of images from our small set. This embedding is found through an optimization process, which we refer to as ``Textual Inversion''. 
+
+We further investigate a series of extensions based on tools typically used in Generative Adversarial Network (GAN) inversion. Our analysis reveals that, while some core principles remain, applying the prior art in a \naive way is either unhelpful or actively harmful.
+
+We demonstrate the effectiveness of our approach over a wide range of concepts and prompts, showing that it can inject unique objects into new scenes, transform them across different styles, transfer poses, diminish biases, and even imagine new products.
+
+In summary, our contributions are as follows:
+\begin{itemize}
+    \item We introduce the task of personalized text-to-image generation, where we synthesize novel scenes of user-provided concepts guided by natural language instruction.
+    \item We present the idea of ``Textual Inversions" in the context of generative models. Here the goal is to find new pseudo-words in the embedding space of a text encoder that can capture both high-level semantics and fine visual details. 
+    \item We analyze the embedding space in light of GAN-inspired inversion techniques and demonstrate that it also exhibits a tradeoff between distortion and editability. We show that our approach resides on an appealing point on the tradeoff curve.
+    \item We evaluate our method against images generated using user-provided captions of the concepts and demonstrate that our embeddings provide higher visual fidelity, and also enable more robust editing.
+\end{itemize}
+
+
+
+

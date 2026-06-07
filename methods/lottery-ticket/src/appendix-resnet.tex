@@ -1,0 +1,188 @@
+\newpage
+\section{Hyperparameter Exploration for VGG-19 and Resnet-18 on CIFAR10}
+\label{app:resnet18}
+\label{app:vgg}
+
+This Appendix accompanies the VGG-19 and Resnet-18 experiments in Section \ref{sec:larger}. It details the pruning scheme, training regimes, and hyperparameters that we use for these networks.
+
+\subsection{Global Pruning}
+\label{app:layerwise-vs-global}
+
+In our experiments with the Lenet and Conv-2/4/6 architectures, we separately prune a fraction of the parameters in each layer (\emph{layer-wise pruning}).
+In our experiments with VGG-19 and Resnet-18, we instead prune \emph{globally};
+that is, we prune all of the weights in convolutional layers collectively without regard for the specific layer from which any weight originated.
+
+Figures \ref{fig:layerwise-vs-global-vgg} (VGG-19) and \ref{fig:layerwise-vs-global-resnet} (Resnet-18) compare the winning tickets found by global pruning (solid lines) and layer-wise pruning (dashed lines) for the hyperparameters from Section \ref{sec:larger}. When
+training VGG-19 with learning rate 0.1 and warmup to iteration 10,000, we find winning tickets when $P_m \geq 6.9\%$  for layer-wise pruning vs. $P_m \geq 1.5\%$ for global pruning. For other hyperparameters, accuracy similarly drops off when sooner for layer-wise pruning than for global pruning. Global pruning also finds smaller winning tickets than layer-wise pruning for Resnet-18, but the difference is less extreme than for VGG-19.
+
+In Section \ref{sec:larger}, we discuss the rationale for the efficacy of global pruning on deeper networks. In summary, the layers in these deep networks have vastly different numbers of parameters (particularly severely so for VGG-19); if we prune layer-wise, we conjecture that layers with fewer parameters become bottlenecks on our ability to find smaller winning tickets.
+
+Regardless of whether we use layer-wise or global pruning, the patterns from Section \ref{sec:larger} hold: at learning rate 0.1, iterative pruning finds winning tickets for neither network; at learning rate 0.01, the lottery ticket pattern reemerges; and when training with warmup to a higher learning rate, iterative pruning finds winning tickets. Figures \ref{fig:vgglw} (VGG-19)  and \ref{fig:resnet18lw}  (Resnet-18) present the same data as Figures \ref{fig:vgg} (VGG-19) and \ref{fig:resnet18} (Resnet-18) from Section \ref{sec:larger} with layer-wise pruning rather than global pruning. The graphs follow the same trends as in Section \ref{sec:larger}, but the smallest winning tickets are larger than those found by global pruning.
+
+
+\subsection{VGG-19 Details}
+
+
+The VGG19 architecture was first designed by \citet{vgg} for Imagenet. The version that we use here was adapted by
+\citet{rethinking-pruning} for CIFAR10. The network is structured as described in Figure \ref{fig:convnets}: it has five groups of 3x3 convolutional layers, the first four
+of which are followed by max-pooling (stride 2) and the last of which is followed by average pooling. The network has one final dense layer connecting the result
+of the average-pooling to the output.
+
+We largely follow the training procedure for resnet18 described in Appendix \ref{app:resnet18}:
+\begin{itemize}
+\item We use the same train/test/validation split.
+\item We use the same data augmentation procedure.
+\item We use a batch size of 64.
+\item We use batch normalization.
+\item We use a weight decay of 0.0001.
+\item We use three stages of training at decreasing learning rates. We train for 160 epochs (112,480 iterations), decreasing the learning rate by a factor of ten
+after 80 and 120 epochs.
+\item We use Gaussian Glorot initialization.
+\end{itemize}
+
+We globally prune the convolutional layers of the network at a rate of 20\% per iteration, and we do not prune the 5120 parameters in the output layer.
+
+\citet{rethinking-pruning} uses an initial pruning rate of 0.1. We train VGG19 with both this learning rate and a learning rate of 0.01.
+
+
+\subsection{Resnet-18 Details}
+
+The Resnet-18 architecture was first introduced by \citet{resnet}. The architecture comprises 20 total layers as described in Figure \ref{fig:convnets}:
+a convolutional layer followed by nine pairs of convolutional layers (with residual connections around the pairs), average pooling, and a fully-connected output layer.
+
+We follow the experimental design of \citet{resnet}:
+\begin{itemize}
+\item We divide the training set into 45,000 training examples and 5,000 validation examples. We use the validation set to select hyperparameters in
+this appendix and the test set to evaluate in Section \ref{sec:larger}.
+\item We augment training data using random flips and random four pixel pads and crops.
+\item We use a batch size of 128.
+\item We use batch normalization.
+\item We use weight decay of 0.0001.
+\item We train using SGD with momentum (0.9).
+\item We use three stages of training at decreasing learning rates. Our stages last for 20,000, 5,000, and 5,000 iterations each, shorter than the
+32,000, 16,000, and 16,000 used in \citet{resnet}. Since each of our iterative pruning experiments requires training the network 15-30 times consecutively, we select
+this abbreviated training schedule to make it possible to explore a wider range of hyperparameters.
+\item We use Gaussian Glorot initialization.
+\end{itemize}
+
+We globally prune convolutions at a rate of 20\% per iteration. 
+We do not prune the 2560 parameters used to downsample residual connections or the
+640 parameters in the fully-connected output layer, as they comprise such a small portion of the overall network.
+
+
+\subsection{Learning Rate}
+
+In Section \ref{sec:larger}, we observe that iterative pruning is unable to find winning tickets for VGG-19 and Resnet-18 at the typical, high learning rate used to train the network (0.1) but it is able to do so at a lower learning rate (0.01). Figures \ref{fig:resnet18-rate} and \ref{fig:vgg19-rate} explore several other learning rates. In general, iterative pruning cannot find winning tickets at any rate above 0.01 for either network; for higher learning rates, the pruned networks with the original initialization perform no better than when randomly reinitialized.
+
+
+
+\subsection{Warmup Iteration}
+
+In Section \ref{sec:larger}, we describe how adding linear warmup to the initial learning rate makes it possible to find winning tickets for VGG-19 and Resnet-18 at higher learning rates (and, thereby, winning tickets that reach higher accuracy). In Figures \ref{fig:resnet18-warmup} and \ref{fig:vgg19-warmup}, we explore the number of iterations $k$ over which warmup should occur.
+
+For VGG-19, we were able to find values of $k$ for which iterative pruning could identify winning tickets when the network was trained at the original learning rate (0.1). For Resnet-18, warmup made it possible to increase the learning rate from 0.01 to 0.03, but no further.
+When exploring values of $k$, we therefore us learning rate 0.1 for VGG-19 and 0.03 for Resnet-18.
+
+In general, the greater the value of $k$, the higher the accuracy of the eventual winning tickets.
+
+\paragraph{Resnet-18.} For values of $k$ below 5000, accuracy improves rapidly as $k$ increases. This relationship reaches a point of diminishing returns above $k=5000$. For the experiments in Section \ref{sec:larger}, we select $k=20000$, which achieves the highest validation accuracy.
+
+\paragraph{VGG-19.} For values of $k$ below 5000, accuracy improves rapidly as $k$ increases. This relationship reaches a point of diminishing returns above $k=5000$. For the experiments in Section \ref{sec:larger}, we select $k=10000$, as there is little benefit to larger values of $k$.
+
+\begin{figure}
+\centering
+\vspace{-.5em}
+\includegraphics[width=.7\textwidth]{graphs/cifar10/icml/vgg19-iclr-layerwise-30000/legend}
+\includegraphics[width=.33\textwidth]{graphs/cifar10/icml/vgg19-iclr-layerwise-30000/accuracy}%
+\includegraphics[width=.33\textwidth]{graphs/cifar10/icml/vgg19-iclr-layerwise-60000/accuracy}%
+\includegraphics[width=.33\textwidth]{graphs/cifar10/icml/vgg19-iclr-layerwise-112000/accuracy}%
+\vspace{-1em}
+\caption{Validation accuracy (at 30K, 60K, and 112K iterations) of VGG-19 when iteratively pruned with global (solid) and layer-wise (dashed) pruning.}
+\label{fig:layerwise-vs-global-vgg}
+\end{figure}
+
+\begin{figure}
+\centering
+\vspace{-.5em}
+\includegraphics[width=.7\textwidth]{graphs/cifar10/icml/resnet18-iclr-layerwise-10000/legend}
+\includegraphics[width=.33\textwidth]{graphs/cifar10/icml/resnet18-iclr-layerwise-10000/accuracy}%
+\includegraphics[width=.33\textwidth]{graphs/cifar10/icml/resnet18-iclr-layerwise-20000/accuracy}%
+\includegraphics[width=.33\textwidth]{graphs/cifar10/icml/resnet18-iclr-layerwise-29900/accuracy}%
+\vspace{-1em}
+\caption{Validation accuracy (at 10K, 20K, and 30K iterations) of Resnet-18 when iteratively pruned with global (solid) and layer-wise (dashed) pruning.}
+\label{fig:layerwise-vs-global-resnet}
+\end{figure}
+
+\begin{figure}
+\centering
+\vspace{-.5em}
+\includegraphics[width=.7\textwidth]{graphs/cifar10/icml/vgg19-iclr-30000lw/legend}%
+\vspace{-1em}
+\includegraphics[width=.33\textwidth]{graphs/cifar10/icml/vgg19-iclr-30000lw/accuracy}%
+\includegraphics[width=.33\textwidth]{graphs/cifar10/icml/vgg19-iclr-60000lw/accuracy}%
+\includegraphics[width=.33\textwidth]{graphs/cifar10/icml/vgg19-iclr-112000lw/accuracy}%
+\vspace{-1em}
+\caption{Test accuracy (at 30K, 60K, and 112K iterations) of VGG-19 when iteratively pruned with layer-wise pruning. This is the same as Figure \ref{fig:vgg}, except with layer-wise pruning rather than global pruning.}
+\label{fig:vgglw}
+\end{figure}
+
+\begin{figure}
+\centering
+\vspace{-.5em}
+\includegraphics[width=.7\textwidth]{graphs/cifar10/icml/resnet18-iclr-10000lw/legend}%
+\vspace{-1em}
+\includegraphics[width=.33\textwidth]{graphs/cifar10/icml/resnet18-iclr-10000lw/accuracy}%
+\includegraphics[width=.33\textwidth]{graphs/cifar10/icml/resnet18-iclr-20000lw/accuracy}%
+\includegraphics[width=.33\textwidth]{graphs/cifar10/icml/resnet18-iclr-29900lw/accuracy}%
+\vspace{-1em}
+\caption{Test accuracy (at 10K, 20K, and 30K iterations) of Resnet-18 when iteratively pruned with layer-wise pruning. This is the same as Figure \ref{fig:resnet18} except with layer-wise pruning rather than global pruning.}
+\label{fig:resnet18lw}
+\end{figure}
+
+\begin{figure}
+\centering
+\vspace{-.5em}
+\includegraphics[width=.7\textwidth]{graphs/cifar10/icml/resnet18-iclr-sweep-10000/legend}
+\includegraphics[width=.33\textwidth]{graphs/cifar10/icml/resnet18-iclr-sweep-10000/accuracy}%
+\includegraphics[width=.33\textwidth]{graphs/cifar10/icml/resnet18-iclr-sweep-20000/accuracy}%
+\includegraphics[width=.33\textwidth]{graphs/cifar10/icml/resnet18-iclr-sweep-29900/accuracy}%
+\vspace{-1em}
+\caption{Validation accuracy (at 10K, 20K, and 30K iterations) of Resnet-18 when iteratively pruned and trained with various learning rates.}
+\label{fig:resnet18-rate}
+\end{figure}
+
+\begin{figure}
+\centering
+\vspace{-.5em}
+\includegraphics[width=.7\textwidth]{graphs/cifar10/icml/vgg19-iclr-sweep-30000/legend}
+\includegraphics[width=.33\textwidth]{graphs/cifar10/icml/vgg19-iclr-sweep-30000/accuracy}%
+\includegraphics[width=.33\textwidth]{graphs/cifar10/icml/vgg19-iclr-sweep-60000/accuracy}%
+\includegraphics[width=.33\textwidth]{graphs/cifar10/icml/vgg19-iclr-sweep-112000/accuracy}%
+\vspace{-1em}
+\caption{Validation accuracy (at 30K, 60K, and 112K iterations) of VGG-19 when iteratively pruned and trained with various learning rates.}
+\label{fig:vgg19-rate}
+\end{figure}
+
+\begin{figure}
+\centering
+\vspace{-.5em}
+\includegraphics[width=\textwidth]{graphs/cifar10/icml/resnet18-iclr-warmupsweep-10000/legend}
+\includegraphics[width=.33\textwidth]{graphs/cifar10/icml/resnet18-iclr-warmupsweep-10000/accuracy}%
+\includegraphics[width=.33\textwidth]{graphs/cifar10/icml/resnet18-iclr-warmupsweep-20000/accuracy}%
+\includegraphics[width=.33\textwidth]{graphs/cifar10/icml/resnet18-iclr-warmupsweep-29900/accuracy}%
+\vspace{-1em}
+\caption{Validation accuracy (at 10K, 20K, and 30K iterations) of Resnet-18 when iteratively pruned and trained with varying amounts of warmup at learning rate 0.03.}
+\label{fig:resnet18-warmup}
+\end{figure}
+
+\begin{figure}
+\centering
+\vspace{-.5em}
+\includegraphics[width=\textwidth]{graphs/cifar10/icml/vgg19-iclr-warmupsweep-30000/legend}
+\includegraphics[width=.33\textwidth]{graphs/cifar10/icml/vgg19-iclr-warmupsweep-30000/accuracy}%
+\includegraphics[width=.33\textwidth]{graphs/cifar10/icml/vgg19-iclr-warmupsweep-60000/accuracy}%
+\includegraphics[width=.33\textwidth]{graphs/cifar10/icml/vgg19-iclr-warmupsweep-112000/accuracy}%
+\vspace{-1em}
+\caption{Validation accuracy (at 30K, 60K, and 112K iterations) of VGG-19 when iteratively pruned and trained with varying amounts of warmup at learning rate 0.1.}
+\label{fig:vgg19-warmup}
+\end{figure}

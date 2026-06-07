@@ -1,0 +1,84 @@
+% !TEX encoding = UTF-8
+% !TEX Root = 0_main.tex
+
+% \section{Simulated Verification}
+% \vspace{-0.3cm}
+\subsection{Simulated Verification}
+% \vspace{-0.2cm}
+
+% In this section, we examine the two approximations used in the previous section to analyze the variance.
+% Specifically, as in Equation~\ref{eqn:variance_appro_appro}, we approximate $\Var[\sqrt{\frac{t}{\sum_{i=1}^t g_i^2}}]$ to the first order and assume $\psi^2(.) = \frac{1-\beta_2^t}{(1 - \beta_2)\sum_{i = 1}^t \beta_2^{t-i}g_i^2}$ subjects to the scaled inverse chi-square distribution. 
+% In our analysis 
+In Sections~\ref{sec:ana} and \ref{sec:fix}, we approximate $\Var[\sqrt{t/\sum_{i=1}^t g_i^2}]$ to the first order, and assume $\psi^2(.) = \frac{1-\beta_2^t}{(1 - \beta_2)\sum_{i = 1}^t \beta_2^{t-i}g_i^2}$ subjects to a scaled inverse chi-square distribution (this assumption covers the approximation from EMA to SMA).
+Here, we examine these two approximations using simulations.
+
+\noindent\textbf{First Order Approximation of $\Var[\sqrt{t/\sum_{i=1}^t g_i^2}]$.}
+\label{subsec:approx}
+% Here, we first derive the analytic form of $\Var[\sqrt{\frac{t}{\sum_{i=1}^t g_i^2}}]$ then compare its value to the first order approximation in Equation~\ref{eqn:variance_appro}.
+% For ease of notation, we refer $\frac{t}{\sum_{i=1}^t g_i^2}$ as $x$, and mark $\frac{1}{\sigma^2}$ as $\tau^2$.
+% Therefore, $x \sim \sics(t, \tau^2)$ and $p(x) = \frac{(\tau^2t/2)^{t/2}}{\Gamma(t/2)}\frac{\exp[\frac{-v\tau^2}{2x}]}{x^{1 + t/2}}$.
+% We have: 
+% \begin{equation}
+%     \E[\sqrt{x}] = \int_{0}^{\infty} \sqrt{x} p(x) dx = \frac{\tau \sqrt{t} \,\Gamma(t/2 - 1)}{\sqrt{2} \,\Gamma(t/2)}.
+%     \label{eqn:expect-sqrt-x}
+% \end{equation}
+% Based on Equation~\ref{eqn:inv-chi-sq} and \ref{eqn:expect-sqrt-x}, we have:
+% \begin{equation}
+% \Var[\sqrt{x}] = \E[x] - \E[\sqrt{x}]^2 = \tau^2 (\frac{t}{t-2} - \frac{t \,2^{2t - 5}}{\pi}\gB(\frac{t-1}{2}, \frac{t-1}{2})^2).
+% \label{eqn:analytic-sqrt-var}
+% \end{equation}
+To compare Equations~\ref{eqn:variance_appro} and \ref{eqn:analytic-sqrt-var}, we assume $\tau = 1$ and plot their values and difference for $\nu = \{5, \cdots, 500\}$ in Figure~\ref{fig:var_approx}.
+The curve of the analytic form and the first-order approximation highly overlap, and their difference is much smaller than their value.
+This result verifies that our first-order approximation is very accurate.% of  $\Var[\sqrt{\frac{t}{\sum_{i=1}^t g_i^2}}]$.
+% It is worth mentioning that, although we get the analytic form of $ \Var[\sqrt{\frac{t}{\sum_{i=1}^t g_i^2}}]$, it's preferable to use its first order approximation,
+% % as Equation~\ref{eqn:variance_appro}, since the Equation~\ref{eqn:analytic-sqrt-var} is not numerical stable.
+% which is more stable and efficient to calculate. 
+% % (Mathematica\footnote{Version Number ?} fails to calculate the analytic value for $t = 1000$). 
+
+\noindent\textbf{Scaled Inverse Chi-Square Distribution Assumption.}
+\label{subsec:sma-ema}
+In this paper, we assume $g_i$ accords to a Normal distribution with a zero mean. 
+%Also, based on the similarity between the exponential moving average and simple moving average, 
+We also assume $\psi^2(.)$ accords to the scaled inverse chi-square distribution to derive the variance of $\Var[\psi(.)]$,
+based on the similarity between the exponential moving average and simple moving average.
+Here, we empirically verify this assumption.
+% via simulation. 
+
+Specifically, since $g_i$ in the optimization problem may not be zero-mean, we assume its expectation is $\mu$ and sample $g_i$ from $\cN(\mu, 1)$.
+Then, based on these samples, we calculate the variance of the original adaptive learning rate and the proposed rectified adaptive learning rate, \ie,  $\Var[\frac{1}{\widehat{v_t}}]$ and $\Var[\frac{r_t}{\widehat{v_t}}]$ respectively.
+We set $\beta_2$ to $0.999$, the number of sampled trajectories to $5000$, the number of iterations to $6000$, and summarize the simulation results in Figure~\ref{fig:vt_var_simulation}. 
+Across all six settings with different $\mu$, the adaptive learning rate has a larger variance in the first stage and the rectified adaptive learning rate has relative consistent variance. 
+This verifies the reliability of our assumption. 
+% At the same time, the magnitude of $\Var[\frac{1}{v_t}]$ subjects to not only the sample size, but also the mean (\ie, $\mu$).
+
+
+
+% We show the simulation result of the variance of the adaptive learning rate by assuming $g_i \sim \cN(\mu,\sigma^2)$. In our previous analysis, we simply assume $\mu=0$ and approximate EMA with SMA. In this section, we verify that the exploding variance of the adaptive learning rate ($v_t = \sqrt{\frac{1-\beta_2^t}{(1 - \beta_2)\sum_{i = 1}^t \beta_2^{t-i}g_i^2}}$) exists for a large range of $\mu$, and our proposed rectification term can fix this issue. In the following experiments, we set $\beta_2$ as $0.999$, the number of sampled trajectories as $5000$, and the number of iterations as $6000$.
+
+
+
+
+
+% \begin{figure}[h]
+% \centering
+%     \includegraphics[width=0.5\textwidth]{fig/variance_approx.pdf}
+% \caption{The simulation of the analytic form, first order approximation of $\Var[\sqrt{\frac{t}{\sum_{i=1}^t g_i^2}}]$, and their difference (calculated as the absolute difference value). The y-axis is log scaled.}
+%     \label{fig:var_approx}
+% \end{figure}
+
+% \begin{figure}[h]
+% \centering
+% \begin{tabular}{ ccc } 
+%  \includegraphics[width=0.3\textwidth]{fig/simu_var/0_1_var.pdf} & 
+%  \includegraphics[width=0.3\textwidth]{fig/simu_var/0001_1_var.pdf} & 
+%  \includegraphics[width=0.3\textwidth]{fig/simu_var/001_1_var.pdf}  \\
+%  $\mu=0$ & $\mu=0.001$  & $\mu=0.01$ \\ 
+%  \includegraphics[width=0.3\textwidth]{fig/simu_var/01_1_var.pdf} & 
+%  \includegraphics[width=0.3\textwidth]{fig/simu_var/1_1_var.pdf}& 
+%  \includegraphics[width=0.3\textwidth]{fig/simu_var/10_1_var.pdf} \\
+%  $\mu=0.1$ & $\mu=1$ & $\mu=10$ \\
+% \end{tabular}
+
+% \caption{The simulation of $\Var[\frac{1}{v_t}]$ and $\Var[\frac{c_t}{v_t}]$. The y-axis is log scaled.}
+%     \label{fig:vt_var_simulation}
+% \end{figure}

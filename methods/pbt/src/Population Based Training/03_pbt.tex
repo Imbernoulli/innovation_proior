@@ -1,0 +1,92 @@
+\section{Population Based Training}\label{sec:pbt}
+
+The most common formulation in machine learning is to optimise the parameters $\thetam$ of a model $f$ to maximise a given objective function \diffobj, (\eg~classification, reconstruction, or prediction). Generally, the trainable parameters $\thetam$ are updated using an optimisation procedure such as stochastic gradient descent.
+%
+More importantly, the actual performance metric \mainobj{} that we truly care to optimise is often different to \diffobj{}, for example \mainobj{} could be accuracy on a validation set, or BLEU score as used in machine translation. The main purpose of PBT is to provide a way to optimise both the parameters $\thetam$ and the hyperparameters $\thetao$ jointly on the actual metric \mainobj{} that we care about.
+
+To that end, firstly we define a function \pbteval that evaluates the objective function, \mainobj{}, using the current state of model $f$. For simplicity we ignore all terms except $\thetam$, and define \pbteval as function of trainable parameters $\thetam$ only. The process of finding the optimal set of parameters that maximise \mainobj{} is then:
+\begin{equation}
+\theta^* = \argmax_{\theta \in \Theta} \mathtt{eval}(\theta).
+\label{eqn:optimise}
+\end{equation}
+
+Note that in the methods we are proposing, the \pbteval function does not need to be differentiable, nor does it need to be the same as the function used to compute the iterative updates in the optimisation steps which we outline below (although they ought to be correlated).
+
+When our model is a neural network, we generally optimise the weights $\thetam$ in an iterative manner, \eg~by using stochastic gradient descent on the objective function $\mathcal{Q}$. Each step of this iterative optimisation procedure, \pbtstep, updates the parameters of the model, and is itself conditioned on some parameters $\thetao \in \mathcal{H}$ (often referred to as hyperparameters). 
+
+In more detail, iterations of parameter update steps:
+\begin{equation}
+\thetam \leftarrow \mathtt{step}(\thetam | \thetao)
+\label{eqn:step}
+\end{equation}
+are chained to form a sequence of updates that ideally converges to the optimal solution
+\begin{equation}
+\thetam^* =  \mathtt{optimise}(\thetam | \boldsymbol{\thetao} ) = \mathtt{optimise}(\thetam | (\thetao_t )_{t=1}^T) = \mathtt{step}(\mathtt{step}(\ldots\mathtt{step}(\thetam | \thetao_1)\ldots | \thetao_{T-1})| \thetao_T).
+\end{equation}
+This iterative optimisation process can be computationally expensive, due to the number of steps $T$ required to find $\thetam^*$ as well as the computational cost of each individual step, often resulting in the optimisation of $\thetam$ taking days, weeks, or even months. In addition, the solution is typically very sensitive to the choice of the sequence of hyperparemeters $\boldsymbol{\thetao} = (\thetao_t )_{t=1}^T$. 
+Incorrectly chosen hyperparameters can lead to bad solutions or even a failure of the optimisation of $\thetam$ to converge.
+Correctly selecting hyperparameters requires strong prior knowledge on $\boldsymbol{\thetao}$ to exist or to be found (most often through multiple optimisation processes with different $\boldsymbol{\thetao}$).
+Furthermore, due to the dependence of $\boldsymbol{\thetao}$ on iteration step, the number of possible values grows exponentially with time. Consequently, it is common practise to either make all $\thetao_t$ equal to each other (\eg~constant learning rate through entire training, or constant regularisation strength) or to predefine a simple schedule (\eg~learning rate annealing). 
+In both cases one needs to search over multiple possible values of $\boldsymbol{\thetao}$
+\begin{equation}
+\thetam^* = \mathtt{optimise}(\thetam | \boldsymbol{\thetao}^*), ~\boldsymbol{\thetao}^* = \argmax_{\boldsymbol{\thetao} \in \mathcal{H}^T} \mathtt{eval}(\mathtt{optimise}(\thetam | \boldsymbol{\thetao})).
+\label{eqn:machinelearning}
+\end{equation}
+
+
+As a way to perform \eqref{eqn:machinelearning} in a fast and computationally efficient manner, we consider training $N$ models $\{\thetam^{i}\}_{i=1}^N$ forming a \emph{population} $\mathcal{P}$ which are optimised with different hyperparameters $\{\boldsymbol{\thetao}^{i}\}_{i=1}^N$. The objective is to therefore find the optimal model across the entire population. However, rather than taking the approach of parallel search, we propose to use the collection of partial solutions in the population to additionally perform meta-optimisation, where the hyperparameters $\thetao$ and weights $\thetam$ are additionally adapted according to the performance of the entire population. 
+
+In order to achieve this, PBT uses two methods called independently on each member of the population (each worker): \pbtexploit, which, given performance of the whole population, can decide whether the worker should abandon the current solution and instead focus on a more promising one; and \pbtexplore, which given the current solution and hyperparameters proposes new ones to better explore the solution space.
+
+
+\begin{algorithm}[t]
+    \caption{Population Based Training (PBT)}
+    \label{pbtalg}
+    \begin{algorithmic}[1] % The number tells where the line numbering should start
+        \Procedure{Train}{$\mathcal{P}$} \Comment{initial population $\mathcal{P}$}
+            % \State $r\gets a \bmod b$
+            \For{($\theta$, $h$, $p$, $t$) $\in \mathcal{P}$ (asynchronously in parallel)}
+            \While{not end of training} 
+                \State $\theta \gets \mathtt{step}(\theta|h)$ \Comment{one step of optimisation using hyperparameters $h$}
+                %\State $t \gets t + 1$
+                \State $p \gets \mathtt{eval}(\theta)$ \Comment{current model evaluation}
+                \If{$\mathtt{ready}(p,t,\mathcal{P})$}
+                \State $h', \theta' \gets \mathtt{exploit}(h,\theta,p,\mathcal{P})$\Comment{use the rest of population to find better solution}
+                \If{$\theta \neq \theta'$}
+                \State $h, \theta \gets \mathtt{explore}(h', \theta', \mathcal{P})$ \Comment{produce new hyperparameters $h$}
+                \State $p \gets \mathtt{eval}(\theta)$  \Comment{new model evaluation}
+                \EndIf
+                \EndIf
+            \State update $\mathcal{P}$ with new $(\theta, h, p, t + 1)$ \Comment{update population}
+            \EndWhile\label{euclidendwhile}
+            \EndFor
+            \State \textbf{return} $\theta$ with the highest $p$ in $\mathcal{P}$
+        \EndProcedure
+    \end{algorithmic}
+\label{alg:pbt}
+\end{algorithm}
+
+
+
+
+Each member of the population is trained in parallel, with iterative calls to \pbtstep to update the member's weights and \pbteval to measure the member's current performance. However, when a member of the population is deemed ready (for example, by having been optimised for a minimum number of steps or having reached a certain performance threshold), its weights and hyperparameters are updated by \pbtexploit and \pbtexplore. For example, \pbtexploit could replace the current weights with the weights that have the highest recorded performance in the rest of the population, and \pbtexplore could randomly perturb the hyperparameters with noise. After \pbtexploit and \pbtexplore, iterative training continues using \pbtstep as before. This cycle of local iterative training (with \pbtstep) and exploitation and exploration using the rest of the population (with \pbtexploit and \pbtexplore) is repeated until convergence of the model. Algorithm~\ref{alg:pbt} describes this approach in more detail, \figref{fig:overview} schematically illustrates this process (and contrasts it with sequential optimisation and parallel search), and \figref{fig:basic} shows a toy example illustrating the efficacy of PBT.
+
+
+\begin{figure}
+\centering
+\includegraphics[width=0.4\textwidth]{figures/pbt1.png}
+\includegraphics[width=0.4\textwidth]{figures/pbt2.png}
+\caption{\small A visualisation of PBT on a toy example where our objective is to maximise a simple quadratic function \mainobj$(\theta) = 1.2 - (\theta_0^2 + \theta_1^2)$, but without knowing its formula. Instead, we are given a surrogate function \diffobj$(\theta | h) = 1.2 - ( h_0 \theta_0^2 + h_1 \theta_1^2)$ that we can differentiate. This is a very simple example of the setting where one wants to maximise one metric (\eg~generalisation capabilities of a model) while only being able to directly optimise other one (\eg~empirical loss). We can, however, read out the values of \mainobj{} for evaluation purposes. We can treat $h$ as hyperparameters, which can change during optimisation, and use gradient descent to minimise $Q(\theta | h)$. For simplicity, we assume there are only two workers (so we can only run two full maximisations), and that we are given initial $\theta_0 = [0.9, 0.9]$. With grid/random search style approaches we can only test two values of $h$, thus we choose $[1, 0]$ (black), and $[0, 1]$ (red). Note, that if we would choose $[1, 1]$ we would recover true objective, but we are assuming that we do not know that in this experiment, and in general there is no $h$ such that \diffobj$(\theta|h)= $ \mainobj$(\theta)$.
+As one can see, we increase \mainobj{} in each step of maximising $Q(\cdot|h)$, but end up far from the actual optimum (\mainobj$(\theta) \approx 0.4$), due to very limited exploration of hyperparameters $h$. 
+If we apply PBT to the same problem where every 4 iterations the weaker of the two workers copies the solution of the better one (exploitation) and then slightly perturbs its update direction (exploration), we converge to a global optimum. 
+Two ablation results show what happens if we only use exploration or only exploitation. We see that majority of the performance boost comes from copying solutions between workers (exploitation), and exploration only provides additional small improvement. Similar results are obtained in the experiments on real problems, presented in \sref{sec:analysis}.
+\textit{Left}: The learning over time, each dot represents a single solution and its size decreases with iteration. \textit{Right}: The objective function value of each worker over time.}
+\label{fig:basic}
+\end{figure}
+
+The specific form of \pbtexploit and \pbtexplore depends on the application. In this work we focus on optimising neural networks for reinforcement learning, supervised learning, and generative modelling with PBT (\sref{sec:exp}).
+In these cases, \pbtstep is a step of gradient descent (with \eg~SGD or RMSProp~\citep{tieleman2012lecture}), \pbteval is the mean episodic return or validation set performance of the metric we aim to optimise, \pbtexploit selects another member of the population to copy the weights and hyperparameters from, and \pbtexplore creates new hyperparameters for the next steps of gradient-based learning by either perturbing the copied hyperparameters or resampling hyperparameters from the originally defined prior distribution. A member of the population is deemed ready to exploit and explore when it has been trained with gradient descent for a number of steps since the last change to the hyperparameters, such that the number of steps is large enough to allow significant gradient-based learning to have occurred.
+
+By combining multiple steps of gradient descent followed by weight copying by \pbtexploit, and perturbation of hyperparameters by \pbtexplore, we obtain learning algorithms which benefit from not only local optimisation by gradient descent, but also periodic model selection, and hyperparameter refinement from a process that is more similar to genetic algorithms, creating a two-timescale learning system.
+%
+An important property of population based training is that it is asynchronous and does not require a centralised process to orchestrate the training of the members of the population. Only the current performance information, weights, and hyperparameters must be globally available for each population member to access -- crucially there is no synchronisation of the population required.

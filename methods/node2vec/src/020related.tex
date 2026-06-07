@@ -1,0 +1,50 @@
+% !TEX root = paper-node2vec.tex
+
+Feature engineering has been extensively studied by the machine learning community under various headings. In networks, the conventional paradigm for generating features for nodes is based on feature extraction techniques which typically involve some seed hand-crafted features based on network properties~\cite{labelindependent,refex}. In contrast, our goal is to automate the whole process by casting feature extraction as a representation learning problem in which case we do not require any hand-engineered features. 
+
+Unsupervised feature learning approaches typically exploit the spectral properties of various matrix representations of graphs, especially the Laplacian and the adjacency matrices. Under this linear algebra perspective, these methods can be viewed as dimensionality reduction techniques. Several linear (\eg, PCA) and non-linear (\eg, IsoMap) dimensionality reduction techniques have been proposed~\cite{belkin-nips2001, roweis-science2000, tenenbaum-science2000, yan2007graph}. These methods suffer from both computational and statistical performance drawbacks. In terms of computational efficiency, eigendecomposition of a data matrix is expensive unless the solution quality is significantly compromised with approximations, and hence, these methods are hard to scale to large networks. Secondly, these methods optimize for objectives that are not robust to the diverse patterns observed in networks (such as homophily and structural equivalence) and make assumptions about the relationship between the underlying network structure and the prediction task. For instance, spectral clustering makes a strong homophily assumption that graph cuts will be useful for classification~\cite{spectral}. Such assumptions are reasonable in many scenarios, but unsatisfactory in effectively generalizing across diverse networks.
+
+
+% \begin{figure}[t]
+% 	\centering
+% 	\includegraphics[width=0.3\textwidth]{FIG/skipgram}
+% 	\caption{The Skip-gram architecture for $w=2$.
+% 	\jure{Not sure this figure really helps. I'd skip it.}
+% 	}\label{fig:skipgram}
+% \end{figure}
+\begin{figure}[t]
+	\centering
+	\includegraphics[width=0.45\textwidth]{FIG/bfsdfs}
+	%\vspace{-0.2cm}
+	\caption{BFS and DFS search strategies from node $u$ ($k=3$).
+	%\jure{Update for $k=3$. Make the graph prettier, remove some nodes. Add legend: BFS: arrow type, DFS: arrow type. Also, could we make the graph such that we could illustrate structural vs. homiphilic equvivalence. Basically have 2 communities, each with a central node.}
+	}
+	\label{fig:bfsdfs}
+	%\vspace{-0.3cm}
+\end{figure}
+
+%A popular neural network architecture proposed for natural language processing tasks is the Skip-gram model~\cite{word2vec} and consists of an input layer, a single hidden layer and an output layer. Here, our goal is to learn feature representations for words. The learning algorithm proceeds as follow: we scan over a document corpus, and for every word appearing in the corpus, we pass it as input to the Skip-gram architecture along with a fixed number of context words appearing before and after the input word. These context words act as true labels for the output layer. Finally, the hidden layer separating the input word from the context words consists of $d$ neurons encoding the latent feature representation of the input word. The weights of the neural network are learned using stochastic gradient descent (SGD) with negative sampling~\cite{word2vec2}. Recently~\cite{goldberg}, it was shown that under some assumptions, SGD using a Skip-gram model can be thought of as an efficient weighted factorization of a word-context matrix with cells representing the pointwise mutual information of the respective word-context pairs.
+
+Recent advancements in representational learning for natural language processing opened new ways for feature learning of discrete objects such as words.
+In particular, the Skip-gram model~\cite{word2vec} aims to learn continuous feature representations for words by optimizing a neighborhood preserving likelihood objective. 
+The algorithm proceeds as follows: It scans over the words of a document, and for every word it aims to embed it such that the word's features can predict nearby words (\ie, words inside some context window). The word feature representations are learned by optmizing the likelihood objective using SGD with negative sampling~\cite{word2vec2}. 
+%Recently~\cite{goldberg}, it was shown that under some assumptions, SGD using a Skip-gram model can be thought of as an efficient weighted factorization of a word-context matrix with cells representing the pointwise mutual information of the respective word-context pairs.
+%
+The Skip-gram objective is based on the distributional hypothesis which states that words in similar contexts tend to have similar meanings~\cite{harris-1954}. That is, similar words tend to appear in similar word neighborhoods.
+
+Inspired by the Skip-gram model, recent research established an analogy for networks by representing a network as a ``document''~\cite{deepwalk, line}.
+%a document corpus as a language network wherein the nodes represent words and an edge exists between nodes if they coocur in the document. In our setting, however, we are directly provided with a given network instead of a raw document. This is not sufficient to extend the Skip-gram architecture to networks since the input and output layers of the architecture are obtained by scanning over a document. 
+The same way as a document is an ordered sequence of words, one could sample sequences of nodes from the underlying network and turn a network into a ordered sequence of nodes. However, there are many possible sampling strategies for nodes, resulting in different learned feature representations. In fact, as we shall show, there is no clear winning sampling strategy that works across all networks and all prediction tasks. This is a major shortcoming of prior work which fail to offer any flexibility in sampling of nodes from a network~\cite{deepwalk, line}. Our algorithm \nodevec overcomes this limitation by designing a flexible objective that is not tied to a particular sampling strategy and provides parameters to tune the explored search space (see Section~\ref{sec:proposed}).
+
+ % These methods have been subsequently used as a blackbox tool for generating features in several application domains which we omit since our contribution is primarily an algorithmic alternative to existing methods. Our guiding motivation in this paper is to develop a hybrid algorithm that integrates the strength of distributional hypothesis originally proposed for language as well as the efficiency of Skip-gram style of optimization with fundamental concepts in network science. The last component has been largely a missing piece and our \nodevec framework is an attempt to bridge this gap by unifying the existing approaches under a common umbrella framework and develop a much powerful and adaptable algorithm. In doing so, we will often justify our algorithmic design choices by relooking at some earlier research in networks which we defer discussing for ease of exposition. 
+
+%For prediction tasks such as link prediction which involve pairs of nodes, feature learning approaches have been predominantly based on latent factor models and matrix factorization~\cite{menon-mlkdd2011, miller-nips2009} which suffer from similar drawbacks as their nodes counterpart. To the best of our knowledge, we are not aware of any representational learning approaches based on neural embeddings for node pairs.
+
+Finally, for both node and edge based prediction tasks, there is a body of recent work for supervised feature learning based on existing and novel graph-specific deep network architectures~\cite{li-icdm2014, li-icdm2014-2, li2015gated, tian-aaai2014, zhai-sdm2015}. These architectures directly minimize the loss function for a downstream prediction task using several layers of non-linear transformations which results in high accuracy, but at the cost of scalability due to high training time requirements.
+
+% matrix factorization
+% Peter Hoff
+% Babis- two papers
+% Deepwalk skipgram, word2vec
+% LINE
+% Grarep

@@ -1,0 +1,8 @@
+\section{Conclusion}
+In this work, we propose \method (\methodshort), a simple yet effective method for low-bit weight-only LLM compression.
+Based on the observation that weights are not equally important in LLMs, \methodshort performs per-channel scaling to reduce the quantization loss of salient weights. \methodshort does not over-fit the calibration set and preserves the generalist abilities of LLMs in various domains and modalities. It outperforms existing work on language modeling and is applicable to instruction-tuned LMs and multi-modal LMs. Our \system system further translates the
+theoretical memory savings achieved by \methodshort into \textbf{3.2-3.3$\times$} measured speedups over the FP16 implementations from Huggingface on desktop and mobile GPUs, democratizing LLM deployment on the edge.
+
+
+\section*{Acknowledgements}
+We thank MIT AI Hardware Program, National Science Foundation (CNS-2112562), MIT-IBM Watson AI Lab, Amazon and MIT Science Hub, Microsoft Turing Academic Program, and Samsung for supporting this research. 

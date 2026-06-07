@@ -1,0 +1,119 @@
+\section{Appendix}
+\label{appendix}
+
+\subsection{Effect of network depth and width}
+\label{sec:depth-and-width}
+
+In this section, we check how depth (number of layers) and width (hidden size) affect the performance of ALBERT.
+Table \ref{table:varying-depth} shows the performance of an ALBERT-large configuration (see Table~\ref{table:model_architecture}) using different numbers of layers.
+Networks with 3 or more layers are trained by fine-tuning using the parameters from the depth before (e.g., the 12-layer network parameters are fine-tuned from the checkpoint of the 6-layer network parameters).\footnote{If we compare the performance of ALBERT-large here to the performance in Table \ref{table:overall_comparison}, we can see that this warm-start technique does not help to improve the downstream performance. However, it does help the 48-layer network to converge. A similar technique has been applied to our ALBERT-xxlarge, where we warm-start from a 6-layer network.} Similar technique has been used in \cite{gong2019efficient}.
+If we compare a 3-layer ALBERT model with a 1-layer ALBERT model, although they have the same number of parameters, the performance increases significantly.
+However, there are diminishing returns when continuing to increase the number of layers: the results of a 12-layer network are relatively close to the results of a 24-layer network, and the performance of a 48-layer network appears to decline.
+
+\begin{table}[!htbp] 
+\small
+\centering
+\begin{tabular}{ c  c | c c c c c | c }
+Number of layers	 & Parameters 	&SQuAD1.1	&SQuAD2.0	&MNLI	&SST-2	&RACE & Avg \\
+\hline
+1   &18M    &31.1/22.9	&50.1/50.1	&66.4	&80.8	&40.1   &52.9\\
+3   &18M    &79.8/69.7	&64.4/61.7	&77.7	&86.7	&54.0	&71.2\\
+6   &18M    &86.4/78.4	&73.8/71.1	&81.2	&88.9	&60.9	&77.2\\
+12  &18M    &89.8/83.3	&80.7/77.9	&83.3	&91.7	&66.7	&81.5\\
+24  &18M    &\textbf{90.3/83.3}	&\textbf{81.8/79.0}	&83.3	&91.5	&\textbf{68.7}	&\textbf{82.1}\\
+48  &18M    &90.0/83.1	&\textbf{81.8/78.9}	&\textbf{83.4}	&\textbf{91.9}	&66.9	&81.8\\
+\end{tabular}
+\caption{The effect of increasing the number of layers for an ALBERT-large configuration.}
+\label{table:varying-depth}
+\end{table}
+
+A similar phenomenon, this time for width, can be seen in Table \ref{table:varying-width} for a 3-layer ALBERT-large configuration.
+As we increase the hidden size, we get an increase in performance with diminishing returns.
+At a hidden size of 6144, the performance appears to decline significantly.
+We note that none of these models appear to overfit the training data, and they all have higher training and development loss compared to the best-performing ALBERT configurations.
+
+\begin{table}[!htbp] 
+\small
+\centering
+\begin{tabular}{ c  c | c c c c c | c }
+Hidden size	& Parameters      	&SQuAD1.1	&SQuAD2.0	&MNLI	&SST-2	&RACE & Avg \\
+\hline
+1024    &18M    &79.8/69.7	&64.4/61.7	&77.7	&86.7	&54.0	&71.2\\
+2048    &60M    &83.3/74.1	&69.1/66.6	&79.7	&88.6	&58.2	&74.6\\
+4096    &225M   &\textbf{85.0/76.4}	&\textbf{71.0/68.1}	&\textbf{80.3}	&\textbf{90.4}	&\textbf{60.4}	&\textbf{76.3}\\
+6144    &499M   &84.7/75.8	&67.8/65.4	&78.1	&89.1	&56.0	&74.0\\
+\end{tabular}
+\caption{The effect of increasing the hidden-layer size for an ALBERT-large 3-layer configuration.}
+\label{table:varying-width}
+\end{table}
+
+
+
+\subsection{Do very wide ALBERT models need to be deep(er) too?}
+In Section \ref{sec:depth-and-width}, we show that for ALBERT-large ($H$=1024), the difference between a 12-layer and a 24-layer configuration is small.
+Does this result still hold for much wider ALBERT configurations, such as ALBERT-xxlarge ($H$=4096)?
+
+\begin{table}[!htbp] 
+\small
+\centering
+\begin{tabular}{ c |  c c c c c | c }
+Number of layers		&SQuAD1.1	&SQuAD2.0	&MNLI	&SST-2	&RACE & Avg \\
+\hline
+12      &94.0/88.1	&88.3/85.3	&87.8	&95.4	&82.5   &88.7\\
+24      &94.1/88.3	&88.1/85.1	&88.0	&95.2	&82.3	&88.7\\
+\end{tabular}
+\caption{The effect of a deeper network using an ALBERT-xxlarge configuration.}
+\label{table:12-vs-24-ALBERT-xxlarge}
+\end{table}
+
+The answer is given by the results from Table \ref{table:12-vs-24-ALBERT-xxlarge}.
+The difference between 12-layer and 24-layer ALBERT-xxlarge configurations in terms of downstream accuracy is negligible, with the Avg score being the same.
+We conclude that, when sharing all cross-layer parameters (ALBERT-style), there is no need for models deeper than a 12-layer configuration.
+
+\subsection{Downstream Evaluation Tasks}
+\label{downstream_detailed_description}
+\paragraph{GLUE} GLUE is comprised of 9 tasks, namely Corpus of Linguistic Acceptability (CoLA;~\citealp{warstadt2018neural}), Stanford Sentiment Treebank (SST;~\citealp{socher-etal-2013-recursive}), Microsoft Research Paraphrase Corpus
+(MRPC;~\citealp{dolan-brockett-2005-automatically}), Semantic Textual Similarity Benchmark (STS;~\citealp{cer-etal-2017-semeval}),
+Quora Question Pairs (QQP;~\citealp{qqp2016url}), Multi-Genre NLI (MNLI;~\citealp{williams-etal-2018-broad}), Question NLI (QNLI;~\citealp{rajpurkar-etal-2016-squad}), Recognizing Textual
+Entailment (RTE;~\citealp{dagan2005pascal,bar2006second,giampiccolo-etal-2007-third,bentivogli2009fifth}) and
+Winograd NLI (WNLI;~\citealp{levesque2012winograd}). It focuses on evaluating model capabilities for natural language understanding. 
+When reporting MNLI results, we only report the ``match'' condition (MNLI-m). We follow the finetuning procedures from prior work \citep{devlin2018bert, liu2019roberta, yang2019xlnet} and report the held-out test set performance obtained from GLUE submissions. For test set submissions, we perform task-specific modifications for WNLI and QNLI as described by \cite{liu2019roberta} and \cite{yang2019xlnet}. 
+
+\paragraph{\squad} \squad is an extractive question answering dataset built from Wikipedia. The answers are segments from the context paragraphs and the task is to predict answer spans. We evaluate our models on two versions of SQuAD: v1.1 and v2.0. \squad v1.1 has 100,000 human-annotated question/answer pairs. \squad v2.0 additionally introduced 50,000 unanswerable questions. For \squad v1.1, we use the same training procedure as \bert, whereas for \squad v2.0, models are jointly trained with a span extraction loss and an additional classifier for predicting answerability~\citep{yang2019xlnet,liu2019roberta}. We report both development set and test set performance.
+
+\paragraph{RACE} RACE is a large-scale dataset for multi-choice reading comprehension, collected from English examinations in China with nearly 100,000 questions. Each instance in RACE has 4 candidate answers. Following prior work~\citep{yang2019xlnet,liu2019roberta}, we use the concatenation of the passage, question, and each candidate answer as the input to models. Then, we use the representations from the ``[CLS]'' token for predicting the probability of each answer. The dataset consists of two domains: middle school and high school. We train our models on both domains and report accuracies on both the development set and test set.
+
+
+\subsection{Hyperparameters}
+
+Hyperparameters for downstream tasks are shown in Table~\ref{tab:downstream-hyperparameter}.
+We adapt these hyperparameters from \cite{liu2019roberta},  \cite{devlin2018bert}, and \cite{yang2019xlnet}.
+
+\begin{table}[!htbp] 
+    \small
+    \centering
+
+\begin{tabular}{c|ccccccc}
+& LR & BSZ & ALBERT DR & Classifier DR & TS & WS & MSL \\\hline
+CoLA & 1.00E-05 & 16 & 0 & 0.1 & 5336 & 320 & 512 \\
+STS & 2.00E-05 & 16 & 0 & 0.1 & 3598 & 214 & 512 \\
+SST-2 & 1.00E-05 & 32 & 0 & 0.1 & 20935 & 1256 & 512 \\
+MNLI & 3.00E-05 & 128 & 0 & 0.1 & 10000 & 1000 & 512 \\
+QNLI & 1.00E-05 & 32 & 0 & 0.1 & 33112 & 1986 & 512 \\
+QQP & 5.00E-05 & 128 & 0.1 & 0.1 & 14000 & 1000 & 512 \\
+RTE & 3.00E-05 & 32 & 0.1 & 0.1 & 800 & 200 & 512 \\
+MRPC & 2.00E-05 & 32 & 0 & 0.1 & 800 & 200 & 512 \\
+WNLI & 2.00E-05 & 16 & 0.1 & 0.1 & 2000 & 250 & 512 \\
+SQuAD v1.1 & 5.00E-05 & 48 & 0 & 0.1 & 3649 & 365 & 384 \\
+SQuAD v2.0 & 3.00E-05 & 48 & 0 & 0.1 & 8144 & 814 & 512 \\
+RACE & 2.00E-05 & 32 & 0.1 & 0.1 & 12000 & 1000 & 512 \\
+\end{tabular}
+    \caption{Hyperparameters for ALBERT in downstream tasks. LR: Learning Rate. BSZ: Batch Size. DR: Dropout Rate. TS: Training Steps. WS: Warmup Steps. MSL: Maximum Sequence Length.}
+    \label{tab:downstream-hyperparameter}
+\end{table}
+
+%\subsection{Additional Ablation Experiments}
+%\label{sec:app-ablation}
+
+
+

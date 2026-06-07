@@ -1,0 +1,19 @@
+\begin{figure}
+\centering
+\begin{tikzpicture}
+    \node[anchor=south west,inner sep=0] (image) at (0,0)
+        {\includegraphics[width=\columnwidth]{images/teaser.pdf}};
+    \begin{scope}[x={(image.south east)},y={(image.north west)}]
+        \node[] at (.74,.825) {$p_\theta(\btau{i-1} \!\mid\! \btau{i})$};
+        \node[] at (.74,.5) {$q(\btau{i} \!\mid\! \btau{i-1})$};
+        \node[] at (.355,.825) {\small denoising};
+        \node[] at (.355,.515) {\small diffusion};
+    \end{scope}
+\end{tikzpicture}
+\vspace{-1.5em}
+\caption{
+    \method{} is a diffusion probabilistic model that plans by iteratively refining trajectories.
+}
+\vspace{-1em}
+\label{fig:teaser}
+\end{figure}

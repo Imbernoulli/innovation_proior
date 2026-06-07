@@ -1,0 +1,184 @@
+\documentclass{article} %
+
+\usepackage[utf8]{inputenc} %
+\usepackage[T1]{fontenc}    %
+\usepackage[hyperfootnotes=false]{hyperref}       %
+\usepackage{url}            %
+\usepackage{booktabs}       %
+\usepackage{amsmath,amsfonts,amsthm}       %
+\usepackage{mathtools}      %
+\usepackage{nicefrac}       %
+\usepackage{microtype}      %
+\usepackage{subcaption}
+\usepackage{bbm}
+\usepackage{multirow}
+\usepackage[inline]{enumitem}
+\usepackage{diagbox}
+\usepackage{pifont}
+\usepackage[capitalise]{cleveref}  %
+\usepackage{comment}
+\usepackage{etoolbox}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage[font=small]{caption}
+
+
+\graphicspath{{figures/}{../figures/}}
+\usepackage{import}
+\usepackage{subfiles}
+\providecommand{\main}{.}
+
+\newtoggle{arxiv}
+\toggletrue{arxiv}
+
+
+\newcommand\blfootnote[1]{%
+  \begingroup
+  \renewcommand\thefootnote{}\footnote{#1}%
+  \addtocounter{footnote}{-1}%
+  \endgroup
+}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}{Lemma}[section]
+\newtheorem{corollary}[lemma]{Corollary}
+\newtheorem{observation}[lemma]{Observation}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{definition}{Definition}
+\newtheorem{remark}[lemma]{Remark}
+\newtheorem{claim}{Claim}
+\newtheorem{innercustomthm}{Theorem}
+\newenvironment{customthm}[1]
+{\renewcommand\theinnercustomthm{#1}\innercustomthm}
+{\endinnercustomthm}
+
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\Rn}[1]{(-\infty, #1]}
+\renewcommand{\d}{\mathop{}\!\mathrm{d}}
+\newcommand{\dd}{\mathop{}\!\mathrm{d}} %
+\newcommand{\partialt}{\partial t} %
+\newcommand{\ppt}{\frac{\partial}{\partial t}}
+\newcommand{\ddt}{\frac{d}{d t}}
+\newcommand{\defeq}{\coloneqq}
+\newcommand{\norm}[1]{\left\|{#1}\right\|} %
+\providecommand{\abs}[1]{\left\lvert#1\right\rvert}
+\DeclareMathOperator*{\diag}{diag}
+\DeclareMathOperator{\proj}{proj}
+\DeclareMathOperator{\rec}{rec}
+\DeclareMathOperator{\coef}{coef}
+\DeclareMathOperator{\hippo}{hippo}
+
+\newcommand*\samethanks[1][\value{footnote}]{\footnotemark[#1]}
+
+
+\usepackage[numbers,sort]{natbib}
+\setlength{\textwidth}{6.5in}
+\setlength{\textheight}{9in}
+\setlength{\oddsidemargin}{0in}
+\setlength{\evensidemargin}{0in}
+\setlength{\topmargin}{-0.5in}
+\newlength{\defbaselineskip}
+\setlength{\defbaselineskip}{\baselineskip}
+\setlength{\marginparwidth}{0.8in}
+
+
+\title{HiPPO: Recurrent Memory with Optimal Polynomial Projections}
+\usepackage{authblk}
+\author[$\dagger$]{Albert Gu\thanks{Equal contribution. Order determined by coin flip.}}
+\author[$\dagger$]{Tri Dao\samethanks}
+\author[$\dagger$]{Stefano Ermon}
+\author[$\ddagger$]{Atri Rudra}
+\author[$\dagger$]{Christopher R{\'e}}
+\affil[$\dagger$]{Department of Computer Science, Stanford University}
+\affil[$\ddagger$]{Department of Computer Science and Engineering, University at Buffalo, SUNY\vspace{4pt}}
+\affil[ ]{{\texttt{\{albertgu,trid\}@stanford.edu}, \texttt{ermon@cs.stanford.edu}, \texttt{atri@buffalo.edu}, \texttt{chrismre@cs.stanford.edu}}}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+  A central problem in learning from sequential data is representing cumulative
+  history in an incremental fashion as more data is processed.
+  We introduce a general framework (HiPPO) for the online compression of continuous signals and discrete time series
+  by projection onto polynomial bases.
+  Given a measure that specifies the importance of each time step in the past,
+  HiPPO produces an optimal solution to a natural \emph{online function approximation} problem.
+  As special cases, our framework yields a short derivation of the recent Legendre Memory Unit (LMU) from first principles,
+  and generalizes the ubiquitous gating mechanism of recurrent neural networks such as GRUs.
+  This formal framework yields a new memory update mechanism (HiPPO-LegS) that scales
+  through time to remember all history, avoiding priors on the timescale.
+  HiPPO-LegS enjoys the theoretical benefits of timescale robustness, fast updates,
+  and bounded gradients.
+  By incorporating the memory dynamics into recurrent neural networks, HiPPO RNNs can
+  empirically capture complex temporal dependencies.
+  On the benchmark permuted MNIST dataset, HiPPO-LegS sets a new
+  state-of-the-art accuracy of 98.3\%.
+  Finally, on a novel trajectory classification task testing robustness to out-of-distribution timescales and missing data, HiPPO-LegS outperforms RNN and neural ODE baselines by 25-40\% accuracy.
+\end{abstract}
+
+
+\input{src/intro.tex}
+
+\input{src/framework.tex}
+
+\input{src/legs.tex}
+
+\input{src/experiments.tex}
+
+\input{src/conclusion.tex}
+
+
+\subsubsection*{Acknowledgments}
+
+We thank
+Avner May, Mayee Chen, Dan Fu,
+Aditya Grover,
+and Daniel L\'{e}vy
+for their helpful feedback.
+We gratefully acknowledge the support of DARPA under Nos.\ FA87501720095 (D3M),
+FA86501827865 (SDH), and FA86501827882 (ASED); NIH under No.\ U54EB020405
+(Mobilize), NSF under Nos.\ CCF1763315 (Beyond Sparsity), CCF1563078 (Volume to
+Velocity), and 1937301 (RTML); ONR under No.\ N000141712266 (Unifying Weak
+Supervision); the Moore Foundation, NXP, Xilinx, LETI-CEA, Intel, IBM,
+Microsoft, NEC, Toshiba, TSMC, ARM, Hitachi, BASF, Accenture, Ericsson,
+Qualcomm, Analog Devices, the Okawa Foundation, American Family Insurance,
+Google Cloud, Stanford HAI AWS cloud credit, Swiss Re, and members of the Stanford DAWN project: Teradata,
+Facebook, Google, Ant Financial, NEC, VMWare, and Infosys.
+The U.S.\ Government is authorized to reproduce and distribute reprints for
+Governmental purposes notwithstanding any copyright notation thereon.
+Any opinions, findings, and conclusions or recommendations expressed in this
+material are those of the authors and do not necessarily reflect the views,
+policies, or endorsements, either expressed or implied, of DARPA, NIH, ONR, or
+the U.S.\ Government.
+Atri Rudra’s research is supported by NSF grant CCF-1763481.
+
+
+\bibliography{hippo}
+\bibliographystyle{plainnat}
+
+\appendix
+
+\newpage
+
+\subfile{src/rw}
+
+
+\subfile{src/background}
+
+\subfile{src/framework_details}
+
+\subfile{src/derivations}
+
+\subfile{src/theory}
+
+\subfile{src/experiment_details}
+
+
+
+
+
+
+
+\end{document}

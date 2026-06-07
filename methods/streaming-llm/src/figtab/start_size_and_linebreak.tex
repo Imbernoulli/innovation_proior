@@ -1,0 +1,46 @@
+\vspace{1em}
+\begin{minipage}[t]{\textwidth}
+\begin{minipage}[t]{0.41\textwidth}\vspace{0pt}
+    \centering
+\setlength{\tabcolsep}{2pt}
+\small
+\captionof{table}{\small Window attention has poor performance on long text. The perplexity is restored when we reintroduce the initial four tokens alongside the recent 1020 tokens (4+1020). Substituting the original four initial tokens with linebreak tokens ``\textbackslash n" (4"\textbackslash n"+1020) achieves comparable perplexity restoration.
+Cache config x+y denotes adding x initial tokens with y recent tokens. Perplexities are measured on the first book (65K tokens) in the PG19 test set.}
+\vspace{-1em}
+\label{tab:linebreak}
+\begin{tabular}{lc}
+\toprule
+ Llama-2-13B                                &  PPL ($\downarrow$) \\
+\midrule
+0 + 1024 (Window)                      & 5158.07                        \\
+4 + 1020                    & 5.40                         \\
+4"\textbackslash n"+1020 &  5.60                         \\
+\bottomrule
+\end{tabular}
+\end{minipage}
+  \hfill
+\begin{minipage}[t]{0.57\textwidth}\vspace{0pt}
+\centering
+\setlength{\tabcolsep}{2pt}
+\small
+    \captionof{table}{\small Effects of reintroduced initial token numbers on \method. (1) Window attention (0+y) has a drastic increase in perplexity. (2) Introducing one or two initial tokens doesn't fully restore model perplexity, showing that the model doesn't solely use the first token as the attention sink.
+    (3) Introducing four initial tokens generally suffices; further additions have diminishing returns. Cache config x+y denotes adding x initial tokens to y recent tokens. Perplexities are evaluated on 400K tokens in the concatenated PG19 test set.
+    }
+    \vspace{-1em}
+    \label{tab:start_size}
+    \begin{tabular}{lccccc}
+    \toprule
+Cache Config  & 0+2048& 1+2047 & 2+2046 & 4+2044 & 8+2040 \\
+\midrule
+Falcon-7B  & 17.90                               & 12.12                      & 12.12                      & 12.12                      & 12.12                       \\
+MPT-7B     & 460.29                              & 14.99                      & 15.00                      & 14.99                      & 14.98                       \\
+Pythia-12B & 21.62                               & 11.95                      & 12.09                      & 12.09                      & 12.02                       \\
+\midrule
+\midrule
+Cache Config  & 0+4096 & 1+4095 & 2+4094 & 4+4092 & 8+4088 \\
+\midrule
+Llama-2-7B & 3359.95                             & 11.88                      & 10.51                      & 9.59                       & 9.54                     \\
+\bottomrule
+\end{tabular}
+  \end{minipage}
+\end{minipage}

@@ -1,0 +1,32 @@
+\section{Properties of Diffusion Planners}
+\label{sec:properties}
+
+We discuss a number of \method's important properties, focusing on those that are are either distinct from standard dynamics models or unusual for non-autoregressive trajectory prediction.
+
+% \method{} has a number of properties that distinguish it from existing single-step autoregressive dynamics models commonly used in deep model-based reinforcement learning: 
+
+\textbf{Learned long-horizon planning.}~~
+Single-step models are typically used as proxies for ground-truth environment dynamics $\vf$, and as such are not tied to any planning algorithm in particular.
+In contrast, the planning routine in Algorithm~\ref{alg:rl} is closely tied to the specific affordances of diffusion models.
+Because our planning method is nearly identical to sampling (with the only difference being guidance by a perturbation function $h(\btau{})$), \method's effectiveness as a long-horizon predictor directly translates to effective long-horizon planning.
+We demonstrate the benefits of learned planning in a goal-reaching setting in \textbf{Figure~\ref{fig:properties}a}, showing that \method is able to generate feasible trajectories in the types of sparse reward settings where shooting-based approaches are known to struggle.
+We explore a more quantitative version of this problem setting in Section~\ref{sec:maze2d}.
+
+\vspace{.2em}
+\textbf{Temporal compositionality.}~~
+Single-step models are often motivated using the Markov property, allowing them to compose in-distribution transitions to generalize to out-of-distribution trajectories.
+Because \method generates globally coherent trajectories by iteratively improving local consistency (Section~\ref{sec:model}), it can also stitch together familiar subsequences in novel ways.
+In \textbf{Figure~\ref{fig:properties}b}, we train \method on trajectories that only travel in a straight line, and show that it can generalize to v-shaped trajectories by composing trajectories at their point of intersection.
+
+\vspace{.2em}
+\textbf{Variable-length plans.}~~
+Because our model is fully convolutional in the horizon dimension of its prediction, its planning horizon is not specified by architectural choices.
+Instead, it is determined by the size of the input noise $\btau{N} \sim \mathcal{N(\mathbf{0}, \mathbf{I})}$ that initializes the denoising process, allowing for variable-length plans (\textbf{Figure~\ref{fig:properties}c}).
+
+\vspace{.2em}
+\textbf{Task compositionality.}~~
+While \method contains information about both environment dynamics and behaviors, it is independent of reward function.
+Because the model acts as a prior over possible futures, planning can be guided by comparatively lightweight perturbation functions $h(\btau{})$ (or even combinations of multiple perturbations) corresponding to different rewards.
+We demonstrate this by planning for a new reward function unseen during training of the diffusion model (\textbf{Figure~\ref{fig:properties}d}).
+
+\input{figures/maze2d_quantitative}

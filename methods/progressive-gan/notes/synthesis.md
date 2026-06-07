@@ -1,0 +1,35 @@
+# Synthesis — Progressive Growing of GANs
+
+## Pain point
+Train a GAN to produce high-resolution (up to 1024²) images. At high res training is unstable and slow, samples have limited variation. Two compounding causes:
+1. **Gradient signal at high res.** Arjovsky & Bottou 2017: if p_data and p_g have negligible overlap (which is generic for two manifolds in a high-dim pixel space), a near-perfect D exists and the gradient it passes to G points in essentially random directions / vanishes. Odena et al. 2017: the *higher* the resolution, the *easier* it is to tell real from fake (more pixels = more telltale statistics), so D becomes near-perfect faster, amplifying the gradient problem. So 1024² directly is the worst case.
+2. **Memory → small minibatch at high res**, which further hurts stability (noisier gradient estimates, weaker batch statistics).
+Plus GANs drop modes / lose variation, and signal magnitudes escalate via D↔G competition (a mode-collapse mechanism: D overshoots → exaggerated gradients → magnitudes blow up in both nets over ~a dozen minibatches).
+
+## Ancestors and gaps
+- **Goodfellow 2014 GAN.** minimax JS-divergence game. Brittle, low res.
+- **Arjovsky & Bottou 2017.** Diagnostic: disjoint supports ⇒ perfect D ⇒ no usable gradient. Motivates everything.
+- **WGAN / WGAN-GP (Arjovsky 2017, Gulrajani 2017).** Use Wasserstein (earth-mover) distance, which is continuous/differentiable even with disjoint supports; D ("critic") must be 1-Lipschitz. WGAN-GP enforces this with a gradient penalty λ·E[(‖∇_x̂ D(x̂)‖₂ − 1)²] on points x̂ interpolated between real and fake. Better, but doesn't address that at high res the *task itself* is too hard at the start.
+- **DCGAN (Radford 2015).** Conv G/D backbone, BatchNorm, (L)ReLU, N(0,0.02) init. The standard scaffold; doesn't reach high res.
+- **Minibatch discrimination (Salimans 2016).** To fight mode collapse, let D see cross-sample statistics: learn a big tensor T projecting each feature vector f(x_i) to M_i ∈ R^{B×C}, compute per-sample c_b(x_i)=Σ_j exp(−‖M_{i,b}−M_{j,b}‖_1) over the minibatch, concatenate to D's features. Works but heavy (learned params, extra hyperparameters, placement).
+- **Inception Score (Salimans 2016).** metric.
+- **He init (He 2015).** w ~ N(0, 2/fan_in) keeps activation variance ≈1 through ReLU depth.
+- **Local response normalization (Krizhevsky 2012).** normalize each activation by the L2 across feature channels at that pixel.
+- **BatchNorm (Ioffe 2015).** normalize by batch statistics; introduced for covariate shift. Used in most GANs but its covariate-shift rationale doesn't obviously apply to GANs — the real need is bounding signal magnitudes.
+- **Odena 2017.** high res ⇒ easier discrimination; quality/variation tradeoff discussion; MS-SSIM as variation metric (only measures variation among outputs, not similarity to training set).
+
+## The method, derived
+**Progressive growing.** Don't ask the net to learn the latent→1024² map at once. Start G and D as mirror nets at 4×4. Train. Then append a new block to each that doubles resolution (8×8), train; keep going to 1024². Coarse structure learned first, fine detail added as capacity is added → implicit curriculum, easier optimization, faster (most iterations at cheap low res), and at every moment D is comparing distributions at the *current* (lower) resolution where overlap is larger and the task isn't trivially easy. All existing layers stay trainable.
+
+**Fade-in.** Snapping in a new layer with random weights shocks the trained lower layers (huge gradient from garbage output). Treat the new higher-res block like a residual branch faded in by α∈[0,1] over training. In G: the output is lerp(upscale(old toRGB), new toRGB(new block)) = (1−α)·upsample(prev image) + α·new image; α ramps 0→1. So at α=0 the new block contributes nothing (network = old network upsampled), at α=1 it fully takes over; toRGB = 1×1 conv to RGB. In D, mirror: fromRGB = 1×1 conv from RGB; during transition feed the input at both new and old res — D(x) input = lerp(fromRGB_new(x) → down → ..., fromRGB_old(downscale(x))); also crossfade the *real* images between the two resolutions (avg-pool then lerp) so D sees consistent statistics. Implemented via a `lod` (level-of-detail) variable; lerp weight = lod − floor(lod) i.e. the fractional part.
+
+**Minibatch standard deviation.** Cheaper, parameter-free variation booster. For activation x [N,C,H,W]: (optionally split into groups of G), compute std over the N (group) axis per (c,h,w): s_{chw}=sqrt(mean_n (x − mean_n x)² + ε). Average over c,h,w → one scalar per group. Tile to [N,1,H,W] and concatenate as one extra constant feature map, near the end of D (at 4×4). D can read off whether a batch's feature variability matches real batches ⇒ pressures G to keep variation. No learned params, no new hyperparameters.
+
+**Pixelwise feature normalization (G).** To stop magnitude escalation in the competition, normalize each pixel's feature vector to unit RMS after each conv in G: b_{x,y} = a_{x,y} / sqrt((1/N)Σ_j (a^j_{x,y})² + ε), ε=1e-8, N=#feature maps. A variant of local response norm. Doesn't change quality much but prevents blow-ups. No learned params. Not used in D.
+
+**Equalized learning rate.** Init all weights N(0,1). At runtime use ŵ = w·c where c = He constant = gain/sqrt(fan_in) (gain=√2 for LReLU). Why dynamic not at-init? Adam/RMSProp normalize each parameter update by its running std ⇒ update step is invariant to the *scale* of the parameter. With ordinary He init, different layers have different weight scales (dynamic ranges), so the effective per-step "distance" differs by layer and the optimizer takes longer to adjust the large-range ones — a single learning rate is simultaneously too big for some and too small for others. By baking the scale into a constant multiplier applied at runtime (weights themselves all start at unit std), every weight has the same dynamic range ⇒ same effective learning speed. (Van Laarhoven 2017 similar reasoning re: weight scale and adaptive optimizers.)
+
+**Other config.** WGAN-GP loss, n_critic=1 (alternate G/D per minibatch), Adam α=1e-3 β1=0 β2=0.99, drift term ε_drift·E[D(x)²] (ε=1e-3) to keep D output from drifting. Latent = point on 512-d hypersphere (normalized N(0,1)). LReLU 0.2. Upsample = 2×2 nearest (replication); downsample = avg pool. EMA of G weights (decay 0.999) for visualization. Train 800k images per phase (fade-in 800k + stabilize 800k); minibatch 16 down to 3 at 1024².
+
+## Code grounding
+TensorFlow canonical impl: networks.py (G_paper/D_paper, lerp/lerp_clip, pixel_norm, minibatch_stddev_layer, get_weight with use_wscale, toRGB/fromRGB, block, linear vs recursive structure with lod_in), loss.py (D_wgangp_acgan: fake−real + λ(‖∇‖−1)² + ε_drift·real² ), train.py (TrainingSchedule computes lod from kimg; process_reals does FadeLOD = lerp(x, avgpool-then-upsample(x), frac(lod))). I'll present clean PyTorch-flavored pseudocode faithful to this structure for answer.md, plus the TF primitives.

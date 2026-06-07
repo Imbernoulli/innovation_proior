@@ -1,0 +1,14 @@
+% !TEX encoding = UTF-8
+% !TEX Root = 0_main.tex
+
+% \vspace{-0.4cm}
+\section{Conclusion}
+% \vspace{-0.4cm}
+% In this paper, we analysis the underlying principles of warmup on the adaptive learning rate.
+In this paper, we explore the underlying principle of the effectiveness of the warmup heuristic used for adaptive optimization algorithms. 
+Specifically, we identify that, due to the limited amount of samples in the early stage of model training, the adaptive learning rate has an undesirably large variance and can cause the model to converge to suspicious/bad local optima. 
+We provide both empirical and theoretical evidence to support our hypothesis, and further propose a new variant of Adam, whose adaptive learning rate is rectified so as to have a consistent variance. 
+Empirical results demonstrate the effectiveness of our proposed method. 
+% In future work, we plan to apply the proposed method to other applications such as Named Entity Recognition~\citep{lin2019reliability}.
+% Another interesting direction to pursue is to adapt the choice of $\beta$ based on the variance estimation of different parameters, \ie, use a larger $\beta$ for parameters with a larger variance. 
+In future work, we plan to replace the rectification strategy by sharing the second moment estimation across similar parameters. 

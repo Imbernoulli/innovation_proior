@@ -1,0 +1,40 @@
+%---------------------------------- table 5 -------------------------------
+\begin{table*}[t]
+\renewcommand\arraystretch{1.1}
+\caption{(Left) ResNet-50 \cite{he_cvpr2016resnet}. (Middle) SE-ResNet-50.  (Right) SE-ResNeXt-50 with a 32$\times$4d template. The shapes and operations with specific parameter settings of a residual building block are listed inside the brackets and the number of stacked blocks in a stage is presented outside. The inner brackets following by \emph{fc} indicates the output dimension of the two fully connected layers in an SE module.}
+\label{model_structure}
+\vspace{-1.8em}
+\begin{center}{\scalebox{0.96}{
+\begin{tabular}{c|p{3.5cm}<{\centering}|p{4.9cm}<{\centering}|p{5.1cm}<{\centering}}
+\hline
+Output size & ResNet-50 & SE-ResNet-50 & SE-ResNeXt-50 ($32\times4$d) \\
+\hline
+$112\times112$ & \multicolumn{3}{c}{conv, $7\times7$, $64$, stride $2$} \\
+\hline
+\multirow{2}{*}{$56\times56$} & \multicolumn{3}{c}{max\;pool, $3\times3$, stride $2$} \\
+\cline{2-4}
+& 
+  $\begin{bmatrix*}[l] {\rm conv}, 1\times 1, 64 \\ {\rm conv}, 3\times 3, 64 \\ {\rm conv}, 1\times 1, 256 \end{bmatrix*} \times 3$ &
+  $\begin{bmatrix*}[l] {\rm conv}, 1\times 1, 64\\ {\rm conv}, 3\times 3, 64\\ {\rm conv}, 1\times 1, 256\\ fc, [16,256] \end{bmatrix*} \times 3$ &
+  $\begin{bmatrix*}[l] {\rm conv}, 1\times 1, 128\\ {\rm conv}, 3\times 3, 128 & C=32\\ {\rm conv}, 1\times 1, 256\\ fc, [16,256] \end{bmatrix*} \times 3$ \\
+\hline
+$28\times28$ &
+$\begin{bmatrix*}[l] {\rm conv}, 1\times 1, 128\\ {\rm conv}, 3\times 3, 128\\ {\rm conv}, 1\times 1, 512 \end{bmatrix*}\times 4$ &
+$\begin{bmatrix*}[l] {\rm conv}, 1\times 1, 128\\ {\rm conv}, 3\times 3, 128\\ {\rm conv}, 1\times 1, 512\\ fc, [32, 512] \end{bmatrix*} \times 4$ & 
+$\begin{bmatrix*}[l] {\rm conv}, 1\times 1, 256 &\\ {\rm conv}, 3\times 3, 256 & C=32\\ {\rm conv}, 1\times 1, 512\\ fc, [32,512] \end{bmatrix*} \times 4$ \\
+\hline
+$14\times14$ &
+$\begin{bmatrix*}[l] {\rm conv}, 1\times 1, 256\\ {\rm conv}, 3\times 3, 256\\ {\rm conv}, 1\times 1, 1024 \end{bmatrix*} \times 6$ &
+$\begin{bmatrix*}[l] {\rm conv}, 1\times 1, 256\\ {\rm conv}, 3\times 3, 256\\ {\rm conv}, 1\times 1, 1024\\ fc, [64, 1024] \end{bmatrix*} \times 6$ & 
+$\begin{bmatrix*}[l] {\rm conv}, 1\times 1, 512 &\\ {\rm conv}, 3\times 3, 512 & C=32\\ {\rm conv}, 1\times 1, 1024\\ fc, [64, 1024] \end{bmatrix*} \times 6$ \\
+\hline
+7$\times$7 &
+$\begin{bmatrix*}[l] {\rm conv}, 1\times 1, 512\\ {\rm conv}, 3\times 3, 512\\ {\rm conv}, 1\times1, 2048\end{bmatrix*} \times 3$ &
+$\begin{bmatrix*}[l] {\rm conv}, 1\times 1, 512\\ {\rm conv}, 3\times 3, 512\\ {\rm conv}, 1\times1, 2048\\ fc, [128, 2048] \end{bmatrix*} \times 3$ & 
+$\begin{bmatrix*}[l] {\rm conv}, 1\times 1, 1024 &\\ {\rm conv}, 3\times 3, 1024 & C=32\\ {\rm conv}, 1\times 1, 2048\\ fc, [128, 2048] \end{bmatrix*} \times 3$\\
+\hline
+$1\times1$ & \multicolumn{3}{c}{global average pool, $1000$-d $fc$, softmax} \\
+\hline
+\end{tabular}}}
+\end{center}
+\end{table*}

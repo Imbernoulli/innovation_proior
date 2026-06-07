@@ -1,0 +1,23 @@
+
+%------------------------------------- table --------------------------------------------
+\begin{table}[b]
+\renewcommand\arraystretch{1.1}
+\small
+\caption{Effect of integrating SE blocks with ResNet-50 at different stages on ImageNet (error rates \%).}
+\label{tab:stages}
+\vspace{-1.5em}
+\begin{center}{\scalebox{0.95}{
+\begin{tabular}{l|p{1.4cm}<{\centering}|p{1.4cm}<{\centering}|p{1.2cm}<{\centering}|p{1.2cm}<{\centering}}
+\hline
+Stage & top-1 err. & top-5 err. & GFLOPs & Params\\
+\hline
+ResNet-50 & 23.30 & 6.55  & 3.86 & 25.6M\\
+SE\_Stage\_2 & 23.03 & 6.48 & 3.86 & 25.6M\\
+SE\_Stage\_3 & 23.04 &  6.32  & 3.86 & 25.7M\\
+SE\_Stage\_4 & 22.68 & 6.22 & 3.86 & 26.4M\\
+\hline
+SE\_All          & 22.28 & 6.03 & 3.87 & 28.1M\\
+\hline
+\end{tabular}}}
+\end{center}
+\end{table}

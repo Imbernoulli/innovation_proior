@@ -1,0 +1,65 @@
+\section{Methods}
+\label{sec:methods}
+In this section, we review how atrous convolution is applied to extract dense features for semantic segmentation. We then discuss the proposed modules with atrous convolution modules employed in cascade or in parallel.
+
+\begin{figure*}[!t]
+  \centering
+  \begin{tabular}{c}
+    \includegraphics[width=0.95\linewidth]{fig/model_no_atrous} \\
+    \small{(a) Going deeper without atrous convolution.}\\
+    \includegraphics[width=0.95\linewidth]{fig/model_atrous} \\
+    \small{(b) Going deeper with atrous convolution. Atrous convolution with $rate > 1$ is applied after block3 when $\emph{output\_stride}=16$.}\\
+  \end{tabular}
+  \caption{Cascaded modules without and with atrous convolution.}
+  \label{fig:model_deeper}
+\end{figure*}
+
+\subsection{Atrous Convolution for Dense Feature Extraction}
+Deep Convolutional Neural Networks (DCNNs) \cite{lecun1989backpropagation} deployed in fully convolutional fashion \cite{sermanet2013overfeat, long2014fully} have shown to be effective for the task of semantic segmentation. However, the repeated combination of max-pooling and striding at consecutive layers of these networks significantly reduces the spatial resolution of the resulting feature maps, typically by a factor of 32 across each direction in recent DCNNs \cite{krizhevsky2012imagenet, simonyan2014very, he2015deep}. Deconvolutional layers (or transposed convolution) \cite{zeiler2011adaptive, long2014fully, noh2015learning, badrinarayanan2015segnet, ronneberger2015u, peng2017large} have been employed to recover the spatial resolution. Instead, we advocate the use of `atrous convolution', originally developed for the efficient computation of the undecimated wavelet transform in the ``algorithme \`a trous'' scheme of \cite{holschneider1989real} and used before in the DCNN context by \cite{giusti2013fast, sermanet2013overfeat, papandreou2014untangling}. 
+
+Consider two-dimensional signals, for each location $\bm{i}$ on the output $\bm{y}$ and a filter $\bm{w}$, atrous convolution is applied over the input feature map $\bm{x}$:
+
+\begin{equation}
+  \bm{y}[\bm{i}] = \sum_{\bm{k}} \bm{x}[\bm{i} + r \cdot \bm{k}] \bm{w}[\bm{k}]
+\end{equation}
+where
+%% \begin{equation}
+%%   \mathcal{R} = \{(-1, -1), (-1, 0), (-1, 1), ..., (1, 0), (1, 1)\}
+%% \end{equation}
+%% and 
+the atrous rate \emph{r} corresponds to the stride with which we sample the input signal, which is equivalent to convolving the input $\bm{x}$ with upsampled filters produced by inserting $r - 1$ zeros between two consecutive filter values along each spatial dimension (hence the name atrous convolution where the French word trous means holes in English). Standard convolution is a special case for rate $r = 1$, and atrous convolution allows us to adaptively modify filter's field-of-view by changing the rate value. See \figref{fig:atrous} for illustration.
+
+Atrous convolution also allows us to explicitly control how densely to compute feature responses in fully convolutional networks. Here, we denote by \emph{output\_stride} the ratio of input image spatial resolution to final output resolution. For the DCNNs \cite{krizhevsky2012imagenet, simonyan2014very, he2015deep} deployed for the task of image classification, the final feature responses (before fully connected layers or global pooling) is 32 times smaller than the input image dimension, and thus $\emph{output\_stride}=32$. If one would like to double the spatial density of computed feature responses in the DCNNs (\ie, $\emph{output\_stride} = 16$), the stride of last pooling or convolutional layer that decreases resolution is set to 1 to avoid signal decimation. Then, all subsequent convolutional layers are replaced with atrous convolutional layers having rate $r = 2$. This allows us to extract denser feature responses without requiring learning any extra parameters. Please refer to \cite{chen2016deeplab} for more details.
+
+\subsection{Going Deeper with Atrous Convolution}
+We first explore designing modules with atrous convolution laid out in cascade. To be concrete, we duplicate several copies of the last ResNet block, denoted as block4 in \figref{fig:model_deeper}, and arrange them in cascade. There are three $3\times3$ convolutions in those blocks, and the last convolution contains stride 2 except the one in last block, similar to original ResNet. The motivation behind this model is that the introduced striding makes it easy to capture long range information in the deeper blocks. For example, the whole image feature could be summarized in the last small resolution feature map, as illustrated in \figref{fig:model_deeper}~(a). However, we discover that the consecutive striding is harmful for semantic segmentation (see \tabref{tab:deeper_res50} in \secref{sec:experiments}) since detail information is decimated, and thus we apply atrous convolution with rates determined by the desired \emph{output\_stride} value, as shown in \figref{fig:model_deeper}~(b) where $\emph{output\_stride}=16$.
+
+In this proposed model, we experiment with cascaded ResNet blocks up to block7 (\ie, extra block5, block6, block7 as replicas of block4), which has $\emph{output\_stride}=256$ if no atrous convolution is applied.
+
+\subsubsection{Multi-grid Method}
+Motivated by multi-grid methods which employ a hierarchy of grids of different sizes \cite{brandt1977multi, terzopoulos1986image, briggs2000multigrid, papandreou2007multigrid} and following \cite{wang2017understanding, dai2017deformable}, we adopt different atrous rates within block4 to block7 in the proposed model. In particular, we define as $\emph{Multi\_Grid}=(r_1,r_2,r_3)$ the unit rates for the three convolutional layers within block4 to block7. The final atrous rate for the convolutional layer is equal to the multiplication of the unit rate and the corresponding rate. For example, when $\emph{output\_stride}=16$ and $\emph{Multi\_Grid}=(1, 2, 4)$, the three convolutions will have $rates=2 \cdot (1, 2, 4) = (2, 4, 8)$ in the block4, respectively.
+
+\subsection{Atrous Spatial Pyramid Pooling}
+We revisit the Atrous Spatial Pyramid Pooling proposed in \cite{chen2016deeplab}, where four parallel atrous convolutions with different atrous rates are applied on top of the feature map. ASPP is inspired by the success of spatial pyramid pooling \cite{grauman2005pyramid, lazebnik2006beyond, he2014spatial} which showed that it is effective to resample features at different scales for accurately and efficiently classifying regions of an arbitrary scale. Different from \cite{chen2016deeplab}, we include batch normalization within ASPP. 
+
+ASPP with different atrous rates effectively captures multi-scale information. However, we discover that as the sampling rate becomes larger, the number of valid filter weights (\ie, the weights that are applied to the valid feature region, instead of padded zeros) becomes smaller. This effect is illustrated in \figref{fig:effective_region} when applying a $3\times3$ filter to a $65\times65$ feature map with different atrous rates. In the extreme case where the rate value is close to the feature map size, the $3\times3$ filter, instead of capturing the whole image context, degenerates to a simple $1\times1$ filter since only the center filter weight is effective.
+
+To overcome this problem and incorporate global context information to the model, we adopt image-level features, similar to \cite{liu2015parsenet, zhao2016pyramid}. Specifically, we apply global average pooling on the last feature map of the model, feed the resulting image-level features to a $1\times1$ convolution with 256 filters (and batch normalization \cite{ioffe2015batch}), and then bilinearly upsample the feature to the desired spatial dimension. In the end, our improved ASPP consists of (a) one $1\times1$ convolution and three $3\times3$ convolutions with $rates=(6, 12, 18)$ when $\emph{output\_stride}=16$ (all with 256 filters and batch normalization), and (b) the image-level features, as shown in \figref{fig:model_aspp}. Note that the rates are doubled when $\emph{output\_stride}=8$. The resulting features from all the branches are then concatenated and pass through another $1\times1$ convolution (also with 256 filters and batch normalization) before the final $1\times1$ convolution which generates the final logits.
+
+\begin{figure}[!t]
+  \centering
+  \begin{tabular}{c}
+    \includegraphics[width=0.7\linewidth]{fig/effective_atrous/atrous_rate_vs_valid_weights}\\
+  \end{tabular}
+  \caption{Normalized counts of valid weights with a $3\times3$ filter on a $65\times65$ feature map as atrous rate varies. When atrous rate is small, all the 9 filter weights are applied to most of the valid region on feature map, while atrous rate gets larger, the $3\times3$ filter degenerates to a $1\times1$ filter since only the center weight is effective.}
+  \label{fig:effective_region}
+\end{figure}
+
+\begin{figure*}[!t]
+  \centering
+  \begin{tabular}{c}
+    \includegraphics[width=0.95\linewidth]{fig/model_aspp} \\
+  \end{tabular}
+  \caption{Parallel modules with atrous convolution (ASPP), augmented with image-level features.}
+  \label{fig:model_aspp}
+\end{figure*}

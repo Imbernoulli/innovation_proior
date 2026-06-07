@@ -1,0 +1,11 @@
+\section{On The Mechanisms and Characterizations of Double Descent}
+\label{sec:morediscuss}
+
+\paragraph{On Effective Model Complexity.}
+We stress that Effective Model Complexity is \emph{not} a single-letter characterization
+of test error.
+For example, two training procedures with the same EMC can output models with
+very different test errors (e.g. consider a CNN and a fully-connected net, which both are capable of interpolating the same number of samples from a natural image distribution.
+Here, we would expect the CNN to have much lower test error than the fully-connected net.
+Our generalized double desccent hypothesis applies as we vary EMC in a ``smooth'' way--- say, by only
+changing the model by a small amount--- and does not apply if we say, jump discontinuously from a CNN to a fully-connected net.

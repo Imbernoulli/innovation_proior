@@ -1,0 +1,98 @@
+\begin{table}[H]\centering
+\scriptsize
+\begin{tabular}{l|rrrrrrrrrrrrrr}
+\toprule
+\setlength{\tabcolsep}{2pt}\renewcommand{\arraystretch}{1.2}
+Model
+& \multicolumn{1}{c}{\rotatebox[origin=rc]{270}{LibriSpeech.test-clean}}
+& \multicolumn{1}{c}{\rotatebox[origin=rc]{270}{LibriSpeech.test-other}}
+& \multicolumn{1}{c}{\rotatebox[origin=rc]{270}{TED-LIUM3}}
+& \multicolumn{1}{c}{\rotatebox[origin=rc]{270}{WSJ}}
+& \multicolumn{1}{c}{\rotatebox[origin=rc]{270}{CallHome}}
+& \multicolumn{1}{c}{\rotatebox[origin=rc]{270}{Switchboard}}
+& \multicolumn{1}{c}{\rotatebox[origin=rc]{270}{CommonVoice5.1}}
+& \multicolumn{1}{c}{\rotatebox[origin=rc]{270}{Artie}}
+& \multicolumn{1}{c}{\rotatebox[origin=rc]{270}{CORAAL}}
+& \multicolumn{1}{c}{\rotatebox[origin=rc]{270}{CHiME6}}
+& \multicolumn{1}{c}{\rotatebox[origin=rc]{270}{AMI-IHM}}
+& \multicolumn{1}{c}{\rotatebox[origin=rc]{270}{AMI-SDM1}}
+& \multicolumn{1}{c}{\rotatebox[origin=rc]{270}{VoxPopuli.en}}
+& \multicolumn{1}{c}{\rotatebox[origin=rc]{270}{Fleurs.en\_us}}
+\\ \midrule
+Whisper tiny.en 
+& 5.6 & 14.6 & 6.0 & 5.0 & 24.1 & 17.8 & 26.3 & 20.0 & 23.9 & 41.3 & 23.7 & 50.3 & 11.7 & 11.6 
+\\
+Whisper tiny 
+& 7.6 & 16.9 & 7.0 & 6.7 & 30.0 & 22.8 & 29.6 & 23.9 & 31.0 & 49.6 & 27.6 & 58.1 & 12.7 & 13.7 
+\\
+Whisper base.en 
+& 4.2 & 10.2 & 4.9 & 4.6 & 20.9 & 15.2 & 19.0 & 13.4 & 22.6 & 36.4 & 20.5 & 46.7 & 10.0 & 7.6 
+\\
+Whisper base 
+& 5.0 & 12.4 & 5.5 & 5.1 & 23.0 & 16.8 & 21.6 & 16.9 & 26.0 & 40.2 & 22.0 & 49.9 & 10.0 & 10.1 
+\\
+Whisper small.en 
+& 3.1 & 7.4 & 4.0 & 3.3 & 18.2 & 15.7 & 13.1 & 9.7 & 20.2 & 27.6 & 17.5 & 38.0 & 8.1 & 6.0 
+\\
+Whisper small 
+& 3.4 & 7.6 & 4.3 & 4.0 & 17.5 & 14.5 & 13.5 & 10.3 & 18.1 & 29.3 & 19.0 & 39.6 & 8.3 & 6.6 
+\\
+Whisper medium.en 
+& 3.1 & 6.3 & 4.1 & 3.3 & 16.2 & 14.1 & 10.6 & 7.6 & 17.5 & 25.3 & 16.4 & 37.2 & 7.4 & 5.0 
+\\
+Whisper medium 
+& 2.9 & 5.9 & 3.8 & 2.9 & 16.4 & 14.0 & 10.3 & 7.2 & 16.6 & 26.4 & 16.6 & 36.0 & 7.4 & 5.4 
+\\
+Whisper large 
+& 2.7 & 5.6 & 4.0 & 3.1 & 15.8 & 13.1 & 9.5 & 6.7 & 19.4 & 25.6 & 16.4 & 36.9 & 7.3 & 4.6 
+\\
+Whisper large-v2
+& 2.7 & 5.2 & 4.0 & 3.9 & 17.6 & 13.8 & 9.0 & 6.2 & 16.2 & 25.5 & 16.9 & 36.4 & 7.3 & 4.4
+\\
+\midrule
+wav2vec2-base-100h 
+& 6.0 & 13.4 & 17.8 & 13.9 & 46.9 & 40.2 & 47.4 & 40.8 & 47.0 & 79.9 & 48.1 & 81.2 & 28.9 & 23.1 
+\\
+wav2vec2-base-960h 
+& 3.3 & 8.5 & 12.8 & 8.9 & 40.6 & 32.9 & 36.4 & 30.9 & 39.9 & 68.5 & 40.2 & 71.9 & 21.4 & 17.4 
+\\
+wav2vec2-large-960h-lv60-self 
+& 1.8 & 3.8 & 7.4 & 4.4 & 29.1 & 22.2 & 19.9 & 15.8 & 29.2 & 56.3 & 30.8 & 57.0 & 13.0 & 10.2 
+\\
+wav2vec2-large-960h 
+& 2.7 & 6.2 & 10.5 & 7.7 & 34.8 & 28.3 & 29.9 & 24.5 & 35.6 & 65.8 & 37.0 & 67.6 & 17.9 & 14.6 
+\\
+wav2vec2-large-robust-ft-libri-960h 
+& 2.6 & 5.3 & 9.2 & 6.1 & 23.4 & 19.8 & 20.3 & 16.2 & 29.4 & 58.1 & 31.7 & 61.6 & 15.1 & 11.8 
+\\
+asr-crdnn-rnnlm-librispeech 
+& 3.0 & 9.7 & 17.7 & 10.7 & 59.7 & 56.1 & 43.7 & 33.3 & 83.8 & 81.0 & 57.2 & 85.8 & 30.6 & 32.4 
+\\
+asr-transformer-transformerlm-librispeech 
+& 2.1 & 5.4 & 11.9 & 7.4 & 38.9 & 33.0 & 30.6 & 23.5 & 44.9 & 79.5 & 44.5 & 75.4 & 17.8 & 17.0 
+\\
+hubert-large-ls960-ft 
+& 2.0 & 4.1 & 8.4 & 5.4 & 29.6 & 22.8 & 20.8 & 16.0 & 32.0 & 60.0 & 33.7 & 59.1 & 14.4 & 10.9 
+\\
+hubert-xlarge-ls960-ft 
+& 1.9 & 3.5 & 8.3 & 5.4 & 29.3 & 22.2 & 19.8 & 14.8 & 31.5 & 58.5 & 33.3 & 58.9 & 14.2 & 10.5 
+\\
+s2t-large-librispeech-asr 
+& 3.3 & 8.1 & 14.9 & 9.4 & 54.5 & 40.3 & 38.1 & 30.7 & 50.2 & 79.2 & 53.4 & 79.5 & 21.6 & 18.0 
+\\
+s2t-medium-librispeech-asr 
+& 3.6 & 8.2 & 15.7 & 9.7 & 58.1 & 42.4 & 39.3 & 31.3 & 52.6 & 79.8 & 60.3 & 85.3 & 22.9 & 19.7 
+\\
+stt\_en\_conformer\_ctc\_large 
+& 2.1 & 4.2 & 4.4 & 2.1 & 11.3 & 8.2 & 7.4 & 4.0 & 13.5 & 30.5 & 15.9 & 39.9 & 6.7 & 8.2 
+\\
+stt\_en\_conformer\_transducer\_xlarge 
+& 1.5 & 2.8 & 4.3 & 1.2 & 12.0 & 7.4 & 4.3 & 1.5 & 19.9 & 36.8 & 20.5 & 48.6 & 6.0 & 6.3 
+\\
+unispeech-sat-base-100h-libri-ft 
+& 5.7 & 13.8 & 17.7 & 13.6 & 46.5 & 40.0 & 45.3 & 38.6 & 44.7 & 74.8 & 47.8 & 77.7 & 29.8 & 22.4 
+\\
+\bottomrule
+\end{tabular}
+\caption{English transcription WER (\%) with greedy decoding}\label{tab:english-asr-greedy}
+\end{table}

@@ -1,0 +1,59 @@
+\section{Diffusion Probabilistic Models}
+\label{sec:bg}
+We review diffusion probabilistic models and  their associated differential equations in this section.
+\subsection{Forward Process and Diffusion SDEs}\label{sec:diffusion-sde}
+Assume that we have a $D$-dimensional random variable $\x_0\in\R^{D}$ with an unknown distribution $q_0(\x_0)$. Diffusion Probabilistic Models (DPMs)~\citep{sohl2015deep,ho2020denoising,song2020score,kingma2021variational} define  a \textit{forward process} $\{\x_t\}_{t\in[0,T]}$ with $T>0$ starting with $\x_0$, such that for any $t\in [0,T]$, the distribution of $\x_t$ conditioned on $\x_0$ satisfies
+\begin{equation}
+\label{eqn:q0t}
+    q_{0t}(\x_t|\x_0)=\N(\x_t | \alpha(t)\x_0, \sigma^2(t)\Iv),
+\end{equation}
+where $\alpha(t),\sigma(t) \in \R^{+}$ are differentiable functions of $t$ with bounded derivatives, and we denote them as $\alpha_t,\sigma_t$ for simplicity. The choice for $\alpha_t$ and $\sigma_t$ is referred to as the \textit{noise schedule} of a DPM.
+Let $q_t(\x_t)$ denote the marginal distribution of $\x_t$, DPMs choose noise schedules to ensure that $q_T(\x_T)\approx \N(\x_T|\vect{0},\tilde\sigma^2\Iv)$ for some $\tilde\sigma>0$, and the \textit{signal-to-noise-ratio} (SNR) $\alpha_t^2 / \sigma_t^2$ is strictly decreasing w.r.t. $t$~\citep{kingma2021variational}.  Moreover, \citet{kingma2021variational} prove that the following stochastic differential equation (SDE) has the same transition distribution $q_{0t}(\x_t|\x_0)$ as in Eq.~\eqref{eqn:q0t} for any $t\in[0,T]$:
+\begin{equation}
+\label{eqn:forward_sde}
+    \dxv_t = f(t)\x_t \dt + g(t) \dwv_t, \quad \x_0\sim q_0(\x_0),
+\end{equation}
+where $\wv_t\in\R^D$ is the standard Wiener process, and
+\begin{equation}
+\label{eqn:ft_gt}
+    f(t)= \frac{\dd \log \alpha_t}{\dt}, \quad g^2(t)=\frac{\dd\sigma_t^2}{\dt} - 2\frac{\dd\log\alpha_t}{\dt}\sigma_t^2.
+\end{equation}
+Under some regularity conditions, \citet{song2020score} show that the forward process in Eq.~\eqref{eqn:forward_sde} has an equivalent \textit{reverse process} from time $T$ to $0$, starting with the marginal distribution $q_T(\x_T)$:
+\begin{equation}
+\label{eqn:reverse_sde_true}
+    \dxv_t = [f(t)\x_t - g^2(t) \nabla_{\x}\log q_t(\x_t)] \dt + g(t) \dd \bar{\wv}_t, \quad \x_T\sim q_T(\x_T),
+\end{equation}
+where $\bar{\wv}_t$ is a standard Wiener process in the reverse time. The only unknown term in Eq.~\eqref{eqn:reverse_sde_true} is the \textit{score function} $\nabla_{\x}\log q_t(\x_t)$ at each time $t$. In practice, DPMs use a neural network $\epsilonv_\theta(\x_t,t)$ parameterized by $\theta$ to estimate the scaled score function: $-\sigma_t\nabla_{\x}\log q_t(\x_t)$. The parameter $\theta$ is optimized by minimizing the following objective~\citep{ho2020denoising, song2020score}:
+\begin{align}
+    \Lc(\theta;\omega(t))&\coloneqq \frac{1}{2}\int_0^T \omega(t) \E_{q_t(\x_t)}\Big[\|\epsilonv_\theta(\x_t,t)+\sigma_t\nabla_{\x}\log q_t(\x_t)\|_2^2\Big]\dt \nonumber \\
+    &= \frac{1}{2}\int_0^T \omega(t) \E_{q_0(\x_0)}\E_{q(\epsilonv)}\Big[\|\epsilonv_\theta(\x_t,t)-\epsilonv\|_2^2\Big]\dt + C, \nonumber
+\end{align}
+where $\omega(t)$ is a weighting function, $\epsilonv\sim q(\epsilonv)=\N(\epsilonv|\vect{0},\Iv)$, $\x_t=\alpha_t\x_0+\sigma_t\epsilonv$, and $C$ is a constant independent of $\theta$. As $\epsilonv_\theta(\x_t,t)$ can also be regarded as predicting the Gaussian noise added to $\x_t$, it is usually called the \textit{noise prediction model}. 
+Since the ground truth of $\epsilonv_\theta(\x_t,t)$ is $-\sigma_t\nabla_{\x}\log q_t(\x_t)$, DPMs replace the score function in Eq.~\eqref{eqn:reverse_sde_true} by $-\epsilonv_\theta(\x_t,t) / \sigma_t$ and define a parameterized reverse process (\textit{diffusion SDE}) from time $T$ to $0$, starting with $\x_T\sim \N(\vect{0},\tilde\sigma^2\Iv)$:
+\begin{equation}
+\label{eqn:reverse_sde_theta}
+    \dxv_t = \left [f(t)\x_t + \frac{g^2(t)}{\sigma_t} \epsilonv_\theta(\x_t,t)\right] \dt + g(t) \dd \bar{\wv}_t, \quad \x_T\sim \N(\vect{0},\tilde\sigma^2\Iv).
+\end{equation}
+Samples can be generated from DPMs by solving the diffusion SDE in Eq.~(\ref{eqn:reverse_sde_theta}) with numerical solvers, which discretize the SDE from $T$ to $0$. \citet{song2020score} proved that the traditional ancestral sampling method for DPMs~\citep{ho2020denoising} can be viewed as a first-order SDE solver for Eq.~\eqref{eqn:reverse_sde_theta}. However, these first-order methods usually need hundreds of or thousands of function evaluations to converge~\citep{song2020score}, leading to extremely slow sampling speed.
+
+
+\subsection{Diffusion (Probability Flow) ODEs}
+\label{sec:bg_ode}
+When discretizing SDEs, the step size is limited by the randomness of the Wiener process~\citep[Chap. 11]{kloeden1992Numerical}. A large step size (small number of steps) often causes non-convergence, especially in high dimensional spaces. 
+For faster sampling, one can consider the 
+associated \textit{probability flow ODE}~\citep{song2020score}, which has the same marginal distribution at each time $t$ as that of the SDE. 
+Specifically, for DPMs, \citet{song2020score} proved that the probability flow ODE of Eq.~\eqref{eqn:reverse_sde_true} is
+\begin{equation}
+    \frac{\dxv_t}{\dt} = f(t)\x_t - \frac{1}{2}g^2(t)\nabla_{\x}\log q_t(\x_t), \quad \x_T\sim q_T(\x_T),
+\end{equation}
+where the marginal distribution of $\x_t$ is also $q_t(\x_t)$. By replacing the score function with the noise prediction model, \citet{song2020score} defined the following parameterized ODE (\textit{diffusion ODE}):
+\begin{equation}
+\label{eqn:diffusion_ode}
+    \frac{\dxv_t}{\dt} = \hv_\theta(\x_t,t)\coloneqq f(t)\x_t + \frac{g^2(t)}{2\sigma_t}\epsilonv_\theta(\x_t,t), \quad \x_T\sim \N(\vect{0},\tilde\sigma^2\Iv).
+\end{equation}
+Samples can be drawn by solving the ODE from $T$ to $0$.
+Comparing with SDEs, ODEs can be solved with larger step sizes as they have no randomness. Furthermore, we can take advantage of efficient numerical ODE solvers to accelerate the sampling. 
+\citet{song2020score} used the RK45 ODE solver~\citep{dormand1980family}  for the diffusion ODEs, which generates samples in $\sim$ 60 function evaluations to reach comparable quality with a 1000-step SDE solver for Eq.~\eqref{eqn:reverse_sde_theta} on the CIFAR-10 dataset~\citep{Krizhevsky09learningmultiple}. However, existing general-purpose ODE solvers still cannot generate satisfactory samples in the few-step ($\sim$ 10 steps) sampling regime. To the best of our knowledge, there is still a lack of training-free samplers for DPMs in the few-step sampling regime, and the sampling speed of DPMs is still a critical issue. 
+
+
+

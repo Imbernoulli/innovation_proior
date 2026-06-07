@@ -1,0 +1,74 @@
+\begin{figure}[!hbt]
+    \centering
+    \setlength{\tabcolsep}{0.55pt}
+    \renewcommand{\arraystretch}{1.0}
+    {
+    \fontsize{8pt}{8pt}
+    
+    \begin{tabular}{c@{\hskip 5pt} c c c c@{\hskip 10pt}  c c c c}
+    \begin{tabular}{c}
+    \raisebox{0.015\linewidth}{\footnotesize\begin{tabular}{c@{}c@{}c@{}c@{}} Input \\ Samples \end{tabular}} \end{tabular} & 
+    \multicolumn{4}{c}{
+    \begin{tabular}{c c c c}
+    \includegraphics[width=0.1\linewidth,height=0.1\linewidth]{resources/images/training_sets/headless_statue/1.jpeg} & 
+    \includegraphics[width=0.1\linewidth,height=0.1\linewidth]{resources/images/training_sets/headless_statue/2.jpeg} & 
+    \includegraphics[width=0.1\linewidth,height=0.1\linewidth]{resources/images/training_sets/headless_statue/3.jpeg} & 
+    \includegraphics[width=0.1\linewidth,height=0.1\linewidth]{resources/images/training_sets/headless_statue/4.jpeg} 
+    \end{tabular} } &
+    \multicolumn{4}{c}{
+    \begin{tabular}{c c c}
+    \includegraphics[width=0.1\linewidth,height=0.1\linewidth]{resources/images/training_sets/rainbow_cat/2.jpeg} & 
+    \includegraphics[width=0.1\linewidth,height=0.1\linewidth]{resources/images/training_sets/rainbow_cat/3.jpeg} &
+    \includegraphics[width=0.1\linewidth,height=0.1\linewidth]{resources/images/training_sets/rainbow_cat/6.jpeg}
+    \end{tabular}
+    }
+    \\
+
+    \raisebox{0.09\linewidth}{\footnotesize\begin{tabular}{c@{}c@{}c@{}c@{}} Target Image \\ With Mask \end{tabular}} & 
+    \multicolumn{2}{c}{
+    \includegraphics[width=0.2\linewidth]{resources/images/blended_diffusion/mona_lisa_with_mask.jpg}
+    } &
+    \multicolumn{2}{c}{
+    \includegraphics[width=0.2\linewidth]{resources/images/blended_diffusion/nyc_with_mask.jpg}
+    } &
+    \multicolumn{2}{c}{
+    \includegraphics[width=0.2\linewidth]{resources/images/blended_diffusion/moon_landing_with_mask.jpg}
+    } &
+    \multicolumn{2}{c}{
+    \includegraphics[width=0.2\linewidth]{resources/images/blended_diffusion/iphone_with_mask.jpg}
+    }
+    \\
+
+    \raisebox{0.09\linewidth}{\footnotesize\begin{tabular}{c@{}c@{}c@{}c@{}} Output \\ Image \end{tabular}} & 
+    \multicolumn{2}{c}{
+    \includegraphics[width=0.2\linewidth]{resources/images/blended_diffusion/mona_lisa.jpg}
+    } &
+    \multicolumn{2}{c}{
+    \includegraphics[width=0.2\linewidth]{resources/images/blended_diffusion/nyc.jpg}
+    } &
+    \multicolumn{2}{c}{
+    \includegraphics[width=0.2\linewidth]{resources/images/blended_diffusion/moon_landing.jpg}
+    } &
+    \multicolumn{2}{c}{
+    \includegraphics[width=0.2\linewidth]{resources/images/blended_diffusion/iphone.jpg}
+    }
+    \\
+
+    & 
+    \multicolumn{2}{c}{
+    {\footnotesize\begin{tabular}{c@{}c@{}c@{}c@{}} ``An oil painting \\ of \pholdercolor" \end{tabular}}
+    } &
+    \multicolumn{2}{c}{
+    {\footnotesize\begin{tabular}{c@{}c@{}c@{}c@{}} ``A black and white \\ photo of \pholdercolor" \end{tabular}}
+    } &
+    \multicolumn{2}{c}{
+    {\footnotesize\begin{tabular}{c@{}c@{}c@{}c@{}} ``A \pholdercolor" \end{tabular}}
+    } & 
+    \multicolumn{2}{c}{
+    {\footnotesize\begin{tabular}{c@{}c@{}c@{}c@{}} ``A \pholdercolor" \end{tabular}}
+    } \\
+    
+    \end{tabular}}
+    \caption{Our words can be used with downstream models that build on LDM. Here, we perform localized image editing using Blended Latent Diffusion~\citep{avrahami2022blendedlatent}}
+    \label{fig:blended} 
+\end{figure}

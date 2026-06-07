@@ -1,0 +1,236 @@
+\section*{Background}
+\paragraph{Text-to-Image Diffusion Models}
+Diffusion models are probabilistic generative models that are trained to learn a data distribution by the gradual denoising of a variable sampled from a Gaussian distribution. Specifically, this corresponds to learning the reverse process of a fixed-length Markovian forward process. In simple terms, a conditional diffusion model $\hat\bx_\theta$ is trained using a squared error loss to denoise a variably-noised image $\bz_t \coloneqq \alpha_t \bx + \sigma_t \bepsilon$ as follows:
+\begin{equation}
+\label{eq:diffusion_supp}
+    \Eb{\bx,\bc,\bepsilon,t}{w_t \|\hat\bx_\theta(\alpha_t \bx + \sigma_t \bepsilon, \bc) - \bx \|^2_2}
+\end{equation}
+where $\bx$ is the ground-truth image, $\bc$ is a conditioning vector (e.g., obtained from a text prompt), $\bepsilon \sim \mathcal{N}(\bzero, \bI)$ is a noise term and $\alpha_t, \sigma_t, w_t$ are terms that control the noise schedule and sample quality, and are functions of the diffusion process time $t \sim \mathcal{U}([0, 1])$.
+At inference time, the diffusion model is sampled by iteratively denoising $\bz_{t_1} \sim \mathcal{N}(\bzero, \bI)$ using either the deterministic DDIM~\cite{song2020denoising} or the stochastic ancestral sampler~\cite{ho2020denoising}. Intermediate points $\bz_{t_1}, \dotsc, \bz_{t_T}$, where $1 = t_1 > \cdots > t_T = 0$, are generated, with decreasing noise levels. These points, $\hat{\bx}^t_0 \defeq \hat\bx_\theta(\bz_t, \bc)$, are functions of the $\bx$-predictions.
+
+Recent state-of-the-art text-to-image diffusion models use cascaded diffusion models in order to generate high-resolution images from text~\cite{saharia2022photorealistic,ramesh2022hierarchical}. Specifically, \cite{saharia2022photorealistic} uses a base text-to-image model with 64x64 output resolution, and two text-conditional super-resolution (SR) models $64\times 64 \rightarrow 256\times 256$ and $256\times 256 \rightarrow 1024\times 1024$. Ramesh et al.~\cite{ramesh2022hierarchical} use a similar configuration, with unconditional SR models. A key component of high-quality sample generations from \cite{saharia2022photorealistic} is the use of noise conditioning augmentation~\cite{ho2022cascaded} for the two SR modules. This consists in corrupting the intermediate image using noise with specific strength, and then conditioning the SR model on the level of corruption. Saharia et al.~\cite{saharia2022photorealistic} select Gaussian noise as the form of augmentation.
+
+Other recent state-of-the-art text-to-image diffusion models, such as Stable Diffusion~\cite{rombach2022high}, use a single diffusion model to generate high-resolution images. Specifically, the forward and backward diffusion processes occur in a lower-dimensional latent space and an encoder-decoder architecture is trained on a large image dataset to translate images into latent codes. At inference time, a random noise latent code goes through the backward diffusion process and the pre-trained decoder is used to generate the final image. Our method can be naturally applied to this scenario, where the U-Net (and possibly the text encoder) are trained, and the decoder is fixed.
+
+\paragraph{Vocabulary Encoding}
+The details of text-conditioning in text-to-image diffusion models are of high importance for visual quality and semantic fidelity. Ramesh et al.~\cite{ramesh2022hierarchical} use CLIP text embeddings that are translated into image embeddings using a learned prior, while Saharia et al.~\cite{saharia2022photorealistic} use a pre-trained T5-XXL language model~\cite{raffel2020exploring}. In our work, we use the latter. 
+Language models like T5-XXL generate embeddings of a tokenized text prompt, and vocabulary encoding is an important pre-processing step for prompt embedding. In order to transform a text prompt $\bP$ into a conditioning embedding $\bc$, the text is first tokenized using a tokenizer $f$ using a learned vocabulary. Following~\cite{saharia2022photorealistic}, we use the SentencePiece tokenizer~\cite{kudo2018sentencepiece}. After tokenizing a prompt $\bP$ using tokenizer $f$ we obtain a fixed-length vector $f(\bP)$. The language model $\Gamma$ is conditioned on this token identifier vector to produce an embedding $\bc \defeq \Gamma(f(\bP))$. Finally, the text-to-image diffusion model is directly conditioned on $\bc$.
+
+\section*{Dataset}
+Our dataset includes 30 subjects. We separate each subject into two categories: objects and live subjects/pets. 21 of the 30 subjects are objects, and 9 are live subjects/pets. We provide one sample image for each of the subjects in Figure~\ref{fig:dataset}. Images for this dataset were collected by the authors or sourced from Unsplash~\cite{unsplash}.
+
+We also collected 25 prompts: 20 recontextualization prompts and 5 property modification prompts for objects. 10 recontextualization, 10 accessorization, and 5 property modification prompts for live subjects/pets. Prompts are shown in Figure~\ref{fig:supp_prompts}
+
+For the evaluation suite we generate four images per subject and per prompt, totaling 3,000 images. This allows us to robustly measure performances and generalization capabilities of a method. We make our dataset and evaluation protocol publicly available on the project webpage for future use in evaluating subject-driven generation.
+
+\begin{figure*}[h!]
+\centering
+\includegraphics[clip,width=0.95\textwidth]{figures/prompts.png}
+\caption[]{
+\textbf{Prompts}. Evaluation prompts for both objects and live subjects.
+\label{fig:supp_prompts}}
+\end{figure*}
+
+\section*{Subject Fidelity Metrics}
+
+In the main paper we comment on the superiority of our proposed DINO metric in terms of subject fidelity. We hypothesize that this is because DINO is, in essence, trained in a self-supervised manner to distinguish different images from each other modulo data augmentations. This is in contrast to the CLIP-I metric, where CLIP is trained with text-image pairs and encodes more descriptive information about images - but not necessarily fine details that are not present in the text annotations. We give an example in Figure~\ref{fig:supp_dino_metric}, where the first column contains a reference real image, the second column a different real image, the third column a DreamBooth generated image and the last column an image generated using Textual Inversion. We compare the 2nd, 3rd and 4th image to the real reference image using the CLIP-I and DINO metrics. We observe that the 2nd real image obtains both the highest CLIP-I and DINO scores. The DreamBooth sample looks much more similar to the reference sample than the Textual Inversion sample, yet the CLIP-I score for the Textual Inversion sample is much higher than the DreamBooth sample. However, we can see that the DINO similarity is higher for the DreamBooth sample - which more closely tracks human evaluation of subject fidelity. In order to quantitatively test this, we compute correlations between DINO/CLIP-I scores and normalized human preference scores. DINO has a Pearson correlation coeff.~of 0.32 with human preference (vs. 0.27 for the CLIP-I metric used in [20]), with a very low p-value of $9.44 \times 10^{-30}$.
+
+\begin{figure*}[h!]
+\centering
+\includegraphics[clip,width=0.75\textwidth]{figures/dino_metric.png}
+\caption[]{
+\textbf{CLIP-I vs. DINO Metrics.} The DreamBooth CLIP-I similarity to the reference image is lower than that of the Textual Inversion sample, even though the DreamBooth subject looks more similar to the reference subject. The DINO metric more closely tracks human evaluation of subject fidelity here. 
+\label{fig:supp_dino_metric}}
+\end{figure*}
+
+
+\section*{User Study}
+Below we include the full instructions used for our user study. For \textit{subject fidelity}:
+\begin{itemize}
+    \item Read the task carefully, inspect the reference items and then inspect the generated items.
+    \item Select which of the two generated items (A or B) reproduces the identity (e.g. item type and details) of the reference item.
+    \item The subject might be wearing accessories (e.g. hats, outfits). These should not affect your answer. Do not take them into account.
+    \item If you're not sure, select Cannot Determine / Both Equally.
+\end{itemize}
+For \textit{text fidelity}:
+\begin{itemize}
+    \item Read the task carefully, inspect the reference text and then inspect the generated items.
+    \item Select which of the two generated items (A or B) is best described by the reference text.
+    \item If you're not sure, select Cannot Determine / Both Equally.
+\end{itemize}
+For each study we asked 72 users to answer questionnaires of 25 comparative questions (3 users per questionnaire), totaling 1800 answers - with 600 image pairs evaluated.
+
+\section*{Additional Applications and Examples}
+
+\paragraph{Additional Samples}
+We provide a large amount of additional random samples in an annex HTML file. We compare real images, to DreamBooth generated images using Imagen and Stable Diffusion as well as images generated using Textual Inversion on Stable Diffusion.
+
+\paragraph{Recontextualization}
+We show additional high-quality examples of recontextualization in Figure~\ref{fig:supp_recontext}.
+
+\begin{figure*}[h!]
+\centering
+\includegraphics[clip,width=1\textwidth]{figures/gallery.pdf}
+\caption[]{
+\textbf{Additional recontextualization samples of a backpack, vase, and teapot subject instances.} We are able to generate images of the subject instance in different environments, with high preservation of subject details and realistic interaction between the scene and the subject. We display the conditioning prompts below each image.\label{fig:supp_recontext}}
+\end{figure*}
+
+\paragraph{Art Renditions}
+We show additional examples of original artistic renditions of a personalized model in Figure~\ref{fig:supp_original_art}.
+
+\begin{figure*}[h!]
+\centering
+\includegraphics[clip,width=1\textwidth]{figures/original_art.pdf}
+\caption[]{
+\textbf{Additional artistic renderings of a dog instance in the style of famous painters}. We remark that many of the generated poses, e.g., the Michelangelo renditions, were not seen in the training set. We also note that some renditions seem to have novel compositions and faithfully imitate the style of the painter.
+\label{fig:supp_original_art}}
+\end{figure*}
+
+\paragraph{Expression Manipulation}
+Our method allows for new image generation of the subject with modified expressions that are not seen in the original set of subject images. We show examples in Figure~\ref{fig:supp_expression}. The range of expressiveness is high, ranging from negative to positive valence emotions and different levels of arousal. In all examples, the uniqueness of the subject dog is preserved - specifically, the asymmetric white streak on its face remains in all generated images.
+
+\begin{figure*}[h!]
+\centering
+\includegraphics[clip,width=1\textwidth]{figures/expression.pdf}
+\caption[]{
+\textbf{Expression manipulation of a dog instance.} Our technique can synthesize various expressions that do not appear in the input images, demonstrating the extrapolation power of the model. Note the unique asymmetric white streak on the subject dog's face.
+\label{fig:supp_expression}}
+\end{figure*}
+
+\paragraph{Novel View Synthesis}
+We show more viewpoints for novel view synthesis in Figure~\ref{fig:supp_viewpoint}, along with prompts used to generate the samples.
+
+\begin{figure*}[h!]
+\centering
+\includegraphics[clip,width=1\textwidth]{figures/novel_views.pdf}
+\caption[]{
+\textbf{Text-guided view synthesis}. Our technique can synthesize images with specified viewpoints for a subject cat (left to right: top, bottom, side, and back views). Note that the generated poses are different from the input poses, and the background changes in a realistic manner given a pose change. We also highlight the preservation of complex fur patterns on the subject cat's forehead.
+\label{fig:supp_viewpoint}}
+\end{figure*}
+
+\paragraph{Accessorization}
+An interesting capability stemming from the strong compositional prior of the generation model is the ability to accessorize subjects. In Figure~\ref{fig:supp_accesories} we show examples of accessorization of a Chow Chow dog. We prompt the model with a sentence of the form: ``a [V] [class noun] wearing [accessory]''. In this manner, we are able to fit different accessories onto this dog - with aesthetically pleasing results. Note that the identity of the dog is preserved in all frames, and subject-accessory contact and articulation are realistic.
+
+\begin{figure*}[h!]
+\centering
+\includegraphics[clip,width=1\textwidth]{figures/accessories.pdf}
+\caption[]{
+\textbf{Outfitting a dog with accessories}. The identity of the subject is preserved and many different outfits or accessories can be applied to the dog given a prompt of type ``a [V] dog wearing a police/chef/witch outfit''. We observe a realistic interaction between the subject dog and the outfits or accessories, as well as a large variety of possible options.
+\label{fig:supp_accesories}}
+\end{figure*}
+
+\paragraph{Property Modification}
+We are able to modify subject instance properties. For example we can include a color adjective in the prompt sentence ``a [color adjective] [V] [class noun]''. In that way, we can generate novel instances of our subject with different colors. The generated scene can be very similar to the original scene, or it can be changed given a descriptive prompt. We show color changes of a car in the first row of Figure~\ref{fig:supp_property_mod}. We select similar viewpoints for effect, but we can generate different viewpoints of the car with different colors in different scenarios. This is a simple example of property modification, but more semantically complex property modifications can be achieved using our method. For example, we show crosses between a specific Chow Chow dog and different animal species in the bottom row of Figure~\ref{fig:supp_property_mod}. We prompt the model with sentences of the following structure: ``a cross of a [V] dog and a [target species]''. In particular, we can see in this example that the identity of the dog is well preserved even when the species changes - the face of the dog has certain individual properties that are well preserved and melded with the target species. Other property modifications are possible, such as material modification (e.g. a dog made out of stone). Some are harder than others and depend on the prior of the base generation model.
+
+\begin{figure*}[h!]
+\centering
+\includegraphics[clip,width=1\textwidth]{figures/property_mod.pdf}
+\caption[]{
+\textbf{Modification of subject properties while preserving their key features.} We show color modifications in the first row (using prompts ``a [color] [V] car''), and crosses between a specific dog and different animals in the second row (using prompts ``a cross of a [V] dog and a [target species]''). We highlight the fact that our method preserves unique visual features that give the subject its identity or essence, while performing the required property modification.
+\label{fig:supp_property_mod}}
+\end{figure*}
+
+\paragraph{Comic Book Generation}
+In addition to photorealistic images, our method is able to capture the appearance of drawn media and more. In Figure~\ref{fig:supp_comic} we present, to the best of our knowledge, the first instance of a full comic with a persistent character generated by a generative model. Each comic frame was generated using a descriptive prompt (e.g ``a [V] cartoon grabbing a fork and a knife saying ``time to eat'''').
+
+\begin{figure*}[h!]
+\centering
+\includegraphics[clip,width=\textwidth]{figures/comic.png}
+\caption[]{\textbf{Generated comic.} We present, to the best of our knowledge, the first comic comic with a persistent character generated by prompting a generative model.
+\label{fig:supp_comic}}
+\end{figure*}
+
+\section*{Additional Experiments}
+
+\subsection*{Prior Preservation Loss}
+Here we show qualitative examples of how our prior preservation loss (PPL) conserves variability in the prior and show sample results in Figure~\ref{fig:supp_prior_preserving}. We verify that a vanilla model is able to generate a large variety of dogs, while a naively fine-tuned model on the subject dog exhibits language drift and generates our subject dog given the prompt ``a dog''. Our proposed loss preserves the variability of the prior and the model is able to generate new instances of our dog given a prompt of the style ``a [V] dog'' but also varied instances of dogs given a ``a dog'' prompt.
+
+\begin{figure*}[h!]
+\centering
+\includegraphics[clip,width=\textwidth]{figures/ablation_finetuning.pdf}
+\caption[]{\textbf{Preservation of class semantic priors with prior-preservation loss.} Fine-tuning using images of our subject without prior-preservation loss results in language drift and the model loses the capability of generating other members of our subject's class. Using a prior-preservation loss term allows our model to avoid this and to preserve the subject class' prior.
+\label{fig:supp_prior_preserving}}
+\end{figure*}
+
+\subsection*{Effect of Training Images}
+Here we run an experiment on the effects of the number of input images for model personalization. Specifically, we train models for two subjects, 5 models per subject with input images ranging from 1 to 5. We generate 4 images for 10 different recontextualization prompts for each subject. We present qualitative results in Figure~\ref{fig:supp_number_images}. We can observe that for some subjects that are more common, and lie more strongly in the distribution of the diffusion model, such as the selected Corgi dog, we are able to accurately capture the appearance using only two images - and sometimes only one, given careful hyperparameter choice. For objects that are more rare, such as the selected backpack, we need more samples to accurately preserve the subject and to recontextualize it to diverse settings. Our quantitative results support these conclusions - we present the DINO subject fidelity metric in Table~\ref{table:number_images_dino} and the CLIP-T prompt fidelity metric in Table~\ref{table:number_images_clipt}. For both subjects we see that the optimal amount of input images for subject and prompt is 4. This number can vary depending on the subject and we settle on 3-5 images for model personalization.
+
+\begin{figure*}[h!]
+\centering
+\includegraphics[clip,width=\textwidth]{figures/number_images.png}
+\caption[]{\textbf{Impact of number of input images.} We observe that given only one input image, we are close to capture the identity of some subjects (e.g. Corgi dog). More images are usually needed - two images are sufficient to reconstruct the Corgi dog in this example whereas at least 3 are needed for a more rare item such as the backpack.
+\label{fig:supp_number_images}}
+\end{figure*}
+
+\begin{table}[t]
+\centering
+\resizebox{0.7\columnwidth}{!}{
+  \begin{tabular}{lccccc}
+    \toprule
+    Method & 1 & 2 & 3 & 4 & 5 \\
+    \midrule
+    Backpack & 0.494 & 0.515 & 0.596 & \textbf{0.604} & 0.597 \\
+    Dog & 0.798 & 0.851 & 0.871 & \textbf{0.876} & 0.864 \\
+    \bottomrule
+  \end{tabular}
+}
+\caption{Effect of the number of input images on subject fidelity (DINO).
+\label{table:number_images_dino}}
+\end{table}
+
+\begin{table}[t]
+\centering
+\resizebox{0.7\columnwidth}{!}{
+  \begin{tabular}{lccccc}
+    \toprule
+    Method & 1 & 2 & 3 & 4 & 5 \\
+    \midrule
+    Backpack & 0.798 & 0.851 & 0.871 & \textbf{0.876} & 0.864 \\
+    Dog & 0.646 & 0.683 & 0.734 & \textbf{0.740} & 0.730 \\
+    \bottomrule
+  \end{tabular}
+}
+\caption{Effect of the number of input images on prompt fidelity (CLIP-T).
+\label{table:number_images_clipt}}
+\end{table}
+
+
+\subsection*{Personalized Instance-Specific Super-Resolution and Low-level Noise Augmentation for Imagen}
+While the text-to-image diffusion model controls for most visual semantics, the super-resolution (SR) models are essential to achieve photorealistic content and to preserve subject instance details. We find that if SR networks are used without fine-tuning, the generated output can contain artifacts since the SR models might not be familiar with certain details or textures of the subject instance, or the subject instance might have hallucinated incorrect features, or missing details. Figure~\ref{fig:supp_low_level_noise} (bottom row) shows some sample output images with no fine-tuning of SR models, where the model hallucinates some high-frequency details. We find that fine-tuning the $64\times 64 \rightarrow 256\times 256$ SR model is essential for most subjects, and fine-tuning the $256\times 256 \rightarrow 1024\times 1024$ model can benefit some subject instances with high levels of fine-grained detail.
+
+We find results to be suboptimal if the training recipes and test parameters of Saharia et al.~\cite{saharia2022photorealistic} are used to fine-tune the SR models with the given few shots of a subject instance. Specifically, we find that maintaining the original level of noise augmentation used to train the SR networks leads to the blurring of high-frequency patterns of the subject and of the environment. 
+See Figure~\ref{fig:supp_low_level_noise} (middle row) for sample generations. In order to faithfully reproduce the subject instance, we reduce the level of noise augmentation from $10^{-3}$ to $10^{-5}$ during fine-tuning of the $256\times 256$ SR model. With this small modification, We are able to recover fine-grained details of the subject instance.
+We show how using lower noise to train the super-resolution models improves fidelity. Specifically, we show in Figure~\ref{fig:supp_low_level_noise} that if the super-resolution models are not fine-tuned, we observe hallucination of high-frequency patterns on the subject which hurts identity preservation. Further, if we use the ground-truth noise augmentation level used for training the Imagen $256 \times 256$ model ($10^{-3}$), we obtain blurred and non-crisp details. If the noise used to train the SR model is reduced to $10^{-5}$, then we conserve a large amount of detail without pattern hallucination or blurring.
+
+\begin{figure*}[h!]
+\centering
+\includegraphics[clip,width=\textwidth]{figures/low_level_noise.pdf}
+\caption[]{
+\textbf{Ablations with fine-tuning the super-resolution (SR) models.} Using the normal level of noise augmentation of \cite{saharia2022photorealistic} to train the SR models results in blurred high-frequency patterns, while no fine-tuning results in hallucinated high-frequency patterns. Using low-level noise augmentation for SR models improves sample quality and subject fidelity. Image credit (input images): Unsplash.
+\label{fig:supp_low_level_noise}}
+\end{figure*}
+
+\subsection*{Comparisons}
+
+We include additional qualitative comparisons with Gal et al.~\cite{gal2022image} in Figure~\ref{fig:supp_comparison_gal}. For this comparison, we train our model on the training images of two objects appear in the teaser of their work (headless sculpture and cat toy) kindly provided by Gal et al.~\cite{gal2022image}, and apply the prompts suggested in their paper. For prompts where they present several generated images, we handpicked their best sample (with the highest image quality and morphological similarity to the subject). We find that our work can generate the same semantic variations of these unique objects, with a high emphasis on preserving the subject identity, as can be seen, for instance, by the detailed patterns of the cat sculpture that are preserved.
+
+Next, we show comparisons of recontextualization of a subject clock, with distinctive features using our method and prompt engineering using vanilla Imagen~\cite{saharia2022photorealistic} and the public API of DALL-E 2~\cite{ramesh2022hierarchical}. After multiple iterations using both models, we settle for the base prompt ``retro style yellow alarm clock with a white clock face and a yellow number three on the lower right part of the clock face'' to describe all of the important features of the subject clock example. We find that while DALL-E 2 and vanilla Imagen are able to generate retro-style yellow alarm clocks, they struggle to represent a number 3 on the clock face, distinct from the clock face numbers. In general, we find that it is very hard to control fine-grained details of subject appearance, even with exhaustive prompt engineering. Also, we find that context can bleed into the appearance of our subject instance. We show the results in Figure~\ref{fig:supp_comparison_prompts}, and can observe that our method conserves fine-grained details of the subject instance such as the shape, the clock face font, and the large yellow number three on the clock face, among others.
+
+\begin{figure*}[h!]
+\centering
+\includegraphics[clip,width=\textwidth]{figures/comparison_gal.pdf}
+\caption[]{
+\textbf{Comparisons with Gal et al.~\cite{gal2022image}} using the subjects, images, and prompts from their work. Our approach is able to generate semantically correct variations of unique objects, exhibiting a higher degree of preservation of subject features. Input images provided by Gal et al.~\cite{gal2022image}.
+\label{fig:supp_comparison_gal}}
+\end{figure*}
+
+\begin{figure*}[h!]
+\centering
+\includegraphics[clip,width=\textwidth]{figures/comparison.pdf}
+\caption[]{
+\textbf{Comparison with DALL-E 2 and Imagen with detailed prompt engineering.} After several trial-and-error iterations, the base prompt used to generate DALL-E 2 and Imagen results was \textit{``retro style yellow alarm clock with a white clock face and a yellow number three on the right part of the clock face''}, which is highly descriptive of the subject clock. In general, it is hard to control fine-grained details of subject appearance using prompts, even with large amounts of prompt engineering. Also, we can observe how context cues in the prompt can bleed into subject appearance (e.g. with a blue number 3 on the clock face when the context is ``on top of blue fabric''). Image credit (input images): Unsplash.
+\label{fig:supp_comparison_prompts}}
+\end{figure*}
+
+\section*{Societal Impact}
+This project aims to provide users with an effective tool for synthesizing personal subjects (animals, objects) in different contexts. While general text-to-image models might be biased towards specific attributes when synthesizing images from text, our approach enables the user to get a better reconstruction of their desirable subjects. On contrary, malicious parties might try to use such images to mislead viewers. This is a common issue, existing in other generative models approaches or content manipulation techniques. Future research in generative modeling, and specifically of personalized generative priors, must continue investigating and revalidating these concerns.

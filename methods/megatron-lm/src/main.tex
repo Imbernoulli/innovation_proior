@@ -1,0 +1,87 @@
+
+\documentclass{article}
+
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{booktabs} 
+\usepackage{listings}
+\usepackage{amsmath}
+\usepackage{xcolor}
+\usepackage{blindtext}
+\usepackage{multirow}
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.95}
+
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=2
+}
+
+\usepackage{url}
+\def\UrlBreaks{\do\/\do-}
+\usepackage{breakurl}
+\usepackage[breaklinks]{hyperref}
+ 
+\lstset{style=mystyle}
+\renewcommand{\lstlistingname}{Code}
+%\usepackage{hyperref}
+\usepackage[accepted]{icml2020}
+
+
+\begin{document}
+
+\twocolumn[
+\icmltitle{Megatron-LM: Training Multi-Billion Parameter Language Models Using Model Parallelism}
+
+\begin{icmlauthorlist}
+\icmlauthor{Mohammad Shoeybi}{equal,to}
+\icmlauthor{Mostofa Patwary}{equal,to}
+\icmlauthor{Raul Puri}{equal,to}
+\icmlauthor{Patrick LeGresley}{to}
+\icmlauthor{Jared Casper}{to}
+\icmlauthor{Bryan Catanzaro}{to}
+\end{icmlauthorlist}
+\icmlaffiliation{to}{NVIDIA}
+\icmlaffiliation{equal}{Equal contribution}
+\icmlcorrespondingauthor{Mohammad Shoeybi}{mshoeybi@nvidia.com}
+
+\icmlkeywords{Machine Learning}
+
+\vskip 0.3in
+
+]
+
+\printAffiliationsAndNotice{}
+
+\input{abs.tex}
+\input{intro.tex}
+\input{background.tex} 
+\input{modelpar.tex} 
+\input{langmod.tex} 
+\input{experiments.tex}
+\input{discussion.tex}
+
+\Urlmuskip=0mu plus 1mu\relax
+\bibliography{main}
+\bibliographystyle{icml2020}
+
+\appendix
+\input{supplementary.tex}
+
+\end{document}

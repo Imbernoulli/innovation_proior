@@ -1,0 +1,30 @@
+
+% \begin{wrapfigure}[16]{R}{0.4\textwidth}
+%   \begin{center}
+%     \includegraphics[width=0.25\textwidth]{assets/spacy_pgm.png}
+%   \end{center}
+%   \caption{Graphical model representation for Spatial-temporal Causal Discovery (SPACY).
+%   Shaded circles are observed and hollow circles are latent.}
+%   \label{fig:spacy_pgm}
+% \end{wrapfigure}
+
+\begin{figure}[h!]
+  \begin{minipage}[b]{0.4\textwidth}
+    \centering
+    \includegraphics[width=0.8\textwidth]{assets/spacy_pgm.pdf}
+    
+    
+  \end{minipage}
+  \hfill
+  \begin{minipage}[b]{0.55\textwidth}
+    \begin{align*}
+    \mathbf{Z}_d^{(t)} &= f_{d}\left(\text{Pa}^d_G(<t), \text{Pa}^d_G(t)\right) + \eta_d^{(t)}\\
+    \boldsymbol{\rho}_d &\sim U[0, 1]^K, \boldsymbol{\gamma}_d \sim \mathcal{N}\left(0, I \right)\\
+    \mathbf{F}_d &= \left[\text{RBF}_d(x_\ell; \boldsymbol{\rho}_d, \boldsymbol{\gamma}_d)\right]_{\ell=1}^L, \quad x_\ell \in \mathcal{G} \\
+    \mathbf{X}_\ell &= g_\ell \left( \left[ \mathbf{FZ} \right]_{\ell} \right) + \varepsilon_\ell \\
+    \varepsilon_\ell &\sim \mathcal{N}(0, \sigma^2_\ell I)
+    \end{align*}
+  \end{minipage}
+  \caption{Probabilistic graphical model for SPACY and the generative equations. Shaded circles are observed and hollow circles are latent. }
+  \label{fig:spacy_pgm_1}
+\end{figure}

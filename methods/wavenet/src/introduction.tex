@@ -1,0 +1,19 @@
+This work explores raw audio generation techniques, inspired by recent advances in neural autoregressive generative models that model complex distributions such as images \citep{van2016pixel, ConditionalPixelCNN} and text \citep{RafalLanguage}. Modeling joint probabilities over pixels or words using neural architectures as products of conditional distributions yields state-of-the-art generation.
+
+Remarkably, these architectures are able to model distributions over thousands of random variables (\eg 64$\times$64 pixels as in PixelRNN \citep{van2016pixel}). The question this paper addresses is whether similar approaches can succeed in generating wideband raw audio waveforms, which are signals with very high temporal resolution, at least 16,000 samples per second (see \figref{fig:audio}).
+
+\begin{figure}[htb]
+\includegraphics[height=36pt,width=\linewidth]{Figures/one_second.png}
+\caption{A second of generated speech.}
+\label{fig:audio}
+\end{figure}
+
+This paper introduces \emph{WaveNet}, an audio generative model based on the PixelCNN \citep{van2016pixel, ConditionalPixelCNN} architecture. The main contributions of this work are as follows:
+\begin{itemize}
+    \item We show that WaveNets can generate raw speech signals with subjective naturalness never before reported in the field of text-to-speech (TTS), as assessed by human raters.
+    \item In order to deal with long-range temporal dependencies needed for raw audio generation, we develop new architectures based on dilated causal convolutions, which exhibit very large receptive fields.
+    \item We show that when conditioned on a speaker identity, a single model can be used to generate different voices.
+    \item The same architecture shows strong results when tested on a small speech recognition dataset, and is promising when used to generate other audio modalities such as music.
+\end{itemize}
+
+We believe that WaveNets provide a generic and flexible framework for tackling many applications that rely on audio generation (\eg TTS, music, speech enhancement, voice conversion, source separation).

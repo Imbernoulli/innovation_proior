@@ -1,0 +1,25 @@
+%
+\vspace{-0.1cm}
+\section{Related Work}
+\label{sec:related}
+
+The General Reinforcement Learning Architecture (Gorila) of~\cite{nair2015gorila} performs asynchronous training of reinforcement learning agents in a distributed setting.
+In Gorila, each process contains an actor that acts in its own copy of the environment, a separate replay memory, and a learner that samples data from the replay memory and computes gradients of the DQN loss~\citep{mnih-dqn-2015} with respect to the policy parameters.
+The gradients are asynchronously sent to a central parameter server which updates a central copy of the model.
+The updated policy parameters are sent to the actor-learners at fixed intervals.
+By using 100 separate actor-learner processes and 30 parameter server instances, a total of 130 machines, Gorila was able to significantly outperform DQN over 49 Atari games.
+On many games Gorila reached the score achieved by DQN over 20 times faster than DQN.
+We also note that a similar way of parallelizing DQN was proposed by~\cite{chavez2015deepq}.
+
+In earlier work, \cite{li:mapreduce} applied the Map Reduce framework to parallelizing batch reinforcement learning methods with linear function approximation.
+Parallelism was used to speed up large matrix operations but not to parallelize the collection of experience or stabilize learning.
+\cite{grounds:parallelRL} proposed a parallel version of the Sarsa algorithm that uses multiple separate actor-learners to accelerate training.
+Each actor-learner learns separately and periodically sends updates to weights that have changed significantly to the other learners using peer-to-peer communication.
+
+\cite{tsitsiklis1994asynchronous} studied convergence properties of Q-learning in the asynchronous optimization setting.
+These results show that Q-learning is still guaranteed to converge when some of the information is outdated as long as outdated information is always eventually discarded and several other technical assumptions are satisfied.
+Even earlier, \cite{bertsekas1982distributed} studied the related problem of distributed dynamic programming.
+
+Another related area of work is in evolutionary methods, which are often straightforward to parallelize by distributing fitness evaluations over multiple machines or threads~\citep{tomassini1999parallel}.
+Such parallel evolutionary approaches have recently been applied to some visual reinforcement learning tasks.
+In one example, \cite{koutnik2014} evolved convolutional neural network controllers for the TORCS driving simulator by performing fitness evaluations on 8 CPU cores in parallel.

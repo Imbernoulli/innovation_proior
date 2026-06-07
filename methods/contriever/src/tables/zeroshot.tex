@@ -1,0 +1,55 @@
+\begin{table*}[t!]
+    \centering
+    \begin{tabular}{l | c c c c c}
+        \toprule
+        %Datasets & BM25 & Bert (Avg. repr. - cos. sim.) & SBert (cos. sim.) & MoCo \\
+        Datasets & BM25 & Bert & SBert & MoCo (500k) & MoCo w/oBERT (200k) \\
+        \midrule
+   MSMARCO       & 0.218 & & & 0.168 & 0.170 \\ \midrule
+   TREC-COVID    & 0.616 & 0.095 & 0.429 & 0.175 & 0.372 \\
+   NFCorpus      & 0.297 & 0.027 & 0.213 & 0.293 & 0.270 \\ \midrule
+   NQ            & 0.753 & 0.027 & 0.244 & 0.188 & 0.204 \\ 
+   HotpotQA      & 0.601 & 0.052 & 0.286 & 0.406 & 0.483 \\ 
+   FiQA-2018     & 0.239 & 0.012 & 0.147 & 0.181 & 0.149 \\ \midrule
+   ArguAna       & 0.441 & 0.237 & 0.345 & 0.400 & 0.389 \\
+   T\'ouche-2020 & 0.605 & 0.025 & 0.174 & 0.120 & 0.218 \\ \midrule 
+   Quora         & 0.742 & 0.478 & 0.831 & 0.737 & 0.678 \\ \midrule
+   DBPedia       & 0.288 & 0.036 & 0.249 & 0.220 & 0.320 \\ \midrule
+   SCIDOCS       & 0.156 & 0.023 & 0.096 & 0.145 & 0.134 \\ \midrule
+   FEVER         & 0.648 & 0.045 & 0.258 & 0.595 & 0.606 \\ 
+   Climate-FEVER & 0.179 & 0.027 & 0.137 & 0.144 & 0.144 \\ 
+   SciFact       & 0.620 & 0.067 & 0.323 & 0.669 & 0.630 \\ \midrule
+   AVERAGE       &  \\ 
+        \bottomrule
+    \end{tabular}
+    \caption{Zero-shot retrieval performance on \beir datasets. Scores denote \textbf{NDCG@10}.}
+    \label{tab:results-recall}
+\end{table*}
+
+
+\begin{table*}[t!]
+    \centering
+    \begin{tabular}{l | c c c c c }
+        \toprule
+        Datasets & BM25 & Bert & SBert & MoCo & MoCo w/o Bert \\
+        \midrule
+   MSMARCO       & 0.621 & & 0.546 & 0.609 & 0.581 \\ \midrule
+   TREC-COVID    & 0.447 & & & \\
+   NFCorpus      & 0.196 & 0.058 & 0.213 & 0.271 & 0.246 \\ \midrule
+   NQ            & 0.753 & 0.130 & 0.669 & 0.693 & 0.707 \\ 
+   HotpotQA      & 0.757 & 0.161 & 0.488 & 0.622 & 0.684 \\ 
+   FiQA-2018     & 0.505 & 0.065 & 0.414 & 0.457 & 0.406 \\ \midrule
+   ArguAna       & 0.931 & 0.591 & 0.919 & 0.934 & 0.897 \\  
+   T\'ouche-2020 & 0.463 & 0.028 & 0.216 & 0.207 & 0.247 \\ \midrule 
+   Quora         & 0.948 & 0.746 & 0.982 & 0.962 & 0.946 \\ \midrule
+   DBPedia       & 0.384 & 0.080 & 0.340 & 0.382 & 0.404 \\ \midrule
+   SCIDOCS       & 0.346 & 0.101 & 0.269 & 0.373 & 0.322 \\ \midrule
+   FEVER         & 0.908 & 0.108 & 0.550 & 0.919 & 0.918 \\ 
+   Climate-FEVER & 0.383 & 0.086 & 0.405 & 0.450 & 0.467 \\ 
+   SciFact       & 0.838 & 0.354 & 0.659 & 0.945 & 0.915 \\ \midrule
+   AVERAGE       \\ 
+        \bottomrule
+    \end{tabular}
+    \caption{Zero-shot retrieval performance on \beir datasets. Scores denote \textbf{Recall@100}.}
+    \label{tab:results-recall}
+\end{table*}

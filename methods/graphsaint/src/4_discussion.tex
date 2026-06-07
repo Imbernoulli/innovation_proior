@@ -1,0 +1,31 @@
+\section{Discussion\label{sec: discussion}}
+
+%0.5 page (End of page 6.0)
+
+
+\paragraph{Extensions} %{\graphsaint} can be extended in various ways. 
+{\graphsaint} admits two orthogonal extensions. 
+First, {\graphsaint} can seamlessly integrate other graph samplers. 
+Second, the idea of training by graph sampling is applicable to many GCN architecture variants:
+\begin{enumerate*}
+\item \textbf{Jumping knowledge} \citep{jk-net}: since our GCNs constructed during training are complete, applying skip connections to {\graphsaint} is straightforward. On the other hand, for some layer sampling methods \citep{fastgcn,as-gcn}, extra modification to their samplers is required, since the jumping knowledge architecture requires layer-$\ell$ samples to be a subset of layer-$\paren{\ell-1}$ samples\footnote{The skip-connection design proposed by \cite{as-gcn} does not have such ``subset'' requirement, and thus is compatible with both graph sampling and layer sampling based methods.}. 
+\item \textbf{Attention} \citep{gat,dna,gaan}: while explicit variance reduction is hard due to the dynamically updated attention values, it is reasonable to apply attention within the subgraphs which are considered as representatives of the full graph. Our loss and aggregator normalizations are also applicable\footnote{When applying {\graphsaint} to GAT \citep{gat}, we remove the softmax step which normalizes attention values within the same neighborhood, as suggested by \cite{as-gcn}. See Appendix \ref{appendix: config}.}.
+\item \textbf{Others}: To support high order layers \citep{high-order-1,high-order-2,high-order-3} or even more complicated networks for the task of graph classification \citep{diff-pool}, we replace the full adjacency matrix $\bm{A}$ with the (normalized) one for the subgraph $\bm{A}_s$ to perform layer propagation. 
+\end{enumerate*}
+%No other change is needed to switch from full batch training of these models to minibatch.
+
+
+
+\paragraph{Comparison} %{\graphsaint} differentiates itself from other methods.
+{\graphsaint} enjoys: 
+\begin{enumerate*}
+\item high scalability and efficiency,%constant neighborhood size in all layers,
+\item high accuracy, and%good inter-layer connectivity among minibatch nodes, and
+\item low training complexity.%small execution overhead due to sampling.
+\end{enumerate*}
+Point (1) is due to the significantly reduced neighborhood size compared with \cite{graphsage,gcn_web,s-gcn}. 
+Point (2) is due to the better inter-layer connectivity compared with \cite{fastgcn}, and unbiased minibatch estimator compared with \cite{cluster-gcn}. 
+Point (3) is due to the simple and trivially parallelizable pre-processing compared with the sampling of \cite{as-gcn} and clustering of \cite{cluster-gcn}. 
+% Point (2) improves accuracy and robustness on sparse graphs and deep nets by avoiding the overly sparse minibatches of \cite{fastgcn} (see Section \ref{sec: var}).
+% Point (3) reduces training time by decreasing the number of sampler invocations (compared with \cite{fastgcn,as-gcn}), and the cost of each invocation (compared with \cite{as-gcn}). 
+% {\graphsaint} is also significantly different from clustering based methods. [TODO: ... maybe add one table in Appendix to show overhead in clustering??]

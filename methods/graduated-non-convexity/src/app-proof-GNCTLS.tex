@@ -1,0 +1,14 @@
+%!TEX root = main.tex
+\section{Proof of Proposition~\ref{prop:GNCTLS}}
+The outlier process~\eqref{eq:outlierProcessGNCTLS} is derived by following the Black-Rangarajan procedure in Fig.~10 of~\cite{Black96ijcv-unification}. Therefore, we here prove the weight update rule in eq.~\eqref{eq:dualWeightUpdateGNCTLS}. To this end, we derive the gradient $g_i$ of the objective function with outlier process $\Phi_{\rho_{\mu}}(w_i) = \frac{\mu (1-w_i)}{ \mu + w_i}$ in eq.~\eqref{eq:weightUpdate} with respect to $w_i$:
+\bea\label{eq:aux_2}
+ g_i = \hatr_i^2 - \frac{\mu(\mu+1)}{(\mu + w_i)^2}\barcsq.
+\eea
+From eq.~\eqref{eq:aux_2} we observe that if $w_i = 0$, then $g_i = \hatr_i^2 - \frac{\mu+1}{\mu} \barcsq$; and if $w_i = 1$, then $g_i = \hatr_i^2 - \frac{\mu}{\mu+1} \barcsq$. Therefore, the global minimizer $w_i^\star$ can be obtained by setting the gradient $g_i$ to zero, leading to:
+\bea \label{eq:dualUpdateTLS}
+w_i^\star = \begin{cases}
+0 & \text{ if }\hatr_i^2 \in \left[ \frac{\mu+1}{\mu}\barcsq, +\infty \right] \\
+\frac{\barc}{\hatr_i}\sqrt{\mu(\mu+1)} - \mu & \text{ if } \hatr_i^2 \in \left[ \frac{\mu}{\mu+1}\barcsq ,\frac{\mu+1}{\mu}\barcsq \right] \\
+1 & \text{ if } \hatr_i^2 \in \left[ 0,\frac{\mu}{\mu+1}\barcsq \right]
+\end{cases}.
+\eea

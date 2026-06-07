@@ -1,0 +1,119 @@
+% !TEX root = main.tex
+After a short introduction to the supervised learning of convnets, we describe our unsupervised approach as well as the specificities of its optimization.
+
+\subsection{Preliminaries}
+Modern approaches to computer vision, based on statistical learning, require good image featurization.
+In this context, convnets are a popular choice for mapping raw images to a vector space of fixed dimensionality.
+When trained on enough data, they constantly achieve the best performance on standard classification benchmarks~\cite{he2015delving,krizhevsky2012imagenet}.
+We denote by $f_\theta$ the convnet mapping, where $\theta$ is the set of corresponding parameters.
+We refer to the vector obtained by applying this mapping to an image as feature or representation.
+Given a training set $X = \{x_1, x_2, \dots , x_N\}$ of $N$ images, we want to find a parameter $\theta^*$ such that the mapping $f_{\theta^*}$ produces good general-purpose features.
+
+These parameters are traditionally learned with supervision, \ie each image $x_n$ is associated with a label $y_n$ in $\{0,1\}^k$.
+This label represents the image's membership to one of $k$ possible predefined classes.
+A parametrized classifier $g_W$ predicts the correct labels on top of the features $f_\theta(x_n)$.
+The parameters $W$ of the classifier and the parameter $\theta$ of the mapping are then jointly learned by optimizing the following problem:
+\begin{eqnarray}\label{eq:sup}
+  \min_{\theta, W} \frac{1}{N} \sum_{n=1}^N \ell\left(g_W\left( f_\theta(x_n) \right), y_n\right),
+\end{eqnarray}
+where $\ell$ is the multinomial logistic loss, also known as the negative log-softmax function.
+This cost function is minimized using mini-batch stochastic gradient descent~\cite{bottou2012stochastic} and backpropagation to compute the gradient~\cite{lecun1998gradient}.
+
+
+\subsection{Unsupervised learning by clustering}
+When $\theta$ is sampled from a Gaussian distribution, without any learning, $f_\theta$ does not produce good features.
+However the performance of such random features on standard transfer tasks, is far above the chance level.
+For example, a multilayer perceptron classifier on top of the last convolutional layer of a random AlexNet achieves 12\% in accuracy on ImageNet while the chance is at $0.1\%$~\cite{noroozi2016unsupervised}.
+The good performance of random convnets is intimately tied to their convolutional structure which gives a strong prior on the input signal.
+The idea of this work is to exploit this weak signal to bootstrap the discriminative power of a convnet.
+We cluster the output of the convnet and use the subsequent cluster assignments as ``pseudo-labels'' to optimize Eq.~(\ref{eq:sup}).
+This deep clustering (DeepCluster) approach iteratively learns the features and groups them.
+
+Clustering has been widely studied and many approaches have been developed for a variety of circumstances. In the absence of points of comparisons,
+we focus on a standard clustering algorithm, $k$-means. Preliminary results with other clustering algorithms indicates that this choice is not crucial.
+$k$-means takes a set of vectors as input, in our case the features $f_\theta(x_n)$ produced by the convnet, and clusters them into $k$ distinct groups based on a geometric criterion.
+More precisely, it jointly learns a $d\times k$ centroid matrix $C$ and the cluster assignments $y_n$ of each image $n$ by solving the following problem:
+\begin{equation}
+\label{eq:kmeans}
+  \min_{C \in \mathbb{R}^{d\times k}}
+  \frac{1}{N}
+  \sum_{n=1}^N
+  \min_{y_n \in \{0,1\}^{k}}
+  \| f_\theta(x_n) -  C y_n \|_2^2
+  \quad
+  \text{such that}
+  \quad
+  y_n^\top 1_k = 1.
+\end{equation}
+Solving this problem provides a set of optimal assignments $(y_n^*)_{n\le N}$ and a centroid matrix $C^*$.
+These assignments are then used as pseudo-labels; we make no use of the centroid matrix.
+
+Overall, \OURS alternates between clustering the features to produce pseudo-labels using Eq.~(\ref{eq:kmeans})
+and updating the parameters of the convnet by predicting these pseudo-labels using Eq.~(\ref{eq:sup}).
+This type of alternating procedure is prone to trivial solutions; we describe how to avoid such degenerate solutions in the next section.
+
+
+\subsection{Avoiding trivial solutions}
+The existence of trivial solutions is not specific to the unsupervised training of neural networks, but to any method that jointly learns a discriminative classifier and the labels.
+Discriminative clustering suffers from this issue even when applied to linear models~\cite{xu2005maximum}.
+Solutions are typically based on constraining or penalizing the minimal number of points per cluster~\cite{bach2008diffrac,joulin2012convex}.
+These terms are computed over the whole dataset, which is not applicable to the training of convnets on large scale datasets.
+In this section, we briefly describe the causes of these trivial solutions and give simple and scalable workarounds.
+\\
+
+\noindent\textbf{Empty clusters.}
+A discriminative model learns decision boundaries between classes.
+An optimal decision boundary is to assign all of the inputs to a single cluster~\cite{xu2005maximum}.
+This issue is caused by the absence of mechanisms to prevent from empty clusters and arises in linear models as much as in convnets.
+A common trick used in feature quantization~\cite{johnson2017billion} consists in automatically reassigning empty clusters during the $k$-means optimization.
+More precisely, when a cluster becomes empty, we randomly select a non-empty cluster and use its centroid with a small random perturbation as the new centroid for the empty cluster.
+We then reassign the points belonging to the non-empty cluster to the two resulting clusters.
+\\
+
+\noindent\textbf{Trivial parametrization.}
+If the vast majority of images is assigned to a few clusters, the parameters $\theta$ will exclusively discriminate between them.
+In the most dramatic scenario where all but one cluster are singleton, minimizing Eq.~(\ref{eq:sup}) leads to a
+trivial parametrization where the convnet will predict the same output regardless of the input.
+This issue also arises in supervised classification when the number of images per class is highly unbalanced.
+For example, metadata, like hashtags, exhibits a Zipf distribution, with a few labels dominating the whole distribution~\cite{joulin2016learning}.
+A strategy to circumvent this issue is to sample images based on a uniform distribution over the classes, or pseudo-labels.
+This is equivalent to weight the contribution of an input to the loss function in Eq.~(\ref{eq:sup}) by the inverse of the size of its assigned cluster.
+
+
+\subsection{Implementation details}
+
+\noindent\textbf{Convnet architectures.}
+For comparison with previous works, we use a standard AlexNet~\cite{krizhevsky2012imagenet} architecture.
+It consists of five convolutional layers with $96$, $256$, $384$, $384$ and $256$ filters; and of three fully connected layers.
+We remove the Local Response Normalization layers and use batch normalization~\cite{ioffe2015batch}.
+We also consider a VGG-16~\cite{simonyan2014very} architecture with batch normalization.
+Unsupervised methods often do not work directly on color and different strategies have been considered as alternatives
+~\cite{doersch2015unsupervised,noroozi2016unsupervised}.
+We apply a fixed linear transformation based on Sobel filters to remove color and increase local contrast~\cite{bojanowski2017unsupervised,paulin2015local}.
+\\
+
+\noindent\textbf{Training data.}
+We train \OURS on ImageNet~\cite{deng2009imagenet} unless mentioned otherwise.
+It contains~$1.3$M images uniformly distributed into~$1,000$ classes.
+\\
+
+\noindent\textbf{Optimization.}
+We cluster the central cropped images features and perform data augmentation (random horizontal flips and crops of random sizes and aspect ratios) when training the network. 
+This enforces invariance to data augmentation which is useful for feature learning~\cite{dosovitskiy2014discriminative}.
+The network is trained with dropout~\cite{srivastava2014dropout}, a constant step size, an~$\ell_2$
+penalization of the weights~$\theta$ and a momentum of~$0.9$.
+Each mini-batch contains $256$ images.
+For the clustering, features are PCA-reduced to $256$ dimensions, whitened and $\ell_2$-normalized.
+We use the $k$-means implementation of Johnson~\etal~\cite{johnson2017billion}.
+Note that running k-means takes a third of the time because a forward pass on the full dataset is needed.
+One could reassign the clusters every $n$ epochs, but we found out that our setup on ImageNet (updating the clustering every epoch) was nearly optimal.
+On Flickr, the concept of epoch disappears: choosing the tradeoff between the parameter updates and the cluster reassignments is more subtle.
+We thus kept almost the same setup as in ImageNet.
+We train the models for $500$ epochs, which takes $12$ days on a Pascal P100 GPU for AlexNet.
+\\
+
+\noindent\textbf{Hyperparameter selection.}
+We select hyperparameters on a down-stream task,~\ie, object classification on
+the validation set of \textsc{Pascal} VOC with no fine-tuning.
+We use the publicly available code of Kr\"ahenb\"uhl\footnote{https://github.com/philkr/voc-classification}.
+

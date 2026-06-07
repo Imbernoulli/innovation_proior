@@ -1,0 +1,825 @@
+We first provide more results for \modelname with different backbones as well as test-set performance on  standard benchmarks (\appref{app:results}): We use COCO panoptic~\cite{kirillov2017panoptic} for panoptic, COCO~\cite{lin2014coco} for instance, and ADE20K~\cite{zhou2017ade20k} for semantic segmentation. Then, we provide more detailed results on additional datasets (\appref{app:datasets}). Finally, we provide additional ablation studies (\appref{app:abl}) and visualization of \modelname predictions for all three segmentation tasks (\appref{app:vis}).
+
+\begin{table*}[t]
+  \centering
+
+  \tablestyle{4pt}{1.2}\scriptsize\begin{tabular}{c|l | lcc | x{20}x{20}x{20} | x{20}x{20} |x{24}x{24}}
+  & method & backbone & search space & epochs & PQ & PQ$^\text{Th}$ & PQ$^\text{St}$ & AP$^\text{Th}_\text{pan}$ & mIoU$_\text{pan}$ & \#params. & FLOPs \\
+  \shline
+  \multirow{8}{*}{\rotatebox{90}{CNN backbones}}
+  & \multirow{2}{*}{DETR~\cite{detr}}
+  & R50 & 100 queries & 500+25 & 43.4 & 48.2 & 36.3 & 31.1 & - & - & - \\
+  & & R101 & 100 queries & 500+25 & 45.1 & 50.5 & 37.0 & 33.0 & - & - & - \\
+  \cline{2-12}
+  & K-Net~\cite{zhang2021knet}
+  & R50 & 100 queries & 36 & 47.1 & 51.7 & 40.3 & - & - & - & - \\
+  & Panoptic SegFormer~\cite{li2021panopticsegformer}
+  & R50 & 400 queries & 50 & 50.0 & 56.1 & 40.8 & - & - & 47M & \phantom{0}246G \\
+  \cline{2-12}
+  & \multirow{2}{*}{MaskFormer~\cite{cheng2021maskformer}}
+  & R50 & 100 queries & 300 & 46.5 & 51.0 & 39.8 & 33.0 & 57.8 & \phantom{0}45M & \phantom{0}181G \\
+  & & R101 & 100 queries & 300 & 47.6 & 52.5 & 40.3 & 34.1 & 59.3 & \phantom{0}64M & \phantom{0}248G \\
+  \cline{2-12}
+  & \multirow{2}{*}{\textbf{\modelname} (ours)}
+  & R50 & 100 queries & 50 & 51.9 & 57.7 & 43.0 & 41.7 & 61.7 & \phantom{0}44M & \phantom{0}226G \\
+  & & R101 & 100 queries & 50 & \textbf{52.6} & \textbf{58.5} & \textbf{43.7} & \textbf{42.6} & \textbf{62.4} & \phantom{0}63M & \phantom{0}293G \\
+  \hline\hline
+  \multirow{14}{*}{\rotatebox{90}{Transformer backbones}}
+  & \multirow{2}{*}{Max-DeepLab~\cite{wang2021max}}
+  & Max-S & 128 queries & 216 & 48.4 & 53.0 & 41.5 & - & - & \phantom{0}62M & \phantom{0}324G \\
+  & & Max-L & 128 queries & 216 & 51.1 & 57.0 & 42.2 & - & - & 451M & 3692G \\
+  \cline{2-12}
+  & Panoptic SegFormer~\cite{li2021panopticsegformer}
+  & PVTv2-B5~\cite{wang2021pvtv2} & 400 queries & 50 & 54.1 & 60.4 & 44.6 & - & - & 101M & \phantom{0}391G \\
+  & K-Net~\cite{zhang2021knet}
+  & Swin-L$^{\text{\textdagger}}$ & 100 queries & 36 & 54.6 & 60.2 & 46.0 & - & - & - & - \\
+  \cline{2-12}
+  & \multirow{5}{*}{MaskFormer~\cite{cheng2021maskformer}}
+  & Swin-T & 100 queries & 300 & 47.7 & 51.7 & 41.7 & 33.6 & 60.4 & \phantom{0}42M & \phantom{0}179G \\
+  & & Swin-S & 100 queries & 300 & 49.7 & 54.4 & 42.6 & 36.1 & 61.3 & \phantom{0}63M & \phantom{0}259G \\
+  & & Swin-B & 100 queries & 300 & 51.1 & 56.3 & 43.2 & 37.8 & 62.6 & 102M & \phantom{0}411G \\
+  & & Swin-B$^{\text{\textdagger}}$ & 100 queries & 300 & 51.8 & 56.9 & 44.1 & 38.5 & 63.6 & 102M & \phantom{0}411G \\
+  & & Swin-L$^{\text{\textdagger}}$ & 100 queries & 300 & 52.7 & 58.5 & 44.0 & 40.1 & 64.8 & 212M & \phantom{0}792G \\
+  \cline{2-12}
+  & \multirow{5}{*}{\textbf{\modelname} (ours)}
+  & Swin-T & 100 queries & 50 & 53.2 & 59.3 & 44.0 & 43.3 & 63.2 & \phantom{0}47M & \phantom{0}232G \\
+  & & Swin-S & 100 queries & 50 & 54.6 & 60.6 & 45.7 & 44.7 & 64.2 & \phantom{0}69M & \phantom{0}313G \\
+  & & Swin-B & 100 queries & 50 & 55.1 & 61.0 & 46.1 & 45.2 & 65.1 & 107M & \phantom{0}466G \\
+  & & Swin-B$^{\text{\textdagger}}$ & 100 queries & 50 & 56.4 & 62.4 & 47.3 & 46.3 & 67.1 & 107M & \phantom{0}466G \\
+  & & Swin-L$^{\text{\textdagger}}$ & \emph{200 queries} & \emph{100} & \textbf{57.8} & \textbf{64.2} & \textbf{48.1} & \textbf{48.6} & \textbf{67.4} & 216M & \phantom{0}868G \\
+  \end{tabular}
+
+  \caption{\textbf{Panoptic segmentation on COCO panoptic \texttt{val2017} with 133 categories.} \modelname outperforms \emph{all} existing panoptic segmentation models by a large margin with different backbones on all metrics. Our best model sets a new state-of-the-art of $57.8$ PQ.
+   Besides PQ for panoptic segmentation, we also report AP$^\text{Th}_\text{pan}$ (the AP evaluated on the 80 ``thing'' categories using \emph{instance segmentation annotation}) and mIoU$_\text{pan}$ (the mIoU evaluated on the 133 categories for semantic segmentation converted from panoptic segmentation annotation) of the same model trained for panoptic segmentation (\textbf{note: we train all our models with panoptic segmentation annotation only}).
+Backbones pre-trained on ImageNet-22K are marked with $^{\text{\textdagger}}$.
+}
+\label{tab:panseg:coco_full}
+\end{table*}
+
+\begin{table*}[t]
+  \centering
+
+  \tablestyle{5pt}{1.2}\scriptsize\begin{tabular}{ll | x{20}x{20}x{20} | x{20}x{20}}
+  method & backbone & PQ & PQ$^\text{Th}$ & PQ$^\text{St}$ & SQ & RQ \\
+  \shline
+  Max-DeepLab~\cite{wang2021max} & Max-L & 51.3 & 57.2 & 42.4 & 82.5 & 61.3 \\
+  Panoptic FCN~\cite{li2021fully} & Swin-L & 52.7 & 59.4 & 42.5 & - & - \\
+  MaskFormer~\cite{cheng2021maskformer} & Swin-L & 53.3 & 59.1 & 44.5 & 82.0 & 64.1 \\
+  Panoptic SegFormer~\cite{li2021panopticsegformer} & PVTv2-B5~\cite{wang2021pvtv2} & 54.4 & 61.1 & 44.3 & 83.3 & 64.6 \\
+  K-Net~\cite{zhang2021knet} & Swin-L & 55.2 & 61.2 & 46.2 & - & - \\
+  \hline
+  Megvii (challenge winner) & - & 54.7 & 64.6 & 39.8 & 83.6 & 64.3 \\
+  \hline
+  \textbf{\modelname} (ours) & Swin-L & \textbf{58.3} & \textbf{65.1} & \textbf{48.1} & \textbf{84.1} & \textbf{68.6} \\
+  \end{tabular}
+
+  \caption{\textbf{Panoptic segmentation on COCO panoptic \texttt{test-dev} with 133 categories.} \modelname, without any bells-and-whistles, outperforms the challenge winner (which uses extra training data, model ensemble, \etc) on the \texttt{test-dev} set. We only train our model on the COCO \texttt{train2017} set with ImageNet-22K pre-trained checkpoint.
+}
+
+\label{tab:panseg:coco_test_dev}
+\end{table*}
+
+\begin{table*}[t]
+  \centering
+
+  \tablestyle{5pt}{1.2}\scriptsize\begin{tabular}{c|l| lcc | x{20}x{20}x{20}x{20} | x{30} |x{24}x{24}}
+  & method & backbone & search space & epochs & AP & AP$^\text{S}$ & AP$^\text{M}$ & AP$^\text{L}$ & AP$^\text{boundary}$ & \#params. & FLOPs \\
+  \shline
+  \multirow{6}{*}{\rotatebox{90}{CNN backbones}}
+  & \multirow{4}{*}{Mask R-CNN~\cite{he2017mask}}
+  & \demph{R50} & \demph{dense anchors} & \demph{36} & \demph{37.2} & \demph{18.6} & \demph{39.5} & \demph{53.3} & \demph{23.1} & \demph{\phantom{0}44M} & \phantom{0}\demph{201G} \\
+  & & R50 & dense anchors & 400 & 42.5 & 23.8 & 45.0 & 60.0 & 28.0 & \phantom{0}46M & \phantom{0}358G \\
+  \cline{3-12}
+  & & \demph{R101} & \demph{dense anchors} & \demph{36} & \demph{38.6} & \demph{19.5} & \demph{41.3} & \demph{55.3} & \demph{24.5} & \demph{\phantom{0}63M} & \phantom{0}\demph{266G} \\
+  & & R101 & dense anchors & 400 & 43.7 & \textbf{24.6} & 46.4 & 61.8 & 29.1 & \phantom{0}65M & \phantom{0}423G \\
+  \cline{2-12}
+  & \multirow{2}{*}{\textbf{\modelname} (ours)}
+  & R50 & 100 queries & 50 & 43.7 & 23.4 & 47.2 & 64.8 & 30.6 & \phantom{0}44M & \phantom{0}226G \\
+  & & R101 & 100 queries & 50 & \textbf{44.2} & 23.8 & \textbf{47.7} & \textbf{66.7} & \textbf{31.1} & \phantom{0}63M & \phantom{0}293G \\
+  \hline\hline
+  \multirow{8}{*}{\rotatebox{90}{Transformer backbones}}
+  & QueryInst~\cite{QueryInst} & Swin-L$^{\text{\textdagger}}$ & 300 queries & 50 & 48.9 & 30.8 & 52.6 & 68.3 & 33.5 & - & - \\
+  \cline{2-12}
+  & \multirow{2}{*}{Swin-HTC++~\cite{liu2021swin,chen2019hybrid}}
+   & Swin-B$^{\text{\textdagger}}$ & dense anchors & 36 & 49.1 & - & - & - & - & 160M & 1043G \\
+  & & Swin-L$^{\text{\textdagger}}$ & dense anchors & 72 & 49.5 & \textbf{31.0} & 52.4 & 67.2 & 34.1 & 284M & 1470G \\
+  \cline{2-12}
+  & \multirow{5}{*}{\textbf{\modelname} (ours)}
+   & Swin-T & 100 queries & 50 & 45.0 & 24.5 & 48.3 & 67.4 & 31.8 & \phantom{0}47M & \phantom{0}232G \\
+  & & Swin-S & 100 queries & 50 & 46.3 & 25.3 & 50.3 & 68.4 & 32.9 & \phantom{0}69M & \phantom{0}313G \\
+  & & Swin-B & 100 queries & 50 & 46.7 & 26.1 & 50.5 & 68.8 & 33.2 & 107M & \phantom{0}466G \\
+  & & Swin-B$^{\text{\textdagger}}$ & 100 queries & 50 & 48.1 & 27.8 & 52.0 & 71.1 & 34.4 & 107M & \phantom{0}466G \\
+  & & Swin-L$^{\text{\textdagger}}$ & \emph{200 queries} & \emph{100} & \textbf{50.1} & 29.9 & \textbf{53.9} & \textbf{72.1} & \textbf{36.2} & 216M & \phantom{0}868G \\
+  \end{tabular}
+
+   \caption{\textbf{Instance segmentation on COCO \texttt{val2017} with 80 categories.} \modelname outperforms strong Mask R-CNN~\cite{he2017mask} baselines with $8\x$ fewer training epochs for both AP and AP$^\text{boundary}$~\cite{cheng2021boundary} metrics. Our best model is also competitive to the state-of-the-art specialized instance segmentation model on COCO and has higher boundary quality. For a fair comparison, we only consider single-scale inference and models trained using only COCO \texttt{train2017} set data.
+Backbones pre-trained on ImageNet-22K are marked with $^{\text{\textdagger}}$.}
+
+\label{tab:insseg:coco_full}
+\end{table*}
+
+
+\begin{table*}[t]
+  \centering
+
+  \tablestyle{5pt}{1.2}\scriptsize\begin{tabular}{ll | x{20}x{20}x{20} | x{20}x{20}x{20}}
+  method & backbone & AP & AP50 & AP75 & AP$^\text{S}$ & AP$^\text{M}$ & AP$^\text{L}$ \\
+  \shline
+  QueryInst~\cite{QueryInst} & Swin-L & 49.1 & 74.2 & 53.8 & \textbf{31.5} & 51.8 & 63.2 \\
+  Swin-HTC++~\cite{liu2021swin,chen2019hybrid} & Swin-L & 50.2 & - & - & - & - & - \\
+  \demph{Swin-HTC++~\cite{liu2021swin,chen2019hybrid} (multi-scale)} & \demph{Swin-L} & \demph{51.1} & \demph{-} & \demph{-} & \demph{-} & \demph{-} & \demph{-} \\
+  \hline
+  \demph{Megvii (challenge winner)} & \demph{-} & \demph{53.1} & \demph{76.8} & \demph{58.6} & \demph{36.6} & \demph{56.5} & \demph{67.7} \\
+  \hline
+  \textbf{\modelname} (ours) & Swin-L & \textbf{50.5} & \textbf{74.9} & \textbf{54.9} & 29.1 & \textbf{53.8} & \textbf{71.2} \\
+  \end{tabular}
+
+  \caption{\textbf{Instance segmentation on COCO \texttt{test-dev} with 80 categories.} \modelname is extremely good at segmenting large objects: we can even outperform the challenge winner (which uses extra training data, model ensemble, \etc) on AP$^\text{L}$ by a large margin without any bells-and-whistles. We only train our model on the COCO \texttt{train2017} set with ImageNet-22K pre-trained checkpoint.
+}
+
+\label{tab:insseg:coco_test_dev}
+\end{table*}
+
+
+\begin{table*}[t]
+  \centering
+  \tablestyle{5pt}{1.2}
+  \scriptsize
+  \begin{tabular}{c|l | lc | x{40}x{44}x{28}x{28}}
+  & method & backbone & crop size & mIoU (s.s.) & mIoU (m.s.) & \#params. & FLOPs \\
+  \shline
+  \multirow{4}{*}{\rotatebox{90}{CNN}}
+  & \multirow{2}{*}{MaskFormer~\cite{cheng2021maskformer}}
+  & R50 & $512 \x 512$ & 44.5 & 46.7 & \phantom{0}41M & \phantom{0}53G \\
+  & & R101 & $512 \x 512$ & 45.5 & 47.2 & \phantom{0}60M & \phantom{0}73G \\
+  \cline{2-8}
+  & \multirow{2}{*}{\textbf{\modelname} (ours)}
+  & R50 & $512 \x 512$ & 47.2 & 49.2 & \phantom{0}44M & \phantom{0}71G \\
+  & & R101 & $512 \x 512$ & \textbf{47.8} & \textbf{50.1} & \phantom{0}63M & \phantom{0}90G \\
+  \hline\hline
+  \multirow{14}{*}{\rotatebox{90}{Transformer backbones}}
+  & Swin-UperNet~\cite{liu2021swin,xiao2018unified} & Swin-L$^{\text{\textdagger}}$ & $640 \x 640$ & - & 53.5 & 234M & 647G \\
+  & FaPN-MaskFormer~\cite{fapn,cheng2021maskformer} & Swin-L$^{\text{\textdagger}}$ & $640 \x 640$ & 55.2 & 56.7 & - & - \\
+  & BEiT-UperNet~\cite{beit,xiao2018unified} & BEiT-L$^{\text{\textdagger}}$ & $640 \x 640$ & - & 57.0 & 502M & - \\
+  \cline{2-8}
+  & \multirow{5}{*}{MaskFormer~\cite{cheng2021maskformer}}
+  & Swin-T & $512 \x 512$ & 46.7 & 48.8 & \phantom{0}42M & \phantom{0}55G \\
+  & & Swin-S & $512 \x 512$ & 49.8 & 51.0 & \phantom{0}63M & \phantom{0}79G \\
+  & & Swin-B & $640 \x 640$ & 51.1 & 52.3 & 102M & 195G \\
+  & & Swin-B$^{\text{\textdagger}}$ & $640 \x 640$ & 52.7 & 53.9 & 102M & 195G \\
+  & & Swin-L$^{\text{\textdagger}}$ & $640 \x 640$ & 54.1 & 55.6 & 212M & 375G \\
+  \cline{2-8}
+  & \multirow{6}{*}{\textbf{\modelname} (ours)}
+  & Swin-T & $512 \x 512$ & 47.7 & 49.6 & \phantom{0}47M & \phantom{0}74G \\
+  & & Swin-S & $512 \x 512$ & 51.3 & 52.4 & \phantom{0}69M & \phantom{0}98G \\
+  & & Swin-B & $640 \x 640$ & 52.4 & 53.7 & 107M & 223G \\
+  & & Swin-B$^{\text{\textdagger}}$ & $640 \x 640$ & 53.9 & 55.1 & 107M & 223G \\
+  & & Swin-L$^{\text{\textdagger}}$ & $640 \x 640$ & 56.1 & 57.3 & 215M & 403G \\
+  & & Swin-L-FaPN$^{\text{\textdagger}}$ & $640 \x 640$ & \textbf{56.4} & \textbf{57.7} & 217M & - \\
+  \end{tabular}
+
+  \caption{\textbf{Semantic segmentation on ADE20K \texttt{val} with 150 categories.} \modelname consistently outperforms MaskFormer~\cite{cheng2021maskformer} by a large margin with different backbones (all \modelname models use MSDeformAttn~\cite{zhu2021deformable} as pixel decoder, except Swin-L-FaPN uses FaPN~\cite{fapn}). Our best model outperforms the best specialized model, BEiT~\cite{beit}, with less than half of the parameters. We report both single-scale (s.s.) and multi-scale (m.s.) inference results.
+  Backbones pre-trained on ImageNet-22K are marked with $^{\text{\textdagger}}$.}
+
+\label{tab:semseg:ade20k_full}
+\end{table*}
+
+\begin{table*}[ht!]
+  \centering
+
+  \tablestyle{5pt}{1.2}\scriptsize\begin{tabular}{ll| x{30}x{30}x{30}}
+  method & backbone & P.A. & mIoU & score \\
+  \shline
+  SETR~\cite{zheng2021rethinking} & ViT-L & 78.35 & 45.03 & 61.69 \\
+  Swin-UperNet~\cite{liu2021swin,xiao2018unified} & Swin-L & 78.42 & 47.07 & 62.75 \\
+  MaskFormer~\cite{cheng2021maskformer} & Swin-L & 79.36 & 49.67 & 64.51 \\
+  \hline
+  \textbf{\modelname} (ours) & Swin-L-FaPN & \textbf{79.80} & \textbf{49.72} & \textbf{64.76} \\
+  \end{tabular}
+
+  \caption{\textbf{Semantic segmentation on ADE20K \texttt{test} with 150 categories.} \modelname outperforms previous state-of-the-art methods on all three metrics: pixel accuracy (P.A.), mIoU, as well as the final test score (average of P.A. and mIoU). We train our model on the union of ADE20K \texttt{train} and \texttt{val} set with ImageNet-22K pre-trained checkpoint following~\cite{cheng2021maskformer} and use multi-scale inference.}
+
+\label{tab:semseg:ade20k_test}
+\end{table*}
+
+\begin{table*}[t]
+  \centering
+
+  \tablestyle{4pt}{1.2}\scriptsize\begin{tabular}{l|l | x{28}x{28}x{28}x{28} | x{28}x{28} |x{36}x{36}}
+  & & \multicolumn{4}{c|}{panoptic model} & \multicolumn{2}{c|}{instance model} & \multicolumn{2}{c}{semantic model} \\
+  method & backbone & PQ (s.s.) & \demph{PQ (m.s.)} & AP$^\text{Th}_\text{pan}$ & mIoU$_\text{pan}$ & AP & AP50 & mIoU (s.s.) & mIoU (m.s.) \\
+  \shline
+  \multirow{3}{*}{Panoptic-DeepLab~\cite{cheng2020panoptic}}
+  & R50 & 60.3 & - & 32.1 & 78.7 & - & - & - & - \\
+  & X71~\cite{chollet2017xception} & 63.0 & \demph{64.1} & 35.3 & 80.5 & - & - & - & - \\
+  & SWideRNet~\cite{chen2020scaling} & 66.4 & \demph{67.5} & 40.1 & 82.2 & - & - & - & - \\
+  \cline{1-10}
+  Panoptic FCN~\cite{li2021fully} & Swin-L$^{\text{\textdagger}}$ & 65.9 & - & - & - & - & - & - & - \\
+  \cline{1-10}
+  Segmenter~\cite{strudel2021segmenter} & ViT-L$^{\text{\textdagger}}$ & - & - & - & - & - & - & - & 81.3 \\
+  SETR~\cite{zheng2021rethinking} & ViT-L$^{\text{\textdagger}}$ & - & - & - & - & - & - & - & 82.2 \\
+  SegFormer~\cite{xie2021segformer} & MiT-B5 & - & - & - & - & - & - & - & 84.0 \\
+  \hline\hline
+  \multirow{6}{*}{\textbf{\modelname} (ours)}
+  & R50\phantom{$^{\text{\textdagger}}$} & 62.1 & - & 37.3 & 77.5 & 37.4 & 61.9 & 79.4 & 82.2 \\
+  & R101\phantom{$^{\text{\textdagger}}$} & 62.4 & - & 37.7 & 78.6 & 38.5 & 63.9 & 80.1 & 81.9 \\
+  \cline{2-10}
+  & Swin-T\phantom{$^{\text{\textdagger}}$} & 63.9 & - & 39.1 & 80.5 & 39.7 & 66.9 & 82.1 & 83.0 \\
+  & Swin-S\phantom{$^{\text{\textdagger}}$} & 64.8 & - & 40.7 & 81.8 & 41.8 & 70.4 & 82.6 & 83.6 \\
+  & Swin-B$^{\text{\textdagger}}$ & 66.1 & - & 42.8 & 82.7 & 42.0 & 68.8 & \textbf{83.3} & \textbf{84.5} \\
+  & Swin-L$^{\text{\textdagger}}$ & \textbf{66.6} & - & \textbf{43.6} & \textbf{82.9} & \textbf{43.7} & \textbf{71.4} & \textbf{83.3} & 84.3 \\
+  \end{tabular}
+
+  \caption{\textbf{Image segmentation results on Cityscapes \texttt{val}.} We report both single-scale (s.s.) and multi-scale (m.s.) inference results for PQ and mIoU. All other metrics are evaluated with \emph{single-scale} inference. Since \modelname is an end-to-end model, we only use single-scale inference for instance-level segmentation tasks to avoid the need for further post-processing (\eg, NMS). }
+
+\label{tab:benchmark:cityscapes_full}
+\end{table*}
+
+
+\begin{table*}[t]
+  \centering
+
+  \tablestyle{3pt}{1.2}\scriptsize\begin{tabular}{l|l | x{28}x{28}x{28} | x{20}x{20}x{20}x{20} |x{36}x{36}}
+  & & \multicolumn{3}{c|}{panoptic model} & \multicolumn{4}{c|}{instance model} & \multicolumn{2}{c}{semantic model} \\
+  method & backbone & PQ & AP$^\text{Th}_\text{pan}$ & mIoU$_\text{pan}$ & AP & AP$^\text{S}$ & AP$^\text{M}$ & AP$^\text{L}$ & mIoU (s.s.) & mIoU (m.s.) \\
+  \shline
+  MaskFormer~\cite{cheng2021maskformer} & R50 & 34.7\phantom{$^*$} & - & - & - & - & - & - & - & - \\
+  Panoptic-DeepLab~\cite{cheng2020panoptic} & SWideRNet~\cite{chen2020scaling} & 37.9$^*$ & - & 50.0$^*$ & - & - & - & - & - & - \\
+  \hline
+  Swin-UperNet~\cite{liu2021swin,xiao2018unified} & Swin-L$^{\text{\textdagger}}$ & - & - & - & - & - & - & - & - & 53.5 \\
+  MaskFormer~\cite{cheng2021maskformer} & Swin-L$^{\text{\textdagger}}$ & - & - & - & - & - & - & - & 54.1 & 55.6 \\
+  FaPN-MaskFormer~\cite{fapn,cheng2021maskformer} & Swin-L$^{\text{\textdagger}}$ & - & - & - & - & - & - & - & 55.2 & 56.7 \\
+  BEiT-UperNet~\cite{beit,xiao2018unified} & BEiT-L$^{\text{\textdagger}}$ & - & - & - & - & - & - & - & - & 57.0 \\
+  \hline\hline
+  \multirow{3}{*}{\textbf{\modelname} (ours)} & R50\phantom{$^{\text{\textdagger}}$}
+  & 39.7\phantom{$^*$} & 26.5 & 46.1\phantom{$^*$} & 26.4 & 10.4 & 28.9 & 43.1 & 47.2 & 49.2 \\
+  & Swin-L$^{\text{\textdagger}}$ & \textbf{48.1}\phantom{$^*$} & \textbf{34.2} & 54.5\phantom{$^*$} & \textbf{34.9} & \textbf{16.3} & \textbf{40.0} & \textbf{54.7} & 56.1 & 57.3 \\
+  & Swin-L-FaPN$^{\text{\textdagger}}$ & 46.2\phantom{$^*$} & 33.2 & \textbf{55.4}\phantom{$^*$} & 33.4 & 14.6 & 37.6 & 54.6 & \textbf{56.4} & \textbf{57.7} \\
+  \end{tabular}
+
+   \caption{\textbf{Image segmentation results on ADE20K \texttt{val}.}  \modelname is competitive to specialized models on ADE20K. Panoptic segmentation models use single-scale inference by default, multi-scale numbers are marked with~$^*$. For semantic segmentation, we report both single-scale (s.s.) and multi-scale (m.s.) inference results. }
+
+\label{tab:benchmark:ade20k}
+\end{table*}
+
+
+
+
+
+
+\begin{table*}[t]
+  \centering
+
+  \tablestyle{5pt}{1.2}\scriptsize\begin{tabular}{l|l | x{36}x{36} | x{36}x{36}}
+  & & \multicolumn{2}{c|}{panoptic model} & \multicolumn{2}{c}{semantic model} \\
+  method & backbone & PQ & mIoU$_\text{pan}$ & mIoU (s.s.) & mIoU (m.s.) \\
+  \shline
+  \multirow{3}{*}{Panoptic-DeepLab~\cite{cheng2020panoptic}}
+  & ensemble & 42.2$^*$ & 58.7$^*$ & -  & - \\
+  & SWideRNet~\cite{chen2020scaling} & 43.7\phantom{$^*$} & 59.4\phantom{$^*$} & - & -  \\
+  & SWideRNet~\cite{chen2020scaling} & 44.8$^*$ & 60.0$^*$ & - & -  \\
+  \hline
+  Panoptic FCN~\cite{li2021fully} & Swin-L$^{\text{\textdagger}}$ & \textbf{45.7}\phantom{$^*$} & -\phantom{$^*$} & - & - \\
+  \hline
+  MaskFormer~\cite{cheng2021maskformer} & R50 & -\phantom{$^*$} & -\phantom{$^*$} & 53.1 & 55.4 \\
+  HMSANet~\cite{tao2020hierarchical} & HRNet~\cite{WangSCJDZLMTWLX19hrnet} & -\phantom{$^*$} & -\phantom{$^*$} & - & 61.1 \\
+  \hline\hline
+  \multirow{2}{*}{\textbf{\modelname} (ours)} &
+  R50\phantom{$^{\text{\textdagger}}$} & 36.3\phantom{$^*$} & 50.7\phantom{$^*$} & 57.4 & 59.0 \\
+  & Swin-L$^{\text{\textdagger}}$ & \textbf{45.5}\phantom{$^*$} & \textbf{60.8}\phantom{$^*$} & \textbf{63.2} & \textbf{64.7} \\
+  \end{tabular}
+
+   \caption{\textbf{Image segmentation results on Mapillary Vistas \texttt{val}.}  \modelname is competitive to specialized models on Mapillary Vistas. Panoptic segmentation models use single-scale inference by default, multi-scale numbers are marked with~$^*$. For semantic segmentation, we report both single-scale (s.s.) and multi-scale (m.s.) inference results. }
+
+\label{tab:benchmark:mapillary}
+\end{table*}
+
+
+\section{Additional results}
+\label{app:results}
+Here, we provide more results of \modelname with different backbones on COCO panoptic~\cite{kirillov2017panoptic} for panoptic segmentation, COCO~\cite{lin2014coco} for instance segmentation and ADE20K~\cite{zhou2017ade20k} for semantic segmentation. More specifically, for each benckmark, we evaluate \modelname with ResNet~\cite{he2016deep} with 50 and 101 layers, as well as Swin~\cite{liu2021swin} Tiny, Small, Base and Large variants as backbones. We use ImageNet~\cite{Russakovsky2015} pre-trained checkpoints to initialize backbones.
+
+\subsection{Panoptic segmentation.}
+\label{app:results:panoptic}
+
+In \tabref{tab:panseg:coco_full}, we report \modelname with various backbones on COCO panoptic \texttt{val2017}. \modelname outperforms \emph{all} existing panoptic segmentation models with various backbones. Our best model sets a new state-of-the-art of $57.8$ PQ.
+
+In \tabref{tab:panseg:coco_test_dev}, we further report the best \modelname model on the \texttt{test-dev} set. Note that \modelname \textbf{trained only with the standard \texttt{train2017} data}, achieves the \emph{absolute} new state-of-the-art performance on both validation and test set. \modelname even outperforms the best COCO competition entry which uses extra training data and test-time augmentation.
+
+\subsection{Instance segmentation.}
+\label{app:results:instance}
+
+In \tabref{tab:insseg:coco_full}, we report \modelname results obtained with various backbones on COCO \texttt{val2017}. \modelname outperforms the best single-scale model, HTC++~\cite{liu2021swin,chen2019hybrid}. Note that it is non-trivial to do multi-scale inference for instance-level segmentation tasks without introducing complex post-processing like non-maximum suppression. Thus, we only compare \modelname with other  single-scale inference models. We believe multi-scale inference can further improve \modelname performance and it remains an interesting future work.
+
+In \tabref{tab:insseg:coco_test_dev}, we further report the best \modelname model on the \texttt{test-dev} set. \modelname achieves the \emph{absolute} new state-of-the-art performance on both validation and test set. On the one hand, \modelname is extremely good at segmenting large objects: we can even outperform the challenge winner (which uses extra training data, model ensemble, \etc) on AP$^\text{L}$ by a large margin without any bells-and-whistles. On the other hand, the poor performance on small objects leaves room for further improvement in the future.
+
+\subsection{Semantic segmentation.}
+\label{app:results:semantic}
+
+In \tabref{tab:semseg:ade20k_full}, we report \modelname results obtained with various backbones on ADE20K \texttt{val}. \modelname outperforms \emph{all} existing semantic segmentation models with various backbones. Our best model sets a new state-of-the-art of $57.7$ mIoU.
+
+In \tabref{tab:semseg:ade20k_test}, we further report the best \modelname model on the \texttt{test} set. Following~\cite{cheng2021maskformer}, we train \modelname on the union of ADE20K \texttt{train} and \texttt{val} set with ImageNet-22K pre-trained checkpoint and use multi-scale inference. \modelname is able to outperform previous state-of-the-art methods on all metrics.
+
+\section{Additional datasets}
+\label{app:datasets}
+
+We study \modelname on three image segmentation tasks (panoptic, instance and semantic segmentation) using four datasets. Here we report additional results on Cityscapes~\cite{Cordts2016Cityscapes}, ADE20K~\cite{zhou2017ade20k} and Mapillary Vistas~\cite{neuhold2017mapillary} as well as more detailed training settings.
+
+\subsection{Cityscapes}
+Cityscapes is an urban egocentric street-view dataset with high-resolution images ($1024 \x 2048$ pixels). It contains 2975 images for training, 500 images for validation and 1525 images for testing with a total of 19 classes.
+
+\noindent\textbf{Training settings.} For all three segmentation tasks: we use a crop size of $512 \x 1024$, a batch size of 16 and train all models for 90k iterations. During inference, we operate on the whole image ($1024 \x 2048$). Other implementation details largely follow Section 4.1
+(panoptic and instance segmentation follow semantic segmentation training settings), except that we use 200 queries for panoptic and instance segmentation models with Swin-L backbone. All other backbones or semantic segmentation models use 100 queries.
+
+\noindent\textbf{Results.} In \tabref{tab:benchmark:cityscapes_full}, we report \modelname results obtained with various backbones on Cityscapes for three segmentation tasks and compare it with other state-of-the-art methods \emph{without using extra data}. For panoptic segmentation, \modelname with Swin-L backbone outperforms the state-of-the-art Panoptic-DeepLab~\cite{cheng2020panoptic} with SWideRnet~\cite{chen2020scaling} using single-scale inference. For semantic segmentation, \modelname with Swin-B backbone outperforms the state-of-the-art SegFormer~\cite{xie2021segformer}.
+
+\subsection{ADE20K}
+
+\noindent\textbf{Training settings.} For panoptic and instance segmentation, we use the exact same training parameters as we used for semantic segmentation, except that we always use a crop size of $640 \x 640$ for all backbones. Other implementation details largely follow Section 4.1
+, except that we use 200 queries for panoptic and instance segmentation models with Swin-L backbone. All other backbones or semantic segmentation models use 100 queries.
+
+\noindent\textbf{Results.} In \tabref{tab:benchmark:ade20k}, we report the results of \modelname obtained with various backbones on ADE20K for three segmentation tasks and compare it with other state-of-the-art methods. \modelname with Swin-L backbone sets a new state-of-the-art performance on ADE20K for panoptic segmentation. As there are few papers reporting results on ADE20K, we hope this experiment could set up a useful benchmark for future research.
+
+\subsection{Mapillary Vistas}
+Mapillary Vistas is a large-scale urban street-view dataset with 18k, 2k and 5k images for training, validation and testing. It contains images with a variety of resolutions, ranging from $1024 \x 768$ to $4000 \x 6000$. We only report panoptic and semantic segmentation results for this dataset.
+
+\noindent\textbf{Training settings.}
+For both panoptic and semantic segmentation, we follow the same data augmentation of \cite{cheng2021maskformer}: standard random scale jittering between 0.5 and 2.0, random horizontal flipping, random cropping with a crop size of $1024 \x 1024$ as well as random color jittering. We train our model for 300k iterations with a batch size of 16 using the ``poly'' learning rate schedule~\cite{deeplabV2}. During inference, we resize the longer side to 2048 pixels. Our panoptic segmentation model with a Swin-L backbone uses 200 queries. All other backbones or semantic segmentation models use 100 queries.
+
+\noindent\textbf{Results.}
+In \tabref{tab:benchmark:mapillary}, we report \modelname results obtained with various backbones on Mapillary Vistas for panoptic and semantic segmentation tasks and compare it with other state-of-the-art methods. Our \modelname is very competitive compared to state-of-the art specialized models even if it is not designed for Mapillary Vistas.
+
+
+\section{Additional ablation studies}
+\label{app:abl}
+We perform additional ablation studies of \modelname using the same settings that we used in the main paper: a single ResNet-50 backbone~\cite{he2016deep}.
+
+\subsection{Convergence analysis}
+We train \modelname  with 12, 25, 50 and 100 epochs with either standard scale augmentation (Standard Aug.)~\cite{wu2019detectron2} or the more recent large-scale jittering augmentation (LSJ Aug.)~\cite{ghiasi2021simple,du2021simple}. As shown in \figref{fig:ablation:convergence}, \modelname converges in 25 epochs using standard augmentation and almost converges in 50 epochs using large-scale jittering augmentation. This shows that \modelname with our proposed Transformer decoder converges faster than models using the standard Transformer decoder: \eg, DETR~\cite{detr} and MaskFormer~\cite{cheng2021maskformer} require 500 epochs and 300 epochs respectively.
+
+\subsection{Masked attention analysis}
+
+\begin{figure}[t!]
+    \begin{subtable}{1.0\linewidth}
+    \centering
+    \includegraphics[width=\linewidth]{figures/rebuttal/mask2former_vis_attn.png}
+    \vspace{-6mm}
+    \caption{
+        Visualization of cross-attention (top) and masked attention (bottom) for different resolutions.
+    }
+    \label{fig:vis_attn}
+    \end{subtable}\vspace{0mm}
+    \begin{subtable}{1.0\linewidth}
+    \centering
+    \tablestyle{2pt}{1.2}
+    \scriptsize
+    \begin{tabular}{l | x{18}x{18} | x{18}x{18} | x{18}x{18} | x{18}x{18} }
+    & \multicolumn{2}{c|}{$1/32$} & \multicolumn{2}{c|}{$1/16$} & \multicolumn{2}{c|}{$1/8$} & \multicolumn{2}{c}{average} \\
+    & fg & bg & fg & bg & fg & bg & fg & bg \\
+    \shline
+    cross-attention & 0.23 & 0.77 & 0.23 & 0.77 & 0.15 & 0.85 & 0.20 & 0.80 \\
+    masked attention & 0.53 & 0.47 & 0.61 & 0.39 & 0.64 & 0.36 & 0.59 & 0.41 \\
+    \end{tabular}
+
+    \caption{Cumulative attention weights on foreground (fg) and background (bg) regions for different resolutions.}
+
+    \label{tab:attn_weights_analysis}
+    \end{subtable}
+    \vspace{-0.3cm}
+    \caption{Masked attention analysis.}
+    \vspace{-0.5cm}
+\end{figure}
+
+
+
+
+We quantitatively and qualitatively analyzed the COCO panoptic model with the R50 backbone. First, we visualize the last three attention maps of our model using cross-attention (\figref{fig:vis_attn} top) and masked attention (\figref{fig:vis_attn} bottom) of a single query that predicts the ``cat.'' 
+With cross-attention, the attention map spreads over the entire image and the region with highest response is outside the object of interest.
+We believe this is because the softmax used in cross-attention never attains zero, and small attention weights on large background regions start to dominate.
+Instead, masked attention limits the attention weights to focus on the object.
+We validate this hypothesis in \tabref{tab:attn_weights_analysis}: we compute the cumulative attention weights on foreground (defined by the matching ground truth to each prediction) and background for all queries on the entire COCO \texttt{val} set.
+On average, only $20\%$ of the attention weights in cross-attention focus on the foreground while masked attention increases this ratio to almost $60\%$.
+\begin{figure}[t!]
+    \centering
+        \includegraphics[width=1.0\linewidth]{figures/rebuttal/coco_pq_vs_layer.pdf}
+
+    \caption{Panoptic segmentation performance of each Transformer decoder layer.}
+    \label{fig:pq_vs_layer}
+\end{figure}
+Second, we plot the panoptic segmentation performance
+using output from each Transformer decoder layer (\figref{fig:pq_vs_layer}). We find masked attention with a single Transformer decoder layer already outperforms cross-attention with 9 layers.
+We hope the effectiveness of masked attention, together with this analysis, leads to better attention design.
+
+\subsection{Object query analysis}
+Object queries play an important role in \modelname. We ablate different design choices of object queries including the number of queries and making queries learnable.
+
+\noindent\textbf{Number of queries.}
+We study the effect of different number of queries for three image segmentation tasks in \tabref{tab:ablation:number_queries}. For instance and semantic segmentation, using 100 queries achieves the best performance, while using 200 queries can further improve panoptic segmentation results. As panoptic segmentation is a combination of instance and semantic segmentation, it has more segments per image than the other two tasks. This ablation suggests that picking the number of queries for \modelname may depend on the number of segments per image for a particular task or dataset.
+
+\noindent\textbf{Learnable queries.}
+An object query consists of two parts: object query features and object query positional embeddings. Object query features are only used as the initial input to the Transformer decoder and are updated through decoder layers; whereas query positional embeddings are added to query features in every Transformer decoder layer when computing the attention weights. In DETR~\cite{detr}, query features are zero-initialized and query positional embeddings are learnable. Furthermore, there is no direct supervision on these query features before feeding them into the Transformer (since they are zero vectors). In our \modelname, we still make query positional embeddings learnable. In addition, we make query features learnable as well and directly apply losses on these learnable query features before feeding them into the Transformer decoder.
+
+In \tabref{tab:ablation:learnable_queries}, we compare our learnable query features with zero-initialized query features in DETR. We find it is important to directly supervise object queries even before feeding them into the Transformer decoder. Learnable queries \textit{without} supervision perform similarly well as zero-initialized queries in DETR.
+
+
+\subsection{MaskFormer \vs \modelname}
+\modelname builds upon the same meta architecture as MaskFormer~\cite{cheng2021maskformer} with two major differences: 1) We use more advanced training parameters summarized in \tabref{tab:ablation:maskformer_params:a}; and 2) we propose a new Transformer decoder with masked attention, instead of using the standard Transformer decoder, as well as some optimization improvements summarized in \tabref{tab:ablation:maskformer_params:b}. To better understand \modelname's improvements over MaskFormer, we perform ablation studies on training parameter improvements and Transformer decoder improvements in isolation.
+
+In \tabref{tab:ablation:maskformer_params:c}, we study our new training parameters. We train the MaskFormer model with either its original training parameters in~\cite{cheng2021maskformer} or our new training parameters. We observe significant improvements of using our new training parameters for MaskFormer as well. This shows the new training parameters are also generally applicable to other models.
+
+In \tabref{tab:ablation:maskformer_params:d}, we study our new Transformer decoder. We train a MaskFormer model and a \modelname model with the exact same backbone, \ie, a ResNet-50; pixel decoder, \ie, a FPN; and training parameters. That is, the only difference is in the Transformer decoder, summarized in \tabref{tab:ablation:maskformer_params:b}. We observe improvements for all three tasks, suggesting that the new Transformer decoder itself is indeed better than the standard Transformer decoder.
+
+While computational efficiency was not our primary goal, we find that Mask2Former actually has a better compute-performance trade-off compared to MaskFormer (\figref{fig:pq_vs_flops}). Even the lightest instantiation of Mask2Former outperforms the heaviest MaskFormer instantiation, using  $\frac{1}{4}^\text{th}$ the FLOPs.
+
+\begin{figure}[t!]
+    \centering
+        \includegraphics[width=1.0\linewidth]{figures/rebuttal/coco_pq_vs_flops.pdf}
+    \caption{MaskFormer~\cite{cheng2021maskformer} \vs Mask2Former (ours) with different Swin Transformer backbones.}
+    \label{fig:pq_vs_flops}
+\end{figure}
+
+
+\section{Visualization}
+\label{app:vis}
+We visualize sample predictions of the \modelname model with Swin-L~\cite{liu2021swin} backbone on three tasks: COCO panoptic \texttt{val2017} set for panoptic segmentation (57.8 PQ) in \figref{fig:vis_panseg}, COCO \texttt{val2017} set for instance segmentation (50.1 AP) in \figref{fig:vis_insseg} and ADE20K validation set for semantic segmentation (57.7 mIoU, multi-scale inference) in \figref{fig:vis_semseg}.
+
+
+
+\begin{figure*}[h!]
+    \centering
+    \includegraphics[width=0.4\linewidth]{figures/maskformerv2_coco_ap_vs_epoch.pdf}
+    \caption{\textbf{Convergence analysis.} We train \modelname with different epochs using either standard scale augmentation (Standard Aug.)~\cite{wu2019detectron2} or the more recent large-scale jittering augmentation (LSJ Aug.)~\cite{ghiasi2021simple,du2021simple}. \modelname converges in 25 epochs using standard augmentation and almost converges in 50 epochs using large-scale jittering augmentation. Using LSJ also improves performance with  longer training epochs (\ie, with more than 25 epochs).}
+    \label{fig:ablation:convergence}
+\end{figure*}
+
+
+\begin{table*}[t]
+  \centering
+  \begin{subtable}{0.49\linewidth}
+  \centering
+  \tablestyle{5pt}{1.2}
+  \scriptsize
+  \begin{tabular}{x{40}| x{30}x{30}x{30} | x{24}}
+   & AP (COCO) & PQ (COCO) & mIoU (ADE20K) & FLOPs (COCO) \\
+  \shline
+  50 & 42.4 & 50.5 & 46.2 & 217G \\
+  100 & \textbf{43.7} & 51.9 & \textbf{47.2} & 226G \\
+  200 & 43.5 & \textbf{52.2} & 47.0 & 246G \\
+  300 & 43.5 & 52.1 & 46.5 & 265G \\
+  1000 & 40.3 & 50.7 & 44.8 & 405G \\
+  \end{tabular}
+  \caption{\textbf{Number of queries ablation.} For instance and semantic segmentation, using 100 queries achieves the best performance while using 200 queries can further improve panoptic segmentation results.
+  }
+  \label{tab:ablation:number_queries}
+  \end{subtable}\hspace{2mm}
+  \begin{subtable}{0.49\linewidth}
+  \centering
+  \tablestyle{5pt}{1.2}
+  \scriptsize
+  \begin{tabular}{l | x{30}x{30}x{30} | x{24}}
+   & AP (COCO) & PQ (COCO) & mIoU (ADE20K) & FLOPs (COCO) \\
+  \shline
+  zero-initialized (DETR~\cite{detr}) & 42.9 & 51.2 & 45.5 & 226G \\
+  learnable \textit{w/o} supervision & 42.9 & 51.2 & 47.0 & 226G \\
+  learnable \textit{w/} supervision & \textbf{43.7} & \textbf{51.9} & \textbf{47.2} & 226G \\
+  \multicolumn{5}{c}{~}\\
+  \multicolumn{5}{c}{~}\\
+  \end{tabular}
+  \caption{\textbf{Learnable queries ablation.} It is important to supervise object queries before feeding them into the Transformer decoder. Learnable queries \textit{without} supervision perform similarly well as zero-initialized queries in DETR.
+  }
+  \label{tab:ablation:learnable_queries}
+  \end{subtable}
+  \caption{\textbf{Analysis of object queries.} \tabref{tab:ablation:number_queries}: ablation on number of queries. \tabref{tab:ablation:learnable_queries}: ablation on using learnable queries.
+  }
+  \label{tab:ablation:queries}
+\end{table*}
+
+
+\begin{table*}[t]
+  \centering
+  \begin{subtable}{1.0\linewidth}
+  \centering
+  \tablestyle{3pt}{1.2}
+  \scriptsize
+  \begin{tabular}{y{60} | x{80}x{80} }
+  training parameters & MaskFormer & \modelname (ours) \\
+  \shline
+  learning rate & 0.0001 & 0.0001 \\
+  weight decay & 0.0001 & 0.05 \\
+  batch size & 16$^*$ & 16 \\
+  epochs & 75$^*$ & 50 \\
+  data augmentation & standard scale aug. w/ crop & LSJ aug. \\
+  $\lambda_{\text{cls}}$ & 1.0 & 2.0 \\
+  $\lambda_{\text{focal}}$ / $\lambda_{\text{ce}}$ & 20.0 / - & - / 5.0 \\
+  $\lambda_{\text{dice}}$ & 1.0 & 5.0 \\
+  mask loss & mask & 12544 sampled points \\
+  \end{tabular}
+  \caption{Comparison of training parameters for MaskFormer~\cite{cheng2021maskformer} and our \modelname on the COCO dataset. $^*$: in the original MaskFormer implementation, the model is trained with a batch size of 64 for 300 epochs. We find MaskFormer achieves similar performance when trained with a batch size of 16 for 75 epochs, \ie, the same number of iterations with a smaller batch size.
+  }
+  \label{tab:ablation:maskformer_params:a}
+  \end{subtable}\vspace{2mm}
+  \begin{subtable}{1.0\linewidth}
+  \centering
+  \tablestyle{3pt}{1.2}
+  \scriptsize
+  \begin{tabular}{y{60} | x{80}x{80} }
+  Transformer decoder & MaskFormer & \modelname (ours) \\
+  \shline
+  \# of layers & 6 & 9 \\
+  single layer & SA-CA-FFN & MA-SA-FFN \\
+  dropout & 0.1 & 0.0 \\
+  feature resolution & $\{1/32\} \x 6$ & $\{1/32, 1/16, 1/8\} \x 3$ \\
+  input query features & zero init. & learnable \\
+  query p.e. & learnable & learnable \\
+  \end{tabular}
+  \caption{Comparison of Transformer decoder in MaskFormer~\cite{cheng2021maskformer} and our \modelname. SA: self-attention, CA: cross-attention, FFN: feed-forward network, MA: masked attention, p.e.: positional embedding.
+  }
+  \label{tab:ablation:maskformer_params:b}
+  \end{subtable}\vspace{2mm}
+  \begin{subtable}{0.49\linewidth}
+  \centering
+  \tablestyle{4pt}{1.2}
+  \scriptsize
+  \begin{tabular}{y{50} y{50}| x{30}x{30}x{30}}
+  \phantom{modelmodel} model & \phantom{modelmodel} training params. & AP (COCO) & PQ (COCO) & mIoU (ADE20K) \\
+  \shline
+  MaskFormer & MaskFormer & 34.0 \phantom{\dt{+0.0}} & 46.5 \phantom{\dt{+0.0}} & 44.5 \phantom{\dt{+0.0}} \\
+  MaskFormer & \modelname & 37.8 \dt{+3.8} & 48.2 \dt{+1.7} & 45.3 \dt{+0.8} \\
+  \end{tabular}
+  \caption{Improvements from better \textbf{training parameters}.
+  }
+  \label{tab:ablation:maskformer_params:c}
+  \end{subtable}
+  \begin{subtable}{0.49\linewidth}
+  \centering
+  \tablestyle{4pt}{1.2}
+  \scriptsize
+  \begin{tabular}{y{60} y{40}| x{30}x{30}x{30}}
+  \phantom{modelmodel} Transformer decoder & \phantom{modelmodel} pixel decoder & AP (COCO) & PQ (COCO) & mIoU (ADE20K) \\
+  \shline
+  MaskFormer & FPN & 37.8 \phantom{\dt{+0.0}} & 48.2 \phantom{\dt{+0.0}} & 45.3 \phantom{\dt{+0.0}} \\
+  \modelname & FPN & 41.5 \dt{+3.7} & 50.7 \dt{+2.5} & 45.6 \dt{+0.3} \\
+  \end{tabular}
+  \caption{Improvements from better \textbf{Transformer decoder}.
+  }
+  \label{tab:ablation:maskformer_params:d}
+  \end{subtable}
+  \caption{
+  \textbf{MaskFormer \vs \modelname.} \tabref{tab:ablation:maskformer_params:a} and \tabref{tab:ablation:maskformer_params:b} provide an in-depth comparison between MaskFormer and our \modelname settings. \tabref{tab:ablation:maskformer_params:c}: MaskFormer benefits from our new training parameters as well. \tabref{tab:ablation:maskformer_params:d}: Comparison between MaskFormer and our \modelname with the exact same backbone, pixel decoder and training parameters. The improvements solely come from a better Transformer decoder.
+  }
+  \label{tab:ablation:maskformer_params}
+\end{table*}
+
+
+
+\begin{figure*}[!t]
+    \centering
+
+
+    \begin{adjustbox}{width=\textwidth}
+    \bgroup
+    \def\arraystretch{0.2}
+    \setlength\tabcolsep{0.2pt}
+    \begin{tabular}{cccc}
+    \includegraphics[height=2cm]{figures/visualization/panoptic_predictions_jpg/000000507037_gt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/panoptic_predictions_jpg/000000507037_dt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/panoptic_predictions_jpg/000000405279_gt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/panoptic_predictions_jpg/000000405279_dt.jpg} \\
+    \end{tabular} \egroup
+    \end{adjustbox}
+
+    \begin{adjustbox}{width=\textwidth}
+    \bgroup
+    \def\arraystretch{0.2}
+    \setlength\tabcolsep{0.2pt}
+    \begin{tabular}{cccc}
+    \includegraphics[height=2cm]{figures/visualization/panoptic_predictions_jpg/000000378453_gt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/panoptic_predictions_jpg/000000378453_dt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/panoptic_predictions_jpg/000000377814_gt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/panoptic_predictions_jpg/000000377814_dt.jpg} \\
+    \end{tabular} \egroup
+    \end{adjustbox}
+
+    \begin{adjustbox}{width=\textwidth}
+    \bgroup
+    \def\arraystretch{0.2}
+    \setlength\tabcolsep{0.2pt}
+    \begin{tabular}{cccc}
+    \includegraphics[height=2cm]{figures/visualization/panoptic_predictions_jpg/000000377723_gt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/panoptic_predictions_jpg/000000377723_dt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/panoptic_predictions_jpg/000000375763_gt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/panoptic_predictions_jpg/000000375763_dt.jpg} \\
+    \end{tabular} \egroup
+    \end{adjustbox}
+
+    \begin{adjustbox}{width=\textwidth}
+    \bgroup
+    \def\arraystretch{0.2}
+    \setlength\tabcolsep{0.2pt}
+    \begin{tabular}{cccc}
+    \includegraphics[height=2cm]{figures/visualization/panoptic_predictions_jpg/000000363188_gt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/panoptic_predictions_jpg/000000363188_dt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/panoptic_predictions_jpg/000000127517_gt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/panoptic_predictions_jpg/000000127517_dt.jpg} \\
+    \end{tabular} \egroup
+    \end{adjustbox}
+
+    \begin{adjustbox}{width=\textwidth}
+    \bgroup
+    \def\arraystretch{0.2}
+    \setlength\tabcolsep{0.2pt}
+    \begin{tabular}{cccc}
+
+    \includegraphics[height=2cm]{figures/visualization/panoptic_predictions_jpg/000000124975_gt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/panoptic_predictions_jpg/000000124975_dt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/panoptic_predictions_jpg/000000171190_gt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/panoptic_predictions_jpg/000000171190_dt.jpg} \\
+    \end{tabular} \egroup
+    \end{adjustbox}
+
+    \begin{adjustbox}{width=\textwidth}
+    \bgroup
+    \def\arraystretch{0.2}
+    \setlength\tabcolsep{0.2pt}
+    \begin{tabular}{cccc}
+    \includegraphics[height=2cm]{figures/visualization/panoptic_predictions_jpg/000000361730_gt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/panoptic_predictions_jpg/000000361730_dt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/panoptic_predictions_jpg/000000006894_gt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/panoptic_predictions_jpg/000000006894_dt.jpg} \\
+    \end{tabular} \egroup
+    \end{adjustbox}
+
+  \caption{
+  Visualization of \textbf{panoptic segmentation} predictions on the COCO panoptic dataset: \modelname with Swin-L backbone which achieves 57.8 PQ on the validation set. First and third columns: ground truth. Second and fourth columns: prediction. \textbf{Last row shows failure cases.}
+  }
+  \label{fig:vis_panseg}
+\end{figure*}
+
+
+\begin{figure*}[!t]
+    \centering
+
+
+    \begin{adjustbox}{width=\textwidth}
+    \bgroup
+    \def\arraystretch{0.2}
+    \setlength\tabcolsep{0.2pt}
+    \begin{tabular}{cccc}
+    \includegraphics[height=2cm]{figures/visualization/instance_predictions_jpg/000000507037_gt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/instance_predictions_jpg/000000507037_dt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/instance_predictions_jpg/000000405279_gt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/instance_predictions_jpg/000000405279_dt.jpg} \\
+    \end{tabular} \egroup
+    \end{adjustbox}
+
+    \begin{adjustbox}{width=\textwidth}
+    \bgroup
+    \def\arraystretch{0.2}
+    \setlength\tabcolsep{0.2pt}
+    \begin{tabular}{cccc}
+    \includegraphics[height=2cm]{figures/visualization/instance_predictions_jpg/000000378453_gt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/instance_predictions_jpg/000000378453_dt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/instance_predictions_jpg/000000377814_gt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/instance_predictions_jpg/000000377814_dt.jpg} \\
+    \end{tabular} \egroup
+    \end{adjustbox}
+
+    \begin{adjustbox}{width=\textwidth}
+    \bgroup
+    \def\arraystretch{0.2}
+    \setlength\tabcolsep{0.2pt}
+    \begin{tabular}{cccc}
+    \includegraphics[height=2cm]{figures/visualization/instance_predictions_jpg/000000377723_gt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/instance_predictions_jpg/000000377723_dt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/instance_predictions_jpg/000000375763_gt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/instance_predictions_jpg/000000375763_dt.jpg} \\
+    \end{tabular} \egroup
+    \end{adjustbox}
+
+    \begin{adjustbox}{width=\textwidth}
+    \bgroup
+    \def\arraystretch{0.2}
+    \setlength\tabcolsep{0.2pt}
+    \begin{tabular}{cccc}
+    \includegraphics[height=2cm]{figures/visualization/instance_predictions_jpg/000000363188_gt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/instance_predictions_jpg/000000363188_dt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/instance_predictions_jpg/000000127517_gt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/instance_predictions_jpg/000000127517_dt.jpg} \\
+    \end{tabular} \egroup
+    \end{adjustbox}
+
+    \begin{adjustbox}{width=\textwidth}
+    \bgroup
+    \def\arraystretch{0.2}
+    \setlength\tabcolsep{0.2pt}
+    \begin{tabular}{cccc}
+
+    \includegraphics[height=2cm]{figures/visualization/instance_predictions_jpg/000000124975_gt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/instance_predictions_jpg/000000124975_dt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/instance_predictions_jpg/000000171190_gt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/instance_predictions_jpg/000000171190_dt.jpg} \\
+    \end{tabular} \egroup
+    \end{adjustbox}
+
+    \begin{adjustbox}{width=\textwidth}
+    \bgroup
+    \def\arraystretch{0.2}
+    \setlength\tabcolsep{0.2pt}
+    \begin{tabular}{cccc}
+    \includegraphics[height=2cm]{figures/visualization/instance_predictions_jpg/000000361730_gt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/instance_predictions_jpg/000000361730_dt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/instance_predictions_jpg/000000006894_gt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/instance_predictions_jpg/000000006894_dt.jpg} \\
+    \end{tabular} \egroup
+    \end{adjustbox}
+
+  \caption{
+  Visualization of \textbf{instance segmentation} predictions on the COCO dataset: \modelname with Swin-L backbone which achieves 50.1 AP on the validation set. First and third columns: ground truth. Second and fourth columns: prediction. \textbf{Last row shows failure cases.} We show predictions with confidence scores greater than 0.5.
+  }
+  \label{fig:vis_insseg}
+\end{figure*}
+
+
+\begin{figure*}[!t]
+    \centering
+
+
+    \begin{adjustbox}{width=\textwidth}
+    \bgroup
+    \def\arraystretch{0.2}
+    \setlength\tabcolsep{0.2pt}
+    \begin{tabular}{cccc}
+    \includegraphics[height=2cm]{figures/visualization/semseg_predictions_jpg/ADE_val_00000506_gt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/semseg_predictions_jpg/ADE_val_00000506_dt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/semseg_predictions_jpg/ADE_val_00001785_gt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/semseg_predictions_jpg/ADE_val_00001785_dt.jpg} \\
+    \end{tabular} \egroup
+    \end{adjustbox}
+
+    \begin{adjustbox}{width=\textwidth}
+    \bgroup
+    \def\arraystretch{0.2}
+    \setlength\tabcolsep{0.2pt}
+    \begin{tabular}{cccc}
+    \includegraphics[height=2cm]{figures/visualization/semseg_predictions_jpg/ADE_val_00001827_gt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/semseg_predictions_jpg/ADE_val_00001827_dt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/semseg_predictions_jpg/ADE_val_00001831_gt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/semseg_predictions_jpg/ADE_val_00001831_dt.jpg} \\
+    \end{tabular} \egroup
+    \end{adjustbox}
+
+    \begin{adjustbox}{width=\textwidth}
+    \bgroup
+    \def\arraystretch{0.2}
+    \setlength\tabcolsep{0.2pt}
+    \begin{tabular}{cccc}
+    \includegraphics[height=2cm]{figures/visualization/semseg_predictions_jpg/ADE_val_00001795_gt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/semseg_predictions_jpg/ADE_val_00001795_dt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/semseg_predictions_jpg/ADE_val_00001839_gt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/semseg_predictions_jpg/ADE_val_00001839_dt.jpg} \\
+    \end{tabular} \egroup
+    \end{adjustbox}
+
+    \begin{adjustbox}{width=\textwidth}
+    \bgroup
+    \def\arraystretch{0.2}
+    \setlength\tabcolsep{0.2pt}
+    \begin{tabular}{cccc}
+    \includegraphics[height=2cm]{figures/visualization/semseg_predictions_jpg/ADE_val_00000134_gt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/semseg_predictions_jpg/ADE_val_00000134_dt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/semseg_predictions_jpg/ADE_val_00001853_gt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/semseg_predictions_jpg/ADE_val_00001853_dt.jpg} \\
+    \end{tabular} \egroup
+    \end{adjustbox}
+
+    \begin{adjustbox}{width=\textwidth}
+    \bgroup
+    \def\arraystretch{0.2}
+    \setlength\tabcolsep{0.2pt}
+    \begin{tabular}{cccc}
+
+    \includegraphics[height=2cm]{figures/visualization/semseg_predictions_jpg/ADE_val_00000485_gt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/semseg_predictions_jpg/ADE_val_00000485_dt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/semseg_predictions_jpg/ADE_val_00000939_gt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/semseg_predictions_jpg/ADE_val_00000939_dt.jpg} \\
+    \end{tabular} \egroup
+    \end{adjustbox}
+
+    \begin{adjustbox}{width=\textwidth}
+    \bgroup
+    \def\arraystretch{0.2}
+    \setlength\tabcolsep{0.2pt}
+    \begin{tabular}{cccc}
+    \includegraphics[height=2cm]{figures/visualization/semseg_predictions_jpg/ADE_val_00000001_gt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/semseg_predictions_jpg/ADE_val_00000001_dt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/semseg_predictions_jpg/ADE_val_00000908_gt.jpg} &
+    \includegraphics[height=2cm]{figures/visualization/semseg_predictions_jpg/ADE_val_00000908_dt.jpg} \\
+    \end{tabular} \egroup
+    \end{adjustbox}
+
+  \caption{
+  Visualization of \textbf{semantic segmentation} predictions on the ADE20K dataset: \modelname with Swin-L backbone which achieves 57.7 mIoU (multi-scale) on the validation set. First and third columns: ground truth. Second and fourth columns: prediction. \textbf{Last row shows failure cases.}
+  }
+  \label{fig:vis_semseg}
+\end{figure*}
+

@@ -1,0 +1,52 @@
+
+\section{Introduction}
+
+\label{sec:intro}
+
+
+Open-domain question answering (QA)~\cite{voorhees1999trec} is a task that answers factoid questions using a large collection of documents.
+While early QA systems are often complicated and consist of multiple components~(\citet{ferrucci2012introduction,moldovan2003performance}, \textit{inter alia}),
+the advances of reading comprehension models suggest a much simplified two-stage framework: (1) a context \emph{retriever} first selects a small subset of passages where some of them contain the answer to the question, and then (2) a machine \emph{reader} can thoroughly examine the retrieved contexts and identify the correct answer~\cite{chen2017reading}.
+Although reducing open-domain QA to machine reading is a very reasonable strategy, a huge performance degradation is often observed in practice\footnote{For instance,
+the exact match score on SQuAD v1.1 drops from above 80\% to less than 40\%~\cite{yang2019end}.}, indicating the needs of improving retrieval.
+
+
+Retrieval in open-domain QA %
+is usually implemented using TF-IDF or BM25~\cite{robertson2009probabilistic}, which matches keywords efficiently with an inverted index and can be seen
+as representing the question and context in high-dimensional, sparse vectors (with weighting).
+Conversely, the \emph{dense}, latent semantic encoding is \emph{complementary} to sparse representations by design.
+For example, synonyms or paraphrases
+that consist of completely different tokens may still be mapped to vectors close to each other.
+Consider the question \ti{``Who is the bad guy in lord of the rings?''}, which can be answered from the context
+\ti{``Sala Baker is best known for portraying the villain Sauron in the Lord of the Rings trilogy.''}
+A term-based system would have difficulty retrieving such a context, while a dense retrieval system would be able to better match \ti{``bad guy''} with \ti{``villain''}
+and fetch the correct context.
+Dense encodings are also \emph{learnable} by adjusting the embedding functions, which provides additional flexibility to have a task-specific representation. With special in-memory data structures and indexing schemes, retrieval can be done efficiently using maximum inner product search (MIPS) algorithms~(e.g.,~\citet{NIPS2014_5329, guo2016quantization}).
+
+
+
+
+However, it is generally believed that learning a good dense vector representation needs a large number of labeled pairs of question and contexts.
+Dense retrieval methods have thus never be shown to outperform TF-IDF/BM25 for open-domain QA before ORQA~\cite{lee2019latent}, which proposes a sophisticated inverse cloze task (ICT) objective, predicting the blocks that contain the masked sentence, for additional pretraining.
+The question encoder and the reader model are then fine-tuned using pairs of questions and answers jointly. %
+Although ORQA successfully demonstrates that dense retrieval can outperform BM25, setting new state-of-the-art results on multiple open-domain QA datasets,
+it also suffers from two weaknesses.
+First, ICT pretraining is computationally intensive and it is not completely clear that regular sentences are good surrogates of questions in the objective function.
+Second, because the context encoder is not fine-tuned using pairs of questions and answers, the corresponding representations could be suboptimal.
+
+
+In this paper, we address the question: can we train a better dense embedding model using only pairs of questions and passages (or answers), \emph{without} additional pretraining?
+By leveraging the now standard BERT pretrained model~\cite{devlin2018bert} and a dual-encoder architecture~\cite{bromley1994signature}, we focus on developing the right training scheme using a relatively small number of question and passage pairs. %
+Through a series of careful ablation studies, our final solution is surprisingly simple: the embedding is optimized for maximizing inner products of the question and relevant passage vectors, with an objective comparing all pairs of questions and passages in a batch.
+Our \emph{Dense Passage Retriever} (DPR) is exceptionally strong. It not only outperforms BM25 by a large margin (65.2\% vs. 42.9\% in Top-5 accuracy), but also results in a substantial improvement on the end-to-end QA accuracy compared to ORQA (41.5\% vs. 33.3\%) in the open Natural Questions setting~\cite{lee2019latent,kwiatkowski2019natural}.
+
+
+Our contributions are twofold.
+First, we demonstrate that with the proper training setup, simply fine-tuning the question and passage encoders on existing question-passage pairs
+is sufficient to greatly outperform BM25.
+Our empirical results also suggest that additional pretraining may not be needed.
+Second, we verify that, in the context of open-domain question answering, a higher retrieval precision indeed translates to a higher end-to-end QA accuracy.
+By applying a modern reader model to the top retrieved passages, we achieve comparable or better results on multiple QA datasets in the open-retrieval setting,
+compared to several, much complicated systems.
+
+

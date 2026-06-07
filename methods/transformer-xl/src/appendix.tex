@@ -1,0 +1,357 @@
+\onecolumn
+\section{Ablation Study with Memory Constraints} \label{sec:memory}
+
+\begin{table}[!h]
+    \small
+    \centering
+    \begin{tabular}{ccccccc}
+        \toprule
+        \bf Backprop Len & \bf Recurrence & \bf Encoding & \bf Loss & \bf pplx best & \bf pplx init & \bf Attn Len \\
+        \midrule
+        128 & \cmark & Ours & Full & \textbf{26.77} & \textbf{27.02} & \textbf{500} \\
+        128 & \cmark & Ours & Partial & 28.33 & 28.69 & 460 \\
+        \midrule
+        176 & \xmark & Ours & Full & 27.98 & 28.43 & 400 \\
+        172 & \xmark & Ours & Partial & 28.83 & 28.83 & 120 \\
+        \bottomrule
+    \end{tabular}
+    \caption{\small
+        Ablation study on WikiText-103 with the same GPU memory constraints.
+    }
+    \label{table:memory}
+\end{table}
+
+Table \ref{table:memory} compares Transformer-XL with baseline under the same memory budget. Transformer-XL still outperforms the baseline even with a shorter backprop length.
+
+\section{Efficient Computation of the Attention with Relative Positional Embedding}
+\label{sec:A-efficient-attention}
+As we discussed in section \ref{sec:rel-pos-embed}, the naive way of computing the $\rmW_{k,R} \rmR_{i-j}$ for all pairs $(i, j)$ is subject to a quadratic cost.
+Here, we present a simple method with only a linear cost.
+Firstly, notice that the relative distance $i - j$ can only be integer from 0 to $M+L-1$, where $M$ and $L$ are the memory length and segment length respectively.
+Hence, the rows of the matrix
+\[\small
+	\rmQ
+	\coloneqq \begin{bmatrix} \rmR_{M+L-1}^\top \\ \rmR_{M+L-2}^\top \\ \vdots \\ \rmR_{1}^\top \\ \rmR_{0}^\top \end{bmatrix} {\rmW_{k,R}}^\top
+	= \begin{bmatrix}
+		\left[ \rmW_{k,R} \rmR_{M+L-1} \right]^\top \\
+		\left[ \rmW_{k,R} \rmR_{M+L-2} \right]^\top \\ \vdots \\
+		\left[ \rmW_{k,R} \rmR_{1} \right]^\top \\
+		\left[ \rmW_{k,R} \rmR_{0} \right]^\top \end{bmatrix}
+	\in \R^{(M+L) \times d}
+\]
+consist of all possible vector outputs of $\rmW_{k,R} \rmR_{i-j}$ for any $(i, j)$.
+Note that we have defined $\rmQ$ in a reversed order, i.e., $\rmQ_k = \rmW_{k,R} \rmR_{M+L-1-k}$, to make further discussion easier.
+
+Next, we collect the term $(b)$ for all possible $i, j$ into the following $L \times (M+L)$ matrix,
+\begin{align*}
+\rmB &=
+	\begin{bmatrix}
+	q_0^\top \rmW_{k,R} \rmR_{M}   & \cdots & q_0^\top \rmW_{k,R} \rmR_{0} & 0 & \cdots & 0 \\
+	q_1^\top \rmW_{k,R} \rmR_{M+1} & \cdots & q_1^\top \rmW_{k,R} \rmR_{1} & q_1^\top \rmW_{k,R} \rmR_{0} & \cdots & 0 \\
+	\vdots & \vdots & \vdots & \vdots & \ddots & \vdots \\
+	q_{L-1}^\top \rmW_{k,R} \rmR_{M+L-1} & \cdots & q_{L-1}^\top \rmW_{k,R} \rmR_{M+L-1} & q_{L-1}^\top \rmW_{k,R} \rmR_{L-1} & \cdots & q_{L-1}^\top \rmW_{k,R} \rmR_{0} \\
+	\end{bmatrix} \\
+	&=
+	\begin{bmatrix}
+	q_0^\top \rmQ_{L-1}   & \cdots & q_0^\top \rmQ_{M+L-1} & 0                       & \cdots & 0 \\
+	q_1^\top \rmQ_{L-2}   & \cdots & q_1^\top \rmQ_{M+L-2} & q_1^\top \rmQ_{M+L-1}   & \cdots & 0 \\
+	\vdots                & \vdots & \ddots                & \vdots                  & \ddots & \vdots \\
+	q_{L-1}^\top \rmQ_{0} & \cdots & q_{L-1}^\top \rmQ_{M} & q_{L-1}^\top \rmQ_{M+1} & \cdots & q_{L-1}^\top \rmQ_{M+L-1} \\
+	\end{bmatrix}
+\end{align*}
+Then, we further define
+\[
+	\widetilde{\rmB} = \rvq \rmQ^\top =
+	\begin{bmatrix}
+	q_{0}^\top \rmQ_{0}   & \cdots & q_{0}^\top \rmQ_{M}   & q_{0}^\top \rmQ_{M+1}    & \cdots & q_{0}^\top \rmQ_{M+L-1}   \\
+	q_{1}^\top \rmQ_{0}   & \cdots & q_{1}^\top \rmQ_{M}   & q_{1}^\top \rmQ_{M+1}    & \cdots & q_{1}^\top \rmQ_{M+L-1}   \\
+	\vdots                & \vdots & \ddots                & \vdots                   & \ddots & \vdots                    \\
+	q_{L-1}^\top \rmQ_{0} & \cdots & q_{L-1}^\top \rmQ_{M} & q_{L-1}^\top \rmQ_{M+1}  & \cdots & q_{L-1}^\top \rmQ_{M+L-1} \\
+	\end{bmatrix}.
+\]
+Now, it is easy to see an immediate relationship between $\rmB$ and $\widetilde{\rmB}$, where the $i$-th row of $\rmB$ is simply a left-shifted version of $i$-th row of $\widetilde{\rmB}$.
+Hence, the computation of $\rmB$ only requires a matrix multiplication $\rvq \rmQ^\top$ to compute $\widetilde{\rmB}$ and then a set of left-shifts.
+
+Similarly, we can collect all term $(d)$ for all possible $i, j$ into another $L \times (M+L)$ matrix $\rmD$,
+\begin{align*}
+	\rmD &=
+	\begin{bmatrix}
+	v^\top \rmQ_{L-1} & \cdots & v^\top \rmQ_{M+L-1} & 0 & \cdots & 0 \\
+	v^\top \rmQ_{L-2} & \cdots & v^\top \rmQ_{M+L-2} & v^\top \rmQ_{M+L-1} & \cdots & 0 \\
+	\vdots            & \vdots & \ddots              & \vdots              & \ddots & \vdots     \\
+	v^\top \rmQ_{0}   & \cdots & v^\top \rmQ_{M}     & v^\top \rmQ_{M+1}   & \cdots & v^\top \rmQ_{M+L-1} \\
+	\end{bmatrix}.
+\end{align*}
+Then, we can follow the same procedure to define
+\[
+\widetilde{\rvd} = \left[\rmQ v \right]^\top
+	=
+	\begin{bmatrix}
+	v^\top \rmQ_{0}   & \cdots & v^\top \rmQ_{M}     & v^\top \rmQ_{M+1}   & \cdots & v^\top \rmQ_{M+L-1}
+	\end{bmatrix}.
+\]
+Again, each row of $\rmD$ is simply a left-shift version of $\widetilde{\rvd}$.
+Hence, the main computation cost comes from the matrix-vector multiplication $\widetilde{\rvd} = \left[\rmQ v \right]^\top$, which is not expensive any more.
+
+\section{Details About RECL} \label{sec:recl}
+\begin{figure}[!h]
+	\begin{subfigure}[b]{0.5\textwidth}
+		\includegraphics[width=\textwidth]{FIG/compare0.png}
+		\caption{Transformer-XL vs RNNs}
+		\label{fig:vsrnn}
+	\end{subfigure}
+	\begin{subfigure}[b]{0.5\textwidth}
+		\includegraphics[width=\textwidth]{FIG/compare1.png}
+		\caption{Transformer-XL vs Baseline}
+		\label{fig:vsbase}
+	\end{subfigure}
+	\caption{Visualizing unnormalized relative perplexity gains with $r = 0.1$.}
+	\label{fig:gain}
+\end{figure}
+
+\begin{figure}[!h]
+	\begin{subfigure}[b]{0.5\textwidth}
+		\includegraphics[width=\textwidth]{FIG/compare2.png}
+		\caption{Transformer-XL vs RNNs}
+		\label{fig:vsrnn}
+	\end{subfigure}
+	\begin{subfigure}[b]{0.5\textwidth}
+		\includegraphics[width=\textwidth]{FIG/compare3.png}
+		\caption{Transformer-XL vs Baseline}
+		\label{fig:vsbase}
+	\end{subfigure}
+	\caption{Perplexity vs context length.}
+	\label{fig:context}
+\end{figure}
+
+In this section, we describe the details of the metric RECL. Let $\mathcal{M} = \{m_1, m_2, \cdots, m_N\}$ be a model group consisting of $N$ models. Let $l_i(c, t)$ denote the loss of model $m_i$ on the $t$-th token in the corpus with a context length $c$. Concretely, the loss can be written as
+\[
+l_i(c, t) = - \log P_{m_i}(x_t | x_{t - 1}, \cdots, x_{t - c})
+\]
+where $P_{m_i}$ is the probability distribution given by model $m_i$, and $x_t$ is the $t$-th token in the corpus. Given a short context length $c$ and a long context length $c'$ such that $c' \geq c$, we can further define a baseline for each position $t$,
+\[b(c, t) = \min_{i = 1}^N l_i(c, t)\]
+
+The \textit{relative loss} of $m_i$ w.r.t. the model group $\mathcal{M}$ is written as
+\[
+f_i(c, c') = \frac{1}{|\mathcal{T}|} \sum_{t \in \mathcal{T}} \min \left( b(c, t), l_i(c', t) \right)
+\]
+The above equation uses the minimum loss of all models on the short length $c$ as a baseline, and only losses smaller than the baseline will be effectively counted towards the relative loss. This enables fair comparison between multiple models because all models with a long context length $c'$ need to improve over the same baseline. Sometimes we only care about those positions where the baseline performs poorly (which means short-term dependency with context length $c$ is not sufficient), so given a ratio parameter $r$, we define the set $\mathcal{T}$ is the above equation as
+\[\mathcal{T} = \text{top-}r \text{~positions~} t \text{~with largest~}b(c, t)\]
+
+The \textit{relative gain} is subsequently defined as the relative perplexity reduction:
+\[
+g_i(c, c') = \frac{\exp f_i(c, c) - \exp f_i(c, c')}{\exp f_i(c, c)}
+\]
+
+Given a step size $\Delta$, we then use an algorithm to find the RECL by thresholding the relative gain:
+\begin{enumerate}
+	\item Set initial short context length $c$, and long context length $c' = c + \Delta$
+	\item Compute $g_i(c, c')$. If $g_i(c, c') < 0.01$, return $\text{RECL} = c$. If $g_i(c, c') \geq 0.01$, set $c = c', c' = c + \Delta$ and go to step 1.
+\end{enumerate}
+
+In Figure \ref{fig:gain}, we visualize the unnormalized relative perplexity gains $(\exp f_i(c, c) - \exp f_i(c, c'))$ with various pairs of $(c, c')$ when $r = 0.1$. It is clear that Transformer-XL has a longer RECL compared to RNNs and other baselines because the relative gains are substantially larger.
+
+For reference, we plot the perplexities with varying context lengths in Figure \ref{fig:context}. The y-axis denotes the ``normal'' perplexity (not calibrated by baselines).
+
+\section{Attention Visualization}
+In this section, we provide some visualization of the attention learned by the SoTA model on the WikiText-103 validation set.
+Recall that, this model has 16 10-head transformer layers and relies on a memory of length 640.
+
+\begin{figure}[!h]
+	\includegraphics[width=\linewidth]{FIG/rel-prob-avg.png}
+	\caption{Average attention over the previous 640 tokens, where each row corresponds to a attention head and each column corresponds to a relative location. There are totally 160 attention heads, and every 10 heads come from a single layer. Darker colors indicate higher values.}
+	\label{fig:visattn-global}
+\end{figure}
+The first visualization aims at revealing the overall trend of where the model is attending.
+Specifically, for each attention head of each layer, we average the attention distributions of all tokens in the validation set.
+This is shown in Fig. \ref{fig:visattn-global}. As we can see, the overall trend is to focus more on the nearby tokens than the faraway ones.
+However, it is also very clear that some attention heads have a wider attention distribution over the entire memory span, notably the head 8 from layer 1, head 78 from layer 8, and the head 158 from layer 16.
+
+\begin{figure}[!h]
+	\begin{subfigure}[b]{\linewidth}
+		\includegraphics[width=\textwidth]{FIG/abs-prob-H8-seg4.png}
+		\caption{Head 8 from layer 1.}
+		\label{fig:visattn-8}
+	\end{subfigure}
+	\begin{subfigure}[b]{\linewidth}
+		\includegraphics[width=\textwidth]{FIG/abs-prob-H78-seg4.png}
+		\caption{Head 78 from layer 8.}
+		\label{fig:visattn-78}
+	\end{subfigure}
+	\begin{subfigure}[b]{\linewidth}
+		\includegraphics[width=\textwidth]{FIG/abs-prob-H158-seg4.png}
+		\caption{Head 158 from layer 16.}
+		\label{fig:visattn-158}
+	\end{subfigure}
+	\caption{Visualization of the three heads with a wide attention range. Each row corresponds to a target location/token and each column corresponds to a context location/token. Tokens in the memory that have top 20\% attention values are highlighted in red.}
+	\label{fig:visattn-pick}
+\end{figure}
+Since we are focused on learning long-range dependency, we are especially interested in these heads with a wider attention span.
+Thus, in the second set of visualization, we pick the three notable heads mentioned above, and visualize their attention behavior for a randomly chosen position, as shown in Fig. \ref{fig:visattn-pick}.
+Here, we see three different patterns of wider attention:
+\begin{itemize}[leftmargin=*]
+	\item For the head 8 in the 1st layer, we see an almost uniform attention over the entire memory span. This is quite intuitive, as lower-level layers needs to screen the entire memory span to decide where to focus for higher-level layers
+	\item For the head 78 in the 8th layer (a middle-level layer), we see a very sparse attention pattern scattered in all ranges of the memory. Again, this well fits our intuition that as information accumulates, the network may focus on some particular position with special interests.
+	\item For the head 158 in the 16th layer (i.e. the last layer), each target location (corresponding to each row) has its own distinct sparse focus, differing from head 78 where target locations largely share the same attentive location in memory. Meanwhile, the pattern is also different from the case of head 8, where a few locations are clearly attended more than others.
+\end{itemize}
+
+\begin{figure}[!h]
+	\begin{subfigure}[b]{\linewidth}
+		\includegraphics[width=\textwidth]{FIG/rel-A-avg.png}
+		\caption{Term $(a)$.}
+		\label{fig:visattn-A}
+	\end{subfigure}
+	\begin{subfigure}[b]{\linewidth}
+		\includegraphics[width=\textwidth]{FIG/rel-B-avg.png}
+		\caption{Term $(b)$.}
+		\label{fig:visattn-B}
+	\end{subfigure}
+	\begin{subfigure}[b]{\linewidth}
+		\includegraphics[width=\textwidth]{FIG/rel-D-avg.png}
+		\caption{Term $(d)$.}
+		\label{fig:visattn-D}
+	\end{subfigure}
+	\caption{Visualization of the three terms in computing the attention score. Each row corresponds to a attention head and each column corresponds to a relative location.}
+	\label{fig:visattn-decomp}
+\end{figure}
+Finally, as we have discussed in section \ref{sec:rel-pos-embed}, the attention score can be decomposed into four intuitive terms.
+Here, we want to further investigate how these four terms contribute to the overall attention trend in Fig. \ref{fig:visattn-global}.
+Since the term $(c)$ represents the global content bias, i.e., the prior importance of each word regardless of the context, we will leave it out and focus on the terms $(a)$, $(b)$ and $(d)$.
+So, for each term, we take the Softmax w.r.t. the memory span and average the resulted distribution of all tokens in the validation set.
+The results are visualized in Fig. \ref{fig:visattn-decomp}:
+\begin{itemize}[leftmargin=*]
+	\item Since term $(a)$ is fully content-based addressing, when averaging over all target words, the result is essentially uniform over the entire context, except for a few very close words, which are likely to be semantically similar to the target word.
+	\item The overall trend of term $(b)$ highly resembles that of the entire attention distribution in Fig. \ref{fig:visattn-global}. It suggests that the global trend of focusing on the nearby context is largely contributed by this content-dependent positional bias.
+	\item The overall trend of term $(d)$ is also focusing more on nearby words. However, compared to the trend of term $(b)$, it is clearly flatter and biases towards a longer context.
+\end{itemize}
+
+\section{Generated Text} \label{sec:gen}
+In this section, we present some generated text from our best model trained the Wikitext-103 dataset.
+We seed the our Transformer-XL with a context of at most 512 consecutive tokens randomly sampled from the test set of Wikitext-103. Then, we run Transformer-XL to generate a \textit{pre-defined} number of tokens (500 or 1,000 in our case). For each generation step, we first find the top-40 probabilities of the next-step distribution and sample from top-40 tokens based on the re-normalized distribution.
+To help reading, we detokenize the context, the generated text and the reference text. Three generated examples are shown in Tables \ref{tab:gen-1}, \ref{tab:gen-2}, and \ref{tab:gen-3}. Note that we do not perform any cherry picking and present the first three examples we generate in the paper.
+In the text, ``= text ='', ``= = text = ='' and ``= = = text = = ='' denote the Wikipedia page tile, section title and subsection title, respectively, due to the original data preprocessing procedure of Wikitext-103~\cite{merity2016pointer}. 
+
+%As we can see, though only trained on 100M tokens, Transformer-XL is able to generate long text which structurally maintains the sectional arrangement of Wikipedia and semantically stays on the same topic as the seed context.
+%It is clear that important information is carried over the course of generation by Transformer-XL, which demonstrates the ability of long-range dependency modeling.
+%For detailed explanation of the interesting observations in each example, please refer to the corresponding caption.
+%
+%Despite the overall excellence of the generation quality, there are some typical detectable flaws in the generated text:
+%\begin{itemize}
+%\item Firstly, the model can only perceive the seed context and hallucinate the generation based on the limited knowledge (100M tokens only) it is trained on. As a result, the generated text sometimes looks clearly relevant but not close enough or to the point compared to what human writer would do. 
+%That said, we believe this issue is mostly a problem of the limited training data size. 
+%
+%\item Secondly, the model might generate text with repetitive or contradictory information, e.g., the same or slightly different message is expressed multiple times, though with potentially different forms. This issue can also be possibly resolved by training on more data.
+%\end{itemize}
+
+As we can see, though only trained on 100M tokens, Transformer-XL is a strong model at generating long text articles, particularly in the following aspects:
+\begin{itemize}[topsep=0em,itemsep=0em,parsep=0.2em]
+	\item Transformer-XL is able to structurally maintain the sectional arrangement of Wikipedia.
+	\item Transformer-XL manages to semantically stay on the same topic throughout the course of generation.
+	\item Long-range references are common in the generated text.
+	\item Transformer-XL often generates novel content that is not present in the training data.
+\end{itemize}
+For more detailed explanation of the interesting observations in each example, please refer to the corresponding caption.
+
+Despite the overall excellence of the generation quality, the model can only perceive the seed context and hallucinate what to generate based on the limited knowledge (100M tokens only) it is trained on. As a result, the generated text sometimes looks clearly relevant but not close enough or to the point compared to what human writer would do. 
+That said, we believe this issue is mostly a problem of limited training data size and could be alleviated by using a larger training set.
+
+\begin{table}[!h]
+\centering
+\scriptsize
+%\begin{adjustwidth}{-0.8cm}{}
+\begin{tabular}{p{7.8cm}|p{7.8cm}}
+	\toprule
+	\multicolumn{2}{p{16cm}}{\textbf{Context:}} \\
+	\multicolumn{2}{p{16cm}}{\input{example/context_1}} \\
+	\midrule
+	\textbf{XL Generation:} & \textbf{Reference:} \\	
+	\input{example/generation_1} & \input{example/reference_1} \\
+	\bottomrule
+\end{tabular}
+\captionsetup{singlelinecheck=off}
+\caption[]{\small 
+	Example 1 -- 500 tokens generated by XL using a snippet from the Wikitext-103 test set as initial context. The sample is randomly generated without any cherry picking. 
+	\vspace{0.4em}
+	
+	Original Wikipedia page: {\footnotesize \url{https://en.wikipedia.org/wiki/Clayton_Kershaw}}
+	\vspace{0.4em}
+	
+	There are many interesting observations from this example:
+	\begin{itemize}[leftmargin=*,itemsep=0em,topsep=0.4em,parsep=0.4em]
+		\item Firstly, Kershaw never went to Royals in real life. Despite that, Transformer-XL stays on the fully imagined topic and keeps hallucinating the experience of Kershaw in Royals across the generated text.
+		\item Secondly, notice that XL correctly tracks the chronological order from 2011 to 2012 and to the finally 2013 season in the section titles. 
+		\item  In addition, notice that Transformer-XL accurately uses the the phrase ``\underline{another back injury}'' in the 2013 season paragraph, since it has talked about one earlier injure in the 2012 season. This shows again Transformer-XL's ability of capturing long-term dependency.
+	\end{itemize}
+}
+\label{tab:gen-1}
+%\end{adjustwidth}
+\end{table}
+
+\begin{table}[!h]
+\centering
+\scriptsize
+\begin{tabular}{p{7.8cm}|p{7.8cm}}
+	\toprule
+	\multicolumn{2}{p{16cm}}{\textbf{Context:}} \\
+	\multicolumn{2}{p{16cm}}{\input{example/context_2}} \\
+	\midrule
+	\textbf{XL Generation:} & \textbf{Reference:} \\	
+	\input{example/generation_2} & \input{example/reference_2} \\
+	\bottomrule
+\end{tabular}
+\captionsetup{singlelinecheck=off}
+\caption[]{\small 
+	Example 2 -- 500 tokens generated by XL using a snippet from the Wikitext-103 test set as initial context. The sample is randomly generated without any cherry picking. 
+	\vspace{0.4em}
+	
+	Original Wikipedia page: {\footnotesize \url{https://en.wikipedia.org/wiki/The_Tale_of_Mrs._Tittlemouse}}. \vspace{0.4em}
+	
+	This example exhibit some additional interesting properties of Transformer-XL: 
+	\begin{itemize}[leftmargin=*,itemsep=0em,topsep=0.4em,parsep=0.4em]
+		\item After finishing the last paragraph of the seed context, both the reference and generated text start a new topic (i.e., Wikipedia page), as marked by the single ``\underline{= title =}'' line. 
+		This suggests the model has the ability of identifying the end of a topic / page, and randomly starting with a new topic.
+		\item Even more interestingly, a newly-started page is on a book called ``The Tale of Mrs. Tittlemouse''. Transformer-XL manages to copy the same book title and some related information from the training set, but hallucinates \textit{novel} content of the book. 
+		This demonstrates a degree of generalization instead of memorization. Please refer to the original book content at the Wikipedia page.
+	\end{itemize}
+}
+\label{tab:gen-2}
+\end{table}
+
+\clearpage
+
+%\begin{table}[!h]
+%\centering
+%\scriptsize
+%\begin{adjustwidth}{-0.8cm}{}
+\begin{center}
+\scriptsize
+\begin{longtable}{p{7.8cm}|p{7.8cm}}
+	\toprule
+	\multicolumn{2}{p{16cm}}{\textbf{Context:}} \\
+	\multicolumn{2}{p{16cm}}{\input{example/context_3}} \\
+	\midrule
+	\textbf{XL Generation:} & \textbf{Reference:} \\	
+	\input{example/generation_3} & \input{example/reference_3} \\
+	\input{example/generation_3_} & \input{example/reference_3_} \\
+	\bottomrule
+\captionsetup{singlelinecheck=off}
+\caption[]{\small 
+	Example 3 -- 1,000 tokens generated by XL using a snippet from the Wikitext-103 test set as initial context. The sample is randomly generated without any cherry picking.
+	\vspace{0.4em} 
+	
+	Original Wikipedia page: {\footnotesize \url{https://en.wikipedia.org/wiki/Battle_of_D\%C3\%BCrenstein}}. 
+	\vspace{0.4em}
+	
+	\begin{itemize}[leftmargin=*,itemsep=0em,topsep=0.4em,parsep=0.4em]
+		\item Although this example is significantly longer, we can see that Transformer-XL is still able to stay on the same topic and makes up non-existing stories about the Napoleon wars.
+		\item Notably, from the second section on, the generated text correctly follows a fine-grained chronological order \textit{on the level of month and day} to narrate events in 1805, except a mistake (1804 instead of 1805) near the end of the paragraph. To ease reading which we have highlighted all the date related phrases by \magenta{magenta} in the generation.
+	\end{itemize}
+}
+\label{tab:gen-3}
+\end{longtable}
+\end{center}
+
+%\end{adjustwidth}
+%\end{table}
+
+\FloatBarrier

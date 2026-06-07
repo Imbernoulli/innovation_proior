@@ -1,0 +1,74 @@
+\section{Quantitative analysis}
+\label{sec:analysis}
+
+Inversion into an uncharted latent space provides us with a wide range of possible design choices. Here, we examine these choices in light of the GAN inversion literature and discover that many core premises (such as a distortion-editability tradeoff~\citep{tov2021designing,zhu2020improved}) also exist in the textual embedding space. However, our analysis reveals that many of the solutions typically used in GAN inversion fail to generalize to this space, and are often unhelpful or actively harmful.
+
+\subsection{Evaluation metrics}
+
+To analyze the quality of latent space embeddings, we consider two fronts: reconstruction and editability.
+First, we wish to gauge our ability to replicate the target concept. As our method produces variations on the concept and not a specific image, we measure similarity by considering semantic CLIP-space distances. Specifically, for each concept, we generate a $64$ of images using the prompt: ``A photo of $S_*$". Our reconstruction score is then the average pair-wise CLIP-space cosine-similarity between the generated images and the images of the concept-specific training set.
+
+Second, we want to evaluate our ability to modify the concepts using textual prompts. To this end, we produce a set of images using prompts of varying difficulty and settings. These range from background modifications (``A photo of $S_*$ on the moon"), to style changes (``An oil painting of $S_*$"), and a compositional prompt (``Elmo holding a $S_*$"). 
+
+For each prompt, we synthesize $64$ samples using $50$ DDIM steps, calculate the average CLIP-space embedding of the samples, and compute their cosine similarity with the CLIP-space embedding of the textual prompts, where we omit the placeholder $S_*$ (\ie ``A photo of on the moon"). Here, a higher score indicates better editing capability and more faithfulness to the prompt itself. Note that our method does not involve the direct optimization of the CLIP-based objective score and, as such, is not sensitive to the adversarial scoring flaws outlined by~\citet{nichol2021glide}.
+
+\subsection{Evaluation setups}
+
+We evaluate the embedding space using a set of experimental setups inspired by GAN inversion:
+
+\paragraph{Extended latent spaces}
+Following~\citet{abdal2019image2stylegan}, we consider an extended, multi-vector latent space. In this space, $S_*$ is embedded into multiple learned embeddings, an approach that is equivalent to describing the concept through multiple learned pseudo-words. We consider an extension to two and three pseudo-words (denoted $2-word$ and $3-word$, respectively). This setup aims to alleviate the potential bottleneck of a single embedding vector to enable more accurate reconstructions.
+
+\paragraph{Progressive extensions}
+We follow~\citet{tov2021designing} and consider a progressive multi-vector setup. Here, we begin training with a single embedding vector, introduce a second vector following $2,000$ training steps, and a third vector after $4,000$ steps. In this scenario, we expect the network to focus on the core details first, and then leverage the additional pseudo-words to capture finer details.
+
+\paragraph{Regularization}
+\citet{tov2021designing} observed that latent codes in the space of a GAN have increased editability when they lie closer to the code distribution which was observed during training. Here, we investigate a similar scenario by introducing a regularization term that aims to keep the learned embedding close to existing words. In practice, we minimize the L2 distance of the learned embedding to the embedding of a coarse descriptor of the object (\eg ``sculpture" and ``cat" for the images in \Cref{fig:teaser}).
+
+\paragraph{Per-image tokens}
+Moving beyond GAN-based approaches, we investigate a novel scheme where we introduce unique, per-image tokens into our inversion approach. Let $\{x_i\}_{i=1}^n$ be the set of input images. Rather than optimizing a single word vector shared across all images, we introduce both a universal placeholder, $S_*$, and an additional placeholder unique to each image, $\{S_i\}_{i=1}^n$, associated with a unique embedding $v_i$. We then compose sentences of the form ``A photo of $S_*$ with $S_i$", where every image is matched to sentences containing its own, unique string. We jointly optimize over both $S_*$ and $\{S_i\}_{i=1}^n$, using \Cref{eq:v_opt}. The intuition here is that the model should prefer to encode the shared information (\ie the concept) in the shared code $S_*$ while relegating per-image details such as the background to $S_i$. 
+
+\paragraph{Human captions}
+In addition to the learned-embedding setups, we compare to human-level performance using the captions outlined in \Cref{sec:image_variations}. Here, we simply replace the placeholder strings $S_*$ with the human captions, using both the short and long-caption setups. 
+
+\paragraph{Reference setups}
+To provide intuition for the scale of the results, we add two reference baselines.
+First, we consider the expected behavior from a model that always produces copies of the training set, regardless of the prompt. For that, we simply use the training set itself as the ``generated sample".
+Second, we consider a model that always aligns with the text prompt but ignores the personalized concept. We do so by synthesizing images using the evaluation prompts but without the pseudo-word.
+We denote these setups as ``Image Only" and ``Prompt Only", respectively.
+
+\paragraph{Textual-Inversion}
+Finally, we consider our own setup, as outlined in \Cref{sec:method}. We further evaluate our model with an increased learning rate ($2e-2$, ``High-LR") and a decreased learning rate ($1e-4$, ``Low-LR").
+
+\paragraph{Additional setups}
+In the supplementary, we consider two additional setups for inversion: a pivotal tuning approach~\citep{roich2021pivotal,bau2020semantic}, where the model itself is optimized to improve reconstruction, and DALLE-2~\citep{ramesh2022hierarchical}'s bipartite inversion process. We further analyze the effect of the image-set size on reconstruction and editability.
+
+\subsection{Results}
+
+\input{resources/figures/quantitative_evaluation}
+
+Our evaluation results are summarized in \Cref{fig:quant_eval}(a). 
+We highlight four observations of particular interest:
+First, the semantic reconstruction quality of our method and many of the baselines is comparable to simply sampling random images from the training set. 
+Second, the single-word method achieves comparable reconstruction quality, and considerably improved editability over all multi-word baselines. These points outline the impressive flexibility of the textual embedding space, showing that it can serve to capture new concepts with a high degree of accuracy while using only a single pseudo-word.
+
+Third, we observe that our baselines outline a distortion-editability trade-off curve, where embeddings that lie closer to the true word distribution (\eg due to regularization, fewer pseudo-words, or a lower learning rate) can be more easily modified, but fail to capture the details of the target. In contrast, deviating far from the word distribution enables improved reconstruction at the cost of severely diminished editing capabilities. Notably, our single-embedding model can be moved along this curve by simply changing the learning rate, offering a user a degree of control over this trade-off. 
+
+As a fourth observation, we note that the use of human descriptions for the concepts not only fails to capture their likeness, but also leads to diminished editability. We hypothesize that this is tied to the selective-similarity property outlined in \citet{paiss2022no}, where vision-and-language models tend to focus on a subset of the semantically meaningful tokens. By using long captions, we increase the chance of the model ignoring our desired setting, focusing only on the object description itself. Our model, meanwhile, uses only a single token and thus minimizes this risk.
+
+Finally, we note that while our reconstruction scores are on par with those of randomly sampled, real images, these results should be taken with a grain of salt. Our metrics compare \textit{semantic} similarity using CLIP, which is less sensitive to shape-preservation. On this front, there remains more to be done.
+
+
+
+
+
+
+
+
+\subsection{Human evaluations}
+
+We further evaluate our models using a user study. Here, we created two questionnaires. In the first, users were provided with four images from a concept's training set, and asked to rank the results produced by five models according to their similarity to these images. In the second questionnaire, users were provided with a text describing an image context (``A photo on the beach") and asked to rank the results produced by the same models according to their similarity to the text.
+
+We used the same target concepts and prompts as the CLIP-based evaluation and collected a total of $600$ responses to each questionnaire, for a total of $1,200$ responses. Results are shown in \Cref{fig:quant_eval}(b).
+
+The user-study results align with the CLIP-based metrics and demonstrate a similar reconstruction-editability tradeoff. Moreover, they outline the same limitations of human-based captioning when attempting to reproduce a concept, as well as when editing it.

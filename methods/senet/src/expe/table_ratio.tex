@@ -1,0 +1,23 @@
+%------------------------------------- table--------------------------------------------
+\begin{table}[t]
+\renewcommand\arraystretch{1.1}
+\small
+\caption{Single-crop error rates (\%) on ImageNet and parameter sizes for \mbox{SE-ResNet-50} at different reduction ratios. Here, \textit{original} refers to \mbox{ResNet-50}.}
+\label{table_reduction_ratio}
+\vspace{-1.5em}
+\begin{center}{\scalebox{0.95}{
+\begin{tabular}{c|p{1.3cm}<{\centering}|p{1.3cm}<{\centering}|p{1.5cm}<{\centering}}
+\hline
+Ratio $r$ & top-1 err. & top-5 err. & Params\\
+\hline
+$2$ & $22.29$ & $6.00$ & $45.7$M\\
+$4$ & $22.25$ & $6.09$ & $35.7$M\\
+$8$ & $22.26$ & $5.99$ & $30.7$M\\
+$16$ & $22.28$ & $6.03$ & $28.1$M\\
+$32$ & $22.72$ & $6.20$ & $26.9$M\\
+\hline
+original & $23.30$ & $6.55$ & $25.6$M \\
+\hline
+\end{tabular}}}
+\end{center}
+\end{table}

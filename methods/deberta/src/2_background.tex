@@ -1,0 +1,53 @@
+\section{Background}
+\subsection{Transformer}
+A Transformer-based language model is composed of % $L$
+stacked Transformer blocks \citep{vaswani2017attention}.
+Each block contains a multi-head self-attention layer followed by a fully connected positional feed-forward network. 
+The standard self-attention mechanism lacks a natural way to encode word position information.  
+Thus, existing approaches add  a positional bias to each input word embedding so that each input word is represented by a vector whose value depends on its content and position.
+The positional bias can be implemented using absolute position embedding \citep{vaswani2017attention,radford2019language,devlin2018bert} or relative position embedding \citep{huang2018music,yang2019xlnet}.
+%a positional bias to mimic this sequential dependency. 
+%Two kinds of remedies have been extensively applied. 
+%One is the absolute positional bias in the original Transformer paper \citepp{vaswani2017attention}, GPT \citepp{gpt22019}, BERT \citepp{devlin2018bert}, and RoBERTa \citepp{liu2019roberta}, which perform an element-wise summation to blend the positional embedding with the content embedding. 
+%The other is the relative positional bias \citepp{huang2018musictf,yang2019xlnet}, which tried to learn separate positional parameters to capture relative positions. 
+It has been shown that relative position representations are more effective for natural language understanding and generation tasks \citep{dai2019transformer,shaw2018self}.
+The proposed disentangled attention mechanism differs from all existing approaches in that we represent each input word using two separate vectors that encode a word's content and position, respectively, and attention weights among words are computed using disentangled matrices on their contents and relative positions, respectively. 
+% is built upon this observation but using a more thorough approach to efficiently disentangle the positional information from the content information via parameterizing them independently.
+%We argue that either this entangled simplification or independent positional parameterizations will inevitably introduce miscellaneous uncertainty into the input data and can result in a sheer performance loss. To address this limitation, we propose a novel approach to efficiently disentangle the positional information from the content information via parameterizing them independently. This produces four different types of cross attentions between content and position, resulting in a more thorough characterization of the interactions between content and positions for each layer in a stacked Transformer.
+
+%Transformer has become a full-fledged model structure for natural language pre-training and spawned many breakthroughs in natural language processing (NLP) tasks.  Recent state-of-the-art models engage in improving the vanilla Transformer structure to make it more capable, efficient and effective. For example, Transformer-XL \citep{dai2019transformer} and Music-Transformer \citep{huang2018musictf} improved the original Transformer to tackle long sequence.  ALBERT \citep{lan2019albert} improved Transformer via layer-wise parameter sharing to reduce overall model size. The extensive adaptation of Transformer has resulted in a downsizing of inventing new model structures, but an upsizing of various improvements upon the Transformer structure. In line with previous works, this paper puts forward two improvements to enhance existing Transformer structure.
+%achieve a better training efficiency of a Transformer model\xiaodl{Also better performance?}.  
+%The first is a more thorough capture of token dependency in a sequence; the other is a novel approach to reconstruct masked tokens in the Masked Language Model (MLM) objective. 
+
+\subsection{Masked Language Model}
+
+%Transformer is originally proposed as building blocks of the $Encoder$+$Decoder$ framework for seq-to-seq (s2s) tasks.
+% under the  $Encoder$+$Decoder$ structure for text generation,
+%Recently,  works in Natural Language Understanding (NLU) often leverage its $Encoder$ to pre-train a language model with a self-supervision objective, i.e. the Masked Language Model (MLM) \citepp{devlin2018bert, liu2019roberta, lan2019albert}. 
+
+Large-scale Transformer-based PLMs 
+%have shown promising results in many NLP tasks
+%\citep{devlin2018bert, liu2019roberta, lan2019albert} 
+are typically pre-trained on large amounts of text to learn contextual word representations using a self-supervision objective, known as Masked Language Model (MLM)~\citep{devlin2018bert}. % which aims to predict words conditioned on their context.
+Specifically, given a sequence $\bm{X}=\left\{x_i \right\}$, we corrupt it into $\bm{\tilde{X}}$ by masking 15\% of its tokens at random and then train a language model parameterized by $\theta$ to reconstruct $\bm{X}$ by predicting the masked tokens $\tilde{x}$ conditioned on $\bm{\tilde{X}}$: 
+%with a portion of it randomly corrupted and denoted as 
+%$\left\{\tilde{x}_i \right\}$, we represent the corrupted sequence as $\bm{\tilde{X}}$. The MLM objective is to reconstruct the corrupted tokens $\{\tilde{x}_i\}$ from $\bm{\tilde{X}}$,
+\begin{equation}
+\label{mlm}
+\begin{split}
+       \max_{\theta} \text{log} \; p_{\theta}(\bm{X}|\bm{\tilde{X}}) &= \max_{\theta} \sum_{i\in \mathcal{C}}{\text{log} \;  p_{\theta}(\tilde{x}_i=x_i|\bm{\tilde{X}})} %\\ 
+       %&=\sum_{i \in K}{\text{log}{\frac{e^{f_{MLM}(h^{o}_i)\cdot e_i }}{\sum_{j}{e^{f_{MLM}(h^{o}_i) \cdot e_j}}}}} \\
+       %f_{MLM}(h_i^o) &= LayerNorm(Linear(h_i^o))
+\end{split}
+\end{equation}
+where $\mathcal{C}$ is the index set of the masked tokens in the sequence. The authors of BERT propose to keep 10\% of the masked tokens unchanged, another 10\% replaced with randomly picked tokens and the rest replaced with the \texttt{[MASK]} token.
+% In DeBERTa, we use a MLM decoder for masked token prediction and replace the 10\% masked but unchanged tokens with their position embedding vectors in the decoder. 
+
+%$e_i$ is the embedding of $i$th token in the sequence. $e_j$ is the embedding of $j$th token in the whole vocabulary. $h^{o}_i$ is the hidden state of the $i$th masked token in the output of last transformer layer. $f_{MLM}$ is an additional layer for MLM task only.
+
+% Original Transformer is designed for seq-to-seq (s2s) tasks with a $Encoder$+$Decoder$ structure for text generation, recent works in Natural Language Understanding (NLU) often leverage its $Encoder$ side for pre-training a language model with a self-supervision objective, such as the Masked Language Model (MLM) \citepp{devlin2018bert, liu2019roberta, lan2019albert}. In this paper, we are still focused on the MLM objective for NLU tasks. However, we adapt a different view on a $N$-layer stacked $Encoder$ Transformer, denoted as $Transformer(Q,K,V)$ as in \citepp{vaswani2017attention}. We first treat the lower $N-1$ layers as the $\mbox{E-Encoder}$ while the top layer as a single-step $\mbox{E-Decoder}$. This $\mbox{E-Decoder}$ is used to produce token-wise contextual embeddings which are used to reconstruct the masked tokens in MLM, rather than traditional auto-regressive text generation. We then extend the $\mbox{E-Decoder}$ from single-step to multi-step via an attention mechanism. This is also inspired by the $encoder-decoder$ attention in the original Transformer model, in which the encoder side provides a static $K$ and $V$, while the $Decoder$ updates the $Q$ when it moves up to next decoder layer. Similarly, during the multi-step decoding,  the $K$ and $V$ will be always taken from the last layer in $\mbox{E-Encoder}$ while we will update the $Q$ in each $\mbox{E-Decoder}$ step. Existing $Q$ will be used  for either generating the new $Q$ in next step, or reconstructing the masked tokens in the last decoding step. By using a dynamic $Q$ to recursively interact with static $K$ and $V$ from the last layer in $\mbox{E-Encoder}$, we conjecture that there are two advantages to achieve a better training efficiency. First, compared with the single-step approach, the final $Q$ can have a deeper understanding of the original $K$ and $V$ from multiple different perspectives, similar to the idea of multi-step reasoning \citepp{shen2017reasonet,liu2018san}. This can lead to better predict the masked tokens. Second, it can push more objective-oriented information back to the static $K$ and $V$ during the back-propagation, since they have interacted with $Q$ multiple times in the forward propagation, making their accumulating gradients better capture the feedback signal in the objective function from all the steps. This can help to learn a better representation for all the $N-1$ layers in $\mbox{E-Encoder}$. Moreover, we design this multi-step decoding methodology without introducing any new parameters into the model or eligible extra computation overhead.  \xiaodl{Need to explain that after pre-training, should we use N-1 layers or N layers.}
+
+
+% To mitigate the discrepancy between training and fine-tuning, BERT keeps a portion of the masked tokens unchanged, e.g. 10\%. However, this portion of prediction is too easy as the output can always see itself via self-attention. Inspired by XLNet, we propose a modification to the objective of this part of tokens which make prediction only on the position of that token and other tokens in the sequence. 
+
+%\xiaodl{A mini discussion on pre-training LM?}

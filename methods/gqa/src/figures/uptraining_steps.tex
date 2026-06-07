@@ -1,0 +1,46 @@
+\begin{figure}[h]
+\centering
+        \begin{tikzpicture}[scale=1.0]
+            \begin{axis}[
+            scale only axis,
+            width=0.85\columnwidth,
+            height=0.45\columnwidth,
+            ylabel={Performance},
+            xlabel={Uptraining proportion $\upprop$},
+            mark=x,
+            xticklabel style={
+                /pgf/number format/fixed,
+                /pgf/number format/precision=2
+            },            
+            ymajorgrids=true,
+            xmajorgrids=true,
+            xminorticks=true,
+            grid style=dashed,
+            legend columns=1,
+            legend cell align=left,
+            legend style={
+                anchor=south,
+                at={(0.8, 0.15)},
+            },
+        ]
+            \addplot[color=mhcolor,mark size=2pt,line width=3, dotted] table {
+                0 57.537
+            	0.1 57.537
+            };        
+            \addplot[color=gqcolor,mark=square,mark size=2pt,line width=2] table {
+                0 56.713
+                0.05 57.4
+            	0.1 57.56
+            };            
+            \addplot[color=mqcolor,mark=triangle,mark size=2pt,line width=2] table {
+
+                0 53.93
+                0.05 56.92
+            	0.1 57.153            	
+            };
+            \legend{\mh, \gmq, \mq}
+            \end{axis}
+        \end{tikzpicture}
+    \caption{Performance as a function of uptraining proportion for T5 XXL models with \mq and \gmq-8.}
+    \label{fig:uptraining_steps}
+\end{figure}

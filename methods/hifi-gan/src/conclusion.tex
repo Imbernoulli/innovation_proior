@@ -1,0 +1,9 @@
+\section{Conclusion}
+In this work, we introduced HiFi-GAN, which can efficiently synthesize high quality speech audio. 
+Above all, our proposed model outperforms the best performing publicly available models in terms of synthesis quality, even comparable to human level. Moreover, it shows a significant improvement in terms of synthesis speed.
+We took inspiration from the characteristic of speech audio that consists of patterns with various periods and applied it to neural networks, and verified that the existence of the proposed discriminator greatly influences the quality of speech synthesis through the ablation study. 
+Additionally, this work presents several experiments that are significant in speech synthesis applications. 
+HiFi-GAN shows ability to generalize unseen speakers and synthesize speech audio comparable to human quality from noisy inputs in an end-to-end setting.
+In addition, our small footprint model demonstrates comparable sample quality with the best publicly available autoregressive counterpart, while generating samples in an order-of-magnitude faster than real-time on CPU. This shows progress towards on-device natural speech synthesis, which requires low latency and memory footprint.
+Finally, our experiments show that the generators of various configurations can be trained with the same discriminators and learning mechanism, which indicates the possibility of flexibly selecting a generator configuration according to the target specifications without the need for a time-consuming hyper-parameter search for the discriminators. \\
+We release HiFi-GAN as open source. We envisage that our work will serve as a basis for future speech synthesis studies.

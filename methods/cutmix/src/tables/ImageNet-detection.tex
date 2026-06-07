@@ -1,0 +1,25 @@
+\begin{table*}[]
+\centering
+\begin{tabular}{lccccc}
+\hline
+\multirow{3}{*}{\begin{tabular}[c]{@{}l@{}}Backbone \\ Network\end{tabular}} 
+& \multicolumn{1}{c}{\multirow{3}{*}{\begin{tabular}[c]{@{}c@{}}ImageNet Cls\\ Top-1 Error (\%)\end{tabular}}} 
+& \multicolumn{2}{c}{Detection} 
+& \multicolumn{2}{c}{Image Captioning} \\ \cline{3-6} 
+& \multicolumn{1}{c}{}                                                                                         
+& \multirow{2}{*}{\begin{tabular}[c]{@{}c@{}}SSD~\cite{liu2016ssd}\\ (mAP)\end{tabular}} 
+& \multirow{2}{*}{\begin{tabular}[c]{@{}c@{}}Faster-RCNN~\cite{fasterrcnn}\\ (mAP)\end{tabular}} 
+& \multirow{2}{*}{\begin{tabular}[c]{@{}c@{}}NIC~\cite{vinyals2015show} \\ (BLEU-1)\end{tabular}} 
+& \multirow{2}{*}{\begin{tabular}[c]{@{}c@{}}NIC~\cite{vinyals2015show} \\ (BLEU-4)\end{tabular}} \\
+& \multicolumn{1}{c}{} 
+& & & & \\ \hline
+ResNet-50 (Baseline)& 23.68 & 76.7 (+0.0)         & 75.6 (+0.0)     & 61.4 (+0.0)        & 22.9 (+0.0)       \\
+Mixup-trained       & 22.58 & 76.6 \redp{-0.1} & 73.9 \redp{-1.7} & 61.6 \greenp{+0.2} & 23.2  \greenp{+0.3} \\
+Cutout-trained      & 22.93 & 76.8 \greenp{+0.1} & 75.0 \redp{-0.6} & 63.0 \greenp{+1.6} & 24.0 \greenp{+1.1} \\
+CutMix-trained      & 21.40 & \textbf{77.6  \greenp{+0.9}} & \textbf{76.7  \greenp{+1.1}} & \textbf{64.2  \greenp{+2.8}} & \textbf{24.9  \greenp{+2.0}} \\ \hline
+\end{tabular}
+\vspace{-0.15cm}
+\caption{Impact of CutMix on transfer learning of pretrained model to other tasks, object detection and image captioning.}
+\label{table:imagenet-detection}
+\vspace{-0.4cm}
+\end{table*}

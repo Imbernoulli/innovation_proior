@@ -1,0 +1,75 @@
+%
+
+\documentclass{article}
+\usepackage{iclr2021_conference,times}
+
+\usepackage{epsfig}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+
+\usepackage{comment}
+\usepackage[british,UKenglish,USenglish,american]{babel}
+\usepackage{multirow}
+
+\usepackage{makecell}
+\usepackage{subfigure}
+
+\usepackage{mathtools}
+\DeclarePairedDelimiter{\norm}{\lVert}{\rVert}
+
+\input{math_commands.tex}
+
+\usepackage{hyperref}
+\usepackage{url}
+\newcommand{\bigcdot}{{\boldsymbol{\cdot}}}
+
+\newcommand{\tabincell}[2]{\begin{tabular}{@{}#1@{}}#2\end{tabular}}
+
+
+
+
+\title{Deformable DETR: Deformable Transformers for End-to-End Object Detection}
+
+
+\author{Xizhou Zhu$^{1*}$, Weijie Su$^{2}$\thanks{Equal contribution. $^{\dag}$Corresponding author. $^{\ddag}$Work is done during an internship at SenseTime Research.}~~$^{\ddag}$, Lewei Lu$^{1}$, Bin Li$^{2}$, Xiaogang Wang$^{1,3}$, Jifeng Dai$^{1\dag}$  \\
+$^{1}$SenseTime Research \\
+$^{2}$University of Science and Technology of China \\
+$^{3}$The Chinese University of Hong Kong
+\\
+\texttt{\{zhuwalter,luotto,daijifeng\}@sensetime.com} \\
+\texttt{jackroos@mail.ustc.edu.cn}, \texttt{binli@ustc.edu.cn}
+\\
+\texttt{xgwang@ee.cuhk.edu.hk}
+}
+
+
+\newcommand{\fix}{\marginpar{FIX}}
+\newcommand{\new}{\marginpar{NEW}}
+
+\iclrfinalcopy
+
+
+\begin{document}
+
+
+\maketitle
+
+\input{src/0-abstract.tex}
+\input{src/1-introduction.tex}
+\input{src/2-related.tex}
+\input{src/3-method.tex}
+\input{src/4-experiment.tex}
+\input{src/5-conclusion.tex}
+
+
+\subsubsection*{Acknowledgments}
+The work is supported by the National Key R\&D Program of China (2020AAA0105200), Beijing Academy of Artificial Intelligence, and the National Natural Science Foundation of China under grand No.U19B2044 and No.61836011.
+
+
+\bibliography{iclr2021_conference}
+\bibliographystyle{iclr2021_conference}
+\clearpage
+\input{src/6-appendix.tex}
+
+\end{document}

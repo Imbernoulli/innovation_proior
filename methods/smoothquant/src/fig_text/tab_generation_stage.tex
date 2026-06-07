@@ -1,0 +1,29 @@
+\begin{table}
+\setlength{\tabcolsep}{2.5pt}
+\small
+\centering
+\caption{\method’s performance in the decoding stage.
+}
+\label{tab:generation-stage}
+\small
+\begin{tabular}{cccccccc}
+\toprule
+\multirow{2}{*}{BS} & \multirow{2}{*}{SeqLen} & \multicolumn{3}{c}{Latency (ms)}                       & \multicolumn{3}{c}{Memory (GB)}         \\
+\cmidrule(lr){3-5} \cmidrule(lr){6-8}
+           &                & FP16                            & Ours & Speedup ($\uparrow$) & FP16        & Ours & Saving ($\uparrow$) \\
+           \midrule
+\multicolumn{8}{c}{OPT-30B (1 GPU)}        \\
+1          & 512            & 422                             & 314         & 1.35$\times$    & 57          & 30          & 1.91$\times$   \\
+1          & 1024           & 559                             & 440         & 1.27$\times$    & 58          & 31          & 1.87$\times$   \\
+16         & 512            & 2488                            & 1753        & 1.42$\times$    & 69          & 44          & 1.59$\times$   \\
+16         & 1024           & OOM                             & 3947        & -       & OOM         & 61          & -      \\
+\midrule
+\multicolumn{8}{c}{OPT-175B (8 GPUs)}        \\
+1          & 512            & 426                             & 359         & 1.19$\times$    & 44          & 23          & 1.87$\times$   \\
+1          & 1024           & 571                             & 475         & 1.20$\times$    & 44          & 24          & 1.85$\times$   \\
+16         & 512            & 2212                            & 1628        & 1.36$\times$    & 50          & 30          & 1.67$\times$   \\
+16         & 1024           & 4133                            & 3231        & 1.28$\times$    & 56          & 37          & 1.52$\times$   \\
+\bottomrule
+\end{tabular}
+\vspace{-1em}
+\end{table}

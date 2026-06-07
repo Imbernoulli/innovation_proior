@@ -1,0 +1,48 @@
+\begin{tikzpicture}
+\begin{axis}[
+  title={},
+  legend style={font=\tiny},
+  ylabel={\small Cluster Purity (\%)},
+  ymin=0.0,  ymax=0.4,
+  xtick=data,
+  legend pos=north west,
+  legend columns=3,
+  height=5cm,
+  width=8cm,
+  ymajorgrids=true,
+  grid style=dashed,
+  ylabel near ticks,
+  xlabel near ticks,
+]
+\addplot[
+    color=blue, mark=square, 
+] table [y=hyp-pur, x=layer]{figures/qual_it1_km100.tex};
+\addlegendentry{C=100, \textsc{Base}-it1}
+
+\addplot[
+    color=blue, mark=o, 
+] table [y=hyp-pur, x=layer]{figures/qual_it1_km500.tex};
+\addlegendentry{C=500, \textsc{Base}-it1}
+
+\addplot[
+    color=blue, mark=diamond, 
+] table [y=hyp-pur, x=layer]{figures/qual_it1_km1000.tex};
+\addlegendentry{C=1000, \textsc{Base}-it1}
+
+\addplot[
+    color=red, mark=square, 
+] table [y=hyp-pur, x=layer]{figures/qual_it2_km100.tex};
+\addlegendentry{C=100, \textsc{Base}-it2}
+
+\addplot[
+    color=red, mark=o, 
+] table [y=hyp-pur, x=layer]{figures/qual_it2_km500.tex};
+\addlegendentry{C=500, \textsc{Base}-it2}
+
+\addplot[
+    color=red, mark=diamond, 
+] table [y=hyp-pur, x=layer]{figures/qual_it2_km1000.tex};
+\addlegendentry{C=1000, \textsc{Base}-it2}
+
+\end{axis}
+\end{tikzpicture}

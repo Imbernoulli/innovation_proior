@@ -1,0 +1,21 @@
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width = 0.9\linewidth]{figs/scheme_menglei.pdf}\vspace{-5pt}
+    \caption{\textbf{\ours~pipeline} is trained with one-step supervision. $\gG_1,\gG_2,\cdots,\gG_d$ are graphs at different levels (fine to coarse). Encoder/decoder only connects the input/output fields with the latent fields at $\gG_1$. Latent nodal fields are updated by one MP at each level. The bi-stride pooling selects the pooled nodes for the adjacent coarser level, and the transition is conducted in a non-parameterized way.}\vspace{-10pt}
+    \label{fig:scheme}
+\end{figure*}
+
+Here we formally introduce \ours, a hierarchical GNN where the multi-level structure has been determined by the input mesh and the preprocessing in Sec.~\ref{sec:preproc}.
+\subsection{Definitions}
+\label{sec:define}
+Figure.~\ref{fig:scheme} presents the overall structure of \ours. We consider the evolution of a physics-based system discretized on a mesh, which is converted to an bi-directed graph $\gG_1=\left(\gV_1,\gE_1\right)$. Here, with subscript $1$, $\gV_1$, and $\gE_1$ label the nodal fields and the edges at the finest level (the input mesh), respectively. Specifically for edges, we define $\gE_1=\{\gE_1^1,\cdots,\gE_1^S\}$, where $\gE_1^1$ is the edge set directly copied from the input mesh and $\{\gE_1^k\vert_{k=2}^S\}$ are the optional problem-dependent edge sets. For example, both \plate~(Fig.~\ref{fig:example:bistride}(c)) and \fonts~(Fig.~\ref{fig:example:bistride}(d)) benchmarks have a contact edge set $\gE_1^2$ for the colliding vertices. We use $\{p,q\}$, stacked vectors of $\{p_i,q_i\}$ of all nodes $i\in\gV_1$, to denote the input and output nodal fields, respectively. Given an input field $p^{j}$ at a time $t_j$, one pass of \ours~returns the output field $q^{j+1}$ at time $t_{j+1}=t_j+\Delta t$, where $\Delta t$ is a fixed time step size. The output $q$ can contain more physical fields than the input $p$ and must be able to derive the input for the next pass. The rollout refers to iteratively conducting \ours~from the initial state $p^0 \to q^1 \to p^1 \to \cdots \to q^n$ and producing the temporal sequence output $\{q^1,q^2,\cdots,q^n\}$ within the time range of $\left(t_0,t_0+n\Delta t\right]$, where $n$ is the total number of evaluations.
+
+\paragraph*{Message Passing} In general, we follow the \textit{encode-process-decode} fashion in \flatGNN, where encoder and decoder only appear at the top level $\gG_1$, mapping the nodal input $p$ and output $q$ to/from the latent feature $\vv$, respectively (see Table~\ref{tab:model:inputs} for the domain-specific information). As for the processor, unlike~\cite{fortunato2022multiscale}, we observe that a single MP per level is sufficient for all experiments. We do not separately encode the edge offsets $\Delta\vx_{ij}=\vx_i-\vx_j$, instead, simply prepend this to the stacked sender/receiver latent as the input to calculate edge flow. For a problem involving $S$ edge sets, an MP pass at level $l$ is formulated as:
+\begin{equation}
+    \label{eq:MP}
+    \begin{split}
+        \ve_{l,ij}^{s}&\leftarrow\text{f}^{s}_l\big(\Delta\vx_{l,ij},\vv_{l,i},\vv_{l,j}\big),\quad s=1,\cdots,S,\\
+        \vv'_{l,i}&\leftarrow\vv_{l,i}+\text{f}^{V}_l\Big(\vv_{l,i},\sum_{j}\ve_{l,ij}^{1},\cdots,\sum_{j}\ve_{l,ij}^{S}\Big),
+    \end{split}
+\end{equation}
+where $\text{f}$ is a MLP function, $\ve$ is the latent information flow through an edge, and $\vv$ is the latent node feature. Please refer to Sec.~\ref{sec:appdx:arch} for the detailed architecture of the model.

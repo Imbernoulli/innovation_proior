@@ -1,0 +1,93 @@
+\appendix
+\pagebreak
+%\section{Implementation Details}
+
+\section{Connection between \AlgoName{} and the Information Bottleneck Principle}
+
+ We can show that our proposed method and objective function is closely related to the information bottleneck principle \cite{tishby_deep_2015,tishby_information_2000} (Fig. \ref{fig:fig_IB}). First, we postulate that a desirable representation is a representation which is informative about the input image sample while being invariant (or non-informative) to pre-specified distortions of the sample (the data augmentations used). In the information bottleneck framework, this trade-off is given by the following loss function:
+
+\begin{equation}
+   \mathcal{IB_{ \theta}} \triangleq I(Z_{\theta}, Y) - \beta I(Z_{\theta}, X)
+    \label{eq:lossIB}
+\end{equation}
+
+where $I(.,.)$ denotes mutual information and $\beta$ is a positive scalar defining the trade-off between preserving information about the input sample and being invariant to distortions.
+
+\begin{figure}[ht]
+\vskip 0.2in
+\begin{center}
+%\columnwidth
+ \centerline{\includegraphics[width=6cm]{fig_IB.pdf}}
+\caption{The information bottleneck principle applied to SSL posits that the objective of SSL is to learn a representation $Z_\theta$ which is informative about the image sample, but invariant (i.e. uninformative) to the specific distortions that are applied to this sample. \AlgoName{} can be viewed as a specific instanciation of the information bottleneck objective.}
+\label{fig:fig_IB}
+\end{center}
+\vskip -0.2in
+\end{figure}
+
+Using a classical identity for mutual information, we can rewrite equation \ref{eq:lossIB} as:
+
+\begin{equation}
+   \mathcal{IB_{ \theta}} = [H(Z_{\theta}) - \cancelto{0}{H(Z_{\theta}|Y)}] - \beta [H(Z_{\theta}) - H(Z_{\theta}|X)] 
+    \label{eq:lossIB2}
+\end{equation}
+
+where $H(.)$ denotes differential entropy. The term $H(Z_{\theta}|Y)$ cancels to 0 because the function $f_{\theta}$ is deterministic, and so the representation $Z_{\theta}$ conditioned on the input sample $Y$ is perfectly known and has null entropy. We can rearrange equation \ref{eq:lossIB2} as: 
+
+\begin{equation}
+   \mathcal{IB_{ \theta}} = (1-\beta) H(Z_{\theta})+ \beta H(Z_{\theta}|X) 
+    \label{eq:lossIB3}
+\end{equation}
+
+Measuring the entropy of a high-dimensional signal generally requires vast amounts of data, much larger than the size of a single batch. In order to circumvent this difficulty, we make the simplifying assumption that the representation $Z$ is distributed as a Gaussian. The differential entropy of a Gaussian distribution is simply given by the logarithm of the determinant of its covariance function (up to a constant that we ignore here) \cite{cai_law_2015}. The loss function becomes:  
+
+\begin{equation}
+   \mathcal{IB_{ \theta}} = (1-\beta) ~log ~|\mathcal{C}_{Z_\theta}|+ \beta ~\mathbb{E}_{X} log ~|\mathcal{C}_{Z_\theta|X}|
+    \label{eq:lossIB4}
+\end{equation}
+
+This equation is still not exactly the one we optimize for in practice (eqn \ref{eq:lossBarlow}). Indeed, our loss function is only connected to the IB loss given by eqn. \ref{eq:lossIB4} through the following simplifications and approximations:
+\begin{itemize}
+  \item In the case where $\beta<=1$, it is easy to see from eqn. \ref{eq:lossIB4} that the best solution to the IB trade-off is to set the representation to a constant that does not depend on the input. This trade-off thus does not lead to interesting representations and can be ignored. When $\beta>1$, we note that the first term of eqn. \ref{eq:lossIB4} is preceded by a negative constant. Since the overall scaling factor of the loss function is not important, we can simplify the equation by removing the constant in front of the first term and replace it by a minus sign. 
+  \item In practice, we find that directly optimizing the determinant of the covariance matrices does not lead to SoTA solutions. Instead, we replace the first term of the loss in eqn \ref{eq:lossIB4} (maximizing the information about samples), by the proxy which consist in simply minimizing the Frobenius norm of the cross-correlation matrix. If the representations are assumed to be pre-normalized before entering the loss (an assumption we are free to make since the cross-correlation matrix is invariant to this normalization), this minimization only affects the off-diagonal terms of the covariance matrix
+  (the diagonal terms being fixed to 1 by the normalization) and encourages them to be as close to 0 as possible. It is clear that this surrogate objective, which consists in decorrelating all output units, has the same global optimum than the original information maximization objective. 
+  \item Similarly, it can easily be shown that the second term of eqn \ref{eq:lossIB4} (minimizing the information the representation contains about the distortions) has the same global optimum than the first term of eqn \ref{eq:lossBarlow}, which maximizes the alignment between representations of pairs of distorted samples.  
+\end{itemize}
+
+%Alternatively, this second term can be computed from the auto-correlation matrix of one of the twin networks, instead of the cross-correlation matrix between twin networks. In practice, we do not see strong difference in performance between this alternative and the proposed loss function, and only report results for the objective function presented above.
+
+
+%Many empirical works are motivated by the InfoMax principle, i.e., maximizing I(f(x); f(y)) for (x, y)  ppos. However, the interpretation of Lcontrastive as a lower bound of I(f(x); f(y)) is known to be inconsistent with its actual behavior in pratice (Tschannen et al., 2019). @REF@ have revealed that the commonly used estimators have strong inductive biases and—perhaps surprisingly—looser bounds can lead to better representations. Furthermore, they have demonstrated that the connection of recent approaches to MI maximization might vanish if negative samples are not drawn independently (as done by some approaches in the literature). As a result, it is unclear whether the connection to MI is a sufficient (or necessary) component for designing powerful unsupervised representation learning algorithms. Here we argue that the information interpretation of contrastive methods as well as our method can be kept, as long as the information bottleneck principle is used.
+
+
+
+%\paragraph{Hyperparameters}
+
+
+
+
+%max_steps=int(1000 1281167 / 4096),  epochs batch_size=4096,
+%mlp_hidden_size=4096,
+%projection_size=256,
+%base_target_ema=4e-3,
+%optimizer_config=dict(
+%optimizer_name=lars, beta=0.9, trust_coef=1e-3, weight_decay=1.5e-6,
+%As in SimCLR and official implementation of LARS, we exclude bias  and batchnorm weight from the Lars adaptation and weightdecay exclude_bias_from_adaption=True),
+%learning_rate_schedule=dict(
+%The learning rate is linearly increase up to
+% its base value  batchisze 256 after warmup steps  global steps and then anneal with a cosine schedule base_learning_rate=0.2,
+%warmup_steps=int(10 1281167 / 4096), anneal_schedule=cosine),
+%batchnorm_kwargs=dict( decay_rate=0.9,
+%eps=1e-5), seed=1337,
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Evaluations on ImageNet}
+
+\subsection{Linear evaluation on ImageNet}
+\label{sec:linear_evaluation}
+The linear classifier is trained for 100 epochs with a learning rate of $0.3$ and a cosine learning rate schedule. We minimize the cross-entropy loss with the SGD optimizer with momentum and weight decay of $10^{-6}$. We use a batch size of $256$. At training time we augment an input image by taking a random crop, resizing it to $224 \times 224$, and optionally flipping the image horizontally. At test time we resize the image to $256 \times 256$ and center-crop it to a size of $224 \times 224$.
+
+\subsection{Semi-supervised training on ImageNet}
+\label{sec:semisupervised_evaluation}
+We train for $20$ epochs with a learning rate of $0.002$ for the ResNet-50 and $0.5$ for the final classification layer. The learning rate is multiplied by a factor of $0.2$ after the 12th and 16th epoch. We minimize the cross-entropy loss with the SGD optimizer with momentum and do not use weight decay. We use a batch size of $256$. The image augmentations are the same as in the linear evaluation setting.

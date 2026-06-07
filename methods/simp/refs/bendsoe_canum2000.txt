@@ -1,0 +1,981 @@
+Canum 2000 : Actes du 32e Congrès national d’analyse numérique
+A. Blouza, I. Danaila, P. Joly, S.M. Kaber, B. Lucquin, F. Murat & M. Postel, Éditeurs
+
+ ,
+ESAIM: Proceedings,
+,
+http://www.emath.fr/Maths/Proc/Vol.11/
+
+c 2002, Société de Mathématiques Appliquées et Industrielles, EDP Sciences
+
+Recent developments in topology design
+of materials and mechanisms
+Martin P. Bendsøe
+
+Résumé. Cet article présente certaines méthodes d’optimisation topologique des milieux
+continus et leur utilisation dans la conception de matériaux et mécanismes. Ceci comprend
+l’utilisation de l’optimisation topologique dans la conception de matériaux ayant des propriétés limites et l’introduction de critères de flambage. On s’intéresse aussi à la conception
+de matériaux composites isotropes mettant en oeuvre les schémas d’interpolation à la mode
+en optimisation topologique. Enfin on présente des exemples de conception de mécanismes
+flexibles.
+Mots clés. Optimisation topologique, microstructures, mécanismes flexibles.
+Abstract. This paper gives a brief introduction to some of the methods used in topology
+design of continuum structures and to their use for the design of materials and mechanisms.
+This encompasses the use of topology design in design of materials with extreme properties,
+and the introduction of buckling criteria in such design problems. A topic is also the design
+of isotropic composites which realize certain popular interpolation schemes used in topology
+design (making the dog bite its tail). Finally, examples of the design of flexible mechanisms
+will be discussed.
+Key words. Topology design, microstructures, mechanisms.
+AMS subject classification. 74P, 74Q, 74M, 65M, 49J
+
+1 Introduction
+The area of computational variable-topology shape design of continuum structures is presently
+dominated by methods which employ a material distribution approach for a fixed reference domain, in the spirit of the so-called ‘homogenization method’ for topology design ([7], [4]). That
+is, the geometric representation is like a grey-scale rendering of an image, i.e., a raster representation of the geometry on a fixed reference domain. The physics of the problem is also defined on
+this fixed reference domain, in analogy to fictitious domain methods for finite element analysis.
+The technique has its origins in theoretical studies of existence of solutions in variational problems, in particular shape optimization problems, and in studies in theoretical material science of
+variational bounds on material properties. The area is presently oriented towards applications, and
+one now sees a fairly widespread use of topology design in industry.
+Article published by EDP Sciences and available at http://www.edpsciences.org/proc or http://dx.doi.org/10.1051/proc:2002029
+
+42
+
+Recent developments in topology design of materials and mechanisms
+
+In this short introduction to the field we outline some of the basic ideas and methods, referring to existing literature for comprehensive surveys (e.g., [8], [36], [9], [12]). Also, reference is
+mostly made to recent papers that include bibliographies useful for on overview of the area – the
+presentation thus does not present a complete historical perspective.
+The basic setting of continuum topology optimization is a ’0-1’ integer design problem
+(generalized shape optimization). Thus a design specifies whether there is solid material or void at
+every point in the chosen design region, without any further restrictions on the shape. In general,
+this class of problems is ill-posed in the continuum setting (cf., [25], [23]). Well-posed problems can be obtained by using their relaxed versions which usually incorporates microstructure,
+that is, optimal designs with grey-scale (see, e.g., [2], [13]). Relaxation usually yields a set of
+continuously variable design fields to be optimized over a fixed domain, a convenient feature for
+computations (the integer 0-1 format is avoided). The form of the relaxed setting is only known
+for a limited class of problems and much work is still needed in this area.
+An alternative is to restrict the space of admissible solutions. This can typically be accomplished by enforcing a bound on the perimeter of the design (see [33], and references therein),
+by use of a filter limiting minimum scale (see [44] and [10] for an overview), or by imposing
+constraints on gradients of grey-scales defining geometry (see [34], and references therein). The
+problems with restricted design freedom are typically – by some compactness properties – wellposed in the setting of a continuum description of the design problem (existence still requires, for
+each case, a formal proof, as seen in [5], [10]). In a 0-1 setting, the restriction approach leads to
+‘classical designs’ and the physical modelling is determined solely by the properties of the given
+solid material. The major challenge is the solution of a large-scale integer programming problem.
+The high cost of function calls for these problems typically precludes the use of genetic algorithms
+or simulated annealing impractical for large-scale problems – this is an area that should have more
+focus in the coming years (see, however, [6] for a recent successful application of Lagrangian duality to the large scale integer problem). Thus the typical approach is to replace the integer variables
+with continuous variables together with some form of penalty that steers the solution to discrete
+0-1 values. A key part of these methods is the introduction of interpolation functions (often interpreted as material densities) that express various physical quantities (e.g., material stiffness, cost,
+etc.) as a function of the continuous variables. Moreover, geometric properties also require suitable interpretation. Often such interpolations can be obtained from the microstructures describing
+the relaxed formulations. It is important, however, to recognize that the ultimate goal remains that
+of obtaining a black-and-white design.
+
+2 Problem form
+In topology design we seek, for given choice of objective and constraint, the optimal distribution
+of material in a fixed reference domain  in  or  . Here we consider a mechanical element
+as a body occupying a domain  . Referring to the reference domain  on which applied
+loads and boundary conditions are defined, we can define an example ‘control in the coefficients’
+ESAIM: Proc., "!! ,
+
+# $ $ # , %&!('*) $
+
+Martin P. Bendsøe
+
+43
+
+problem, here for simplicity taken as the minimum compliance problem:
+
++-,/.1032 46587:93;=<?>A@
+subject to:
+587CB6DFE G HJI*KMLON DFE I*;ML I*K"LONPG H(I*QRL I*KMLS<?>UTV5W7C93QX<Y> for all Q[Z]\
+B6D^E_G HMZa`
+
+(1)
+
+ad
+
+Here \ is the space of kinematically admissible displacement fields, ; the equilibrium displacement, 9 the forces, and N8I*;"L linearized strains. The rigidity tensor B6D^E GH is the design variable of
+our problem. The definition of the set of admissible rigidity tensors is what distinguishes various settings for the design problem. A classical variant of problem (1) is the so-called variable
+thickness problem, where the set of admissible designs is defined through a thickness function b :
+
+B6D^E G HJI*KMLcT b I*KMLdBXD e^E_G H
+b Zgf6hiIj>kL
+n=o b1p Drq o b o b1p6s_t
+587 b <?>lTVmc@
+
+(2)
+
+for given material properties BXD eFE G H and given volume m . This problem is rather special, with
+existence of solutions in the ‘naive’ setting (see [32] and references therein).
+p of material points, the admissible
+For a topology design where we work with domains >
+designs are defined by a point-wise volume fraction of a given material attaining the values zero
+or one (a black-and-white design):
+
+B6DFE G HjI*KMLuTVv-I*KMLdB D e^E_G H @
+v=I*KMLcTxwy@dKzZg> pC{ v=I*K"LcT|n}@dKgZz>~> p
+p
+Vol Ij> LcT 587 v=I*K"L<Y>TVm
+
+(3)
+
+Materials with a structural hierarchy often allow for stiffer structures, as seen in nature in bone,
+wood, etc. and used in composite structures (see Figure 1). Here this can lead to a lack of existence
+of solutions, as composites can be constructed as limiting sequences of designs defined by (3);
+however, composites are not covered by (3) (for B:D e^E GH isotropic, the material in (3) is isotropic, but
+a composite can be anisotropic).
+
+1
+3
+
+2
+
+4
+
+Figure 1: Elements of a minimizing sequence of designs with finer and finer scales, with the limit
+(4) consisting of composites in large areas.
+ESAIM: Proc.,  ,
+
+    , & 
+
+44
+
+Recent developments in topology design of materials and mechanisms
+
+3 Computations
+For computations a finite dimensional version of the problem (1) is generated first, normally with
+finite element approximations of displacement fields and design variables. The generic form of
+the resulting non-linear, non-convex, large scale optimization problem is
+
+/R1"
+Y a
+( Vu
+
+(4)
+
+¡=¢ £¤r¥[¦§(¨¦§£6©_ª
+
+
+
+
+
+Here denotes nodal displacements and the design variables, entering the equilibrium equation
+
+through the stiffness matrix .
+If this problem is solved directly via mathematical programming techniques one treats both
+displacements and design variables as independent variables and the equilibrium equation is solved
+by the optimization code. This is thus for even moderately sized problems normally only viable by
+use of specially developed algorthms that utilize the problem structure (an example of this can be
+found in [50]). In some cases, as for the minimum compliance case, it is possible to find explicit
+formulas for the optimal design variables in terms of the state variables. This allows for a reduction
+of the number of variables, and the resulting problem is an equilibirum problem with a non-smooth
+potential. For continuum design, such a technique, based on a stress based formulation, is used in,
+e.g., [4], [2].
+The traditional approach is to rewrite the problem as a problem in the design variables only:
+
+/1}«   
+   V
+¡¢  £¤r¥ ¦  ¦§ £6©Pª
+
+(5)
+
+with the function:
+
+«      
+
+
+(6)
+
+where
+
+solves
+
+¬   i­
+
+If the optimization algorithm to be used for solving (5) requires function gradients, sensitivity analysis (i.e., efficient means to compute the derivatives of functions involving the displacements) becomes a central subject. This usually involves the so-called adjoint system, as also
+known from control theory. Sensitivity analysis is an important area of computer aided design,
+as it provides information on changes in performance with respect to design variables, see for example papers in [21]. The main rationale behind using (5) as the basic format for computational
+optimization is the use of commercial software packages for finite element analysis and that it is
+fairly straightforward to generalize to a broad class of problems. Moreover, in such problems as
+shape design via CAD defined boundaries, the number of design variables is usually comparably
+small, making (5) a moderately sized problem (with ‘expensive’ function calls). For topology
+design, even problem (5) is large-scale; in many cases the key point to success is to formulate
+relevant problems involving only a moderate number of constraints, so that dual methods can be
+ESAIM: Proc., ®¯°±"²² ,
+
+³ ´ ´ ³ , µ&²(¶*· ´
+
+Martin P. Bendsøe
+
+45
+
+effective. Here techniques based on separable, convex approximations are particularly popular
+(CONLIN, see [16], and MMA, see [47]).
+Finally, we note that the continuum problem at hand is a two field problem which may
+develop checkerboards in computations (as for a Stokes flow problem). For a fine enough mesh,
+geometric complexity constraints usually removes such effects, but in for example a relaxed setting
+special care must be taken to avoid such ‘polluted’ results (see [44] for an overview).
+
+4 Homogenized materials, relaxation, and material design
+Inspired by theoretical studies on generalized shape design in conduction and torsion problems
+and by numerical and theoretical work related to plate design (see, e.g., [11], [24], [19]), [26])
+initial work on numerical methods for topology design of continuum structures was based on
+using composite materials as the basis for describing varying material properties in space ([7]).
+Composites consisting of square or rectangular holes in periodically repeated square cells were
+first used for planar problems and homogenization techniques were used for computing effective
+moduli of the materials. Hence the use of the phrase ‘the homogenization method for topology
+design’. The method involves working with orthotropic or anisotropic materials. This adds to
+the requirements of the finite element analysis code, but the main additional complications is
+the extra design variables required to describe the structure. Thus, a microstructure with square
+holes in square cells require two distributed variables, as the material properties at each point
+of the structure will depend on the size-variable characterizing the hole size and on one variable
+characterizing the angle of rotation of the material axes.
+The types of microstructures just mentioned do not provide for the full relaxation for the
+design problem, which in principle should encompass all composites formed by G-convergence
+(or H-convergence). However, for the compliance problem one only needs the composites which
+provides for the stiffest composites, defined in similar terms as the problems of bounds on effective material properties, as studied in the theory of composites (see [12] for a comprehensive
+bibliography). Here it has been proved that for example so-called ranked laminates (layers) are
+in fact optimal for stiffness problems (for an overview, see for example [3], [4]). Their effective
+properties can be given in analytical form (and in a subtle recursive form, cf., [17]), a central aspect
+for the existence proofs and for their use in computations. With layered materials, existence of
+solutions to the minimum compliance problem for both single and multiple load cases is obtained,
+without any need for additional constraints on the design space (e.g., without constraints on the
+geometric complexity), and thus interpolation (i.e., continuous design variables) and relaxation
+are both provided for. However, the relaxed models seldom result in black-and-white designs in
+themselves.
+The construction of the relaxation can in esssence be seen as problem of design of composites. This can be seen by rewriting problem (1) in the form
+(7)
+
+¸º¹» ¸-¿/À
+¼S½¾
+Á ½ÃÂ
+
+ÄYÅÇÆ6È^É ÊËJÌ*Í"ÎOÏ È^É Ì*ÐRÎ Ì*ÍMÎOÏ_ÊËÌ*Ð}Î Ì*Í"ÎÒÑYÓÕÔÖuÄ}ÅÇ×3ÐAÑYÓ
+
+ad
+where the inner problem is the minimum potential energy problem, with value at equilibrium
+equal to the negative of compliance. By interchanging the ‘max’ and the ‘min’ and considering
+ESAIM: Proc., ØÙÚÛÜÜ ,
+
+Ý Þ Þ Ý , ß&Üàá Þ
+
+46
+
+Recent developments in topology design of materials and mechanisms
+
+the pointwise optimal choice of rigidity tensor â , one identifies an auxiliary sub-problem that will
+ã-äå
+generate a bound on performance:
+
+â6çFè é êJë*ìMíOî_çFï è îPïé ê
+æ
+
+(8)
+
+This is a problem of maximizing strain energy for a given fixed strain î ï , where â ranges over
+all composites. For periodic composites, given by a cell ð of periodicity, this homogenized strain
+energy is written as
+ã-ó/ô
+
+â:ç ñ^è_é ê î çïFè î ïé êò õ
+â6çFè é êJë*øRíúù(î çï^èû î ç^è ëjü"í ë*øRí_ýþùÿî ïé ê û îPé êJëjü"í ë*ø1ídýð
+ð -periodic öR÷
+
+(9)
+
+and the material design problem becomesã-äå
+
+æ
+
+(10)
+
+ad
+
+ â ç ñFè é ê î çï^è î ïéê
+
+where ad is denotes the set of admissible local material tensors, or, rather, the local design of
+the microstructure. For layered materials, this is an analytical problem, but one could also think
+of this problem as a computational problem of local topology design. Note that problems (8), (10)
+generate an upper bound on the strain energy of any composite, and thus by choice of strain î ï on
+the material properties of such composites. An example would be to find bounds on the bulk and
+shear moduli of isotropic composites.
+
+5 The SIMP model
+Complementing the use of the homogenization method, where anisotropic composites are a priori
+accepted as part of the design space, a popular method to model material properties which are
+isotropic at intermediate densities is the so-called penalized, proportional fictitious material SIMPmodel (SIMP: Solid Isotropic Material with Penalization), see for example [9] for an overview. In
+this model a continuous variable is introduced, with
+, resembling a density of material
+by the fact that the volume of the structure is evaluated as
+
+
+
+ ò
+
+(11)
+
+öY÷
+
+3ë*ì"í
+
+The relation between this density and the material tensor â6ç^è_é ê in the equilibrium analysis is written
+as
+
+â6ç^è_é êJë}í ò
+
+(12)
+
+ â:ç ï^è éê  
+
+
+
+where the given material has stiffness given by â ç ï^è éê . The interpolation (12) satisfies that âºë í ò
+and â-ë 8í ò â ç ï^è_é ê , meaning that if a final design has density zero and one in all points, this design
+is a black-and-white design for which the performance has been evaluated with a correct physical
+model. For problems where the volume constraint is active, experience shows that optimization
+
+
+
+ESAIM: Proc.,
+
+!#"%$'&)(%( , *,+,+-* , .(0/1,+
+
+Martin P. Bendsøe
+
+47
+
+2
+
+does actually result in such designs if one chooses the power sufficiently big (in order to obtain
+true ‘0-1’ designs,
+is usually required). The reason is that for such a choice one imposes a
+penalization on intermediate densities (volume is proportional to but stiffness is less than proportional). The SIMP model thus has an inherent penalization leading to 0-1 designs, and, as such,
+requires filtering or likewise for existence of solutions (cf., the discussion in the introduction).
+For the SIMP interpolation (12) it is not immediately apparent that areas of grey can be
+interpreted in physical terms. However, it turns out that under fairly simple conditions on , any
+stiffness used in the SIMP model can be realized as the stiffness of a composite made of void and
+an amount of the base material corresponding to the relevant density, see Figure 2. Thus using the
+term ‘density’ for the interpolation function is quite natural, and this type of model actually also
+falls under the label ‘the homogenization method for topology design’.
+
+2435
+
+6
+
+2
+
+6
+
+Density 0.25
+
+Density 0.5
+
+Density 0.75
+
+Figure 2: Planar microstructures of material and void realizing the material properties of the SIMP
+model with
+(Poisson’s ratio is zero). As stiffer material microstructures can be constructed
+from the given densities, non-structural areas are seen at the cell centers. See [9].
+
+2798
+
+Figure 3: Design of a periodic composite with negative Poisson ratio. Topology optimization is
+applied to the unit cell of periodicity, and the effective parameters of the composite are computed
+via homogenization. By courtesy of O. Sigmund, [38].
+
+ESAIM: Proc.,
+
+:#;%<'=>%> , ?,@,@-? , A>CBED,@
+
+48
+
+Recent developments in topology design of materials and mechanisms
+
+6 Design of materials
+The basic concept of topology optimization can in itself be used to design material microstructures.
+The idea is to use expressions of the form (9) for the homogenized material parameters of a periodic composite to state conditions on the resulting material to be designed (e.g., by least squares),
+and then to use topology design to find the optimal distribution of material in the unit cell, which
+is now the reference domain. Typically one wish to find single length-scale microstructures, and
+thus a verison of the SIMP interpolation with geometric constraints (a filter) is a natural version,
+cf., ([38]). Such a procedure is inverse homogenization. It can result in many interesting types
+of material microstructures, as for example ones that result in a medium which has homogenized
+properties with a negative Poisson’s ratio, see Figure 3. Also, by this method one can obtain the
+geometries in Figure 2 ([9]), which are isotropic microstrutures representing the properties of the
+SIMP interpolation. Thus one has here employed topology design with SIMP to obtain specified
+material properties of SIMP, making the dog bite its tail.
+It is in connection with material design useful to compare the values of the strain energy
+(c.f., (9)) of the composites and relate this to the known bounds on the effective material parameters of composites. For comparison one gets a clearer picture when considering the dual of this,
+that is, the complementary energy, i.e.,
+(13)
+
+W
+XZY
+
+FHGJILKNMPO)Q%R0SJT,U-V'W SJT W#U-V
+
+for a given stress . If any 2-D anisotropic composite made of void and an isotropic material with
+Youngs modulus
+and Poisson ratio
+is allowed, the upper bound on the stiffness, that is, the
+lower bound on the complementary energy can for any stress field be found by the material properties of an optimally designed rank-2 layering, with directions of layerings along the directions
+of the principal stresses. The bound is given by (see, e.g., [3] and references therein):
+
+[\Y
+
+ceQQ d0f ]] W)W)hNgg i W)W)hjgg hNkml FF nn kpoqiro [\Y RCRCWW h WW hjh ^^ if WW h WW hjhq_sut
+]
+J
+S
+T
+I
+W
+#
+W
+U
+`
+V
+b
+_
+a
+)
+O
+H
+Q
+^
+J
+S
+,
+T
+%
+U
+V
+(14)
+c d f hNi hjhviwl kpoxk4o [\Y h hjh if h hjh t
+W
+W
+W
+for a stress field with principle stresses h and hyh . This bound has been found by analytical
+
+means. It is useful to compare this bound with the corresponding optimal complementary energy
+which can be obtained with other composites, see Figure 4. It is here especially interesting to note
+that the numerically obtained single lenth-scale so-called Vidgergauz-like structures ([48]) (see
+Figure 5) have complementary energy as low as the optimal bound for principal stresses of the
+same sign, while it does not seem to be possible otherwise. This is confirmed by the recent results
+([1]) which show that no single scale periodic composite obtain the bounds in this case, and any
+composite obtaining the bound (in 2-D) must be degenerate (i.e. has a singular stiffness tensor)
+For the SIMP model the bounds to consider are not the ones given in (14), but rather the
+Hashin-Shtrikman bounds ([20]) on the effective material parameters of isotropic composites, as
+(in this case
+illustrated graphically in Figure 6 for an isotropic base material with Poisson ratio
+the bounds can be expressed solely in terms of the Young’s modulus). Such an comparison shows
+that for example in 2-D, the power of the SIMP model should satisfy
+
+n{z|
+
+}
+
+(15)
+ESAIM: Proc.,
+
+#%')% , ,,- , 0,
+
+l
+} _w~ n i  [ n k [
+
+Martin P. Bendsøe
+
+49
+
+Stress energy
+
+4.0
+
+Lower bound
+Vigdergauz-like structures
+Square holes
+Rectangular holes
+Powerlaw (p=2)
+Powerlaw (p=3)
+
+3.0
+
+2.0
+
+1.0
+1.0
+
+0.5
+
+0.0
+
+0.5
+
+ 
+Principal stress ratio (η=σ /σ )
+ΙΙ
+
+1.0
+
+Ι
+
+Figure 4: Comparison of the optimal (minimal) complementary energy as a function of the ratio of
+the principal stresses, and for various types of microstructures and interpolation schemes (material
+and void mixtures). The density is
+and Poisson’s ratio is
+. The Vidgergauz-like
+structures are shown in Figure 5 ([9]).
+
+¡
+
+¢¤£{¥¦
+
+ESAIM: Proc.,
+
+§#¨%©'ª«%« , ¬,­,­-¬ , ®«C¯E°,­
+
+50
+
+Recent developments in topology design of materials and mechanisms
+
+± ² ± ² = ³0
+σ II
+
+± ² ± ² = ³0.25
+σ II
+
+σI
+
+± ² ± ² = -0.25
+σ II
+
+σI
+
+σI
+
+± ² ± ² = -0.5
+σ II
+
+σI
+
+± ² ± ² = ³0.75
+
+± ² ± ² = ³0.5
+σ II
+
+σ II
+
+σI
+
+± ² ± ² = -0.75
+σ II
+
+± ² ± ² =1
+σ II
+
+σI
+
+σI
+
+± ² ± ² = -1
+σ II
+
+σI
+
+σI
+
+Figure 5: The shape of single inclusions of void in a cell of a homogenized, periodic medium
+minimizing complementary energy (Vigdergauz-like structures for
+and a density
+). Results for a range of principal stress ratios of a macroscopic stress field ([9]).
+
+´¶µ¸·{¹º
+
+¼½¡¾
+
+»wµ
+
+in order for this model to satisfy the Hashin-Shtrikman bounds, i.e., it is a necessary condition for
+the model to be represented by a composite. Moreover, the material design technique then shows
+that this is also possible, as illustrated in Figure 2 (see [9] for further details).
+An issue arising in topology design of microstructures - as also in topology design in general
+- is the appearance of slender elements of the structures, often making such structures vulnerable
+to instability phenomena such as buckling. A global buckling criterion for topology design of
+continuum structures has been considered in [28], and this development has been used as a basis
+for designing composites for optimal elastic properties (e.g., maximal bulk modulus), while maintaining a lower limit on the critical instability load of the composite. Such instabilities can have
+several length-scales, depending on the geometry, dimensions and loading of the medium. For
+design, one can reasonably choose to use homogenization to obtain the buckling load for periodic
+buckling modes existing at a length-scale comparable to the cell of periodicity, while accounting for the possibility that modes may exist which involve several cells. Thus the design of the
+microstructure is performed over one cell, but the buckling analysis (in a linear eigenvalue analysis, using homogenized equations) can involve a modified cell of periodicity involving several
+of the cells used to described the micro-geometry. In principle this should not be necessary, as
+this corresponds to a special refined geometry of the unit cell, but the limited geometric resolution
+of the design description makes such an approach necessary as a safeguard. The design problem
+involves the standard problems of treating eigenvalue problems in topology design. One is the
+possible non-smoothness of the objective, the other being the appearance of localized modes in
+low-density areas, requiring special care to identify the relevant modes ([28], [31] – see also below). Filtering is used in order to control geoemtric complexity. The computational experiments
+show that the range of microgeometries which attain a high bulk modulus is wide enough to allow
+ESAIM: Proc.,
+
+¿#À%Á'Â)Ã%Ã , Ä,Å,Å-Ä , ÆÃ0ÇÈ,Å
+
+Martin P. Bendsøe
+
+51
+
+1.0
+
+Young’s Modulus, E
+
+0.8
+
+HashinShtrikman upper bound
+3
+ρ
+
+0.6
+
+0.4
+
+0.2
+
+0.0
+0.0
+
+0.2
+
+0.4
+
+0.6
+Density, ρ
+
+0.8
+
+1.0
+
+Figure 6: A comparison of the SIMP model and the Hashin-Strikhman upper bound for an
+isotropic material with Poisson ratio
+mixed with void. For the H-S upper bound, microstructures with properties almost attaining the bounds are also shown ([9]).
+
+É{ÊË
+
+ESAIM: Proc.,
+
+Ì#Í%Î'ÏÐ%Ð , Ñ,Ò,Ò-Ñ , ÓÐCÔEÕ,Ò
+
+52
+
+Recent developments in topology design of materials and mechanisms
+
+for using microstructures where a reasonable account of the critical load carrying capacity can be
+taken into account, see Figure 7.
+
+ÖA
+
+B
+
+C
+
+D
+
+Figure 7: Microstructures optimized for optimal bulk properties. For (A) no buckling constraint
+is imposed, while for (B) such a constraint is used. Note that the buckling constraint also removes
+checkerboards, as such substructures have a zero numerical buckling load. Finally, in (C) and (D)
+a filter is used to limit geometric complexity ([27]).
+We close this brief discussion on the possibility of designing materials by topology design of
+the unit cell of a periodic, homogenized medium by noting that the basic concept has been shown
+to work efficiently for a broad range of problems, also involving for example thermal expansion
+(see for example [45]) or piezzo-electrical effects (see for example [22]). Moreover, the technique
+has been instrumental in new work on bounds on the material properties of mixtures of three
+materials ([18]) as well as for the devlopment of a new class of composites which are useful for
+exploring the set of material parameters given by the Hashin-Strikhman bounds for two materials
+([42]).
+
+7 Design of mechanisms
+Compliant mechanism plays a significant role for MEMS (Micro Electro Mechanical Systems)
+applications, as standard techniques for assembly of mechanism is not possible at extremely small
+scales. On the other hand, small scale allow for the use of new actuation principles, as for example electrically induced heat expansion, where the scale gives a possibility for rapid heating
+and cooling and thus resonable timescales for movements. Compliant mechanism operate by the
+flexibility of a structure to perform its task, and the mechanism is thus one structure, for which the
+basic concept of topology design is applicable, see Figure 8 (see also [39], [29]). For mechanisms
+the initial topology design studies were carried out using geometrically linear analysis, i.e., small
+strains were assumed. In practise this is not the case, and moreover it turns out that the geometric
+linearity actually imposes a restriction on the effectiveness of the mechanisms – for this setting
+one actually prefers displacement (as opposed to stiffness design). This is illustrated in Figure 9.
+Closing this short discussion on mechanism design, we will here briefly outline some aspects of treating multiple physiscs problems. The phrase ‘multiple physics’ is here used to cover
+topology design where several physical phenomena are involved in the problem statement, thus
+covering situations where for example elastic, thermal and electromagnetic analyses are involved.
+When modelling such situations, the basic concept of the density distribution method for topology
+ESAIM: Proc.,
+
+×#Ø%Ù'Ú)Û%Û , Ü,Ý,Ý-Ü , ÞÛ0ßà,Ý
+
+Martin P. Bendsøe
+
+300 µ m
+
+300 µ m
+
+áâáâ áâáâ
+áâáâ áâáâ
+
+èè
+
+Fin
+
+åæåæ åæåæ
+åæåæ åæåæ
+
+53
+
+è
+uout Rs Fout k sçç ãäãä çèç ãäãä ãäãä
+çç ãäãä çç ãäãä ãäãä
+
+uin
+
+åæåæ
+åæåæ
+
+Figure 8: The principle of design of compliant mechanisms. For a certain input force one maximizes the work done on a spring at output. The choice of spring stiffness determines the compromise between output force and output displacement.
+
+ëìëëì ëìëëì
+ëì ëì
+
+íîîí íîîí
+
+é éê
+
+ð
+
+ïï ððïðï
+ïï
+
+ññ òñòñ
+
+Figure 9: Design of a compliant mechanisms - a force inverter, c.f., the design setting illustrated
+in Figure 8. The left hand design is designed using geometrically linear analysis: this design will
+lock for moderately large displacements. The right-hand picture shows a design obtained using
+geometrically non-linear analysis, and here this allows for substantially larger displacements. By
+courtesy of B.B.W. Pedersen, T. Buhl and O. Sigmund, [30].
+
+ESAIM: Proc.,
+
+ó#ô%õ'ö÷%÷ , ø,ù,ù-ø , ú÷CûEü,ù
+
+54
+
+Recent developments in topology design of materials and mechanisms
+
+design provides a general framework for computations, but here the initial obstacle is the need
+for interpolation of not only stiffness but also other physical properties. If only linear models are
+considered, one possibility is to use the theory and computational framework of homogenization
+of composite media to compute effective elastic, thermal and electromagnetic properties of a given
+type of composites and use such relationships between intermediate density and material properties in the design problem. An example of this approach for thermo-elastic problems can be found
+in [35]. However, the less complex design description of the SIMP approach has lead also to the
+development of such interpolation schemes for multiple physics problems. As an example of this,
+in reference [45], microstructures with extreme thermal expansion are designed by combining a
+material interpolation of elastic properties with a similar interpolation of the thermal expansion
+coefficients. Similar ideas can be used to design mechanisms based on thermo-mechanical and on
+thermo-electro-mechanical actuation principles, as shown in Figure 10 (see also [40], [41], [43]).
+
+ýV
+
+ýV
+
+Figure 10: Design of a thermo-electro-mechanical actuator. The mid right-hand point should
+move right or up when voltage is applied at the corresponding poles. The movement is through
+elastic deformation due to the temperature change which occurs when a current passes through the
+structure. By courtesy of O. Sigmund, [40].
+
+8 Areas of application
+Computational means for topology design have now been developed into reliable tools for problems involving stiffness (including multiple load problems) and vibration criteria. The efficiency
+of topology design as a tool in the initial phase of a design process and the appearance of commercial software has lead to a broad acceptance of the method in industry (c.f., e.g., [49], [37];
+see also www.topopt.dtu.dk for pointers to relevant web-sites). Research has also lead to considering extended classes of problems for example with non-linear material behaviour and local
+constraints (i.e., constraints imposed on all points in the domain). The exact form of a relaxed
+form of these problems are in most cases unknown. The emphasis in the field is currently on
+modelling and on the development of computational means, mostly relying on restriction methods
+ESAIM: Proc.,
+
+þ#ÿ ,   ,  
+
+Martin P. Bendsøe
+
+55
+
+as an underlying implicit guarantee of well-posedness. Thus, in the context of theory, the pace of
+implementations for new problem types has far overtaken the full mathematical understanding of
+the interplay between methods for obtaining ‘classical’ solutions and methods for deriving relaxed
+problem settings, and here lies an immense challenge for the future. For a mathematician there is
+thus an abundance of (hard) problems to study.
+
+9 Challenges
+In this presentation models for topology design have been viewed as material distribution problems
+in a fixed domain. It is central to this concept that computations work with a fixed FEM mesh. This
+implies that low density areas are also included in the analysis for each feasible design. For stress
+constraints this leads to the difficulty of the so-called ‘stress singularity phenomenon’, where
+low density regions may have high stress but are structurally insignificant for the final design,
+making computations tricky ([14]). A similarly elusive problem arising from this basic design
+representation appears in situations involving stability and vibration criteria. The relevant data to
+consider in such situations are the eigenvalues of the structurally relevant parts of the structure, i.e.,
+the buckling loads and the vibration frequencies of the ‘black’ part of a black- and-white design.
+In a true black-and-white design this are the non-zero eigenvalues, but at intermediate steps of
+an iterative optimization method it can become unclear what are the relevant values to consider
+for a given grey-scale design. Examples of this are localized modes which appear in low density
+regions and which should be filtered out in order that the optimization deals with the structurally
+interesting modes. Moreover, one should cater for certain aspects which complicates modelling,
+for example that no structure what-so-ever has the highest eigenfrequency of all structures with
+only structural mass. See references [28] and [31] for further discussion.
+For future work it would be beneficial to study alternative approaches to topology design
+for black-and-white design, perhaps with an emphasis on a geometric modelling along the lines
+of optimal boundary shape design, as one here have no ambiguity with respect to modelling of
+material properties and of response. For such work, the concept of the bubble method ([15]) and
+the concept of a general topological derivative ([46]) could be useful starting points.
+
+www
+Much useful information on topology design can be found on the Internet.
+At the site www.topopt.dtu.dk one can find tutorials on the subject, a free 99 line MATLAB
+topology optimization code, a topology optimization test-site allowing you to make your own
+designs, as well as interesting links to academic and commercial sites.
+
+Acknowledgments
+The author would like to thank O. Sigmund, C.B.W. Pedersen, and T. Buhl for permission to use
+several of the illustrations shown in this presentation.
+ESAIM: Proc.,  ,   ,  
+
+56
+
+Recent developments in topology design of materials and mechanisms
+
+Bibliographie
+[1] G. Allaire and S. Aubry. On optimal microstructures for a plane shape optimization problem.
+Structural Optimization, 17:86–94, 1999.
+[2] G. Allaire, E. Bonnetier, G. Francfort, and F. Jouve. Shape optimization by the homogenization method. Numerische Mathematik, 76:27–68, 1997.
+[3] G. Allaire and R.V. Kohn. Optimal bounds on the effective behaviour of a mixture of two
+well-ordered elastic materials. Quaterly of Appled Mathematics, 51:643–674, 1993.
+[4] G. Allaire and R.V. Kohn. Optimal design for minimum weight and compliance in plane
+stress using extremal microstructures. European Journal of Mechanics A, 12:839–878,
+1993.
+[5] L. Ambrosio and G. Buttazzo. An optimal design problem with perimeter penalization.
+Calculus and Variation, 1:55–69, 1993.
+[6] M. Beckers. Topology optimization using a dual method with discrete variables. European
+Journal of Mechanics A, 17:14–24, 1999.
+[7] M. P. Bendsøe and N. Kikuchi. Generating optimal topologies in structural design using
+a homogenization method. Computer Methods in Applied Mechanics and Engineering,
+71:197–224, 1988.
+[8] M.P. Bendsøe. Optimization of Structural Topology, Shape, and Material. Springer Verlag,
+Heidelberg, 1995.
+[9] M.P. Bendsøe and O. Sigmund. Material interpolation schemes in topology optimization.
+Archives of Applied Mechanics, 69:635–654, 1999.
+[10] B. Bourdin. Filters in topology optimization. Danish Center for Applied Mathematics and
+Mechanics, DCAMM Report No. 628, December 1999.
+[11] G.D. Cheng and N. Olhoff. An investigation concerning optimal design of solid elastic
+plates. International Journal of Solids and Structures, 17:305–323, 1981.
+[12] A. Cherkaev. Variational Methods for Structural Optimization. Springer-Verlag, Berlin /
+Heidelberg / New York, 2000.
+[13] A. Diaz and R. Lipton. Optimal material layout for 3D elastic structures. Structural Optimization, 13:60–64, 1997.
+[14] P. Duysinx and M.P. Bendsøe. Topology optimization of continuum structures with local
+stress constraints. International Journal for Numerical Methods in Engineering, 43:1453–
+1478, 1998.
+ESAIM: Proc., !"" , #$$ # , % " &'$
+
+Martin P. Bendsøe
+
+57
+
+[15] H.A. Eschenauer, V. Kobelev, and A. Schumacher. Bubble method of topology and shape
+optimization of structures. Structural Optimization, 8:42–51, 1994.
+[16] C. Fleury. CONLIN: an efficient dual optimizer based on convex approximation concepts.
+Structural Optimization, 1:81–89, 1989.
+[17] G.A. Francfort and F. Murat. Homogenization and optimal bounds in linear elasticity. Arch.
+Rat. Mech. Anal., 94:307–334, 1986.
+[18] L.V. Gibiansky and O. Sigmund. Multiphase composites with extremal bulk modulus. J.
+Mech. and Physics of Solids, 48:461–498, 2000.
+[19] J. Goodman, R.V. Kohn, and L. Reyna. Numerical study of a relaxed variational problem
+from optimal design. Computer Methods in Applied Mechanics and Engineering, 57:107–
+127, 1986.
+[20] Z. Hashin and S. Shtrikman. A variational approach to the theory of the elastic behaviour of
+multiphase materials. J. Mech. Phys. Solids, 11:127–140, 1963.
+[21] M.P. Kamat. Structural Optimization -Status and Promise. AIAA, Washington D.C., 1995.
+[22] N. Kikuchi, S. Nishiwaki, J.S.O. Fonseca, and E.C.N. Silva. Design optimization method
+for compliant mechanisms and material microstructure. Computer Methods in Applied Mechanics and Engineering, 151:401–417, 1998.
+[23] R.V. Kohn and G. Strang. Optimal design and relaxation of variational problems. Communications in Pure and Applied Mathematics, 39:113–137, 139–182, 353–377, 1986.
+[24] K.A. Lurie, A.V. Cherkaev, and A.V. Fedorov. Regularization of optimal design problems
+for bars and plates, I, II, III. JOTA, 37, 42:499–543, 247–282, 1982.
+[25] F. Murat. Contre-exemples pour divers problémes ou le contrôle intervient dans les coefficients. Ann. Mat. Pura ed Appl. Serie 4, 112:49–68, 1977.
+[26] F. Murat and L. Tartar. Calcul des variations et homogeneisation, volume Les Methodes
+de l’Homogeneisation: Theorie et Applications en Physique, pages 319–370. Electricite de
+France, Eyrolles, Paris, 1985.
+[27] M. M. Neves, O. Sigmund, and M. P. Bendsøe. A buckling performance index for topology
+design of periodic microstructures. In Proc. ECCOMAS 2000 Barcelona 11-14 September
+2000, pages 1–12. ECCOMAS, 2000.
+[28] M.M. Neves, J.M. Guedes, and H.C. Rodrigues. Generalized topology design of structures
+with a buckling load criterion. Structural Optimization, 10:71–78, 1995.
+[29] S. Nishiwaki, M.I. Frecker, S. Min, and N. Kikuchi. Topology optimization of compliant
+mechanisms using the homogenization method. International Journal for Numerical Methods in Engineering, 42:535–559, 1998.
+ESAIM: Proc., ()*+,, , -.. - , / ,01.
+
+58
+
+Recent developments in topology design of materials and mechanisms
+
+[30] C.B.W. Pedersen, T. Buhl, and O. Sigmund. Topology synthesis of large -displacement
+compliant mechanisms. Danish Center for Applied Mathematics and Mechanics, DCAMM
+Report No. 631, 2000.
+[31] N. L. Pedersen. Maximization of eigenvalues using topology optimization. Structural Optimization, 2000. to appear - see also DCAMM Report No. 620.
+[32] J. Petersson. A finite element analysis of optimal variable thickness sheets. SIAM Journal
+of Numerical Analysis, 36:1759–1778, 1999.
+[33] J. Petersson. Some convergence results in perimeter-controlled topology optimization.
+Computer Methods in Applied Mechanics and Engineering, 171:123–140, 1999.
+[34] J. Petersson and O. Sigmund. Slope constrained topology optimization. International Journal for Numerical Methods in Engineering, 41:1417–1434, 1998.
+[35] H.C. Rodrigues and P. Fernandes. A material based model for topology optimization of
+thermoelastic structures. International Journal for Numerical Methods in Engineering,
+38:1951–1965, 1995.
+[36] G.I.N. Rozvany. Topology Optimization in Structural Mechanics. Springer Verlag, Heidelberg, 1997.
+[37] U. Schramm. The use of structural optimization in automotive design - state of the art and
+vision. In C. Bloembaum, editor, Proc. Third World Congress of Structural and Multidisciplinary Optimization, pages 200–202. University of New York at Buffalo, 1999.
+[38] O. Sigmund. Tailoring materials with prescribed elastic properties. Mechanics of Materials,
+20:351–368, 1995.
+[39] O. Sigmund. On the design of compliant mechanisms using topology optimization. Mechanics of Structures and Machines, 25:495–526, 1997.
+[40] O. Sigmund.
+Topology optimization in multiphysics problems.
+In Proc. 7th
+AIAA/USAF/NASA/ISSMO Symposium on Multidisciplinary Analysis and Optimization St.
+Louis MI Sept. 2-4 ’98, pages 1492–1500. AIAA, 1998.
+[41] O. Sigmund. Design of multiphysics actuators using topology optimization, part i, ii. Danish Center for Applied Mathematics and Mechanics, DCAMM Report No. 632, February
+2000.
+[42] O. Sigmund. A new class of extremal composites. J. Mech. and Physics of Solids, 48:397–
+428, 2000.
+[43] O. Sigmund and T. Buhl. Design of multiphysics actuators using topology optimization, part
+iii, large displacements. Danish Center for Applied Mathematics and Mechanics, DCAMM
+Report No. 632, February 2000.
+ESAIM: Proc., 234566 , 788 7 , 9 6 :;8
+
+Martin P. Bendsøe
+
+59
+
+[44] O. Sigmund and J. Petersson. Numerical instabilities in topology optimization. Structural
+Optimization, 16:68–75, 1998.
+[45] O. Sigmund and S. Torquato. Design of materials with extreme thermal expansion using a
+three-phase topology optimization method. Journal of the Mechanics and Physics of Solids,
+45:1037–1067, 1997.
+[46] J. Sokolowski and A. Zochowski. On the topological derivative in shape optimization.
+SIAM Journal on Control and Optimization, 37:1251–1272, 1999.
+[47] K. Svanberg. The method of moving asymptotes - a new method for structural optimization.
+International Journal for Numerical Methods in Engineering, 24:359–373, 1987.
+[48] S. Vigdergauz. Regular structures with extremal elastic properties. Mechanics of Solids,
+24:57–63, 1989.
+[49] R.J. Yang and A.I. Chahande. Automotive applications of topology optimization. Structural
+Optimization, 9:245–249, 1995.
+[50] J. Zowe, M. Kocvara, and M.P. Bendsøe. Free material optimization via mathematical programming. Mathematical Programming B, 79:445–466, 1997.
+Martin P. Bendsøe
+Department of Mathematics
+Matematiktorvet
+B. 303
+Technical University of Denmark
+DK-2800 Lyngby, Denmark
+mailto: M.P.Bendsoe@mat.tdu.dk
+http://www.mat.dtu.dk/persons/Bendsoee Martin P
+
+ESAIM: Proc., <=>?@@ , ABB A , C @DEB
+
+

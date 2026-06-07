@@ -1,0 +1,12 @@
+% \begin{figure*}[t]
+% \centering
+% \includegraphics[trim={0 0 0 0},clip,width=\textwidth]{figures/system_fig.pdf}
+% \caption{\textbf{Fine-tuning.} Given $\sim3-5$ images of a subject we fine tune a text-to-image diffusion in two steps: (a) fine tuning the low-resolution text-to-image model with the input images paired with a text prompt containing a unique identifier and the name of the class the subject belongs to (e.g., ``A [V] dog”), in parallel, we apply a class-specific prior preservation loss, which leverages the semantic prior that the model has on the class and encourages it to generate diverse instances belong to the subject's class using the class name in a text prompt (e.g., ``A dog”). (b) fine-tuning the super resolution components with pairs of low-resolution and high-resolution images taken from our input images set, which enables us to maintain high-fidelity to small details of the subject.}
+% \label{fig:system_overview} 
+% \end{figure*}
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/main_scheme_1.pdf}
+\caption{\textbf{Fine-tuning.} Given $\sim3-5$ images of a subject we fine-tune a text-to-image diffusion model with the input images paired with a text prompt containing a unique identifier and the name of the class the subject belongs to (e.g., ``A [V] dog”), in parallel, we apply a class-specific prior preservation loss, which leverages the semantic prior that the model has on the class and encourages it to generate diverse instances belong to the subject's class using the class name in a text prompt (e.g., ``A dog”). }
+\label{fig:system_overview} 
+\end{figure}

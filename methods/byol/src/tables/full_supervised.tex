@@ -1,0 +1,11 @@
+\setlength\tabcolsep{9.3pt}
+\begin{tabular}[t]{l r r l r r}
+\toprule
+\multicolumn{3}{l}{\emph{Supervised:}} & \multicolumn{3}{l}{\emph{Semi-supervised ($100\%$):}} \\
+ Method      &    Top-$1$ & Top-$5$ &  Method    &    Top-$1$ & Top-$5$     \\
+\midrule
+Supervised\cite{SimCLR}                  & $76.5$ & $-$ & \simclr~\cite{SimCLR}     & $76.0$ & $93.1$ \\
+AutoAugment~\cite{cubuk2019randaugment}  & $77.6$ & $93.8$ & \simclr (repro)       & $76.5$ & $93.5$ \\
+MaxUp~\cite{gong2020maxup}               & $\bf{78.9}$ & $\bf{94.2}$ & \algo & \cellcolor{pearDark!20} $\bf{77.7}$ & \cellcolor{pearDark!20} $\bf{93.9}$ \\ 
+\bottomrule
+\end{tabular}

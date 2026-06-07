@@ -1,0 +1,6 @@
+In this work, we propose PointNet++, a powerful neural network architecture for processing point sets sampled in a metric space. PointNet++ recursively functions on a nested partitioning of the input point set, and is effective in learning hierarchical features with respect to the distance metric. To handle the non uniform point sampling issue, we propose two novel set abstraction layers that intelligently aggregate multi-scale information according to local point densities. These contributions enable us to achieve state-of-the-art performance on challenging benchmarks of 3D point clouds.
+
+In the future, it's worthwhile thinking how to accelerate inference speed of our proposed network especially for MSG and MRG layers by sharing more computation in each local regions. It's also interesting to find applications in higher dimensional metric spaces where CNN based method would be computationally unfeasible while our method can scale well.
+%In the future, 
+%In our current design, MSG has better robustness than MRG but worse computation efficiency. In the future, it would be worth thinking how to further improve the design of MRG, acquiring better efficiency and robustness.
+%limitations and future works (intrinsic, rotation invariant, higher dimensional spaces).

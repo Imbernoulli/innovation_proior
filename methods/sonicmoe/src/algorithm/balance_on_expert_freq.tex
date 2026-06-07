@@ -1,0 +1,50 @@
+\begin{figure}[t]
+\begin{algorithm}[H]
+    \fontsize{8pt}{10pt}\selectfont
+
+    \caption{Balanced rounding to $\tileM$-multiples via expert frequency (``Balance-f'' in Table~\ref{tab:exp-ablation}). 
+    \\ This algorithm satisfies $\max_{e\in [E]} \bigl|\lceil f_e\rfloor_{\tileM} - f_e \bigr| \leq \tileM/2 $ and $\Bigl|\sum_{e=1}^E\lceil f_e\rfloor_{\tileM} - \sum_{e=1}^E f_e \Bigr| \leq \tileM/2$} \label{alg:balance-freq}
+    \DontPrintSemicolon
+    \SetKwInOut{Input}{Input}\SetKwInOut{Output}{Output}
+    \Input{$f^\text{TC} = \{ f_e \}_{e \in [E]}$ as a list of expert frequency with TC top-$K$ routing, $\{ \lceil f_e \rceil_{\tileM} \}_{e \in [E]}$ as a list of expert frequency with TC top-$K$ routing and with potential EC padding to ensure each expert receives a multiple of $\tileM$ tokens, $\{ \lfloor f_e \rfloor_{\tileM} \}_{e \in [E]}$ as a list of expert frequency with TC top-$K$ routing and with potential token dropping to ensure each expert receives a multiple of $\tileM$ tokens; We should ensure $\max_{e\in[E]} \Bigl(\lceil f_e \rceil_{\tileM} - \lfloor f_e \rfloor_{\tileM} \Bigr) \leq \tileM $.}
+    \Output{$f^\text{TR} = \{ \lceil f_e \rfloor_{\tileM} \}_{e \in [E]}$ as a list of expert frequency that ensures each expert receives a multiple of $\tileM$ tokens}
+
+
+    \note{// an accumulator that ensures the preservation of total expert frequency} 
+    
+    $z \gets 0; $  
+
+     \For{$e \in [E]$}{
+        \note{// calculate the residual error of both rounding choice}
+        
+        $r_e^\text{up} \gets \lceil f_e \rceil_{\tileM} - f_e ;$ 
+
+        $r_e^\text{down} \gets \lfloor f_e \rfloor_{\tileM} - f_e ;$ 
+
+        \If{$ \bigl| r_e^\text{up} + z \bigr| < \bigl| r_e^\text{down} + z \bigr|$}{
+
+            \note{// choose to pad with EC tokens} 
+
+            $\lceil f_e\rfloor_{\tileM} \gets \lceil f_e \rceil_{\tileM};$
+            
+            $z \gets z + r_e^\text{up};$
+        }
+        \Else{
+
+            \note{// choose to discard TC tokens} 
+
+            $\lceil f_e\rfloor_{\tileM} \gets \lfloor f_e \rfloor_{\tileM};$
+            
+            $z \gets z + r_e^\text{down};$
+        }
+
+        
+     }
+    
+
+    \Indm
+\end{algorithm}
+\end{figure}
+
+
+

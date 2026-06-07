@@ -1,0 +1,82 @@
+\section{Deterministic quadratic convergence analysis}
+\label{app:quadratic}
+
+Here we present additional details on the quadratic convergence analysis.
+
+\subsection{Lookahead as a dynamical system}
+
+As in the main text, we will assume that the optimum lies at $\btheta^* = \mathbf{0}$ for simplicity, but the argument easily generalizes. Here we consider the more general case of a quadratic function $f(\bx) = \frac{1}{2} \bx^T A \bx$. We use $\eta$ to denote the CM learning rate and $\beta$ for it's momentum coefficient.
+
+First we can stack together a full set of fast weights and write the following,
+
+\[ 
+\left[\begin{array}{c}
+\btheta_{t,0} \\
+\btheta_{t-1, k} \\
+\vdots \\
+\btheta_{t-1, 1}
+\end{array}\right] = LB^{(k-1)}T \left[\begin{array}{c} \btheta_{t-1, 0} \\
+\btheta_{t-2, k} \\
+\vdots \\
+\btheta_{t-2, 1}
+\end{array}\right]
+\]
+
+Here, $L$ represents the Lookahead interpolation, $B$ represents the update corresponding to classical momentum in the inner-loop and $T$ is a transition matrix which realigns the fast weight iterates.
+
+Each of these matrices takes the following form,
+
+\[ 
+L =
+\left[\begin{array}{ccccc}
+\alpha I & 0 & \cdots & 0  & (1-\alpha) I \\
+I & 0 & \cdots & \cdots & 0 \\
+0 & I & \ddots &  \ddots & \vdots \\
+\vdots & \ddots & \ddots &  0 & \vdots \\
+0 & \cdots & 0 & I & 0
+\end{array}\right]
+\]
+
+\[ 
+B =
+\left[\begin{array}{ccccc}
+(1 + \beta) I - \eta A & -\beta I & 0 & \cdots  & 0 \\
+I & 0 & \cdots & \cdots & 0 \\
+0 & I & \ddots &\ddots & \vdots \\
+\vdots & \ddots & \ddots &  0 & \vdots \\
+0 & \cdots & 0 & I & 0
+\end{array}\right]
+\]
+
+\[ 
+T =
+\left[\begin{array}{cccccc}
+I - \eta A & \beta I & -\beta I & 0 & \cdots & 0 \\
+I & 0 & \cdots & \cdots & 0 & \vdots\\
+0 & I & \ddots &  \cdots & \vdots & \vdots\\
+\vdots & \ddots & \ddots &  0 & \vdots & \vdots \\
+\vdots & \cdots & 0 & I & 0 & 0 \\
+0 & \cdots & 0 & 0 & I & 0
+\end{array}\right]
+\]
+
+Each matrix consists of four blocks. The bottom left block is always an identity matrix that shifts the iterates along one index. The bottom right column is all zeros with the top-right column being non-zero only for $L$ which applies the Lookahead interpolation. The top left row is used to apply the Lookahead/CM updates in each matrix.
+
+After computing the appropriate product of these matrices, we can use standard solvers to compute the eigenvalues which bound the convergence of the linear dynamical system (see e.g. \citet{lessard2016analysis} for an exposition). Finally, note that because this linear dynamical systems corresponds to $k$ updates (or one slow-weight update) we must compute the $k^{th}$ root of the eigenvalues to recover the correct convergence bound.
+
+\subsection{Optimal slow weight step size}
+\label{app:optimal-slow}
+We present the proof of Proposition 1 for the optimal slow weight step size $\alpha^*$.
+
+\begin{proof}
+We compute the derivative with respect to $\alpha$ 
+\[\nabla_{\alpha} L(\theta_{t,0} + \alpha (\theta_{t,k} - \theta_{t,0}))
+=  (\theta_{t,k} - \theta_{t,0})^T A (\theta_{t,0} + \alpha (\theta_{t,k} - \theta_{t,0})) - (\theta_{t,k} - \theta_{t,0})^T b\]
+Setting the derivative to 0 and using $b = A \theta^*$:
+\begin{align}
+    &\alpha [ (\theta_{t,k} - \theta_{t,0})^T A  (\theta_{t,k} - \theta_{t,0})] =  (\theta_{t,k} - \theta_{t,0})^T A (\theta^* - \theta_{t,0}) \\ 
+    \implies &\alpha^* = \arg \min_{\alpha} L(\theta_{t,0} + \alpha (\theta_{t,k} - \theta_{t,0})) = \frac{(\theta_{t,0} - \theta^*)^T A(\theta_{t,0} - \theta_{t, k})}{(\theta_{t,0}  - \theta_{t,k})^T A (\theta_{t,0} - \theta_{t,k})}  
+\end{align}
+\end{proof}
+
+We approximate the optimal $\theta^* = \theta_{t,k}  - \hat{A}^{-1} \hat{\nabla} L(\theta_{t,k})$, since the Fisher can be viewed as an approximation to the Hessian \cite{martens2014new}. Stochastic gradients are computed on mini-batches used in training so as to not incur additional computational cost.  Because the algorithm with fixed $\alpha$ performs so well, we only did preliminary experiments with an adaptive $\alpha$. We note that the approximation is greedy and incorporating priors on noise and curvature is an interesting direction for future work.

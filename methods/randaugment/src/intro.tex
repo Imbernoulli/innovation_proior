@@ -1,0 +1,32 @@
+\input{intro_table}
+
+\section{Introduction}
+
+
+Data augmentation is a widely used method for generating additional data to improve machine learning systems, for image classification~\cite{simard2003best,krizhevsky2012imagenet,devries2017dataset,zhang2017mixup}, object detection~\cite{girshick2018detectron}, instance segmentation~\cite{fang2019instaboost}, and speech recognition~\cite{kanda2013elastic, hannun2014deep, park2019specaugment}. Unfortunately, data augmentation methods require expertise, and manual work to design policies that capture prior knowledge in each domain. This requirement makes it difficult to extend existing data augmentation methods to other applications and domains.  
+
+Learning policies for data augmentation 
+has recently emerged as a method to automate the design of augmentation strategies and therefore has the potential to address some weaknesses of traditional data augmentation methods
+\cite{cubuk2018autoaugment, zoph2019learning, ho2019population, lim2019fast}. Training a machine learning model with a learned data augmentation policy
+%with an AutoAugment policy, found by reinforcement learning, has been shown to 
+may significantly improve accuracy~\cite{cubuk2018autoaugment}, model robustness~\cite{lopes2019improving, yin2019afourier, recht2018cifar}, and performance on semi-supervised learning~\cite{xie2019unsupervised} for image classification; likewise, for object detection tasks on COCO and PASCAL-VOC~\cite{zoph2019learning}. Notably, unlike engineering better network architectures  \cite{zoph2017learning}, all of these improvements in predictive performance incur no additional  computational cost at inference time.
+
+In spite of the benefits of learned data augmentation policies, the computational requirements as well as the added complexity of two separate optimization procedures can be prohibitive.
+The original presentation of neural architecture search (NAS) realized an analogous scenario in which the dual optimization procedure resulted in superior predictive performance, but the original implementation proved prohibitive in terms of complexity and computational demand.
+Subsequent work accelerated training efficiency and the efficacy of the procedure \cite{liu2018darts,pham2018efficient,liu2017progressive,liu2017hierarchical}, eventually making the method amenable to a unified optimization based on a differentiable process \cite{liu2018darts}.
+In the case of learned augmentations, subsequent work identified more efficient search methods \cite{ho2019population,lim2019fast}, however such methods still require a separate optimization procedure, which significantly increases the computational cost and complexity of training a machine learning model.
+
+The original formulation for automated data augmentation postulated a separate search on a small, proxy task whose results may be transferred to a larger target task \cite{zoph2017learning, zoph2016neural}. This formulation makes a strong assumption that the proxy task provides a predictive indication of the larger task \cite{liu2017progressive, chen2018searching}. In the case of learned data augmentation, we provide experimental evidence to challenge this core assumption. In particular, we demonstrate that
+this strategy is sub-optimal as the strength of the augmentation depends strongly on model and dataset size. These results suggest that an improved data augmentation may be possible if one could remove the separate search phase on a proxy task.
+
+In this work, we propose a practical method for automated data augmentation -- termed {\em RandAugment } -- that does not require a separate search. In order to remove a separate search, we find it necessary to dramatically reduce the search space for data augmentation.
+The reduction in parameter space is in fact so dramatic that simple grid search is sufficient to find a data augmentation policy that outperforms all learned augmentation methods that employ a separate search phase.
+Our contributions can be summarized as follows:
+
+\begin{itemize}
+\item We demonstrate that the optimal strength of a data augmentation depends on the model size and training set size. This observation indicates that a separate optimization of an augmentation policy on a smaller proxy task may be sub-optimal for learning and transferring augmentation policies.
+
+\item We introduce a vastly simplified search space for data augmentation containing 2 interpretable hyper-parameters. One may employ simple grid search to tailor the augmentation policy to a model and dataset, removing the need for a separate search process.
+
+\item Leveraging this formulation, we demonstrate state-of-the-art results on CIFAR~\cite{krizhevsky2009learning}, SVHN~\cite{netzer2011reading}, and ImageNet~\cite{imagenet2009}. On object detection~\cite{lin2014microsoft}, our method is within 0.3\% mAP of state-of-the-art. On ImageNet we achieve a state-of-the-art accuracy of 85.0\%, a 0.6\% increment over previous methods and 1.0\% over baseline augmentation.
+\end{itemize}

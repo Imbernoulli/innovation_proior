@@ -1,0 +1,22 @@
+% For all throughput benchmarks except the FSDP-2 runs, we sample inputs $X$ and $dO$, weights $\W{1}$ and $\W{2}$ from a random Gaussian distribution. \Algname's tiling strategy for varlen-$\mathbf{M}$ inputs ensures its varlen-$\mathbf{M}$ Grouped GEMM kernel is insensitive to a particular choice of $X$, $dO$, $\W{1}$ and $\W{2}$, but varlen-$\mathbf{K}$ Grouped GEMM kernel ($d\W{1}$, $d\W{2}$) runtime could be dependent on a particular choice of $X$, but such dependency would vanish for a sufficiently large $d$ and $n$.
+
+% For Figure~\ref{fig:teasor}, we consistently use $T,d$ = $24576,1536$. We follow the settings of iso-FLOPs and iso-params and the configurations of $(E, K, n)$ of both subfigures from left to right are $(2,32,1024), (4,64,512), (8,128,256), (16,256,128), (32,512,64)$ accordingly.
+
+The configurations of Figure~\ref{fig:mem} and~\ref{fig:speed} are included in Table~\ref{tab:config_benchmark}.
+
+
+\input{Table/config}
+
+% \input{Table/config_arithmetic_intensity}
+
+
+The configurations for the 4 subfigures in Figure~\ref{fig:token_rounding_speed} are listed below. Notice that we consistently use $\tileM$ as 128 when we benchmark the TR's speed.
+\begin{itemize}
+    \item \textbf{Top-left 2 subfigures}: We use $(T,d,n,K)=(16384,1536,256,8)$ and we vary $E$ from 64 to 512.
+
+    \item \textbf{Top-right 2 subfigures}: We use $(T,d,n,K)=(16384,1536,1024,2)$ and we vary $E$ from 16 to 128.
+
+    \item \textbf{Bottom-left 2 subfigures}: We use $(T,d,n,K)=(16384,4096,512,8)$ and we vary $E$ from 64 to 512.
+
+    \item \textbf{Bottom-right 2 subfigures}: We use $(T,d,n,K)=(16384,4096,1024,4)$ and we vary $E$ from 32 to 256.
+\end{itemize}

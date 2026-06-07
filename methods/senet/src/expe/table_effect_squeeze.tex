@@ -1,0 +1,18 @@
+\begin{table}[t]
+\renewcommand\arraystretch{1.1}
+\caption{Effect of Squeeze operator on ImageNet (error rates \%).}
+\label{tab:effect_squeeze}
+\vspace{-1.7em}
+\small
+\begin{center}{\scalebox{0.96}{
+\begin{tabular}{l|p{1.3cm}<{\centering}|p{1.3cm}<{\centering}|p{1.2cm} <{\centering}|p{1.2cm} <{\centering}}
+\hline
+& top-1 err. & top-5 err. & GFLOPs & Params\\
+\hline
+ResNet-50 &   $23.30$ &   $6.55$ & $3.86$ & $25.6$M\\
+NoSqueeze & $22.93$ & $6.39$ & $4.27$ & $28.1$M\\
+SE & $\mathbf{22.28}$  &  $\mathbf{6.03}$ & $3.87$ & $28.1$M\\
+\hline
+\end{tabular}}}
+\end{center}
+\end{table}

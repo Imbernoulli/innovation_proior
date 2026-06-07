@@ -1,0 +1,41 @@
+\documentclass{article}
+
+% if true, anonymize the paper
+\newif\ifanonymize
+\anonymizefalse
+
+% set to true for the arxiv version
+\newif\ifarxiv
+\arxivtrue
+
+% pass options to natbib
+% must be done before loading the nips style file
+\PassOptionsToPackage{numbers, sort}{natbib}
+
+\ifanonymize
+    \usepackage{nips_2017}
+\else
+	% this compiles the camera-ready version
+    \usepackage[final]{nips_2017}
+\fi
+
+\input{tex/preamble}
+
+\title{\ourtitle}
+
+
+\begin{document}
+
+\maketitle
+
+\input{tex/main}
+
+\renewcommand{\theHsection}{\Alph{section}}
+\appendix
+\input{tex/appendix}
+
+\small{
+\bibliography{references}
+}
+
+\end{document}

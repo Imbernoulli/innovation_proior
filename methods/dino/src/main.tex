@@ -1,0 +1,207 @@
+\documentclass[10pt,twocolumn,letterpaper]{article}
+
+\usepackage{iccv}
+\usepackage{times}
+\usepackage{epsfig}
+\usepackage{url}            % simple URL typesetting
+\usepackage{graphbox}
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{comment}
+\usepackage{amsmath,amssymb} % define this before the line numbering.
+\usepackage[font=small]{caption}
+\usepackage{mathtools}
+\usepackage{graphicx}
+\usepackage{soul}
+\usepackage[subrefformat=parens]{subfig}
+\usepackage{enumitem}
+%\usepackage[square,numbers,sort&compress]{natbib}
+
+\usepackage{xspace}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{layouts}
+\usepackage{algorithm}
+\usepackage{bbding}
+\usepackage{listings}
+\usepackage{pifont}
+\usepackage{wasysym}
+\usepackage{float}
+\usepackage{soul}
+%\usepackage{dblfloatfix}
+% \usepackage{nidanfloat}
+\usepackage{footnote}
+\makesavenoteenv{tabular}
+\makesavenoteenv{table}
+\makesavenoteenv{figure}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{pythonhighlight}
+
+\usepackage{xcolor,colortbl}
+\definecolor{Gray}{gray}{0.90}
+\newcolumntype{g}{>{\columncolor{Gray}}c}
+\definecolor{ffe1da}{RGB}{255,225,218}
+\definecolor{F7E0D5}{RGB}{247,224,213}
+\definecolor{darkF7E0D5}{RGB}{209,154,128}
+\colorlet{Light}{White!0!F7E0D5}
+
+\usepackage[pagebackref=true,breaklinks=true,letterpaper=true,colorlinks,bookmarks=false]{hyperref}
+\usepackage{cleveref}
+
+\newcommand{\theHalgorithm}{\arabic{algorithm}}
+\newcommand{\norm}[1]{\left\lVert#1\right\rVert}
+
+\newcommand\blfootnote[1]{%
+  \begingroup
+  \renewcommand\thefootnote{}\footnote{#1}%
+  \addtocounter{footnote}{-1}%
+  \endgroup
+}
+
+
+\iccvfinalcopy % *** Uncomment this line for the final submission
+
+\def\iccvPaperID{7530} % *** Enter the ICCV Paper ID here
+\def\httilde{\mbox{\tt\raisebox{-.5ex}{\symbol{126}}}}
+
+\ificcvfinal\pagestyle{empty}\fi
+
+
+\newcommand{\appendixName}{supplementary material}
+% \newcommand{\appendix}{Appendix}
+\newcommand{\aj}[1]{{\color{red}[\textbf{Armand}:#1]}}
+\newcommand{\mc}[1]{{\color{green}[\textbf{Mathilde}:#1]}}
+\newcommand{\pb}[1]{{\color{orange}[\textbf{Piotr}:#1]}}
+\newcommand{\rv}[1]{{\color{orange}[\textbf{Rv}:#1]}}
+\newcommand{\im}[1]{{\textcolor{blue}{[Ishan-#1]}}}
+
+\def \pzo {\phantom{0}} 
+
+\newcommand{\xmark}{\ding{55}}
+\newcommand{\gray}[1]{\textcolor{gray}{#1}}
+\def\OURS{DINO\xspace}
+
+\newcommand{\rownumber}[1]{\textcolor{darkF7E0D5}{#1}}
+%\newcommand{\rownumber}[1]{\textcolor{Cerulean}{#1}}
+
+\begin{document}
+
+%\title{Unsupervised Self-Distillation of Vision Transformer with a Momentum Teacher}
+\title{Emerging Properties in Self-Supervised Vision Transformers}
+
+\author{
+Mathilde Caron$^{1,2}$~~~~~~~Hugo Touvron$^{1,3}$~~~~~~~Ishan Misra$^{1}$~~~~~~~Herv\'e Jegou$^{1}$\\
+Julien Mairal$^{2}$~~~~~~~Piotr Bojanowski$^{1}$~~~~~~~Armand Joulin$^{1}$
+\vspace{1em}
+\\
+$^1$ Facebook AI Research~~~~~~~~~~$^2$ Inria$^*$~~~~~~~~~~$^3$ Sorbonne University
+%First line of institution2 address\\
+%{\tt\small secondauthor@i2.org}
+}
+
+% \maketitle
+\ificcvfinal\thispagestyle{empty}\fi
+%\begin{figure*}[b]
+%\includegraphics[width=\linewidth]{images/att4.png}
+%\caption{\textbf{Self-attention maps from the last layer of a Vision Transformer trained with no supervision.}
+%We look at the attention map when using the \texttt{[CLS]} token as a query on the heads of the last layer. 
+%This token is not attached to any label or supervision. 
+%These maps shows that the model has discovered the segmentation of objects.
+%}
+%\end{figure*}
+
+% \ificcvfinal\thispagestyle{empty}\fi
+
+\twocolumn[{%
+\renewcommand\twocolumn[1][]{#1}%
+\maketitle
+\begin{center}
+  \centering
+  \captionsetup{type=figure}
+  \includegraphics[width=\linewidth]{attn6.png}
+  \captionof{figure}{
+    \textbf{Self-attention from a Vision Transformer with $8\times 8$ patches trained with no supervision.}
+    We look at the self-attention of the \texttt{[CLS]} token on the heads of the last layer. 
+    This token is not attached to any label nor supervision.
+    These maps show that the model automatically learns class-specific features leading to unsupervised object segmentations.
+%The displayed images are not seen during training.
+  }
+  \label{fig:att}
+\end{center}%
+}]
+% Remove page # from the first page of camera-ready.
+
+
+
+%%%%%%%%% ABSTRACT
+\begin{abstract}
+% In this paper, we show that self-supervision can be cast directly as a special form of co-distillation where no labels are used.
+% This simple formulation works competitively with previous approaches when applied to convolutional architectures while being simpler, requiring neither negative pairs, batch normalization schemes nor asymmetry.
+% More importantly, it is when combined with Transformer architectures that our approach reveals its full potential.
+% We show that self-supervised pre-training of ViTs with \OURS yield excellent representations that surpass supervised pre-training on all the considered transfer tasks.
+% Interestingly, we also observe that our features are particularly k-nn friendly.
+\blfootnote{
+$^*$Univ. Grenoble Alpes, Inria, CNRS, Grenoble INP, LJK, 38000 Grenoble, France. \\
+Correspondence: mathilde@fb.com \\
+Code: \url{https://github.com/facebookresearch/dino}
+}
+In this paper, we question if self-supervised learning provides new properties to Vision Transformer~(ViT)~\cite{dosovitskiy2020image} that stand out compared to convolutional networks (convnets).
+%Beyond the fact that adapting self-supervised methods to this architecture works particularly well, we observe several novel properties in the resulting features:
+%first, they contain explicit information about the semantic segmentation of an image.
+%This property does not emerge as clearly with supervised ViTs, nor with convnets.
+Beyond the fact that adapting self-supervised methods to this architecture works particularly well, we make the following observations:
+first, self-supervised ViT features contain explicit information about the semantic segmentation of an image,
+which does not emerge as clearly with supervised ViTs, nor with convnets.
+Second, these features are also excellent $k$-NN classifiers, reaching 78.3\% top-1 on ImageNet with a small ViT. 
+Our study also underlines the importance of momentum encoder~\cite{he2020momentum}, multi-crop training~\cite{caron2020unsupervised}, and the use of small patches with ViTs.
+We implement our findings into a simple self-supervised method, called \OURS, which we interpret as a form of self-\textbf{di}stillation with \textbf{no} labels.
+We show the synergy between \OURS and ViTs by achieving 80.1\% top-1 on ImageNet in linear evaluation with ViT-Base.
+
+
+
+%We aggregate our findings into a self-distillation method, called \OURS, where a network learns by matching features built from previous instances and a standard cross-entropy loss.
+% Such a simplicity appears from hi to be a key to train vision transformer architectures with self-supervision,
+% Yet, DINO is competitive with prevous approaches when used with convolutional
+% neural networks and turned out to be  
+% since we observed that previous approaches fail to deliver good performance
+%with these architectures. 
+
+%We show that self-supervised pre-training of transformers with \OURS yields representations that outperform supervised pre-training on all transfer tasks we considered,
+%while even providing surprisingly good results with basic k-nearest neighbor classifiers.
+
+% Interestingly, we also observe that our features are particularly k-nn friendly.
+   
+\end{abstract}
+
+% textwidth: \printinunitsof{in}\prntlen{\textwidth}
+% linewidth: \printinunitsof{in}\prntlen{\linewidth}
+
+\input{introduction}
+\input{related}
+\input{approach}
+\input{main_results}
+\input{ablations}
+
+\section{Conclusion}
+
+In this work, we have shown the potential of self-supervised pretraining a standard ViT model, achieving performance that are comparable with the best convnets specifically designed for this setting.
+We have also seen emerged two properties that can be leveraged in future applications:
+the quality of the features in $k$-NN classification has a potential for image retrieval where ViT are already showing promising results~\cite{el2021training}.
+The presence of information about the scene layout in the features can also benefit weakly supervised image segmentation.
+However, the main result of this paper is that we have evidences that self-supervised learning could be the key to developing a BERT-like model based on ViT.
+In the future, we plan to explore if pretraining a large ViT model with \OURS on random uncurated images could push the limits of visual features~\cite{goyal2021self}.
+
+\paragraph{Acknowledgement.}
+We thank Mahmoud Assran, Matthijs Douze, Allan Jabri, Jure Zbontar, Alaaeldin El-Nouby, Y-Lan Boureau, Kaiming He, Thomas Lucas as well as the Thoth and FAIR teams for their help, support and discussions around this project.
+Julien Mairal was funded by the ERC grant number 714381 (SOLARIS project) and by ANR 3IA MIAI@Grenoble Alpes (ANR-19-P3IA-0003).
+
+{\small
+\bibliographystyle{ieee_fullname}
+\bibliography{egbib}
+}
+
+\input{appendix.tex}
+
+\end{document}

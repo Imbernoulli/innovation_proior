@@ -1,0 +1,1142 @@
+\documentclass{article} % For LaTeX2e
+\usepackage{iclr2017_conference,times}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{graphics}
+\usepackage{amsthm}
+\usepackage{mathtools}
+\usepackage{amsmath,amsfonts,amssymb}       % blackboard math symbols
+\usepackage{appendix}
+\usepackage{bbm}
+\newcommand\FF{\mathbb{F}}
+\newcommand\EE{\mathbb{E}}
+\newcommand\VV{\mathbb{V}}
+\newcommand\NN{\mathbb{N}}
+\newcommand\manP{\mathcal{P}}
+\newcommand\manM{\mathcal{M}}
+\newcommand\Int{\text{Int }}
+\newcommand\PP{\mathbb{P}}
+\newcommand\B{\mathcal{B}}
+\newcommand\RR{\mathbb{R}}
+\newcommand\ZZ{\mathbb{Z}}
+\DeclareMathOperator{\tr}{tr}
+\newcommand\Ind{\mathbbm{1}}
+\renewcommand{\d}[1]{\ensuremath{\operatorname{d}\!{#1}}}
+\DeclarePairedDelimiter\abs{\lvert}{\rvert}
+\DeclarePairedDelimiter\ip{\langle}{\rangle}
+\newcommand{\matr}[1]{\mathbf{#1}}
+\newcommand{\dpar}[2]{\frac{\partial #1}{\partial #2}}
+\newtheorem{lemma}{Lemma}
+\newtheorem{coro}{Corollary}[section]
+\newtheorem{theo}{Theorem}[section]
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}[section]
+
+\title{\centering \scalebox{1}{Towards Principled Methods for Training}\\
+       \scalebox{1}{Generative Adversarial Networks}}
+
+\author{
+\hspace{21mm} Martin Arjovsky  \hspace{40mm} L\'eon Bottou \\
+\hspace{4mm} Courant Institute of Mathematical Sciences \hspace{16mm} Facebook AI Research\\
+\hspace{9.75mm} \texttt{martinarjovsky@gmail.com} \hspace{23.5mm} \texttt{leonb@fb.com}
+}
+
+\graphicspath{{./figures/}}
+
+
+% The \author macro works with any number of authors. There are two commands
+% used to separate the names and addresses of multiple authors: \And and \AND.
+%
+% Using \And between authors leaves it to \LaTeX{} to determine where to break
+% the lines. Using \AND forces a linebreak at that point. So, if \LaTeX{}
+% puts 3 of 4 authors names on the first line, and the last on the second
+% line, try using \AND instead of \And before the third author name.
+
+\newcommand{\fix}{\marginpar{FIX}}
+\newcommand{\new}{\marginpar{NEW}}
+
+%\iclrfinalcopy % Uncomment for camera-ready version
+
+\begin{document}
+
+
+\maketitle
+
+\begin{abstract}
+The goal of this paper is not to introduce a single algorithm 
+or method, but to make theoretical steps towards fully 
+understanding the training dynamics of generative adversarial networks.
+In order to substantiate our theoretical analysis, we perform targeted
+experiments to verify our assumptions, illustrate our claims,
+and quantify the phenomena. This paper is divided into three sections.
+The first section introduces the problem at hand. The second section
+is dedicated to studying and proving rigorously the problems including
+instability and saturation that arize when training generative adversarial 
+networks. The third section examines a practical and theoretically grounded 
+direction towards solving these problems, while introducing new tools to study them. 
+\end{abstract}
+
+\section{Introduction}
+Generative adversarial networks (GANs)\citep{Good-ea-GAN} have achieved great
+success at generating realistic and sharp looking images.
+However, they are widely general methods, now starting to be applied to several
+other important problems, such as semisupervised learning, stabilizing sequence
+learning methods for speech and language, and 3D modelling. \citep{Denton-ea-LAPGAN,
+Rad-ea-DCGAN, Sal-ea-IGAN, Lamb-ea-PF, Wu-ea-3D}
+
+However, they still remain remarkably difficult
+to train, with most current papers dedicated to heuristically finding
+stable architectures. \citep{Rad-ea-DCGAN, Sal-ea-IGAN}
+
+Despite their success, there is little to no theory explaining the
+unstable behaviour of GAN training. Furthermore, approaches to attacking
+this problem still rely on heuristics that are extremely sensitive
+to modifications. This makes it extremely hard to experiment with
+new variants, or to use them in new domains, which limits their
+applicability drastically. This paper aims to change that,
+by providing a solid understanding of these issues, and creating 
+principled research directions towards adressing them.
+
+It is interesting to note that the architecture of the generator
+used by GANs doesn't differ significantly from other approaches
+like variational autoencoders \citep{Kingma-ea-VAE}. After all, at the core
+of it we first sample from a simple prior $z \sim
+p(z)$, and then output our final sample $g_\theta(z)$, sometimes
+adding noise in the end. Always, $g_\theta$ is a neural network
+parameterized by $\theta$, and the main difference is how $g_\theta$ is trained.
+
+Traditional approaches to generative modeling relied on maximizing likelihood,
+or equivalently minimizing the Kullback-Leibler (KL) divergence
+between our unknown data distribution $\PP_r$ and our generator's distribution
+$\PP_g$ (that depends of course on $\theta$). If we assume that both distributions
+are continuous with densities $P_r$ and $P_g$, then these methods try to minimize
+
+$$ KL(\PP_r \| \PP_g) = \int_{\mathcal{X}} P_r(x) \log\frac{P_r(x)}{P_g(x)} \d x $$
+
+This cost function has the good property that it has a unique minimum at $\PP_g = \PP_r$,
+and it doesn't require knowledge of the unknown $P_r(x)$ to optimize it (only samples). 
+However, it is
+interesting to see how this divergence is not symetrical between $\PP_r$ and $\PP_g$:
+\begin{itemize}
+  \item If $P_r(x) > P_g(x)$, then $x$ is a point with higher probability
+of coming from the data than being a generated sample. This is the core of the 
+phenomenon
+commonly described as `mode dropping': when there are large regions with
+high values of $P_r$, but small or zero values in $P_g$. It is important to note
+that when $P_r(x) > 0$ but $P_g(x) \to 0$, the integrand inside the KL grows quickly
+to infinity, meaning that this cost function assigns an extremely high cost to 
+a generator's distribution not covering parts of the data.
+  \item If $P_r(x) < P_g(x)$, then $x$ has low probability of being a data point,
+but high probability of being generated by our model. This is the case when we see our generator
+outputting an image that doesn't look real.
+In this case, when $P_r(x) \to 0$ and $P_g(x) > 0$, we see that the value
+inside the KL goes to 0, meaning that this cost function will pay extremely
+low cost for generating fake looking samples.
+\end{itemize}
+
+Clearly, if we would minimize $KL(\PP_g \| \PP_r)$ instead, the weighting of these errors
+would be reversed, meaning that this cost function would pay a high cost for
+generating not plausibly looking pictures. Generative adversarial networks have been
+shown to optimize (in its original formulation), the Jensen-shannon divergence,
+a symmetric middle ground to this two cost functions
+$$ JSD(\PP_r \| \PP_g) = \frac{1}{2} KL(\PP_r \| \PP_A) + \frac{1}{2} KL(\PP_g \| \PP_A) $$
+where $\PP_A$ is the `average' distribution, with density $\frac{P_r + P_g}{2}$.
+An impressive experimental analysis of the similarities, uses and differences of these
+divergences in practice can be seen at \cite{Theis-ea-Gen}.
+It is indeed conjectured that the reason of GANs success at producing reallistically
+looking images is due to the switch from the traditional maximum likelihood approaches. 
+\citep{Theis-ea-Gen, Ferenc15}. However, the problem is far from closed.
+
+Generative adversarial networks are formulated
+in two steps. We first train a discriminator $D$ to maximize
+\begin{equation} \label{eq::cost}
+L(D, g_\theta) = \EE_{x \sim \PP_r}[\log D(x)] + \EE_{x \sim \PP_g}[\log(1 - D(x))]
+\end{equation}
+One can show easily that the optimal discriminator has the shape
+\begin{equation}
+D^*(x) = \frac{P_r(x)}{P_r(x) + P_g(x)} \label{eq::optdisc}
+\end{equation}
+and that $L(D^*, g_\theta) = 2 JSD(\PP_r \| \PP_g) - 2 \log 2$, so minimizing equation \eqref{eq::cost}
+as a function of $\theta$ yields minimizing the Jensen-Shannon divergence when the
+discriminator is optimal. In theory,
+one would expect therefore that we would first train the discriminator as close
+as we can to optimality (so the cost function on $\theta$ 
+better approximates the $JSD$), and
+then do gradient steps on $\theta$, alternating these two things. However, 
+this doesn't work. In practice, as the discriminator gets better, the
+updates to the generator get consistently worse. The original GAN paper argued that
+this issue arose from saturation, and switched
+to another similar cost function that doesn't have this problem. However, 
+even with this new cost function, updates tend
+to get worse and optimization gets massively unstable. Therefore, several
+questions arize:
+\begin{itemize}
+  \item Why do updates get worse as the discriminator gets better? Both
+in the original and the new cost function.
+  \item Why is GAN training massively unstable?
+  \item Is the new cost function following a similar divergence to the $JSD$? If so,
+what are its properties?
+  \item Is there a way to avoid some of these issues?
+\end{itemize}
+
+The fundamental contributions of this paper are the answer to all these questions,
+and perhaps more importantly, to introduce the tools to analyze them properly.
+We provide a new direction designed to avoid
+the instability issues in GANs, and examine in depth the theory behind it.
+Finally, we state a series of open questions and problems, that determine several new directions
+of research that begin with our methods.
+
+\section{Sources of instability}
+The theory tells us that the
+trained discriminator will have cost %\footnote{meaning $-L(D, g)$}
+at most $2 \log 2 - 2JSD(\PP_r \| \PP_g)$. However, in practice, if we just
+train $D$ till convergence, its error will go to 0, as observed
+in \autoref{fig::disc_error}, pointing to the fact that the $JSD$
+between them is maxed out. The only way this can happen is if
+the distributions are not continuous\footnote{By continuous
+we will actually refer to an absolutely continuous random variable (i.e. one that
+has a density),
+as it typically done. For further clarification see Appendix \autoref{app::clarifications}.}, or they have disjoint supports.
+
+One possible cause for the distributions not to be continuous is if
+their supports lie on low dimensional manifolds. There is strong empirical
+and theoretical evidence to believe that $\PP_r$ is indeed extremely concentrated
+on a low dimensional manifold \citep{Har-Manh}. As of $\PP_g$, we will
+prove soon that such is the case as well.
+
+In the case of GANs, $\PP_g$ is defined via sampling from
+a simple prior $z \sim p(z)$, and then applying a function
+$g: \mathcal{Z} \rightarrow \mathcal{X}$, so the support of $\PP_g$ has
+to be contained in $g(\mathcal{Z})$. If the dimensionality of $\mathcal{Z}$
+is less than the dimension of $\mathcal{X}$ (as is typically the case), then
+it's imposible for $\PP_g$ to be continuous. This is because in most cases $g(\mathcal{Z})$ will
+be contained in a union of low dimensional manifolds, and therefore have measure
+0 in $\mathcal{X}$. Note that while intuitive, this is highly nontrivial,
+since having an $n$-dimensional parameterization does absolutely not
+imply that the image will lie on an $n$-dimensional manifold. In fact,
+there are many easy counterexamples, such as Peano curves, lemniscates,
+and many more. In order to show this for our case, we rely heavily
+on $g$ being a neural network, since we are able to leverage that
+$g$ is made by composing very well behaved functions. We now
+state this properly in the following Lemma:
+
+\begin{lemma} \label{lem::glowdim}
+Let $g: \mathcal{Z} \rightarrow \mathcal{X}$ be a function composed by
+affine transformations and pointwise nonlinearities, which can either
+be rectifiers, leaky rectifiers, or smooth strictly increasing
+functions (such as the sigmoid, tanh, softplus, etc). Then, $g(\mathcal{Z})$
+is contained in a countable union of manifolds of dimension at most
+$\dim \mathcal{Z}$. Therefore, if the dimension of $\mathcal{Z}$
+is less than the one of $\mathcal{X}$, $g(\mathcal{Z})$ will be a set of measure 0 in
+$\mathcal{X}$.
+\end{lemma}
+\vspace{-2mm}
+\begin{proof}
+See Appendix \autoref{app::proofs}.
+\end{proof}
+\vspace{-1mm}
+Driven by this, this section 
+shows that if the supports of $\PP_r$ and $\PP_g$ are disjoint or lie in
+low dimensional manifolds, there is always
+a perfect discriminator between them, and we explain exactly
+how and why this leads to an unreliable training of the generator.
+\begin{figure}[t!]
+  \centering
+  \begin{minipage}[b]{0.5\linewidth}
+    \centering
+    \includegraphics[scale=0.372]{dis_err_orig.png}
+  \end{minipage}%%
+  \begin{minipage}[b]{0.5\linewidth}
+    \centering
+    \includegraphics[scale=0.372]{acc.png}
+  \end{minipage} 
+  \caption{First, we trained a DCGAN for 1, 10 and 25 epochs.
+Then, with the generator fixed we train a discriminator from scratch.
+We see the error quickly going to 0, even with very few iterations
+on the discriminator. This even happens after 25 epochs of the DCGAN,
+when the samples are remarkably good and the supports are likely
+to intersect, pointing to the non-continuity of the distributions.
+Note the logarithmic scale. For illustration purposes we also
+show the accuracy of the discriminator, which goes to 1
+in sometimes less than 50 iterations. This is 1 even for numerical
+precision, and the numbers are running averages, pointing
+towards even faster convergence.}
+  \label{fig::disc_error}
+\end{figure}
+
+\subsection{The perfect discrimination theorems}
+
+For simplicity, and to introduce the methods, we will first
+explain the case where $\PP_r$ and $\PP_g$ have disjoint
+supports. We say that a discriminator $D: \mathcal{X} \rightarrow [0, 1]$
+has accuracy 1 if it takes the value 1 on a set that contains
+the support of $\PP_r$ and value 0 on a set that contains the support of $\PP_g$. Namely,
+$\PP_r[D(x) = 1] = 1$ and $\PP_g[D(x) = 0] = 1$.
+
+\begin{theo} \label{theo::perfDdisj}
+If two distributions $\PP_r$ and $\PP_g$ have support contained on two disjoint compact subsets
+$\manM$ and $\manP$ respectively, then there is a smooth optimal discrimator
+$D^*: \mathcal{X} \rightarrow [0, 1]$
+that has accuracy 1 and $\nabla_x D^*(x) = 0$ for all $x \in \manM \cup
+\manP$.
+\end{theo}
+\vspace{-2mm}
+\begin{proof} The discriminator is trained to maximize
+$$ \EE_{x \sim \PP_r}[\log D(x)] + \EE_{x \sim \PP_g}[\log(1 - D(x))] $$
+Since $\manM$ and $\manP$ are compact and disjoint, $0 < \delta = d(\manP, \manM)$ the
+distance between both sets. We now define
+$$ \hat \manM = \{x: d(x, M) \leq \delta/3\} $$
+$$ \hat \manP = \{x: d(x, P) \leq \delta/3\} $$
+By definition of $\delta$ we have that $\hat P$ and $\hat M$ are clearly disjoint
+compact sets. Therefore, by
+Urysohn's smooth lemma there exists a smooth function $D^*:\mathcal{X} \rightarrow [0, 1]$
+such that $D^*|_{\hat \manM} \equiv 1$ and $D^*|_{\hat \manP} \equiv 0$.
+Since $\log D^*(x) = 0$ for all $x$ in the support of $\PP_r$ and $\log(1 - D^*(x))
+= 0$ for all $x$ in the support of $\PP_g$, the discriminator is completely
+optimal and has accuracy 1.
+Furthermore, let $x$ be in $\manM \cup \manP$. If we assume that 
+$x \in \manM$, there is an open ball $B = B(x, \delta/3)$
+on which $D^*|_B $ is constant. This shows that $\nabla_x D^*(x) \equiv 0$.
+Taking $x \in \manP$ and working analogously we finish the proof.
+\end{proof}
+In the next theorem, we take away the disjoint assumption, to make it general to the case of 
+two different manifolds. However, if the two manifolds
+match perfectly on a big part of the space, no discriminator could separate them.
+Intuitively, the chances of two low dimensional manifolds having
+this property is rather dim: for two curves to match in space in a specific segment,
+they couldn't be perturbed in any arbitrarilly small way and still satisfy this property.
+To do this, we will define the notion of two manifolds perfectly aligning, and show that this
+property never holds with probability 1 under any arbitrarilly small perturbations.
+\vspace{1mm}
+
+\begin{definition} We first need to recall the definition of transversality. Let $\manM$ and $\manP$
+be two boundary free regular submanifolds of $\mathcal{F}$, which in our cases will simply be $\mathcal{F}
+= \RR^d$. Let $x \in \manM \cap \manP$ be an intersection point of the two manifolds.
+We say that $\manM$ and $\manP$ intersect transversally in $x$
+if $T_x \manM + T_x \manP = T_x \mathcal{F}$, where $T_x \manM$ means the tangent space of $\manM$
+around $x$.
+\end{definition}
+\vspace{1mm}
+
+\begin{definition}
+We say that two manifolds without boundary $\mathcal{M}$ and $\mathcal{P}$ \textbf{perfectly align} if there
+is an $x \in \mathcal{M} \cap \mathcal{P}$ such that $\mathcal{M}$ and $\mathcal{P}$ don't
+intersect transversally in $x$.
+\vspace{-2mm}
+
+We shall note the boundary and interior of a manifold $\manM$ by $\partial M$ and $\Int M$ respectively.
+We say that two manifolds $\manM$ and $\manP$
+(with or without boundary) perfectly align if any of the boundary free manifold pairs 
+$(\Int \manM, \Int \manP), (\Int \manM, \partial \manP), (\partial \manM, \Int \manP)$ or
+$(\partial \manM, \partial \manP)$ perfectly align.
+\end{definition}
+The interesting thing is that we can safely assume in practice that any two manifolds never perfectly
+align. This can be done
+since an arbitrarilly small random perturbation on two
+manifolds will lead them to intersect transversally or don't intersect at all. This
+is precisely stated and proven in Lemma \autoref{lem::perfalign}.
+
+As stated by Lemma \autoref{lem::interm}, if two manifolds don't perfectly align,
+their intersection $\mathcal{L} = \manM \cap \manP$ will be a finite union of manifolds with dimensions
+strictly lower than both the dimension of $\manM$ and the one of $\manP$.
+\begin{lemma} \label{lem::perfalign}
+Let $\manM$ and $\manP$ be two regular submanifolds of $\RR^d$ that don't have full dimension. Let
+$\eta, \eta'$ be arbitrary independent continuous random variables. We therefore define the perturbed
+manifolds as $\tilde \manM = \manM + \eta$ and $\tilde \manP = \manP + \eta'$. Then
+$$\PP_{\eta, \eta'}(\tilde \manM
+\text{ does not perfectly align with } \tilde \manP) = 1$$
+\end{lemma}
+\begin{proof}
+See Appendix \autoref{app::proofs}.
+\end{proof}
+\begin{lemma} \label{lem::interm}
+  Let $\manM$ and $\manP$ be two regular submanifolds of $\RR^d$ that don't 
+perfectly align and don't have full dimension. Let $\mathcal{L} = \manM \cap \manP$.
+If $\manM$ and $\manP$ don't have boundary, then $\mathcal{L}$ is also
+a manifold, and has strictly lower dimension than both the one of $\manM$ and
+the one of $\manP$. If they have boundary, $\mathcal{L}$ is a union of at most
+4 strictly lower dimensional manifolds. In both cases, $\mathcal{L}$ has measure 0 in both $\manM$ and $\manP$.
+\end{lemma}
+\begin{proof}
+See Appendix \autoref{app::proofs}.
+\end{proof}
+
+We now state our perfect discrimination result for the case of two manifolds.
+\begin{theo} \label{theo::perfDman}
+  Let $\PP_r$ and $\PP_g$ be two distributions that have support contained in two closed manifolds 
+$\mathcal{M}$ and $\mathcal{P}$ that don't perfectly align and don't have full dimension.
+We further assume
+that $\PP_r$ and $\PP_g$ are continuous
+in their respective manifolds, meaning that if there is a set $A$ with measure 0 in
+$\mathcal{M}$, then $\PP_r(A) = 0$ (and analogously for $\PP_g$). Then,
+there exists an optimal discriminator $D^*: \mathcal{X} \rightarrow [0, 1]$ that
+has accuracy 1 and
+for almost any $x$ in $\manM$ or $\manP$, $D^*$ is smooth in a neighbourhood of $x$
+and $\nabla_xD^*(x) = 0$.
+\end{theo}
+\begin{proof}
+  By Lemma \autoref{lem::interm} we know that
+$\mathcal{L} = \manM \cap \manP$ is strictly lower dimensional than both $\mathcal{M}$ and 
+$\mathcal{P}$, and has measure 0 on both of them. By continuity, $\PP_r(\mathcal{L}) 
+= 0$ and $\PP_g(\mathcal{L}) = 0$. Note that this implies the support of $\PP_r$ is contained
+in $\mathcal{M} \setminus \mathcal{L}$ and the support of $\PP_g$ is contained in $\mathcal{P}
+\setminus \mathcal{L}$. 
+
+Let $x \in \mathcal{M} \setminus \mathcal{L}$. Therefore, $x \in \mathcal{P}^c$ (the complement of
+$\manP$) which is an open
+set, so there exists a ball of radius $\epsilon_x$ such that $B(x, \epsilon_x) \cap \mathcal{P}
+= \emptyset$. This way, we define
+$$\hat \manM = \bigcup_{x \in \mathcal{M} \setminus \mathcal{L}} B(x, \epsilon_x/3)$$
+We define $\hat \manP$ analogously. Note that by construction these are both open sets
+on $\RR^d$. Since $\manM \setminus \mathcal{L} \subseteq \hat \manM$, and $
+\mathcal{P} \setminus \mathcal{L} \subseteq \hat \manP$, the support of $\PP_r$ and $\PP_g$
+is contained in $\hat \manM$ and $\hat \manP$ respectively. As well by construction,
+$\hat \manM \cap \hat \manP = \emptyset$.
+
+Let us define $D^*(x) = 1$ for all $x \in \hat \manM$, and 0 elsewhere (clearly including
+$\hat \manP$.
+Since $\log D^*(x) = 0$ for all $x$ in the support of $\PP_r$ and $\log(1 - D^*(x))
+= 0$ for all $x$ in the support of $\PP_g$, the discriminator is completely
+optimal and has accuracy
+1. Furthermore, let $x \in \hat \manM$. Since $\hat \manM$ is an open set and $D^*$ is constant
+on $\hat \manM$, then $\nabla_x D^*|_{\hat \manM} \equiv 0$. Analogously, $\nabla_x D^*|_{\hat 
+\manP} \equiv 0$. Therefore, the set of points where $D^*$ is non-smooth or has non-zero
+gradient inside $\manM \cup \manP$ is contained in $\mathcal{L}$, which has null-measure
+in both manifolds, therefore concluding the theorem.
+\end{proof}
+These two theorems tell us that there are perfect discriminators which are smooth and
+constant almost everywhere in $\manM$ and $\manP$. The fact that the discriminator
+is constant in both manifolds points to the fact that we won't really be able to learn
+anything by backproping through it, as we shall see in the next subsection. To conclude
+this general statement, we state the following theorem on the divergences of $\PP_r$
+and $\PP_g$, whose proof is trivial and left as an exercise to the reader.
+\begin{theo} \label{theo::div}
+Let $\PP_r$ and $\PP_g$ be two distributions whose support lies in two manifolds
+$\manM$ and $\manP$ that don't have full dimension and don't perfectly align. We
+further assume that $\PP_r$ and $\PP_g$ are continuous in their respective manifolds.
+Then,
+\begin{align*}
+  JSD(\PP_r \| \PP_g) &= \log 2 \\
+  KL(\PP_r \| \PP_g) &= +\infty \\
+  KL(\PP_g \| \PP_r) &= +\infty
+\end{align*}
+\end{theo}
+Note that these divergences will be maxed out even if the two manifolds lie arbitrarilly
+close to each other. The samples of our generator might look impressively good, yet
+both KL divergences will be infinity. Therefore, Theorem \autoref{theo::div} points
+us to the fact that attempting to use divergences out of the box to test similarities between the distributions
+we typically consider might be a terrible idea. Needless to say, if these divergencies
+are always maxed out attempting to minimize them by gradient descent isn't really
+possible. We would like to have a perhaps softer
+measure, that incorporates a notion of distance between the points in the manifolds.
+We will come back to this topic later in \autoref{sec::instnoise}, where we
+explain an alternative metric and provide bounds on it that we are able to
+analyze and optimize.
+\subsection{The consequences, and the problems of each cost function}
+Theorems \autoref{theo::perfDdisj} and \autoref{theo::perfDman}
+showed one very important fact. If the two distributions we care about have
+supports that are disjoint or lie on low dimensional manifolds,
+the optimal discriminator will be perfect and its gradient will be zero almost everywhere.
+
+\subsubsection{The original cost function}
+We will now explore what happens when we pass gradients to the generator through a discriminator.
+One crucial difference with the typical analysis done so far is that we will 
+develop the theory for an
+\textbf{approximation} to the optimal discriminator, instead of working with the (unknown) true
+discriminator. We will prove that as the approximaton gets better, either we see vanishing gradients
+or the massively unstable behaviour we see in practice, depending on which cost function we use.
+
+In what follows, we denote by $\|D\|$ the norm 
+$$ \|D\| = \sup_{x \in \mathcal{X}} |D(x)| + \|\nabla_x D(x)\|_2 $$
+The use of this norm is to make the proofs simpler, but could have been done in another
+Sobolev norm $\|\cdot\|_{1, p}$ for $p < \infty$ covered by the universal
+approximation theorem in the sense that we can guarantee a neural network approximation in this
+norm \citep{Hornik-UAT}.
+\begin{theo}[\textbf{Vanishing gradients on the generator}] \label{theo::vanishing}
+Let $g_\theta: \mathcal{Z} \rightarrow \mathcal{X}$ be a differentiable
+function that induces a distribution $\PP_g$.
+Let $\PP_r$ be the real data distribution. Let $D$ be a differentiable discriminator. If the
+conditions of Theorems \autoref{theo::perfDdisj} or \autoref{theo::perfDman} are satisfied, $\|D - D^*\| < \epsilon$, and
+$\EE_{z \sim p(z)} \left[\|J_\theta g_\theta(z)\|_2^2\right] \leq M^2$,
+\footnote{Since $M$ can depend on $\theta$, this condition is trivially verified for a
+uniform prior and a neural network. The case of a Gaussian prior requires more work because
+we need to bound the growth on $z$, but is also true for current architectures.} then
+$$ \|\nabla_\theta \EE_{z \sim p(z)}[\log(1-D(g_\theta(z)))]\|_2 < M\frac{\epsilon}{1 - \epsilon} $$
+\end{theo}
+\begin{proof}
+In both proofs of Theorems \autoref{theo::perfDdisj} and \autoref{theo::perfDman}
+we showed that $D^*$ is locally 0 on the support of $\PP_g$.
+Then, using Jensen's inequality and the chain rule on this support we have
+\begin{align*}
+  \|\nabla_\theta \EE_{z \sim p(z)}[\log(1-D(g_\theta(z)))]\|_2^2 &\leq \EE_{z \sim p(z)}\left[
+    \frac{\|\nabla_\theta D(g_\theta(z))\|_2^2}{|1-D(g_\theta(z))|^2}\ \right] \\
+  &\leq \EE_{z \sim p(z)}\left[
+    \frac{\|\nabla_x D(g_\theta(z))\|_2^2 \|J_\theta g_\theta(z)\|_2^2}
+  {|1-D(g_\theta(z))|^2}\ \right] \\
+  &<\EE_{z \sim p(z)} \left[ \frac{\left(\|\nabla_x D^*(g_\theta(z))\|_2 + \epsilon\right)^2
+    \|J_\theta g_\theta(z)\|_2^2}{\left(|1-D^*(g_\theta(z))| - \epsilon\right)^2} \right] \\
+  &=\EE_{z \sim p(z)} \left[ \frac{\epsilon^2 \|J_\theta g_\theta(z)\|_2^2}{\left(1 - \epsilon
+  \right)^2} \right] \\
+  &\leq M^2\frac{\epsilon^2}{\left(1 - \epsilon\right)^2}
+\end{align*}
+Taking square root of everything we get
+$$ \|\nabla_\theta \EE_{z \sim p(z)}[\log(1-D(g_\theta(z)))]\|_2 < M\frac{\epsilon}{1 - \epsilon} $$
+finishing the proof
+\end{proof}
+\begin{coro} Under the same assumptions of Theorem \autoref{theo::vanishing}
+$$ \lim_{\|D - D^*\| \to 0} \nabla_\theta \EE_{z \sim p(z)}[\log(1-D(g_\theta(z)))] = 0$$
+\end{coro}
+This shows that as our discriminator gets better, the gradient of the generator vanishes. For
+completeness, this was experimentally verified in \autoref{fig::vanishing}. The fact
+that this happens is terrible, since the fact that the generator's cost function being close
+to the Jensen Shannon divergence depends on the quality of this approximation. This points us
+to a fundamental: either our updates to the discriminator will be inacurate, or they will vanish.
+This makes it difficult to train using this cost function, or leave up to the user to decide the
+precise amount of training dedicated to the discriminator, which can make GAN training extremely
+hard.
+
+\begin{figure}[t!]
+  \centering
+  \includegraphics[scale=.5]{g_grads_orig.png}
+  \caption{First, we trained a DCGAN for 1, 10 and 25 epochs.
+Then, with the generator fixed we train a discriminator from scratch
+and measure the gradients with the original cost function.
+We see the gradient norms decay quickly, in the best case
+5 orders of magnitude after 4000 discriminator iterations. 
+Note the logarithmic scale.}
+  \label{fig::vanishing}
+\end{figure}
+
+\subsubsection{The $-\log D$ alternative}
+To avoid gradients vanishing when the discriminator is very confident, people have chosen to use
+a different gradient step for the generator.
+$$ \Delta \theta = \nabla_\theta \EE_{z \sim p(z)} \left[ - \log D(g_\theta(z)) \right] $$
+
+We now state and prove for the first time which cost function is being optimized
+by this gradient step. Later, we prove that while this gradient doesn't necessarily 
+suffer from vanishing gradients, it does
+cause massively unstable updates (that have been widely experienced in practice) under
+the prescence of a noisy approximation to the optimal discriminator.
+
+\begin{theo} Let $\PP_r$ and $\PP_{g_\theta}$ be two continuous distributions, 
+with densities $P_r$ and $P_{g_\theta}$ respectively. Let $D^* = \frac{P_r}{P_{g_{\theta_0}} + P_r}$ 
+be the optimal discriminator, fixed for a value $\theta_0$\footnote{This is important
+since when backpropagating to the generator, the discriminator is assumed fixed}. Therefore,
+\begin{equation} \label{eq::logD}
+\EE_{z \sim p(z)}\left[-\nabla_\theta \log D^*(g_\theta(z))|_{\theta=\theta_0} \right] =
+  \nabla_\theta \left[ KL(\PP_{g_\theta} \| \PP_r) - 2 JSD(\PP_{g_\theta} \| \PP_r)
+  \right]|_{\theta=\theta_0}
+\end{equation}
+\end{theo}
+Before diving into the proof, let's look at equation \eqref{eq::logD} for a second.
+This is the inverted KL minus two JSD. First of all, the JSDs are in the opposite
+sign, which means they are pushing for the distributions to be different, which
+seems like a fault in the update. Second, the KL appearing in the equation is
+$KL(\PP_g \| \PP_r)$, not the one equivalent to maximum likelihood. As
+we know, this KL assigns an extremely high cost to generating fake looking samples,
+and an extremely low cost on mode dropping; and the JSD is symetrical so it shouldn't
+alter this behaviour. This explains what we see in practice, that GANs (when
+stabilized) create good looking samples, and justifies what is commonly conjectured, that
+GANs suffer from an extensive amount of mode dropping.
+\begin{proof}
+We already know by \cite{Good-ea-GAN} that % TODO: {\color{red}Lemma} in the appendix
+$$ \EE_{z \sim p(z)} \left[\nabla_\theta \log(1 - D^*(g_\theta(z)))|_{\theta=\theta_0}\right] = 
+  \nabla_\theta 2 JSD(\PP_{g_\theta} \| \PP_r)|_{\theta=\theta_0} $$
+Furthermore, as remarked by \cite{Ferenc-blogpost},
+\begin{align*}
+ KL(\PP_{g_\theta} \| \PP_r) &= \EE_{x \sim \PP_{g_\theta}} \left[ \log \frac{P_{g_\theta}(x)}
+  {P_r(x)} \right] \\
+ &= \EE_{x \sim \PP_{g_\theta}} \left[ \log \frac{P_{g_{\theta_0}}(x)} {P_r(x)} \right]
+ - \EE_{x \sim \PP_{g_\theta}} \left[ \log \frac{P_{g_\theta}(x)} {P_{g_{\theta_0}}(x)} \right]\\
+ &= -\EE_{x \sim \PP_{g_\theta}} \left[ \log \frac{D^*(x)}{1 - D^*(x)} \right] - KL(\PP_{g_\theta} 
+  \| \PP_{g_{\theta_0}}) \\
+ &= -\EE_{z \sim p(z)}\left[ \log \frac{D^*(g_\theta(z))}{1-D^*(g_\theta(z))}\right] - 
+  KL(\PP_{g_\theta} \| \PP_{g_{\theta_0}})
+\end{align*}
+Taking derivatives in $\theta$ at $\theta_0$ we get
+\begin{align*}
+  \nabla_\theta KL(\PP_{g_\theta} \| \PP_r)|_{\theta=\theta_0} &= -\nabla_\theta
+    \EE_{z \sim p(z)}\left[ \log \frac{D^*(g_\theta(z))}{1-D^*(g_\theta(z))}\right]|_{\theta=\theta_0}
+    -\nabla_\theta KL(\PP_{g_\theta} \| \PP_{g_{\theta_0}})|_{\theta=\theta_0} \\
+    &= \EE_{z \sim p(z)}\left[  -\nabla_\theta
+\log \frac{D^*(g_\theta(z))}{1-D^*(g_\theta(z))}\right]|_{\theta=\theta_0}
+\end{align*}
+Substracting this last equation with the result for the JSD, we obtain our desired result.
+\end{proof}
+
+We now turn to our result regarding the instability of a noisy version of the true distriminator.
+\begin{theo}[\textbf{Instability of generator gradient updates}]
+Let $g_\theta: \mathcal{Z} \rightarrow \mathcal{X}$ be a differentiable
+function that induces a distribution $\PP_g$. Let $\PP_r$ be the real data distribution, with
+either conditions of Theorems \autoref{theo::perfDdisj} or \autoref{theo::perfDman} satisfied.
+Let $D$ be a discriminator such that $D^* - D = \epsilon$ is a centered Gaussian 
+process indexed by $x$ and independent for every $x$ (popularly known as white noise)
+and $\nabla_x D^* - \nabla_xD = r$ another independent centered Gaussian process indexed by
+$x$ and independent for every $x$. Then, each coordinate of
+$$ \EE_{z \sim p(z)} \left[ -\nabla_\theta \log D(g_\theta(z))\right] $$
+is a centered Cauchy distribution with \textbf{infinite expectation and variance}.\footnote{Note
+that the theorem holds regardless of the variance of $r$ and $\epsilon$. As the approximation
+gets better, this error looks more and more as centered random noise due to the finite precision.}
+\end{theo}
+\begin{proof}
+Let us remember again that in this case $D$ is locally constant equal to 0 on the support of $\PP_g$.
+We denote $r(z), \epsilon(z)$ the random variables $r(g_\theta(z)), \epsilon(g_\theta(z))$.
+By the chain rule and the definition of $r, \epsilon$, we get
+\begin{align*}
+  \EE_{z \sim p(z)} \left[ -\nabla_\theta \log D(g_\theta(z)) \right] &= 
+    \EE_{z \sim p(z)} \left[ -\frac{J_\theta g_\theta(z) \nabla_x D(g_\theta(z))}
+    {D(g_\theta(z))} \right] \\
+  &= \EE_{z \sim p(z)} \left[ -\frac{J_\theta g_\theta(z) r(z)}
+    {\epsilon(z)} \right] \\
+\end{align*}
+Since $r(z)$ is a centered Gaussian distribution, multiplying by a matrix doesn't change this
+fact. Furthermore, when we divide by $\epsilon(z)$, a centered
+Gaussian independent from the numerator, we get a centered Cauchy random variable on every
+coordinate. Averaging
+over $z$ the different independent Cauchy random variables again yields 
+a centered Cauchy distribution.
+\footnote{A note on technicality: when $\epsilon$ is defined as such, the remaining
+process is not measurable in $x$, so we can't take the expectation in $z$ trivially.
+This is commonly bypassed, and can be formally worked out
+by stating the expectation as the result of a stochastic differential equation.}
+\end{proof}
+Note that even if we ignore the fact that the updates have infinite variance, we still arrive
+to the fact that the distribution of the updates is centered, meaning that if we bound the updates
+the expected update will be 0, providing no feedback to the gradient.
+
+Since the assumption that the noises of $D$ and $\nabla D$ are decorrelated is albeit
+too strong, we show in \autoref{fig::logDnoise} how the norm of the gradient grows drastically
+as we train the discriminator closer to optimality, at any stage in training of a
+well stabilized DCGAN except when it has already converged. In all cases, using this
+updates lead to a notorious decrease in sample quality. The noise in the curves
+also shows that the variance of the gradients is increasing, which is known
+to delve into slower convergence and more unstable behaviour in the optimization
+\citep{Bottou-ea-Opt}.
+\begin{figure}[t!]
+  \centering
+  \includegraphics[scale=.5]{g_grads_logD.png}
+  \caption{First, we trained a DCGAN for 1, 10 and 25 epochs.
+Then, with the generator fixed we train a discriminator from scratch
+and measure the gradients with the $- \log D$ cost function.
+We see the gradient norms grow quickly. Furthermore, the noise in
+the curves shows that the variance of the gradients is also 
+increasing. All these gradients lead to updates that lower sample
+quality notoriously.}
+  \label{fig::logDnoise}
+\end{figure}
+
+\section{Towards softer metrics and distributions} \label{sec::instnoise}
+
+An important question now is how to fix the instability and vanishing gradients issues.
+Something we can do to break the assumptions of these theorems is add continuous noise to the
+inputs of the discriminator, therefore smoothening the distribution of the probability mass.
+\begin{theo} \label{theo::noisydist}
+If $X$ has distribution $\PP_X$ with support on $\manM$ and
+$\epsilon$ is an absolutely continuous random variable with density $P_\epsilon$, 
+then $\PP_{X+ \epsilon}$ is
+absolutely continuous with density
+\begin{align*}
+P_{X + \epsilon}(x) &= \EE_{y \sim \PP_X}\left[P_\epsilon(x - y)\right] \\
+                    &= \int_\manM P_\epsilon(x - y) \d \PP_X(y)
+\end{align*}
+\end{theo}
+\begin{proof}
+See Appendix \autoref{app::proofs}.
+\end{proof}
+\begin{coro}
+  \begin{itemize}
+    \item If $\epsilon \sim \mathcal{N}(0, \sigma^2 I)$ then
+\begin{align*}
+P_{X + \epsilon}(x) &= 
+  \frac{1}{Z} \int_\manM e^{-\frac{\|y-x\|^2}{2 \sigma^2}} \d \PP_X(y)
+\end{align*}
+    \item If $\epsilon \sim \mathcal{N}(0, \Sigma)$ then
+$$ P_{X + \epsilon}(x) = 
+\frac{1}{Z} \EE_{y \sim \PP_X}\left[e^{-\frac{1}{2}\|y - x\|_{\Sigma^{-1}}^2}\right]$$
+    \item If $P_\epsilon(x) \propto \frac{1}{\|x\|^{d+1}}$ then 
+$$ P_{X + \epsilon}(x) = 
+\frac{1}{Z} \EE_{y \sim \PP_X}\left[\frac{1}{\|x-y\|^{d+1}}\right]$$
+  \end{itemize}
+\end{coro}
+This theorem therefore tells us that the density $P_{X + \epsilon}(x)$ \textbf{is inversely proportional
+to the average distance to points in the support of $\PP_X$, weighted by the probability
+of these points}. In the case of the support of $\PP_X$ being a manifold, we will have the weighted
+average of the distance to the points along the manifold. How we choose the distribution of the
+noise $\epsilon$ will impact the notion of distance we are choosing. In our corolary, for
+example, we can see the effect of changing the covariance matrix by altering the norm 
+inside the exponential. Different noises with different types of decays can therefore be used.
+
+Now, the optimal discriminator between $\PP_{g+\epsilon}$ and $\PP_{r + \epsilon}$ is
+$$ D^*(x) = \frac{P_{r+\epsilon}(x)}{P_{r+\epsilon}(x) + P_{g+ \epsilon}(x)}$$
+and we want to calculate what the gradient passed to the generator is.
+\begin{theo} \label{theo::gradnoise}
+Let $\PP_r$ and $\PP_g$ be two distributions with support on $\manM$ and $\manP$
+respectively, with $\epsilon \sim \mathcal{N}(0, \sigma^2I)$. Then, the gradient passed to the
+generator has the form
+\begin{align}
+\EE_{z \sim p(z)} &\left[ \nabla_\theta \log(1 - D^*(g_\theta(z))) \right] \label{eq::update1}\\
+&= \EE_{z \sim p(z)}\bigg[a(z) \int_\manM P_\epsilon(g_\theta(z)-y) \nabla_\theta 
+\|g_\theta(z)-y\|^2 \d \PP_r(y) \nonumber
+\\&- b(z) \int_\manP P_\epsilon(g_\theta(z)-y) \nabla_\theta 
+\|g_\theta(z) - y\|^2 \d \PP_g(y) \bigg] \nonumber
+\end{align}
+where $a(z)$ and $b(z)$ are positive functions. Furthermore, $b > a$ if and only if
+$P_{r + \epsilon} > P_{g + \epsilon}$, and $b < a$ if and only if $P_{r + \epsilon} < P_{g
++\epsilon}$.
+\end{theo}
+This theorem proves that we will drive our samples $g_\theta(z)$ \textbf{towards points along
+the data manifold, weighted by their probability and the distance from our samples}. Furthermore,
+the second term drives our points away from high probability samples, again, weighted by the
+sample manifold and distance to these samples. This is similar in spirit 
+to contrastive divergence, where
+we lower the free energy of our samples and increase the free energy of data points. The importance
+of this term is seen more clearly when we have samples that have higher probability of coming
+from $\PP_g$ than from $\PP_r$. In this case, we will have $b > a$ and the second term will
+have the strength to lower the probability of this too likely samples. Finally, if
+there's an area around $x$ that has the same probability to come from $\PP_g$ than $\PP_r$, 
+the gradient contributions between the two terms will cancel, therefore stabilizing the gradient
+when $\PP_r$ is similar to $\PP_g$.
+
+There is one important problem with taking gradient steps exactly of the form \eqref{eq::update1},
+which is that in that case, $D$ will disregard errors that lie exactly in $g(\mathcal{Z})$, since
+this is a set of measure 0. However, $g$ will be optimizing its cost only on that
+space. This will make the discriminator extremely susceptible to adversarial examples, and will render
+low cost on the generator without high cost on the discriminator, and lousy meaningless samples.
+This is easilly seen when we realize
+the term inside the expectation of equation \eqref{eq::update1} will be a positive scalar times $\nabla_x \log(1 - D^*(x)) \nabla_\theta
+g_\theta(z)$, which is the directional derivative towards the exact adversarial term of \cite{Good-ea-Adv}. Because of this,
+it is important to backprop through noisy samples in the generator as well. This will yield a crucial
+benefit: the generator's backprop term will be through samples on a set of positive measure that
+the discriminator will care about. Formalizing this notion, the actual gradient through the
+generator will now be proportional to $\nabla_\theta JSD(\PP_{r + \epsilon} \| \PP_{g + \epsilon})$,
+which will make the two noisy distributions match. As we anneal the noise, this will make $\PP_r$ and
+$\PP_g$ match as well. For completeness, we show the smooth gradient we get
+in this case. The proof is identical to the one of Theorem \autoref{theo::gradnoise}, so we leave it
+to the reader.
+\begin{coro} \label{coro::gradnoise} Let $\epsilon, \epsilon' \sim \mathcal{N}(0, \sigma^2 I)$ and 
+$\tilde g_\theta(z) = g_\theta(z) + \epsilon'$, then
+\begin{align}
+\EE_{z \sim p(z), \epsilon'} &\left[ \nabla_\theta \log(1 - D^*(\tilde g_\theta(z))) \right] \label{eq::update2}\\
+&= \EE_{z \sim p(z), \epsilon'}\bigg[a(z) \int_\manM P_\epsilon(\tilde g_\theta(z)-y) \nabla_\theta 
+\|\tilde g_\theta(z)-y\|^2 \d \PP_r(y) \nonumber
+\\&- b(z) \int_\manP P_\epsilon(\tilde g_\theta(z)-y) \nabla_\theta 
+\|\tilde g_\theta(z) - y\|^2 \d \PP_g(y) \bigg] \nonumber
+\\ &= 2 \nabla_\theta JSD(\PP_{r + \epsilon} \| \PP_{g + \epsilon}) \nonumber
+\end{align}
+\end{coro}
+In the same as with Theorem \autoref{theo::gradnoise}, $a$ and $b$ will have the same properties. The main difference
+is that we will be moving all our noisy samples towards the data manifold, which can be thought of
+as moving a small neighbourhood of samples towards it. This will protect the 
+discriminator against measure 0 adversarial examples.
+\begin{proof}[Proof of theorem \autoref{theo::gradnoise}]
+Since the discriminator is assumed fixed when backproping to the generator, the only thing
+that depends on $\theta$ is $g_\theta(z)$ for every $z$. By taking derivatives on our cost function
+\begin{align*}
+\EE_{z \sim p(z)} &\left[ \nabla_\theta \log(1 - D^*(g_\theta(z))) \right] \\
+  &= \EE_{z \sim p(z)} \left[ \nabla_\theta \log \frac{P_{g+\epsilon}(g_\theta(z))}
+    {P_{r+\epsilon}(g_\theta(z)) + P_{g+ \epsilon}(g_\theta(z))}\right] \\
+  &= \EE_{z \sim p(z)} \left[ \nabla_\theta \log P_{g + \epsilon}(g_\theta(z))  -
+    \nabla_\theta \log \left(P_{g + \epsilon}(g_\theta(z)) + P_{r + \epsilon}(g_\theta(z))
+    \right)\right] \\
+  &= \EE_{z \sim p(z)} \left[ \frac{\nabla_\theta P_{g + \epsilon}
+    (g_\theta(z)) }{P_{g+ \epsilon}(g_\theta(z))} - \frac{\nabla_\theta P_{g + \epsilon}
+    (g_\theta(z)) + \nabla_\theta P_{r + \epsilon}(g_\theta(z))}
+    {P_{g + \epsilon}(g_\theta(z)) + P_{r + \epsilon}(g_\theta(z))}\right] \\
+  &= \EE_{z \sim p(z)} \bigg[ \frac{1}{P_{g+\epsilon}(g_\theta(z))+ P_{r + \epsilon}
+    (g_\theta(z))} \nabla_\theta[- P_{r + \epsilon}(g_\theta(z))] -  \\
+    &\ \ \frac{1}{P_{g+\epsilon}(g_\theta(z))+ P_{r + \epsilon}(g_\theta(z))}
+    \frac{P_{r + \epsilon}(g_\theta(z))}{P_{g + \epsilon}(g_\theta(z))} \nabla_\theta[
+    -P_{g + \epsilon}(g_\theta(z))] \bigg]
+\end{align*}
+Let the density of $\epsilon$ be $\frac{1}{Z} e^{-\frac{\|x\|^2}{2\sigma^2}}$. 
+We now define
+\begin{align*}
+a(z) &= \frac{1}{2\sigma^2}\frac{1}{P_{g+\epsilon}(g_\theta(z))+ P_{r + \epsilon}(g_\theta(z))} \\
+b(z) &= \frac{1}{2\sigma^2}\frac{1}{P_{g+\epsilon}(g_\theta(z))+ P_{r + \epsilon}(g_\theta(z))}
+    \frac{P_{r + \epsilon}(g_\theta(z))}{P_{g + \epsilon}(g_\theta(z))}
+\end{align*}
+Trivially, $a$ and $b$ are positive functions. Since
+$b = a \frac{P_{r+\epsilon}}{P_{g+\epsilon}}$, we know that $b > a$ if and only if
+$P_{r+\epsilon} > P_{g + \epsilon}$, and $b < a$ if and
+only if $P_{r+\epsilon} < P_{g + \epsilon}$ as we wanted. Continuing the proof, we know
+\begin{align*}
+\EE_{z \sim p(z)} &\left[ \nabla_\theta \log(1 - D^*(g_\theta(z))) \right] \\
+  &= \EE_{z \sim p(z)} \left[ 2\sigma^2a(z) \nabla_\theta[ - P_{r+\epsilon}(g_\theta(z))]
+    - 2\sigma^2b(z) \nabla_\theta[ - P_{g + \epsilon}(g_\theta(z)) \right] \\
+  &= \EE_{z \sim p(z)}\left[2\sigma^2a(z) \int_\manM -\nabla_\theta\frac{1}{Z} e^{\frac{-\|g_\theta(z)-y\|_2^2}{2 \sigma^2}} \d \PP_r(y)
+    - 2\sigma^2b(z) \int_\manP -\nabla_\theta \frac{1}{Z}e^{\frac{-\|g_\theta(z)-y\|_2^2}{2 \sigma^2}} \d \PP_g(y) \right] \\
+  &= \EE_{z \sim p(z)} \bigg[a(z) \int_\manM \frac{1}{Z}e^{\frac{-\|g_\theta(z)-y\|_2^2}{2 \sigma^2}} \nabla_\theta \|g_\theta(z) - y\|^2\d \PP_r(y)
+    \\&- b(z) \int_\manP \frac{1}{Z} e^{\frac{-\|g_\theta(z)-y\|_2^2}{2 \sigma^2}} \nabla_\theta \|g_\theta(z) - y \|^2\d \PP_g(y)\bigg] \\
+  &= \EE_{z \sim p(z)}\bigg[a(z) \int_\manM P_\epsilon(g_\theta(z)-y) \nabla_\theta 
+    \|g_\theta(z)-y\|^2 \d \PP_r(y)
+    \\&- b(z) \int_\manP P_\epsilon(g_\theta(z)-y) \nabla_\theta 
+    \|g_\theta(z) - y\|^2 \d \PP_g(y) \bigg]
+\end{align*}
+Finishing the proof.
+\end{proof}
+An interesting observation is that if we have two distributions $\PP_r$ and $\PP_g$
+with support on manifolds that
+are close, the noise terms will make the noisy distributions $\PP_{r + \epsilon}$ and
+$\PP_{g + \epsilon}$ almost overlap, and the JSD
+between them will be small. This is in drastic contrast to the noiseless variants $\PP_r$
+and $\PP_g$, where
+all the divergences are maxed out, regardless of the closeness of the manifolds. We could
+argue to use the JSD of the noisy variants to measure a similarity between the original
+distributions, but this would depend on the amount of noise, and is not an intrinsic
+measure of $\PP_r$ and $\PP_g$. Luckilly, there are alternatives.
+\begin{definition}
+  We recall the definition of the Wasserstein metric $W(P, Q)$ for $P$ and $Q$
+two distributions over $\mathcal{X}$. Namely,
+$$W(P, Q) = \inf_{\gamma \in \Gamma} \int_{\mathcal{X} \times \mathcal{X}} \|x - y \|_2 d \gamma(x, y) $$
+where $\Gamma$ is the set of all possible joints on $\mathcal{X} \times \mathcal{X}$
+that have marginals $P$ and $Q$. 
+\end{definition}
+The Wasserstein distance also goes by other names, most commonly the transportation metric
+and the earth mover's distance. This last name is most explicative: it's the minimum cost
+of transporting the whole probability mass of $P$ from its support to match the probability
+mass of $Q$ on $Q$'s support. This identification of transporting points from $P$ to $Q$ is
+done via the coupling $\gamma$. We refer the reader to \cite{Vil} for an in-depth explanation
+of these ideas. It is easy to see now that the Wasserstein metric incorporates
+the notion of distance (as also seen inside the integral) between the elements in the support
+of $P$ and the ones in the support of $Q$, and that as the supports of $P$ and $Q$ get closer
+and closer, the metric will go to 0, inducing as well a notion of distance between manifolds.
+
+Intuitively, as we decrease the noise, $\PP_X$ and $\PP_{X + \epsilon}$ become
+more similar. However, it is easy to see again that $JSD(\PP_X \| \PP_{X+\epsilon})$ 
+is maxed out, regardless of the amount of noise. The following Lemma shows that this is not
+the case for the Wasserstein metric, and that it goes to 0 smoothly when we
+decrease the variance of the noise.
+\begin{lemma} \label{lem::Wnoise}
+  If $\epsilon$ is a random vector with mean 0, then we have 
+$$W (\PP_{X}, \PP_{X + \epsilon}) \leq V^{\frac{1}{2}}$$ %\VV(\epsilon)^{1/2} $$
+where $V = \EE[\|\epsilon\|_2^2]$ is the variance of
+$\epsilon$.
+\end{lemma}
+\begin{proof}
+  Let $x \sim \PP_X$, and $y = x + \epsilon$ with $\epsilon$ independent from
+$x$. We call $\gamma$ the joint of $(x, y)$, which clearly has marginals 
+$\PP_X$ and $\PP_{X + \epsilon}$. Therefore,
+\begin{align*}
+  W(\PP_X, \PP_{X + \epsilon}) &\leq \int \|x - y \|_2 d \gamma(x, y) \\
+  &= \EE_{x \sim \PP_X} \EE_{y \sim x + \epsilon} [\|x - y\|_2] \\
+  &= \EE_{x \sim \PP_X} \EE_{y \sim x + \epsilon} [ \| \epsilon \|_2 ] \\
+  &= \EE_{x \sim \PP_X} \EE_{\epsilon} [\| \epsilon \|_2] \\
+  &= \EE_{\epsilon} [ \| \epsilon \|_2 ] \\
+  &\leq \EE_{\epsilon} [\| \epsilon\|_2^2 ]^{\frac{1}{2}} = V^{\frac{1}{2}}
+\end{align*} 
+where the last inequality was due to Jensen.
+\end{proof}
+
+We now turn to one of our main results. We are interested in studying the distance
+between $\PP_r$ and $\PP_g$ without any noise, even when their supports lie on different
+manifolds, since (for example) the closer these manifolds are, the closer 
+to actual points on the data manifold the samples will be.
+Furthermore, we eventually want a way to evaluate generative models,
+regardless of whether they are continuous (as in a VAE)
+or not (as in a GAN), a problem that has for now been completely unsolved. The next
+theorem relates the Wasserstein distance of $\PP_r$ and $\PP_g$, without any noise
+or modification, to the divergence of $\PP_{r + \epsilon}$ and $\PP_{g + \epsilon}$,
+and the variance of the noise. Since $\PP_{r + \epsilon}$ and $\PP_{g + \epsilon}$ are
+continuous distributions, this divergence is a sensible estimate, which can even be
+attempted to minimize, since a discriminator trained on those distributions will approximate
+the JSD between them, and provide smooth gradients as per Corolary \autoref{coro::gradnoise}.
+\begin{theo} \label{theo::wasser}
+  Let $\PP_r$ and $\PP_g$ be any two distributions, and $\epsilon$ be a random vector
+with mean 0 and variance $V$. If $\PP_{r+\epsilon}$ and $\PP_{g + \epsilon}$ have
+support contained on a ball of diameter $C$, then \footnote{While this last condition
+isn't true if $\epsilon$ is a Gaussian, this is easily fixed by clipping the noise}
+\begin{equation} \label{eq::wbound}
+W(\PP_r, \PP_g) \leq 2 V^\frac{1}{2} + 2 C \sqrt{JSD(\PP_{r + \epsilon} \| \PP_{g + \epsilon})}
+\end{equation}
+\end{theo}
+\begin{proof}
+\begin{align*}
+  W(\PP_r, \PP_g) &\leq W(\PP_r, \PP_{r + \epsilon}) + W(\PP_{r + \epsilon}, \PP_{g + \epsilon})
+    + W(\PP_{g + \epsilon}, \PP_g) \\
+  &\leq 2 V^\frac{1}{2} + W(\PP_{r + \epsilon}, \PP_{g + \epsilon}) \\
+  &\leq 2 V^\frac{1}{2} + C \delta(\PP_{r + \epsilon}, \PP_{g + \epsilon}) \\
+  &\leq 2 V^\frac{1}{2} + C \left( \delta(\PP_{r + \epsilon}, \PP_m) + \delta(\PP_{g + \epsilon}, \PP_m)\right) \\
+  &\leq 2 V^\frac{1}{2} + C \left( \sqrt{\frac{1}{2}KL(\PP_{r + \epsilon} \| \PP_m)} + \sqrt{\frac{1}{2}KL(\PP_{g + \epsilon} \| \PP_m)} \right) \\
+  &\leq 2 V^\frac{1}{2} + 2 C \sqrt{JSD(\PP_{r + \epsilon} \| \PP_{g + \epsilon})}
+\end{align*}
+We first used the Lemma \autoref{lem::Wnoise} to bound everything but the
+middle term as a function of $V$. After that, we followed by the
+fact that $W(P, Q) \leq C \delta(P, Q)$ wih $\delta$ the
+total variation, which is a popular Lemma arizing from
+the Kantorovich-Rubinstein duality. After that, we used the
+triangular inequality on $\delta$ and $\PP_m$ the mixture distribution
+between $\PP_{g + \epsilon}$ and $\PP_{r + \epsilon}$. Finally, we used
+Pinsker's inequality and later the fact that each individual $KL$ is
+only one of the non-negative summands of the $JSD$.
+\end{proof}
+
+Theorem \autoref{theo::wasser} points us to an interesting idea. The
+two terms in equation \eqref{eq::wbound} can be controlled. The first
+term can be decreased by annealing the noise, and the second
+term can be minimized by a GAN when the discriminator is trained
+on the noisy inputs, since it will be approximating the JSD
+between the two continuous distributions. One great advantage
+of this is that we no longer have to worry about training schedules.
+Because of the noise, we can train the discriminator
+till optimality without any problems and get smooth interpretable
+gradients by Corollary \autoref{coro::gradnoise}. All this while
+still minimizing the distance between $\PP_r$ and $\PP_g$, the two
+noiseless distributions we in the end care about.
+
+\subsubsection*{Acknowledgments}
+
+The first author would like to especially thank Luis Scoccola
+for help with the proof of Lemma \autoref{lem::glowdim}.
+
+The authors would also like to thank
+Ishmael Belghazi,
+Yoshua Bengio,
+Gerry Che,
+Soumith Chintala,
+Caglar Gulcehre,
+Daniel Jiwoong Im,
+Alex Lamb,
+Luis Scoccola,
+Pablo Sprechmann,
+Arthur Szlam,
+Jake Zhao
+for insightful comments and advice.
+%
+%We would like to thank the anonymous reviewers
+%and the commenters on openreview. Their suggestions
+%greatly helped at improving the paper.
+\bibliography{princ1}
+\bibliographystyle{iclr2017_conference}
+
+\clearpage
+\begin{appendices}
+\section{Proofs of things} \label{app::proofs}
+\begin{proof}[Proof of Lemma \autoref{lem::glowdim}]
+  We first consider the case where the nonlinearities are rectifiers or leaky
+  rectifiers of the form $\sigma(x) = \Ind[x < 0] c_1 x + \Ind[x \geq 0] c_2 x$
+  for some $c_1, c_2 \in \RR$.
+  In this case, $g(z) = \matr{D}_n \matr{W}_n \dots \matr{D}_1 \matr{W}_1 z$,
+  where $\matr{W}_i$ are affine transformations and $\matr{D}_i$ are some
+  diagonal matrices dependent on $z$ that have diagonal entries $c_1$ or $c_2$. If
+  we consider $\mathcal{D}$ to be the (finite) set of all diagonal matrices with
+  diagonal entries $c_1$ or $c_2$, then $g(\mathcal{Z}) \subseteq \bigcup_{D_i \in
+  \mathcal{D}} \matr{D}_n \matr{W}_n \dots \matr{D}_1 \matr{W}_1 \mathcal{Z}$,
+  which is a finite union of linear manifolds.
+
+  The proof for the second case is technical and slightly more involved. 
+  When $\sigma$ is a pointwise smooth strictly increasing nonlinearity, then
+  applying it vectorwise it's a diffeomorphism to its image. Therefore,
+  it sends a countable union of manifolds of dimension $d$ to a countable
+  union of manifolds of dimension $d$. If we can prove the same thing for
+  affine transformations we will be finished, since $g(\mathcal{Z})$ 
+  is just a composition
+  of these applied to a $\dim \mathcal{Z}$ dimensional manifold.
+  Of course, it suffices to prove that an affine transformation sends
+  a manifold to a countable union of manifolds without increasing dimension,
+  since a countable union of countable unions is still a countable union.
+  Furthermore, we only need to show this for linear transformations,
+  since applying a bias term is a diffeomorphism.
+
+  Let $\matr{W} \in \RR^{n \times m}$ be a matrix.
+  Note that by the singular value decomposition, $\matr{W} = \matr{U}
+  \matr{\Sigma} \matr{V}$, where $\matr{\Sigma}$ is a square diagonal matrix
+  with diagonal positive entries and $\matr{U}, \matr{V}$ are compositions
+  of changes of basis, inclusions (meaning adding 0s to new coordinates)
+  and projections to a subset of the coordinates. Multiplying by $\Sigma$ and applying
+  a change of basis are diffeomorphisms, and adding 0s to new coordinates is
+  a manifold embedding, so we only need to prove our statement
+  for projections onto a subset of the coordinates. Let $\pi: \RR^{n+k} \rightarrow
+  \RR^n$, where $\pi(x_1, \dots, x_{n+k}) = (x_1, \dots, x_n)$ be our projection and
+  $\manM \subseteq \RR^{n + k}$ our $d$-dimensional manifold. If $n \leq d$, we are done
+  since the image of $\pi$ is contained in all $\RR^n$, a manifold with at most
+  dimension $d$. We now turn to the case where $n > d$. Let $\pi_i(x) = x_i$
+  be the projection onto the $i$-th coordinate. If $x$ is a critical point of $\pi$,
+  since the coordinates of $\pi$ are independent, then $x$ has to be a critical point
+  of a $\pi_i$. By a consequence of the Morse Lemma, the critical points of $\pi_i$
+  are isolated, and therefore so are the ones of $\pi$, meaning that there is at most a
+  countable number of them. Since $\pi$ maps the non-critical points onto a 
+  $d$ dimensional manifold (because it acts as an embedding) and the countable
+  number of critical points into a countable number of points (or
+  0 dimensional manifolds), the proof is finished. %{\color{red} TODO:Check that $\pi$ having isolated crit points is true}
+\end{proof}
+\begin{proof}[Proof of Lemma \autoref{lem::perfalign}]
+  For now we assume that $\manM$ and $\manP$ are without boundary.
+If $\dim \manM + \dim \manP \geq d$ it is known that under arbitrarilly small perturbations
+defined as the ones in the statement of this Lemma,
+the two dimensions will intersect only transversally with probability 1 by the General Position Lemma.
+If $\dim \manM + \dim \manP < d$, we
+will show that with probability 1, $\manM + \eta$ and $\manP + \eta'$ will not intersect,
+thereby getting our desired result.
+  Let us then assume $\dim \manM + \dim \manP < d$. Note that $\hat \manM \cap \hat \manP \neq
+\emptyset$ if and only if there are $x \in \manM, y \in \manP$ such that $x + \eta = 
+y + \eta'$, or equivalently $x - y = \eta' - \eta$. Therefore, $\hat \manM$ and $\hat 
+\manP$ intersect if and only if $\eta' - \eta \in \manM - \manP$. Since $\eta, \eta'$ are
+independent continuous random variables, the difference is also continuous. If $\manM
+- \manP$ has measure 0 in $\RR^d$ then $\PP(\eta' - \eta \in \manM - \manP) = 0$,
+concluding the proof. We will therefore show that $\manM - \manP$ has measure 0.
+Let $f: \manM \times \manP \rightarrow \RR^d$ be $f(x, y) = x - y$. If $m$ and $p$
+are the dimensions of $\manM$ and $\manP$, then $f$ is a smooth function between
+an $m+p$-dimensional manifold and a $d$ dimensional one. Clearly, the image
+of $f$ is $\manM - \manP$. Therefore,
+\begin{align*}
+\manM - \manP = f(\{&z \in \manM \times \manP | \text{rank}(d_z f) < m + p\}) \\
+  &\cup f(\{z \in \manM \times \manP | \text{rank}(d_z f) = m + p\})
+\end{align*}
+The first set is the image of the critical points, namely the critical values. By
+Sard's Lemma, this set has measure 0.
+Let's call $A = \{z \in \manM \times \manP | \text{rank}(d_z f) = m + p \}$.
+Let $z$ be an element of $A$. By the inverse function theorem, there is a neighbourhood
+$U_z \subseteq \manM \times \manP$ of $z$ such that $f|_{U_z}$ is an embedding.
+Since every manifold has a countable topological basis, we can cover $A$ by
+countable sets $U_{z_n}$, where $n \in \NN$. We will just note them by $U_n$.
+Since $f|_{U_n}$ is an embedding, $f(U_n)$ is an $m+p$-dimensional manifold,
+and since $m + p < d$, this set has measure 0 in $\RR^d$. Now, $f(A) = 
+\bigcup_{n \in \NN} f(U_n)$, which therefore has measure 0 in $\RR^d$, finishing the
+proof of the boundary free case.
+
+Now we consider the case where $\manM$ and $\manP$ are manifolds with boundary. By a
+simple union bound,
+\begin{align*}
+\PP_{\eta, \eta'}(\tilde \manM
+\text{ perfectly aligns with } \tilde \manP) &\leq 
+  \PP_{\eta, \eta'}(\Int \tilde \manM
+\text{ perfectly aligns with } \Int \tilde \manP) \\
+&+ \PP_{\eta, \eta'}(\Int \tilde \manM
+\text{ perfectly aligns with } \partial \tilde \manP) \\
+&+ \PP_{\eta, \eta'}(\partial \tilde \manM 
+\text{ perfectly aligns with } \Int \tilde \manP) \\
+&+ \PP_{\eta, \eta'}(\partial \tilde \manM
+\text{ perfectly aligns with } \partial \tilde \manP) \\
+&= 0
+\end{align*}
+where the last equality arizes when combining the facts that
+$\tilde{\Int \manM} = \eta + \Int \manM = \Int(\eta + \manM)= \Int \tilde{\manM}$ (and analogously
+for the boundary and $\manP$), that the boundary and interiors
+of $\manM$ and $\manP$ are boundary free regular submanifolds of
+$\RR^d$ without full dimension, and then
+applying the boundary free case of the proof.
+\end{proof}
+\begin{proof}[Proof of Lemma \autoref{lem::interm}]
+  Let $m = \dim \manM$ and $p = \dim \manP$. We again consider first
+the case where $\manM$ and $\manP$ are manifolds without boundary.
+If $m + p < d$, then $\mathcal{L} = \emptyset$
+so the statement is obviously true. If $m + p \geq d$, then $\manM$ and $\manP$ intersect
+transversally. This implies that $\mathcal{L}$ is a manifold of dimension $m + p - d < m, p$.
+Since $\mathcal{L}$ is a submanifold of both $\manM$ and $\manP$ that has lower dimension,
+it has measure 0 on both of them.
+
+We now tackle the case where $\manM$ and $\manP$ have boundaries. Let us remember
+that $\manM = \Int \manM \cup \partial \manM$ and the union is disjoint (and analogously
+for $\manP$). By using elementary properties of sets, we can trivially see that
+$$ \mathcal{L} = \manM \cap \manP = (\Int \manM \cap \Int \manP) \cup
+(\Int \manM \cap \partial \manP) \cup
+(\partial \manM \cap \Int \manP) \cup
+(\partial \manM \cap \partial \manP) $$
+where the unions are disjoint. This is the disjoint union of 4 strictly lower dimensional
+manifolds, by using the first part of the proof. Since each one of these intersections
+has measure 0 on either the interior or boundary of $\manM$ (again, by the first part of the proof), 
+and interior and boundary are contained in $\manM$, each one of the four intersections has
+measure 0 in $\manM$. Analogously, they have measure 0 in $\manP$, and by a simple union bound
+we see that $\mathcal{L}$ has measure 0 in $\manM$ and $\manP$ finishing the remaining case
+of the proof.
+\end{proof}
+\begin{proof}[Proof of Theorem \autoref{theo::noisydist}]
+ We first need to show that $\PP_{X+\epsilon}$ is absolutely continuous. Let $A$ be a Borel set
+with Lebesgue measure 0. Then, by the fact that $\epsilon$ and $X$ are independent, we know by
+Fubini
+\begin{align*}
+  \PP_{X+\epsilon}(A) &= \int_{\RR^d} \PP_\epsilon(A - x) \d \PP_X(x) \\
+&= \int_{\RR^d} 0 \d \PP_X(x) = 0
+\end{align*}
+Where we used the fact that if $A$ has Lebesgue measure zero, then so does $A-x$ and since
+$\PP_\epsilon$ is absolutely continuous, $\PP_\epsilon(A-x) = 0$.
+
+Now we calculate the density of $\PP_{X+\epsilon}$. Again, by using the independence of $X$ and
+$\epsilon$, for any Borel set $B$ we know
+\begin{align*}
+  \PP_{X + \epsilon}(B) &= \int_{\RR^d} \PP_\epsilon(B - y) \d \PP_X(y) \\
+                        &= \EE_{y \sim \PP_X} \left[\PP_\epsilon(B-y)\right] \\
+                        &= \EE_{y \sim \PP_x} \left[\int_{B-y} P_\epsilon(x) dx \right] \\
+&= \EE_{y \sim \PP_x} \left[ \int_B P_\epsilon(x-y) dx \right] \\
+&= \int_B \EE_{y \sim \PP_x} \left[ P_\epsilon(x-y) \right] dx
+\end{align*}
+Therefore, $\PP_{X + \epsilon}(B) = \int_B P_{X+\epsilon}(x) dx$ for our proposed $P_{X + \epsilon}$
+and all Borel sets $B$. By the uniqueness of the Radon-Nikodym theorem,
+this implies the proposed $P_{X + \epsilon}$
+is the density of $\PP_{X+\epsilon}$.
+The equivalence of the formula changing the expectation
+for $\int_\manM \PP_X$ is trivial by the definition of expectation and the fact that
+the support of $\PP_X$ lies on $\manM$.
+\end{proof}
+
+\section{Further Clarifications} \label{app::clarifications}
+In this appendix we further explain some of the
+terms and ideas mentioned in the paper, which due to space
+constrains, and to keep the flow of the paper, couldn't
+be extremely developed in the main text. Some of these
+have to do with notation, others with technical elements
+of the proofs. On the latter case, we try to convey more intuition
+than we previously could. We present these clarifications
+in a very informal fashion in the following item list.
+\begin{itemize}
+  \item There are two different but very related properties a random
+ variable can have. A random variable $X$ is said to be continuous if $P(X = x) = 0$
+for all single points $x \in \mathcal{X}$. Note that a random variable concentrated
+on a low dimensional manifold such as a plane can have this property.
+However, an absolutely continuous random variable has the following
+property: if a set $A$ has Lebesgue measure 0, then $P(X \in A) = 0$.
+Since points have measure 0 with the Lebesgue measure, absolute continuity
+implies continuity. A random variable that's supported on a low dimensional
+manifold therefore will not be absolutely continuous: let $\manM$ a low
+dimensional manifold be the support of $X$. Since a low dimensional
+manifold has 0 Lebesgue measure, this would imply $P(X \in M) = 0$, which
+is an absurd since $\manM$ was the support of $X$. The property of $X$ being
+absolutely continuous can be shown to be equivalent to $X$ having a density:
+the existence of a function $f: \mathcal{X} \rightarrow \RR$ such that
+$P(X \in A) = \int_A f(x) \d x$
+(this is a consequence of the Radon-Nikodym theorem). 
+
+The annoying part is that in everyday paper writing when we talk about
+continuous random variables, we omit the `absolutely' word to keep the
+text concise and actually talk about absolutely continuous random variables
+(ones that have a density), this is done through almost all sciences and
+throughout mathematics as well, annoying as it is. However we made the
+clarification in here since it's relevant to our paper not to mistake the two terms.
+  \item The notation $\PP_r[D(x) = 1] = 1$ is the abbreviation of
+$\PP_r[\{x \in \mathcal{X}: D(x) = 1\}] = 1$ for a measure $\PP_r$.
+Another way of expressing this more formally is $\PP_r[D^{-1}(1)] = 1$.
+  \item In the proof of Theorem \autoref{theo::perfDdisj}, the distance
+between sets $d(A, B)$ is defined as the usual distance between sets
+in a metric space
+$$ d(A, B) = \inf_{x \in A, y \in B} d(x,y) $$
+where $d(x, y)$ is the distance between points (in our case the
+Euclidean distance).
+  \item Note that not everything that's outside of the support 
+of $\PP_r$ has to be a generated image. Generated images are only
+things that lie in the support of $\PP_g$, and there are things that
+don't need to be in the support of either $\PP_r$ or $\PP_g$ (these could
+be places where $0 < D < 1$ for example). This is because the discriminator
+is not trained to discriminate $\PP_r$ from all things that are not
+$\PP_r$, but to distinguish $\PP_r$ from $\PP_g$. Points that don't
+lie in the support of $\PP_r$ or $\PP_g$ are not important to the 
+performance of the discriminator (as is easily evidenced in its cost).
+Why we define accuracy 1 as is done in the text is to avoid the
+identification of a single `tight' support, since this typically
+leads to problems (if I take a measure 0 set from any support it
+still is the support of the distribution). In the end, what we aim for is:
+\begin{itemize}
+  \item  We want $D(x) = 1$ with probability 1  when $x \sim \PP_r$.
+  \item  We want $D(x) = 0$ with probability 1 when $x \sim \PP_g$.
+  \item  Whatever happens elsewhere is irrelevant (as it is also reflected by the cost of the discriminator)
+\end{itemize}
+\item We say that a discriminator $D^*$ is optimal for $g_\theta$
+(or its corresponding $\PP_g$)
+if for all measurable functions $D: \mathcal{X} \rightarrow [0,1]$
+we have
+$$ L(D^*, g_\theta) \geq L(D, g_\theta) $$
+for $L$ defined as in equation \eqref{eq::cost}.
+\end{itemize}
+
+\end{appendices}
+
+\end{document}

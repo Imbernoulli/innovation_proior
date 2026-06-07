@@ -1,0 +1,211 @@
+\usepackage{xspace}
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+\usepackage{amsthm}
+\usepackage{amssymb}
+\usepackage{subcaption}
+\usepackage{floatrow}
+\usepackage{mathtools}
+\usepackage{hyperref}
+\usepackage{xcolor}
+% \usepackage{appendix}
+% \usepackage[normalem]{ulem}
+% \def\appendixautorefname{Appendix}
+% \def\sectionautorefname{Section}
+% \def\subsectionautorefname{Section}
+% \def\algorithmautorefname{Algorithm}
+% %\newcommand*{\Appendixautorefname}{Appendix}
+
+
+
+
+% % From https://tex.stackexchange.com/questions/149807/autoref-subsections-in-appendix
+% % begin appendix autoref patch [\autoref subsections in appendix](https://tex.stackexchange.com/questions/149807/autoref-subsections-in-appendix)
+% \usepackage{etoolbox}
+% \makeatletter
+% \patchcmd{\hyper@makecurrent}{%
+%     \ifx\Hy@param\Hy@chapterstring
+%         \let\Hy@param\Hy@chapapp
+%     \fi
+% }{%
+%     \iftoggle{inappendix}{%true-branch
+%         % list the names of all sectioning counters here
+%         \@checkappendixparam{chapter}%
+%         \@checkappendixparam{section}%
+%         \@checkappendixparam{subsection}%
+%         \@checkappendixparam{subsubsection}%
+%         \@checkappendixparam{paragraph}%
+%         \@checkappendixparam{subparagraph}%
+%     }{}%
+% }{}{\errmessage{failed to patch}}
+
+% \newcommand*{\@checkappendixparam}[1]{%
+%     \def\@checkappendixparamtmp{#1}%
+%     \ifx\Hy@param\@checkappendixparamtmp
+%         \let\Hy@param\Hy@appendixstring
+%     \fi
+% }
+% \makeatletter
+
+% \newtoggle{inappendix}
+% \togglefalse{inappendix}
+
+% \apptocmd{\appendix}{\toggletrue{inappendix}}{}{\errmessage{failed to patch}}
+% \apptocmd{\subappendices}{\toggletrue{inappendix}}{}{\errmessage{failed to patch}}
+
+
+
+
+
+
+
+\newcommand\comment[1]{\textcolor{red}{#1}}
+\newcommand\strike{\bgroup\markoverwith{\textcolor{red}{\rule[0.5ex]{2pt}{0.4pt}}}\ULon}
+\definecolor{darkgreen}{RGB}{0,180,56}
+\newcommand{\NEW}[1]{\textcolor{darkgreen}{#1}}
+% \newcommand{\NEW}[1]{\textcolor{Green}{#1}}
+% \newcommand{\strike}[1]{\vphantom{#1}}
+% \newcommand{\NEW}[1]{#1}
+\newcommand{\sampleN}{\stackrel{N}{\sim}}
+\newcommand{\fcaption}[1]{\caption{{\footnotesize{#1}}}}
+
+
+\newcommand{\uniform}[1]{\text{Uniform}[#1]}
+\newcommand{\simple}{\text{na\"{\i}ve}}
+
+\newcommand{\pap}{{\theta}}
+\newcommand{\papprox}{{p_\pap}}
+\newcommand{\papproxt}{{p_{\pap_t}}}
+\newcommand{\papproxtt}{{p_{\pap_{t+1}}}}
+\newcommand{\pspg}{p(\SF \mid \pg)}
+\newcommand{\pspgt}{p(\SF \mid \pgt)}
+\newcommand{\pspgtt}{p(\SF \mid \pgtt)}
+\newcommand{\z}{{\mathbf{z}}}
+\newcommand{\wt}{{w_{t, \alpha}}}
+
+
+
+% Sets
+\newcommand{\FullSpaceDim}{n}
+\newcommand{\FullSpace}{{\mathbb{R}^\FullSpaceDim}}
+\newcommand{\Imgs}{{\mathcal{S}}}
+\newcommand{\nImgs}{{\overline{\gS}}}
+\newcommand{\Ss}{{\mathcal{S}}}
+\newcommand{\As}{{\mathcal{A}}}
+\newcommand{\Gs}{{\mathcal{G}}}
+\newcommand{\ImgSets}{{\sA}}
+\newcommand{\Rnn}{{\sR^{n\times n}}}
+\newcommand{\validq}{\mathcal{Q}}
+
+% MDP
+\newcommand{\G}{\mathbf{G}}
+\newcommand{\g}{\mathbf{g}}
+\newcommand{\SF}{\mathbf{S}}
+\newcommand{\stf}{\mathbf{s}}
+\newcommand{\St}{\mathbf{S}}
+\newcommand{\st}{\mathbf{s}}
+\newcommand{\At}{\mathbf{A}}
+\newcommand{\at}{\mathbf{a}}
+\newcommand{\dyn}{\rho(\st_{t+1} \mid \st_t, \at_t)}
+
+\newcommand{\MI}{I(\G, \SF)}
+\newcommand{\HG}{\gH(\G)}
+\newcommand{\HGS}{\gH(\G \mid \SF)}
+\newcommand{\entropy}{\mathcal{H}}
+
+\newcommand{\Loss}{\mathcal{L}}
+\newcommand{\SFLoss}{\mathcal{L}^\text{SF}}
+\newcommand{\Lossq}{\mathcal{L}_\text{SKEW}}
+\newcommand{\Lossp}{\mathcal{L}_\text{FIT}}
+\newcommand{\pstate}{{p(\St \mid \pg)}}
+\newcommand{\pstatet}{{p(\St \mid \pgt)}}
+\newcommand{\pstatett}{{p(\St \mid \pgtt)}}
+
+\newcommand{\U}{{U_\Imgs}}
+\newcommand{\UA}{{U_\gA}}
+\newcommand{\dynamics}{{p_\mathrm{dyn}}}
+% Generative model
+\newcommand{\pgparam}{{\phi}}
+\newcommand{\pgparamt}{{\pgparam_t}}
+\newcommand{\pgparamtt}{{\pgparam_{t+1}}}
+%\newcommand{\pg}{{p_g}}
+%\newcommand{\pgt}{{p_{g_t}}}
+%\newcommand{\pgtt}{{p_{g_{t+1}}}}
+\newcommand{\pg}{{p_\pgparam}}
+\newcommand{\pgt}{{p_{\pgparam_t}}}
+\newcommand{\pgtt}{{p_{\pgparam_{t+1}}}}
+% Empirical distribution
+\newcommand{\pe}{{p_\text{emp}}}
+\newcommand{\pet}{{p_{\text{emp}_t}}}
+\newcommand{\pes}[1]{{p_{\text{emp}_{#1}}}}
+\newcommand{\pett}{{p_{\text{emp}_{t+1}}}}
+% Weighted empirical distribution
+\newcommand{\pwe}{\textcolor{red}{\bar {q}}}
+% Skewed distribution
+\newcommand{\pskewed}{{p_{\text{skewed}}}}
+\newcommand{\pskewedt}{{p_{\text{skewed}_t}}}
+\newcommand{\pskeweds}[1]{{p_{\text{skewed}_{#1}}}}
+\newcommand{\pskewedtt}{{p_{\text{skewed}_{t+1}}}}
+% For proof
+\newcommand{\pt}{{p_\theta}}
+\newcommand{\ptt}{{p_\theta^t}}
+\newcommand{\htt}{{\gH_\theta^t}}
+\newcommand{\replay}{\mathcal{R}}
+
+%% Notation switches
+\newcommand{\qe}{{\hat {q}}}
+% Weighted empirical distribution
+\newcommand{\qwe}{{\bar {q}}}
+
+\newcommand{\inX}{{\G}}
+\newcommand{\outX}{{\SF}}
+\newcommand{\x}{x}
+
+\newcommand{\DTV}{D_\mathrm{TV}}
+\newcommand{\NOTE}[1]{\textcolor{red}{(#1)}}
+\newcommand{\TODO}[1]{\textcolor{red}{(TODO: #1)}}
+\newcommand{\METHOD}{Advantage Weighted Actor Critic\xspace}
+\newcommand{\METHODmath}{\text{Skew-Fit}}
+\newcommand{\METHODRIG}{Skew-Fit with RIG\xspace}
+\newcommand{\CONTRACTIVE}{contractive\xspace}
+\newcommand{\ESTABLE}{$\epsilon$-stable}
+\newcommand{\dynop}{{\mathcal{F}_\mathrm{dyn}}}
+\newcommand{\UB}{\mathcal{L}}
+\newcommand{\error}{e}
+
+% From https://tex.stackexchange.com/questions/422/how-do-i-repeat-a-theorem-number
+\newtheorem*{rep@theorem}{\rep@title}
+\newcommand{\newreptheorem}[2]{%
+\newenvironment{rep#1}[1]{%
+ \def\rep@title{#2 \ref{##1}}%
+ \begin{rep@theorem}}%
+ {\end{rep@theorem}}}
+\makeatother
+\newreptheorem{theorem}{Theorem}
+\newreptheorem{lemma}{Lemma}
+\newreptheorem{assumption}{Assumption}
+
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{corollary}{Corollary}[theorem]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{assumption}[theorem]{Assumption}
+\newtheorem{property}[theorem]{Property}
+\newtheorem{definition}[theorem]{Definition}
+\def\assumptionref#1{assumption~\ref{#1}}
+\def\Assumptionref#1{Assumption~\ref{#1}}
+\def\lemmaref#1{lemma~\ref{#1}}
+\def\Lemmaref#1{Lemma~\ref{#1}}
+\def\theoremref#1{theorem~\ref{#1}}
+\def\Theoremref#1{Theorem~\ref{#1}}
+\def\propertyref#1{property~\ref{#1}}
+\def\Propertyref#1{Property~\ref{#1}}
+
+
+\newcommand{\bigO}{\mathcal{O}}
+
+\usepackage{graphicx}
+\usepackage{wrapfig}
+\usepackage{algorithm}
+\usepackage{algcompatible}
+\usepackage{multicol}
+\usepackage{enumitem}

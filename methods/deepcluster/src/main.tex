@@ -1,0 +1,121 @@
+% last updated in April 2002 by Antje Endemann
+% Based on CVPR 07 and LNCS, with modifications by DAF, AZ and elle, 2008 and AA, 2010, and CC, 2011; TT, 2014; AAS, 2016
+
+\documentclass[runningheads]{llncs}
+\usepackage{graphicx}
+\usepackage{amsmath,amssymb} % define this before the line numbering.
+%\usepackage{ruler}
+\usepackage{color}
+\usepackage[width=122mm,left=12mm,paperwidth=146mm,height=193mm,top=12mm,paperheight=217mm]{geometry}
+
+
+\usepackage[boxed]{algorithm2e}
+\usepackage{caption}
+\usepackage{mathtools}
+\usepackage{amsfonts}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{soul}
+\usepackage{color}
+\usepackage{xspace}
+\usepackage[subrefformat=parens]{subfig}
+\usepackage{soul}
+
+\newlength{\soustable}
+\setlength{\soustable}{0.3em}
+
+\makeatletter
+\DeclareRobustCommand\onedot{\futurelet\@let@token\@onedot}
+\def\@onedot{\ifx\@let@token.\else.\null\fi\xspace}
+\def\eg{\emph{e.g}\onedot} \def\Eg{\emph{E.g}\onedot}
+\def\ie{\emph{i.e}\onedot} \def\Ie{\emph{I.e}\onedot}
+\def\cf{\emph{c.f}\onedot} \def\Cf{\emph{C.f}\onedot}
+\def\etc{\emph{etc}\onedot}
+\def\vs{\emph{vs}\onedot}
+\def\wrt{w.r.t\onedot}
+\def\etal{\emph{et al}\onedot}
+%\def\OURS{T\&G\xspace}
+\def\OURS{DeepCluster\xspace}
+\newcommand{\ourmethod}{\OURS}
+\newcommand{\myarrow}[0]{\small{$\to$}}
+\makeatother
+
+\begin{document}
+%\renewcommand\thelinenumber{\color[rgb]{0.2,0.5,0.8}\normalfont\sffamily\scriptsize\arabic{linenumber}\color[rgb]{0,0,0}}
+%\renewcommand\makeLineNumber {\hss\thelinenumber\ \hspace{6mm} \rlap{\hskip\textwidth\ \hspace{6.5mm}\thelinenumber}}
+%\linenumbers
+\pagestyle{headings}
+\mainmatter
+\def\ECCV18SubNumber{1370}  % Insert your submission number here
+
+
+\title{Deep Clustering for Unsupervised Learning \\  of Visual Features} % Replace with your title
+
+\titlerunning{Deep Clustering for Unsupervised Learning of Visual Features}
+
+\authorrunning{Mathilde Caron \etal}
+
+\author{Mathilde Caron \and Piotr Bojanowski \and Armand Joulin \and Matthijs Douze}
+\institute{Facebook AI Research}
+
+
+\maketitle
+
+\begin{abstract}
+  Clustering is a class of unsupervised learning methods that has been extensively applied and studied in computer vision.
+  Little work has been done to adapt it to the end-to-end training of visual features on large scale datasets.
+  In this work, we present \OURS, a clustering method that jointly learns the parameters of a neural network and the cluster assignments
+  of the resulting features.
+  \OURS iteratively groups the features with a standard clustering algorithm, $k$-means, and uses the subsequent assignments as supervision
+  to update the weights of the network.
+  We apply \OURS to the unsupervised training of convolutional neural networks on large datasets like ImageNet and YFCC100M.
+  The resulting model outperforms the current state of the art by a significant margin on all the standard benchmarks.
+%  We validate this finding by experimenting with different training sets and architectures.
+\keywords{unsupervised learning, clustering}
+\end{abstract}
+
+\section{Introduction}
+
+\input{intro.tex}
+
+
+
+
+\section{Related Work}
+
+\input{related.tex}
+
+
+
+\section{Method}
+
+\input{method.tex}
+
+\section{Experiments}
+
+\input{results.tex}
+
+\input{discussion.tex}
+\section{Conclusion}
+
+In this paper, we propose a scalable clustering approach for the unsupervised learning of convnets.
+It iterates between clustering  with $k$-means the features produced by the convnet and
+updating its weights by predicting the cluster assignments as pseudo-labels in a discriminative loss.
+If trained on large dataset like ImageNet or YFCC100M, it achieves performance that are significantly
+better than the previous state-of-the-art on every standard transfer task.
+Our approach makes little assumption about the inputs, and does not require much domain specific knowledge, making it a
+good candidate to learn deep representations specific to domains where annotations are scarce.
+
+\paragraph{Acknowledgement.}
+We thank Alexandre Sablayrolles and the rest of the FAIR team for their feedback and fruitful discussion around this paper.
+We would like to particularly thank Ishan Misra for spotting an error in our evaluation setting of Table~\ref{tab:linear}.
+
+\clearpage
+
+\bibliographystyle{splncs}
+\bibliography{egbib}
+
+\clearpage
+\input{supp.tex}
+
+\end{document}
