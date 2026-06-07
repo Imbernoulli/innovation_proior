@@ -133,10 +133,11 @@ class MultiKeywordMatcher:
     def __init__(self):
         # goto graph: list of dicts, transitions[state][symbol] -> state.
         self.goto = [{}]          # state 0 is the root
-        self.output = [set()]     # keywords associated with a state
-        # TODO: the auxiliary structure that lets a mismatch continue the scan
-        #       without re-reading text (generalize the single-pattern failure
-        #       table from a line to the whole tree of keywords).
+        self.output = [[]]        # keywords ending exactly at a state
+        # TODO: auxiliary state for recovering from a missing trie edge without
+        #       re-reading text.
+        # TODO: auxiliary state for reporting keyword suffixes that also end at
+        #       the current text position.
 
     def add_keyword(self, word):
         # Insert word as a root-to-node path in the goto graph (trie insert),
@@ -147,15 +148,15 @@ class MultiKeywordMatcher:
             if nxt is None:
                 nxt = len(self.goto)
                 self.goto.append({})
-                self.output.append(set())
+                self.output.append([])
                 self.goto[state][ch] = nxt
             state = nxt
-        self.output[state].add(word)
+        self.output[state].append(word)
 
     def build(self):
-        # TODO: compute the per-state continuation links from the goto graph,
-        #       and arrange that every keyword endable at a state is reported
-        #       there. Process states in an order that makes this well-defined.
+        # TODO: compute the per-state continuation and reporting information
+        #       from the goto graph. Process states in an order that makes this
+        #       well-defined.
         pass
 
     def search(self, text):
